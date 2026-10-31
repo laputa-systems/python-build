@@ -16,9 +16,11 @@ explicit accepted failures; see the live campaign in
 lists every route's public behavior and qualifying suites.
 
 The production CPython 3.15.1 build, packaging, and pinned Linux recipes are
-outside this lane. The lane builds on native macOS arm64 and Linux x86-64;
-current work runs on macOS only. Linux arm64 has no builder. Windows, Intel
-macOS, and all other targets are unsupported; the builder rejects them.
+outside this lane. The coverage builder runs on native macOS arm64 and Linux
+x86-64; the optimized `perf.py` harness currently builds only on macOS. The
+M1 head's Linux x86-64 requalification (2026-10-31) matches the accepted
+known-red set; see the live campaign. Linux arm64 has no builder. Windows,
+Intel macOS, and all other targets are unsupported; the builder rejects them.
 
 The verified source is `Rust-for-CPython/cpython` commit
 `b812b4a7b9efaca46b98544a8633b7d7e454166b`, pinned with its archive
@@ -103,7 +105,8 @@ namespaces; macOS uses `sandbox-exec`.
 `release`, no PGO, LTO, JIT, or tail-call interpreter), runs suites on them,
 profiles, and measures paired comparisons. It is the only entry point while
 measurements may run: it holds the host lease, and the coverage
-`build.py build` and `test` commands bypass it.
+`build.py build` and `test` commands bypass it. `perf.py build` refuses
+Linux hosts; Linux coverage builds and suites use `build.py`.
 
 | Command | Purpose |
 | --- | --- |

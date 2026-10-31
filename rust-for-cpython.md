@@ -14,8 +14,9 @@ exactly at `git show d17607f:rust-for-cpython.md`. It covers memory
 batches 11-33, U0-U8 parity records, and the decision log. Raw verdicts stay
 in the ignored `rust-cpython/results/` directory.
 
-Host: macOS arm64 only. All Linux proof waits in **Needs environment**
-until feature work is done.
+Host: macOS arm64 for the optimized performance harness. The deferred
+Linux x86-64 coverage proof ran on 2026-10-31 in the locked Ubuntu 24.04
+userland (see Status and Baseline).
 
 Last measured map (batch 33, `perf-rust@9f254a3`, stale). Old verdict
 policy: 42 MET, 15 OVER and 14 UNCLEAR module memory rows. Replayed under the
@@ -93,15 +94,35 @@ Slices on `m1-scaffold` (never merged into `main`; the owner decides):
   interval wholly above 1.01. Wall intervals straddle the 1 percent floor on
   this shared host, so no slice has an ACCEPT. The affected suites pass
   (7,279 run, 190 skipped).
+- Linux x86-64 proof, 2026-10-31, M1 head `05cbbc3`. The host is Alpine
+  3.25 x86-64 (kernel 7.2.9, 32 cores); the lane ran in an Ubuntu 24.04
+  userland container built from snapshot.ubuntu.com 20260401T000000Z with
+  the exact `linux-toolchain.lock.json` package versions, glibc 2.39, the
+  locked LLVM 23.1.2, and rustup nightly-2026-09-15 gnu. Execution is
+  native x86-64, not emulated, but the Ubuntu host is a container, not a
+  native Ubuntu installation. `build.py test --all --jobs 4` reads
+  run=50,745, failures=10, skipped=2,675, 496/505 files, nine resource
+  denials. The only failed files are the accepted Baseline known-red:
+  `test_ssl` (5 failures plus 8 errors, RTLS policy gaps), `test_support`
+  (14 errors, hashlib shim), and `test_unicodedata` (5 failures, fork test
+  file predates Unicode 18). The 2026-09-28 Linux host's VSOCK failure is
+  absent; `test_socket` passes here. `test_re`, `test_locale`, and
+  `test_str` pass; the U2 run repeats the same 5 `test_unicodedata`
+  failures (run=450, skipped=90). The old Linux baseline at `4710c23` read
+  50,782/2,828 with only the host VSOCK failure; the M1 head matches the
+  accepted known-red set, not that host-VSOCK-only checkpoint. `perf.py`
+  still refuses Linux hosts, so the performance queue below remains
+  macOS-only.
 
 Needs a quieter host: more `bench --gate` runs for S5, S7, and the borderline
 wall rows `rust_base64_small` and `gzip_extract_1m`. The bench `peak_rss` metric is sampled and
 noisy below 100 ms.
 
 M1 check: S1-S7 landed or recorded (S6 a loss), overlay Rust lines 96,662 against
-100,510, and three catalog workloads improved on an optimized build. No slice
-gate reads ACCEPT because wall intervals straddle the 1 percent floor on this
-shared host; the owner accepted S7 on that basis.
+100,510, and three catalog workloads improved on an optimized build. The
+Linux x86-64 D1/D2 and U2/U8 proof at the M1 head now matches the accepted
+known-red set. No slice gate reads ACCEPT because wall intervals straddle the
+1 percent floor on this shared host; the owner accepted S7 on that basis.
 
 Resume: "Resume the Rust-for-CPython campaign in rust-for-cpython.md with
 the orchestrate skill." First command: `python3 rust-cpython/perf.py status`.
@@ -214,10 +235,27 @@ intermittently: `test_audit` (parallel `.pyc` churn), `test_os`, and
 `test_urllib2net`, `test_urllibnet`, `test_winsound`, `test_xpickle`, and
 `test_zipfile64`.
 
+Linux x86-64 at the M1 head (2026-10-31, Ubuntu 24.04 container on the
+Alpine 3.25 x86-64 host, exact `linux-toolchain.lock.json` packages):
+`build.py test --all --jobs 4` reads run=50,745, failures=10,
+skipped=2,675, 496/505 files, nine resource denials. The three failed
+files are the same accepted known-red: `test_ssl` (5 failures plus 8
+errors here against 4 plus 6 on macOS; all RTLS policy gaps),
+`test_support` (14 errors, hashlib shim), and `test_unicodedata` (5
+failures, fork test file predates Unicode 18). `test_socket` passes; the
+2026-09-28 Linux host's VSOCK loopback failure is host-specific and
+absent here. The 2026-09-28 Linux baseline at `4710c23` read
+50,782/2,828 with only that VSOCK failure; the 37 fewer runs and 153
+fewer skips at the M1 head are host and overlay differences, while the
+failed-file set is the parity result.
+
 Loop timings (macOS arm64): focused suite 20-90 s; clean perf build 436 s
 at `--jobs 8` (2026-10-31), coverage build 10-20 min; `test --all` about
 9 min; verdict unit tests (`python3 -m unittest discover -s
-rust-cpython/tests -p 'test_perf.py'`) about 2 s.
+rust-cpython/tests -p 'test_perf.py'`) about 2 s. Linux x86-64 (Ubuntu
+24.04 container, 32 cores): clean debug build about 9 min at `--jobs 16`;
+`test --all --jobs 4` 20 min 19 s; the focused U2/U8 suites 26.5 s. The
+locked LLVM archive verification adds several minutes to a clean build.
 
 Findings that bind design (from the `d17607f` ledger):
 - Startup and Django RSS debt is dyld fixup-chain residency, roughly
@@ -389,22 +427,23 @@ an optimized build.
 
 ## Needs environment
 
-Linux proof, deferred until feature work is done (OD9). Each runs on a
-native host, never under emulation:
-- D1 and D2 on native Linux x86-64 at the M1 head: `python3
-  rust-cpython/build.py test --all --jobs 4`, compared with the Baseline
-  counts (that host's VSOCK loopback failure is known).
-- U2 Unicode 18 and U8 `re` locale requalification on Linux x86-64:
-  `python3 rust-cpython/build.py test --suite test_unicodedata --suite
-  test_re --suite test_locale --suite test_str`.
-- Any source rebase (U7) on both hosts.
+Linux proof (done 2026-10-31 at the M1 head; see Status and Baseline):
+- D1 and D2 on native x86-64 Linux: `test --all --jobs 4` matches the
+  accepted known-red set (3 failed files, 10 failures, 22 errors); the
+  2026-09-28 host VSOCK failure is absent. The Ubuntu 24.04 userland is a
+  container on the Alpine x86-64 host; execution is native, not emulated.
+- U2 Unicode 18 and U8 `re` locale requalification: `test_re`,
+  `test_locale`, and `test_str` pass; `test_unicodedata` repeats the 5
+  accepted failures from the fork test file.
+- Any source rebase (U7) on both hosts remains open.
 
 Linux arm64 has no lane builder and is not claimed.
 
 ## Execution boundary and non-goals
 
-Authorized: branches and worktrees under `.work/wt/`; perf and coverage
-builds on this macOS host; fetching pinned sources and pinned crates (rule
+Authorized: branches and worktrees under `.work/wt/`; perf builds on the
+macOS host and coverage builds on the macOS host or the locked Linux
+x86-64 userland; fetching pinned sources and pinned crates (rule
 9); running CPython suites; editing `rust-cpython/overlay/`,
 `rust-cpython/*.py` tooling and tests, `rust-cpython/README.md`,
 `rust-cpython/ROUTES.md`, and this doc; deleting private routes under rule
