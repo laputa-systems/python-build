@@ -12,6 +12,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from benchmarks.harness import process as process_module
 from benchmarks.harness.memory import CgroupV2MemoryScope
 from benchmarks.harness.process import ProcessSampler, _run_unmonitored, run_command
 
@@ -246,6 +247,50 @@ class ProcessSamplerTests(unittest.TestCase):
         self.assertEqual(result.stdout, b"timing\n")
         self.assertIsNone(result.memory)
         detect.assert_not_called()
+
+    def test_unreadable_rollup_is_retried_once(self):
+        real = process_module._read_rollup
+        calls = []
+        def first_denied(proc_root, info):
+            if not calls:
+                calls.append(info.pid)
+                self.assertTrue(process_module._process_is_live(info))
+                raise PermissionError(13, "denied")
+            return real(proc_root, info)
+        with patch("benchmarks.harness.process._read_rollup", side_effect=first_denied):
+            result = run_command(
+                [sys.executable, "-c", "import time; time.sleep(0.2)"],
+                timeout=3,
+                sample_interval_seconds=0.01,
+            )
+        assert result.memory is not None
+        self.assertEqual(result.memory.sampling_errors, [])
+        self.assertTrue(result.memory.samples)
+
+    def test_rollup_read_that_stays_unavailable_fails_closed(self):
+        with patch("benchmarks.harness.process._read_rollup",
+                   side_effect=PermissionError(13, "denied")):
+            result = run_command(
+                [sys.executable, "-c", "import time; time.sleep(0.2)"],
+                timeout=3,
+                sample_interval_seconds=0.01,
+            )
+        assert result.memory is not None
+        self.assertTrue(any("smaps_rollup unavailable" in error
+                            for error in result.memory.sampling_errors))
+
+    def test_vanished_rollup_is_treated_as_gone(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            pid = 4242
+            (root / str(pid)).mkdir()
+            (root / str(pid) / "stat").write_text(
+                f"{pid} (python) R 1 {pid} 0 0 0 0 0 0 0 0 0 0 0 0 20 0 1 0 12345",
+                encoding="ascii",
+            )
+            info = process_module._read_proc_info(root / str(pid))
+            self.assertIsNotNone(info)
+            self.assertIsNone(process_module._read_rollup(root, info))
 
     def test_unavailable_cgroup_falls_back_to_procfs_metrics(self):
         with patch(

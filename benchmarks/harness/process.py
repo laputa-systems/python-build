@@ -269,16 +269,13 @@ def _read_rollup(proc_root: Path, info: _ProcInfo) -> SmapsRollup | None:
     path = proc_root / str(info.pid) / "smaps_rollup"
     try:
         text = path.read_text(encoding="ascii")
-    except (FileNotFoundError, ProcessLookupError, PermissionError, OSError):
+    except (FileNotFoundError, ProcessLookupError):
         return None
     # Detect PID reuse between stat discovery and the smaps read.
     after = _read_proc_info(proc_root / str(info.pid))
     if after is None or after.start_ticks != info.start_ticks:
         return None
-    try:
-        return parse_smaps_rollup(text)
-    except ValueError:
-        return None
+    return parse_smaps_rollup(text)
 
 
 def _process_is_live(info: _ProcInfo) -> bool:
@@ -618,17 +615,12 @@ class ProcessSampler:
         for pid, info in members.items():
             with self._lock:
                 self._collected.seen[pid] = info.start_ticks
-            rollup = _read_rollup(self.proc_root, info)
+            try:
+                rollup = _read_rollup(self.proc_root, info)
+            except (OSError, ValueError):
+                rollup = self._retry_unreadable_rollup(info)
             if rollup is not None:
                 rollups[pid] = rollup
-            elif _process_is_live(info):
-                current = _read_proc_info(self.proc_root / str(pid))
-                if (
-                    current is not None
-                    and current.start_ticks == info.start_ticks
-                    and _process_is_live(current)
-                ):
-                    self._record_error(f"pid {pid}: smaps_rollup unavailable")
         if not rollups:
             return None
         sample = sum_rollups(rollups, time.monotonic() - self._started_at)
@@ -642,6 +634,28 @@ class ProcessSampler:
         with self._lock:
             self._collected.samples.append(sample)
         return sample
+
+    def _retry_unreadable_rollup(self, info: _ProcInfo) -> SmapsRollup | None:
+        if not _process_is_live(info):
+            return None
+        current = _read_proc_info(self.proc_root / str(info.pid))
+        if (
+            current is None
+            or current.start_ticks != info.start_ticks
+            or not _process_is_live(current)
+        ):
+            return None
+        try:
+            return _read_rollup(self.proc_root, current)
+        except (OSError, ValueError):
+            latest = _read_proc_info(self.proc_root / str(info.pid))
+            if (
+                latest is not None
+                and latest.start_ticks == info.start_ticks
+                and _process_is_live(latest)
+            ):
+                self._record_error(f"pid {info.pid}: smaps_rollup unavailable")
+            return None
 
     def _read_cgroup_snapshot(self) -> CgroupV2MemorySnapshot | None:
         if not isinstance(self._cgroup_scope, CgroupV2MemoryScope):
