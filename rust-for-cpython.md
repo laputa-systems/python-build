@@ -148,8 +148,9 @@ Slices on `m1-scaffold` (never merged into `main`; the owner decides):
   private memory regressed in 19 rows: 1.09 to 1.19 for the
   Django rows, `python_startup`, `import_django`, `multiprocess_pool`
   and `zipimport_cold`, and 1.035 to 1.089 for the catalog, base64,
-  serialization and zlib rows. The integrated timing pass is deferred
-  (host busy).
+  serialization and zlib rows. `compileall_source` produced output that
+  differed from the control and was not timed. The integrated timing pass
+  is deferred (host busy).
 
 Needs a quieter host: the S7 Linux re-gate overlapped load and the integrated
 timing pass was deferred; the macOS queue for S5, S7, and the borderline rows
