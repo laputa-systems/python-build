@@ -241,6 +241,9 @@ Owner (2026-10-31; overrule by saying so):
 - OD12: the optimized performance harness builds and measures on the Linux
   x86-64 userland as well as macOS arm64. Supersedes OD9's macOS-only host
   rule.
+- OD13: sharing the pure hash and HMAC engine with production
+  `backend/hashing` is authorized. This crosses the production boundary;
+  the production build's own gates still apply.
 - Kept: OD3 (no redesign around the proposed 3.17+ upstream Rust API;
   upstream compression routes in the shipped 3.16 fork are not that)
   and the OpenSSL-free rule.
