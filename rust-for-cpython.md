@@ -14,9 +14,9 @@ exactly at `git show d17607f:rust-for-cpython.md`. It covers memory
 batches 11-33, U0-U8 parity records, and the decision log. Raw verdicts stay
 in the ignored `rust-cpython/results/` directory.
 
-Host: macOS arm64 for the optimized performance harness. The deferred
-Linux x86-64 coverage proof ran on 2026-10-31 in the locked Ubuntu 24.04
-userland (see Status and Baseline).
+Host: macOS arm64 and the Linux x86-64 userland for the optimized
+performance harness. The deferred Linux x86-64 coverage proof ran on
+2026-10-31 in the locked Ubuntu 24.04 userland (see Status and Baseline).
 
 Last measured map (batch 33, `perf-rust@9f254a3`, stale). Old verdict
 policy: 42 MET, 15 OVER and 14 UNCLEAR module memory rows. Replayed under the
@@ -60,10 +60,14 @@ Slices on `m1-scaffold` (never merged into `main`; the owner decides):
   `--with-zlib=zlib-rs` or `--with-bzip2=bzip2-rs`; its configure takes
   `ZLIB_CFLAGS/LIBS` and `BZIP2_CFLAGS/LIBS`, and `perf.py build
   --upstream-compression` feeds those from `cpython-libz-rs` and
-  `cpython-libbz2-rs`. Matched suites are green on both routes, but
+  `cpython-libbz2-rs`. The macOS matched suites are green on both routes;
   `zlib_decode_1m` peak RSS reads 1.085 to 1.131 (regressed) and the bz2 load
-  row 1.547, and timing is deferred (host busy), so the deletion condition is
-  unmet. Re-decide on a quiet host with `bench --gate`.
+  row 1.547. The Linux quiet re-gate (`perf-rust` vs `perf-compression`,
+  `bench --gate --module bz2 --workload zlib_decode_1m --workload
+  gzip_extract_1m --runs 2`) read REJECT: `zlib_decode_1m` wall 1.514
+  [1.497,1.766], peak_private 1.107 [1.101,1.113] and `bz2` working_peak
+  1.320 [1.251,1.424] regressed. The upstream route is not within budget, so
+  the private routes stay.
 - S6 lost. The deser TOML pilot regressed peak RSS in every run (1.072) and
   grew `_tomllib_rs.so` by 37 percent, because `deser-toml` builds the whole
   document before emitting events. `_tomllib_rs` is unchanged; the pilot is
@@ -80,7 +84,13 @@ Slices on `m1-scaffold` (never merged into `main`; the owner decides):
   returns `None`, and `test --all` shows only the Baseline known-red files
   (run=50,158, failures=9). The gate numbers were measured before the
   rebase onto the binding and deflate fixes; the rebased tree was not
-  re-gated.
+  re-gated. The Linux re-gate (`perf-s7-base` vs `@incumbent`, `bench
+  --gate --workload catalog_request_path --workload catalog_search_form
+  --workload catalog_url_normalize --runs 2`) read INCONCLUSIVE because
+  the host load rose (`quiet=no`): `catalog_request_path` wall 0.661
+  [0.538,0.666] improved; `catalog_search_form` 0.723 [0.698,0.945] and
+  `catalog_url_normalize` 0.840 [0.756,0.972] inconclusive; no guard
+  regressed. The S7 gate decision needs a quiet host.
 - Integrated gate. `main` against `m1-scaffold` at `990f7fd` (`bench --gate
   --all-workloads --runs 4`, matched clean builds, quiet) read REJECT on
   `rust_base64_small` wall 1.234, `zip_read_wheel` peak RSS 1.017 and
@@ -110,19 +120,37 @@ Slices on `m1-scaffold` (never merged into `main`; the owner decides):
   `test_str` pass; the U2 run repeats the same 5 `test_unicodedata`
   failures (run=450, skipped=90). The old Linux baseline at `4710c23` read
   50,782/2,828 with only the host VSOCK failure; the M1 head matches the
-  accepted known-red set, not that host-VSOCK-only checkpoint. `perf.py`
-  still refuses Linux hosts, so the performance queue below remains
-  macOS-only.
+  accepted known-red set, not that host-VSOCK-only checkpoint.
+- Linux performance re-gates, 2026-10-31, M1 head `05cbbc3`, after
+  `perf.py` learned to build and measure on Linux (`9e0604a`). The S5
+  re-gate read REJECT (see S5); the S7 re-gate read INCONCLUSIVE
+  (`quiet=no`; see S7). The borderline gate (`@control` vs `@incumbent`,
+  `--gate --workload rust_base64_small --workload gzip_extract_1m --runs
+  2`) read REJECT on peak-memory rows: `python_startup`
+  1.121/1.160/1.144, `django_wsgi_request` 1.070/1.128/1.107,
+  `django_template_realistic` 1.065/1.126/1.105, `import_django`
+  1.039/1.127/1.112, `serialization_roundtrip` private 1.099/PSS 1.040,
+  and `rust_base64_small` private 1.111/PSS 1.024. Its targets improved on
+  wall and peak RSS (`rust_base64_small` 0.924 and 0.906;
+  `gzip_extract_1m` 0.189 and 0.907; `zlib_decode_1m` 0.131 and 0.919).
+  The integrated `--all-workloads` memory-only run stopped at
+  `django_wsgi_first_request` with incomplete process-tree samples; the
+  guard rows above and the S5/S7 gates are the usable evidence. The
+  integrated timing pass is deferred (host busy).
 
-Needs a quieter host: more `bench --gate` runs for S5, S7, and the borderline
-wall rows `rust_base64_small` and `gzip_extract_1m`. The bench `peak_rss` metric is sampled and
-noisy below 100 ms.
+Needs a quieter host: the S7 Linux re-gate overlapped load and the integrated
+timing pass was deferred; the macOS queue for S5, S7, and the borderline rows
+remains. The bench `peak_rss` metric is sampled and noisy below 100 ms.
 
 M1 check: S1-S7 landed or recorded (S6 a loss), overlay Rust lines 96,662 against
 100,510, and three catalog workloads improved on an optimized build. The
 Linux x86-64 D1/D2 and U2/U8 proof at the M1 head now matches the accepted
-known-red set. No slice gate reads ACCEPT because wall intervals straddle the
-1 percent floor on this shared host; the owner accepted S7 on that basis.
+known-red set. The Linux S5 re-gate kept the private routes; the S7 re-gate
+improved `catalog_request_path` but was inconclusive on the other two targets
+because the host load rose; the borderline gate improved its targets but
+regressed guard peak memory. No slice gate reads ACCEPT because wall intervals
+straddle the 1 percent floor on this shared host; the owner accepted S7 on
+that basis.
 
 Resume: "Resume the Rust-for-CPython campaign in rust-for-cpython.md with
 the orchestrate skill." First command: `python3 rust-cpython/perf.py status`.
@@ -196,6 +224,9 @@ Owner (2026-10-31; overrule by saying so):
 - OD11: delegation uses the global `orchestrate` skill. The lane-specific
   coordinator and climber skills, agents, model pins, and agent hook are
   removed.
+- OD12: the optimized performance harness builds and measures on the Linux
+  x86-64 userland as well as macOS arm64. Supersedes OD9's macOS-only host
+  rule.
 - Kept: OD3 (no redesign around the proposed 3.17+ upstream Rust API;
   upstream compression routes in the shipped 3.16 fork are not that)
   and the OpenSSL-free rule.
@@ -435,15 +466,18 @@ Linux proof (done 2026-10-31 at the M1 head; see Status and Baseline):
 - U2 Unicode 18 and U8 `re` locale requalification: `test_re`,
   `test_locale`, and `test_str` pass; `test_unicodedata` repeats the 5
   accepted failures from the fork test file.
+- The optimized `perf.py` harness now builds and measures on Linux
+  (`9e0604a`); the S5/S7/borderline re-gates and the integrated
+  `django_wsgi_first_request` memory-only limitation are in Status.
 - Any source rebase (U7) on both hosts remains open.
 
 Linux arm64 has no lane builder and is not claimed.
 
 ## Execution boundary and non-goals
 
-Authorized: branches and worktrees under `.work/wt/`; perf builds on the
-macOS host and coverage builds on the macOS host or the locked Linux
-x86-64 userland; fetching pinned sources and pinned crates (rule
+Authorized: branches and worktrees under `.work/wt/`; perf and coverage
+builds on the macOS host or the locked Linux x86-64 userland; fetching
+pinned sources and pinned crates (rule
 9); running CPython suites; editing `rust-cpython/overlay/`,
 `rust-cpython/*.py` tooling and tests, `rust-cpython/README.md`,
 `rust-cpython/ROUTES.md`, and this doc; deleting private routes under rule
