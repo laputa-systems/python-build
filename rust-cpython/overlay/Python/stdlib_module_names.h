@@ -108,6 +108,7 @@ static const char* _Py_stdlib_module_names[] = {
 "_posixsubprocess",
 "_py_abc",
 "_py_warnings",
+"_pybuiltins",
 "_pydatetime",
 "_pydecimal",
 "_pyio",

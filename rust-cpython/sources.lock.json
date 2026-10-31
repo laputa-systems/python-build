@@ -1,23 +1,23 @@
 {
   "source": {
-    "repository": "https://github.com/Rust-for-CPython/cpython",
-    "branch": "3.x-rust-in-cpython",
-    "commit": "b812b4a7b9efaca46b98544a8633b7d7e454166b",
-    "version": "3.16.0a0",
+    "repository": "https://github.com/python/cpython",
+    "branch": "v3.16.0a1",
+    "commit": "22d79d9840a275ed6ed36cd590dc74edc61765fb",
+    "version": "3.16.0a1",
     "license": "PSF-2.0",
-    "cargo_lock_sha256": "55f5f3bf547d3b9e7896a5feb6d17aa3b607610c7c21d919164f0877a8d05023"
+    "cargo_lock_sha256": "1cadb24487510c8584d2665840e04ac13b99f473b5c8d2e99617ad8493b9736b"
   },
   "inputs": [
     {
       "name": "cpython-rust",
-      "version": "3.16.0a0",
-      "url": "https://codeload.github.com/Rust-for-CPython/cpython/tar.gz/b812b4a7b9efaca46b98544a8633b7d7e454166b",
-      "sha256": "965dbc9c847b0ed779a16134495b8690c9fc957996d8bcbb83c47089d4e81467",
-      "size": 44210863,
+      "version": "3.16.0a1",
+      "url": "https://codeload.github.com/python/cpython/tar.gz/22d79d9840a275ed6ed36cd590dc74edc61765fb",
+      "sha256": "7dcd8a1fdfe3b6eae9fd706ef6eb2fb8322d0af99773bad5573efb880c365c60",
+      "size": 44114970,
       "role": "build-source",
       "target": "aarch64-apple-darwin",
       "license": "PSF-2.0",
-      "purpose": "Pinned CPython 3.16.0a0 Rust-for-CPython source for an isolated native Apple Silicon research build"
+      "purpose": "Pinned CPython 3.16.0a1 upstream source for an isolated native Apple Silicon research build"
     },
     {
       "name": "rust-std-src",

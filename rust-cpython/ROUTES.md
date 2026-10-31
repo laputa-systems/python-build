@@ -158,7 +158,8 @@ the campaign contract. Update the line in the same commit.
   `test_float`, `test_pickle`, and `test_socket`: 3,235 run/311 skipped;
   integrated full suite passed.
 - [x] `marshal` — public version-6 serialization and loading of supported
-  code/data records, including cycles, reach Rust (`112a4d2`). Cached
+  code/data records, including list and dict cycles, reach Rust (`112a4d2`).
+  Immutable cycles are rejected as upstream does. Cached
   bytecode imports stay extension-free (`1e399a2`); their valid marshal
   bytes match public Rust output but differ from pristine CPython's
   selective-reference output. Full `test_faulthandler`, `test_marshal`,

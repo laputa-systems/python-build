@@ -481,11 +481,9 @@ impl Encoder {
         if kind == Kind::Unicode {
             text = Some(unsafe { unicode_info(value) });
         }
-        // Code objects can participate in reference cycles; guard them
-        // while their record is still being written. (Tuples are
-        // deliberately unguarded: the fork round-trips tuple cycles and
-        // its tests require it; the rebase adopts upstream's ValueError.)
-        let active = matches!(kind, Kind::Code);
+        // An active record is a cycle this codec does not encode; the C
+        // writer then applies the version's cycle rules and error text.
+        let active = true;
         match unsafe { self.track(value, active) }? {
             Some(entry) => {
                 unsafe { self.byte(b'r')? };
@@ -1161,7 +1159,9 @@ impl<'a> Decoder<'a> {
                     }
                 };
                 let value = unsafe { PyRef::from_raw(value) }?;
-                unsafe { self.insert(index, value.as_ptr()) }?;
+                if tag == b'[' {
+                    unsafe { self.insert(index, value.as_ptr()) }?;
+                }
                 for offset in 0..count {
                     let item = unsafe { self.item(depth + 1) }?;
                     unsafe {
@@ -1177,6 +1177,9 @@ impl<'a> Decoder<'a> {
                             );
                         }
                     }
+                }
+                if tag != b'[' {
+                    unsafe { self.insert(index, value.as_ptr()) }?;
                 }
                 Ok(Decoded::Object(value))
             }

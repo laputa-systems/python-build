@@ -142,7 +142,8 @@ from _ssl_metadata import _TLSContentType, _TLSAlertType, _TLSMessageType
 import _ssl
 from rtls import _constants
 
-_OPENSSL_API_VERSION = _ssl._OPENSSL_API_VERSION
+from _ssl import OPENSSL_API_VERSION_INFO
+_OPENSSL_API_VERSION = OPENSSL_API_VERSION_INFO
 
 HAS_PSK_TLS13 = False
 

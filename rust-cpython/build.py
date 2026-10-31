@@ -605,17 +605,23 @@ def _source_root(extraction: Path) -> Path:
             f"expected one CPython source directory beneath {extraction}, found {len(matches)}"
         )
     source = matches[0]
-    for required in ("Cargo.toml", "Cargo.lock", "Lib", "Modules", "Include/patchlevel.h"):
+    for required in ("Lib", "Modules", "Include/patchlevel.h"):
         if not (source / required).exists():
             raise LaneError(f"pinned source archive is missing {required}")
+    return source
+
+
+def _verify_cargo_lock(source: Path) -> None:
     metadata, _entry = _read_lock()
-    found_lock_hash = hashlib.sha256((source / "Cargo.lock").read_bytes()).hexdigest()
+    lock = source / "Cargo.lock"
+    if not lock.is_file():
+        raise LaneError("assembled source has no Cargo.lock; the overlay must provide it")
+    found_lock_hash = hashlib.sha256(lock.read_bytes()).hexdigest()
     if found_lock_hash != metadata["cargo_lock_sha256"]:
         raise LaneError(
             "Cargo.lock digest disagrees with the source lock: "
             f"{found_lock_hash} != {metadata['cargo_lock_sha256']}"
         )
-    return source
 
 
 def _extract_fresh(destination: Path) -> Path:
@@ -880,6 +886,7 @@ def fetch() -> int:
     with tempfile.TemporaryDirectory(prefix="cargo-fetch-", dir=WORK) as temporary:
         source = _source_root(safe_extract(source_blob, Path(temporary) / "source"))
         _apply_overlay(source)
+        _verify_cargo_lock(source)
         _fetch_cargo_dependencies(source, toolchain)
     print(
         f"OK    Cargo dependencies cached under {CARGO_HOME}; "
@@ -1410,6 +1417,7 @@ def build(*, jobs: int | None = None) -> int:
     _llvm_ready(toolchain)
     source = _extract_fresh(SOURCE)
     overlay = _apply_overlay(source)
+    _verify_cargo_lock(source)
     env = _environment(toolchain, offline=True)
     _require_command(
         [str(CARGO_HOME / "bin" / "cargo"), "fetch", "--locked", "--offline",

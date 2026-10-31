@@ -476,6 +476,7 @@ fn pair(object: *mut PyObject) -> Outcome<(*mut PyObject, *mut PyObject)> {
 
 struct Serializer {
     qnames: *mut PyObject,
+    attr_qnames: *mut PyObject,
     comment: *mut PyObject,
     instruction: *mut PyObject,
     short_empty: bool,
@@ -517,8 +518,8 @@ impl Serializer {
         self.out.extend_from_slice(&bytes[start..]);
     }
 
-    fn qname<'a>(&self, key: *mut PyObject) -> Outcome<Option<&'a str>> {
-        let value = unsafe { PyDict_GetItemWithError(self.qnames, key) };
+    fn qname<'a>(&self, dictionary: *mut PyObject, key: *mut PyObject) -> Outcome<Option<&'a str>> {
+        let value = unsafe { PyDict_GetItemWithError(dictionary, key) };
         if value.is_null() {
             return fallback();
         }
@@ -558,7 +559,7 @@ impl Serializer {
             self.mark();
         } else {
             let text = optional_text(text.0)?;
-            match self.qname(tag.0)? {
+            match self.qname(self.qnames, tag.0)? {
                 None => {
                     self.cdata(text);
                     self.children(element, depth)?;
@@ -567,7 +568,7 @@ impl Serializer {
                     self.raw("<");
                     self.raw(name);
                     self.mark();
-                    for (uri, prefix) in namespaces {
+                    for (prefix, uri) in namespaces {
                         if prefix.is_empty() {
                             self.raw(" xmlns=\"");
                         } else {
@@ -584,7 +585,7 @@ impl Serializer {
                     let iterator = iterate(items.0)?;
                     while let Some(item) = next_item(&iterator)? {
                         let (key, value) = pair(item.0)?;
-                        let Some(key) = self.qname(key)? else {
+                        let Some(key) = self.qname(self.attr_qnames, key)? else {
                             return Err(Stop::Unsupported);
                         };
                         let value = as_str(value)?;
@@ -670,16 +671,16 @@ unsafe extern "C" fn serialize(
     args: *mut *mut PyObject,
     nargs: Py_ssize_t,
 ) -> *mut PyObject {
-    if nargs != 7 {
+    if nargs != 8 {
         unsafe {
             PyErr_SetString(
                 PyExc_TypeError,
-                c"serialize expects (element, qnames, namespaces, short_empty, write, comment, pi)".as_ptr(),
+                c"serialize expects (element, qnames, attr_qnames, namespaces, short_empty, write, comment, pi)".as_ptr(),
             )
         };
         return ptr::null_mut();
     }
-    let args = unsafe { slice::from_raw_parts(args, 7) };
+    let args = unsafe { slice::from_raw_parts(args, 8) };
     let outcome = unsafe { serialize_tree(args) };
     match outcome {
         Ok(()) => unsafe { PyBool_FromLong(1) },
@@ -691,19 +692,20 @@ unsafe extern "C" fn serialize(
 unsafe fn serialize_tree(args: &[*mut PyObject]) -> Outcome<()> {
     let attr = |name: &CStr| checked(unsafe { PyUnicode_InternFromString(name.as_ptr()) });
     let mut namespaces = Vec::new();
-    let iterator = iterate(args[2])?;
+    let iterator = iterate(args[3])?;
     while let Some(item) = next_item(&iterator)? {
-        let (uri, prefix) = pair(item.0)?;
-        namespaces.push((as_str(uri)?.to_owned(), as_str(prefix)?.to_owned()));
+        let (prefix, uri) = pair(item.0)?;
+        namespaces.push((as_str(prefix)?.to_owned(), as_str(uri)?.to_owned()));
     }
-    let short_empty = match unsafe { PyObject_IsTrue(args[3]) } {
+    let short_empty = match unsafe { PyObject_IsTrue(args[4]) } {
         -1 => return fallback(),
         value => value != 0,
     };
     let mut serializer = Serializer {
         qnames: args[1],
-        comment: args[5],
-        instruction: args[6],
+        attr_qnames: args[2],
+        comment: args[6],
+        instruction: args[7],
         short_empty,
         tag: attr(c"tag")?,
         text: attr(c"text")?,
@@ -712,7 +714,7 @@ unsafe fn serialize_tree(args: &[*mut PyObject]) -> Outcome<()> {
         out: Vec::new(),
     };
     serializer.element(args[0], &namespaces, 0)?;
-    serializer.emit(args[4])
+    serializer.emit(args[5])
 }
 
 static METHODS: [PyMethodDef; 3] = [

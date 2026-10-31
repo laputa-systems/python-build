@@ -1235,6 +1235,7 @@ class IncrementalRecipeTests(unittest.TestCase):
                 patches.enter_context(mock.patch.object(perf.lb, name, return_value=value))
             patches.enter_context(mock.patch.object(perf.lb, "_llvm_ready"))
             patches.enter_context(mock.patch.object(perf.lb, "_extract_fresh", return_value=source))
+            patches.enter_context(mock.patch.object(perf.lb, "_verify_cargo_lock"))
             patches.enter_context(mock.patch.object(perf.lb, "_require_command", side_effect=command))
             patches.enter_context(mock.patch.object(perf.lb, "_make_value", return_value="dev"))
             engines = patches.enter_context(mock.patch.object(
@@ -1623,6 +1624,7 @@ class BuiltinPreflightTests(unittest.TestCase):
             patches.enter_context(mock.patch.object(perf, '_common_dir', return_value=root / '.git'))
             patches.enter_context(mock.patch.object(perf, '_git', return_value=str(root / '.git')))
             patches.enter_context(mock.patch.object(perf.lb, '_extract_fresh', return_value=source))
+            patches.enter_context(mock.patch.object(perf.lb, '_verify_cargo_lock'))
             patches.enter_context(mock.patch.object(perf, '_stage_overlay', return_value=({}, [])))
             patches.enter_context(mock.patch.object(perf.lb, '_environment', return_value={}))
             command = patches.enter_context(mock.patch.object(

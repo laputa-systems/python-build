@@ -707,8 +707,6 @@ def _copy_file(source: Path, target: Path) -> None:
 
 
 def _existing_source(parent: Path) -> Path:
-    # Not lb._source_root: that re-verifies the pristine Cargo.lock digest,
-    # which the overlay's own lockfile has already replaced.
     matches = [child for child in parent.iterdir() if (child / "configure").is_file()] \
         if parent.is_dir() else []
     if len(matches) != 1:
@@ -1064,6 +1062,8 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
             overlay, files = _stage_overlay(paths, route)
             for item in files:
                 _copy_file(paths["overlay_staging"] / item, source / item)
+    if not empty_overlay:
+        lb._verify_cargo_lock(source)
     _write_json(paths["overlay_manifest"], files)
     if not empty_overlay and not lb.IS_LINUX:
         proof, object_stores = _builtin_artifact_verifier()

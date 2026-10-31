@@ -312,7 +312,12 @@ OPENSSL_VERSION_NUMBER = (
 
 # OPENSSL_VERSION_INFO: 5-tuple matching CPython's ssl.OPENSSL_VERSION_INFO,
 # derived from the rustls version.
-OPENSSL_VERSION_INFO = (_rustls_major, _rustls_minor, _rustls_patch, 0, 0)
+OpenSSLVersionInfo = collections.namedtuple(
+    "OpenSSLVersionInfo", ("major", "minor", "fix", "patch", "status")
+)
+OPENSSL_VERSION_INFO = OpenSSLVersionInfo(
+    _rustls_major, _rustls_minor, _rustls_patch, 0, 0
+)
 
 DefaultVerifyPaths = collections.namedtuple(
     "DefaultVerifyPaths",

@@ -194,12 +194,14 @@ fn save_unconsumed(
     had_unconsumed_tail: bool,
 ) {
     let leftover = &input[consumed.min(input.len())..];
-    let mut has_input = !leftover.is_empty();
-    if code == Z_STREAM_END && has_input {
-        decompressor.unused_data.extend_from_slice(leftover);
-        has_input = false;
+    if code == Z_STREAM_END {
+        if !leftover.is_empty() {
+            decompressor.unused_data.extend_from_slice(leftover);
+        }
+        decompressor.unconsumed_tail.clear();
+        return;
     }
-    if has_input || had_unconsumed_tail {
+    if !leftover.is_empty() || had_unconsumed_tail {
         decompressor.unconsumed_tail = leftover.to_vec();
     }
 }
@@ -256,6 +258,9 @@ fn decompressor_flush_call(arguments: &[Borrowed<'_>]) -> Outcome<Owned> {
             c"length must be greater than zero",
         ));
     }
+    if decompressor.eof {
+        return BytesWriter::copy_of(&[]);
+    }
     let input = mem::take(&mut decompressor.unconsumed_tail);
     let capacity = decompress_capacity_hint(input.len()).min(length as usize);
     let mut output = match BytesSink::with_capacity(capacity) {
@@ -282,6 +287,13 @@ fn decompressor_flush_call(arguments: &[Borrowed<'_>]) -> Outcome<Owned> {
         result.code,
         !input.is_empty(),
     );
+    if result.code != Z_OK && result.code != Z_BUF_ERROR && result.code != Z_STREAM_END {
+        return Err(zlib_failure(
+            decompressor.stream.stream(),
+            result.code,
+            "while decompressing data",
+        ));
+    }
     if result.code == Z_STREAM_END {
         decompressor.eof = true;
         let code = decompressor.stream.end();
@@ -299,7 +311,7 @@ fn decompressor_flush_call(arguments: &[Borrowed<'_>]) -> Outcome<Owned> {
 fn decompressor_copy_call(arguments: &[Borrowed<'_>]) -> Outcome<Owned> {
     let [state] = *exactly::<1>(arguments, c"copy() takes exactly one argument")?;
     let source = decompressor_state(state)?;
-    if !source.stream.is_live() {
+    if source.eof || !source.stream.is_live() {
         return Err(raise(Exception::ValueError, c"Inconsistent stream state"));
     }
     let stream = source.stream.duplicate().map_err(|code| {

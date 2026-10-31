@@ -2,7 +2,9 @@ use std::ffi::CStr;
 
 use bzip2::{Action, Compress, Compression, Decompress, Error, Status};
 use cpython_binding::arguments::{c_int_argument, exactly, ssize_argument};
-use cpython_binding::ffi::{PyMethodDef, PyObject, Py_ssize_t};
+use cpython_binding::ffi::{
+    PyMethodDef, PyObject, PyUnicode_FromStringAndSize, Py_ssize_t,
+};
 use cpython_binding::module::PER_INTERPRETER_GIL;
 use cpython_binding::values::{boolean, tuple};
 use cpython_binding::{
@@ -276,6 +278,22 @@ fn decompressor_state_call(argument: Borrowed<'_>) -> Outcome<Owned> {
     ])
 }
 
+fn bzlib_version_call() -> Outcome<Owned> {
+    let version = unsafe { CStr::from_ptr(libbz2_rs_sys::BZ2_bzlibVersion()) };
+    let bytes = version.to_bytes();
+    let text = unsafe {
+        PyUnicode_FromStringAndSize(bytes.as_ptr().cast(), bytes.len() as Py_ssize_t)
+    };
+    unsafe { Owned::from_new_reference(text) }
+}
+
+unsafe extern "C" fn bzlib_version(
+    _module: *mut PyObject,
+    _ignored: *mut PyObject,
+) -> *mut PyObject {
+    into_return(bzlib_version_call())
+}
+
 unsafe extern "C" fn compressor_new(_module: *mut PyObject, level: *mut PyObject) -> *mut PyObject {
     into_return(compressor_new_call(unsafe { Borrowed::from_raw(level) }))
 }
@@ -317,7 +335,8 @@ unsafe extern "C" fn decompressor_state(
     into_return(decompressor_state_call(unsafe { Borrowed::from_raw(capsule) }))
 }
 
-static METHODS: [PyMethodDef; 7] = [
+static METHODS: [PyMethodDef; 8] = [
+    noargs(c"bzlib_version", bzlib_version, c"Return the libbz2 version string."),
     single_argument(c"compressor_new", compressor_new, c"Create a Rust bzip2 compression stream."),
     fastcall(c"compressor_compress", compressor_compress, c"Compress the next input block."),
     single_argument(c"compressor_finish", compressor_finish, c"Finish a Rust bzip2 compression stream."),

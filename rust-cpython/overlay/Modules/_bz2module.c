@@ -524,6 +524,61 @@ static PyType_Spec bz2_decompressor_type_spec = {
     .slots = bz2_decompressor_type_slots,
 };
 
+
+PyDoc_STRVAR(bzlib_version_info__doc__,
+"_bz2.bzlib_version_info\n\
+\n\
+Bzlib version information as a named tuple.");
+
+static PyStructSequence_Field bzlib_version_info_fields[] = {
+    {"major", "Major release number"},
+    {"minor", "Minor release number"},
+    {"patch", "Patch release number"},
+    {0}
+};
+
+static PyStructSequence_Desc bzlib_version_info_desc = {
+    "_bz2.bzlib_version_info",        /* name */
+    bzlib_version_info__doc__,        /* doc */
+    bzlib_version_info_fields,        /* fields */
+    3
+};
+
+/* BZ2_bzlibVersion() returns a string with a trailing suffix, for example
+   "1.0.8, 13-Jul-2019" for bzip2 or "1.1.0-libbz2-rs-sys-0.2.5" for
+   libbz2-rs.  sscanf() stops at the suffix; components which were not
+   parsed are left zero.  This is deliberate -- a zero is more useful
+   here than a hard error. */
+static PyObject *
+make_bzlib_version_info(PyTypeObject *type, const char *string)
+{
+    PyObject *version;
+    int pos = 0;
+    unsigned int major = 0, minor = 0, patch = 0;
+
+    sscanf(string, "%u.%u.%u", &major, &minor, &patch);
+
+    version = PyStructSequence_New(type);
+    if (version == NULL) {
+        return NULL;
+    }
+
+#define SetIntItem(VALUE) \
+    PyStructSequence_SET_ITEM(version, pos++, PyLong_FromUnsignedLong(VALUE)); \
+    if (PyErr_Occurred()) { \
+        Py_DECREF(version); \
+        return NULL; \
+    }
+
+    SetIntItem(major)
+    SetIntItem(minor)
+    SetIntItem(patch)
+#undef SetIntItem
+
+    return version;
+}
+
+
 /* Module initialization. */
 
 static int
@@ -548,6 +603,35 @@ _bz2_exec(PyObject *module)
         return -1;
     }
 
+    /* bzlib_version */
+    PyObject *version = rust_bz2_call("bzlib_version", NULL);
+    if (version == NULL) {
+        return -1;
+    }
+    const char *version_string = PyUnicode_AsUTF8(version);
+    if (version_string == NULL) {
+        Py_DECREF(version);
+        return -1;
+    }
+    PyTypeObject *version_type;
+    version_type = PyStructSequence_NewType(&bzlib_version_info_desc);
+    if (version_type == NULL) {
+        Py_DECREF(version);
+        return -1;
+    }
+    PyObject *version_info = make_bzlib_version_info(version_type, version_string);
+    Py_DECREF(version_type);
+    if (version_info == NULL) {
+        Py_DECREF(version);
+        return -1;
+    }
+    if (PyModule_Add(module, "bzlib_version", version) < 0) {
+        Py_DECREF(version_info);
+        return -1;
+    }
+    if (PyModule_Add(module, "bzlib_version_info", version_info) < 0) {
+        return -1;
+    }
     return 0;
 }
 

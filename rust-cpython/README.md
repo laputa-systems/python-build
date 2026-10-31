@@ -1,12 +1,11 @@
 # Rust-for-CPython research lane
 
-This isolated lane builds the pinned Rust-for-CPython CPython **3.16.0a0** fork.
-All 71 named public-behavior coverage targets in
+This isolated lane builds upstream CPython **3.16.0a1** with the
+Rust-for-CPython overlay. All 71 named public-behavior coverage targets in
 [`rust-for-cpython.md`](../rust-for-cpython.md) passed their complete relevant
 CPython Python module suites and the combined default-resource suite on
-Linux x86-64. On Linux the only failure is one VSOCK
-test that also fails on the pristine fork, because the host kernel has no
-VSOCK loopback. They also passed on macOS arm64, including rerun at
+Linux x86-64. At that coverage checkpoint the only Linux failure was one
+VSOCK test, because the host kernel has no VSOCK loopback. They also passed on macOS arm64, including rerun at
 `9329e1c` with the shared-overlay uuid, codec (`encodings.utf_8`), socket,
 and stdlib-module-list repairs included (`b0888dd`, `499308e`, `4710c23`):
 50,158 run/2,703 skipped with zero failures, matching the pre-repair counts
@@ -24,13 +23,24 @@ performance re-gates are in the live campaign. Linux arm64 has no builder.
 Windows, Intel macOS, and all other targets are unsupported; the builder
 rejects them.
 
-The verified source is `Rust-for-CPython/cpython` commit
-`b812b4a7b9efaca46b98544a8633b7d7e454166b`, pinned with its archive
-and Cargo lock digests in [`sources.lock.json`](sources.lock.json). The Rust
-toolchain is pinned in [`rust-toolchain.toml`](../rust-toolchain.toml). The
-private Cargo home is used offline after fetching. Do not update the source,
+The verified source is upstream `python/cpython` tag `v3.16.0a1`, commit
+`22d79d9840a275ed6ed36cd590dc74edc61765fb`, pinned with its archive digest in
+[`sources.lock.json`](sources.lock.json). The fork-only Rust bridge crates
+(`Modules/cpython-sys`, `Modules/cpython-build-helper`) and the Cargo
+workspace live in [`overlay/`](overlay); the overlay lockfile is the build
+lock, and its digest is pinned in the same source record. The Rust toolchain
+is pinned in [`rust-toolchain.toml`](../rust-toolchain.toml). The private
+Cargo home is used offline after fetching. Do not update the source,
 toolchain, or Cargo lock accidentally; intentional vetted crate additions
 update the overlay lockfile.
+
+The U7 rebase moved the pin from the fork's `b812b4a` (3.16.0a0) to pristine
+upstream `v3.16.0a1`. The 84 files the overlay had shadowed from the fork
+were reconciled against a1: of the 54 that differed, 47 merged without a
+conflict and seven were hand-resolved. On Linux x86-64 the a1 tree builds,
+`test_embed` passes, and the full suite reads 51,432 tests with 14 failures
+in the six known-red files recorded in the live campaign. macOS U7
+requalification and the sealed macOS build remain open.
 
 ## Active commands
 
@@ -44,7 +54,7 @@ python3 rust-cpython/build.py clean
 ```
 
 `build` now configures CPython with `--with-pydebug`, no PGO or LTO, C/C++
-`-O0 -g3`, and the fork's Cargo `dev` profile. It runs offline and installs
+`-O0 -g3`, and the overlay's Cargo `dev` profile. It runs offline and installs
 `stage/bin/python3.16d`. `test` accepts repeated `--suite test_NAME` options
 and runs only those complete CPython Python test modules or packages.
 `test --all` runs all CPython test modules under the test runner's default
@@ -114,7 +124,7 @@ the macOS harness uses the macOS lock.
 | Command | Purpose |
 | --- | --- |
 | `build --name N [--incremental] [--jobs J]` | Clean optimized build verified per Rust extension; `--incremental` syncs changed overlay files and refuses build-system or Cargo changes |
-| `build --name perf-upstream --empty-overlay` | Pristine-fork control |
+| `build --name perf-upstream --empty-overlay` | Pristine-upstream control |
 | `build --name N --upstream-compression` | Link CPython's stock `zlib`, `_bz2` and `binascii` against static `zlib-rs` and `libbz2-rs` archives of the locked crates, and omit the private `_zlib_rs`, `_bz2_rs` and `Lib/zlib.py` |
 | `test --name N --suite test_X ...` or `--all` | Complete CPython suites on a perf build |
 | `cargo --name N -- <cargo args>` | Sync changed overlay files as `build --incremental` does, then run the pinned cargo in build `N`'s assembled source with the build's environment; exits with cargo's status |

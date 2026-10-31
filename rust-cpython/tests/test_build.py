@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import subprocess
 import sys
@@ -211,6 +212,26 @@ class LinuxSetupTests(unittest.TestCase):
             perf.lb.lane_linux.setup_local_with_shared_ssl_rs(contents),
             expected,
         )
+
+
+class CargoLockTests(unittest.TestCase):
+    def test_assembled_lock_must_match_the_source_pin(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary)
+            lock = source / "Cargo.lock"
+            lock.write_text("locked")
+            metadata = {"cargo_lock_sha256": hashlib.sha256(b"locked").hexdigest()}
+            with mock.patch.object(perf.lb, "_read_lock", return_value=(metadata, None)):
+                perf.lb._verify_cargo_lock(source)
+                lock.write_text("changed")
+                with self.assertRaisesRegex(perf.lb.LaneError, "digest disagrees"):
+                    perf.lb._verify_cargo_lock(source)
+
+    def test_assembled_lock_is_required(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with mock.patch.object(perf.lb, "_read_lock", return_value=({}, None)), \
+                    self.assertRaisesRegex(perf.lb.LaneError, "no Cargo.lock"):
+                perf.lb._verify_cargo_lock(Path(temporary))
 
 
 class MacOSDependencyProbeTests(unittest.TestCase):

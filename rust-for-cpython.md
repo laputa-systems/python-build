@@ -152,6 +152,34 @@ Slices on `m1-scaffold` (never merged into `main`; the owner decides):
   differed from the control and was not timed. The integrated timing pass
   is parked (host busy).
 
+- U7 source rebase, 2026-10-31. The pin moves from the fork `b812b4a`
+  (3.16.0a0) to pristine upstream `v3.16.0a1` (`22d79d9`). The overlay now
+  supplies the Cargo workspace and the `cpython-sys`/`cpython-build-helper`
+  bridge crates; upstream `configure`/`configure.ac` were hand-merged
+  because the container has Autoconf 2.71 while a1 generates with 2.72. Of
+  the 84 fork-shadowed files, 54 differed from a1: 47 merged cleanly and
+  seven were hand-resolved. a1 behavior adopted where the fork diverged:
+  marshal rejects immutable cycles, zlib clears `unconsumed_tail` at
+  `Z_STREAM_END` and matches flush/copy state rules, XML serialization
+  carries `attr_qnames`, plistlib sorts and skips keys through
+  `_dict_items`, and `_bz2` reports the `libbz2-rs-sys` version. Linux
+  x86-64 `build.py test --all --jobs 4` on the rebuilt a1 debug tree reads
+  run=51,432, failures=14, skipped=2,585, 551/560 files. The six failed
+  files are the three multiprocessing `test_misc` files (the worktree
+  `TMPDIR` path exceeds `SUN_PATH_MAX`; they pass at `/tmp/u7mp`),
+  `test_socket` (the host's RDS `testPeek` blocks in `rds_recvmsg` until
+  the 900-second timeout; with RDS disabled the module passes 753 tests),
+  `test_ssl` (8 errors and 5 failures, the
+  accepted RTLS policy gaps) and `test_support` (14 errors, the accepted
+  hashlib shim).
+  `test_embed` passes; `test_unicodedata`, `test_heapq`, `test_zlib`, and
+  both XML suites pass; the focused reconcile suites
+  (`test_bz2`, `test_lzma`, `test_plistlib`, `test_tempfile`,
+  `test_strptime`, `test_difflib`, `test_marshal`, `test_io`,
+  `test_importlib`, `test_faulthandler`, `test_py_compile`, `test_compile`,
+  `test_audit`) are green. macOS U7 requalification and the sealed macOS
+  build have not run.
+
 Parked after M1: the integrated timing pass on Linux and the macOS re-gates
 for S5, S7, and the borderline rows; they are optional confirmations, not M1
 conditions. The bench `peak_rss` metric is sampled and noisy below 100 ms.
@@ -430,7 +458,7 @@ engine with production `backend/hashing` (crosses the production boundary,
 so the owner decides); shrink the `cpython-rust-staticlib` carrier, keeping
 source sharing, code sharing, and mapped-page sharing as separate claims;
 the `_fnmatch_rs` cache comparison (PR4); JIT and tail-call interpreter
-builds as upstream comparators; the U7 source rebase.
+builds as upstream comparators.
 
 ## Acceptance
 
@@ -486,7 +514,8 @@ Linux proof (done 2026-10-31 at the M1 head; see Status and Baseline):
 - The optimized `perf.py` harness now builds and measures on Linux
   (`9e0604a`); the S5/S7/borderline re-gates and the integrated memory-only
   gate are in Status.
-- Any source rebase (U7) on both hosts remains open.
+- U7 source rebase: the Linux x86-64 proof is done 2026-10-31 (see
+  Status); macOS requalification and the sealed macOS build remain open.
 
 Linux arm64 has no lane builder and is not claimed.
 
@@ -522,10 +551,12 @@ Contract changes for the owner:
 
 ## Reference
 
-- Pin: `rust-cpython/sources.lock.json` (`b812b4a`, 3.16.0a0). The pinned
-  fork has `PyBytesWriter` (`Include/cpython/bytesobject.h`); overlay C
-  users include `socketmodule.c`, `posixmodule.c`, `binascii.c`,
-  `_io/bufferedio.c`, and `_codecsmodule.c`.
+- Pin: `rust-cpython/sources.lock.json` (upstream `v3.16.0a1`, `22d79d9`;
+  the overlay provides the Cargo workspace and the Rust bridge crates). The
+  pinned upstream source has `PyBytesWriter`
+  (`Include/cpython/bytesobject.h`); overlay C users include
+  `socketmodule.c`, `posixmodule.c`, `binascii.c`, `_io/bufferedio.c`, and
+  `_codecsmodule.c`.
 - Behavior register: `rust-cpython/ROUTES.md`. Harness: `perf.py`,
   `perf_modules.py`, `perf_verdict.py`, commands in `rust-cpython/README.md`.
 - Static carrier: `overlay/Modules/cpython-rust-staticlib/Cargo.toml`

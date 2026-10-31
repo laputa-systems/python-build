@@ -7,6 +7,7 @@ rust-version.workspace = true
 [dependencies]
 cpython-binding = { path = "../cpython-binding", features = ["alloc"] }
 bzip2 = "=0.6.1"
+libbz2-rs-sys = { version = "=0.2.5", default-features = false, features = ["std", "stdio", "rust-allocator"] }
 
 [build-dependencies]
 cpython-build-helper = { path = "../cpython-build-helper" }

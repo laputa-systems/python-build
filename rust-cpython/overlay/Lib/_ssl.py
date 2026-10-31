@@ -1,3 +1,4 @@
+import collections
 import importlib
 
 from _ssl_metadata import _SSL_CONSTANTS
@@ -5,7 +6,11 @@ from _ssl_metadata import _SSL_CONSTANTS
 globals().update(_SSL_CONSTANTS)
 
 _RUSTLS_BACKEND = True
-_OPENSSL_API_VERSION = (0, 0, 0, 0, 0)
+_OpenSSLAPIVersionInfo = collections.namedtuple(
+    "_OpenSSLAPIVersionInfo", ("major", "minor", "fix", "patch", "status")
+)
+OPENSSL_API_VERSION_INFO = _OpenSSLAPIVersionInfo(0, 0, 0, 0, 0)
+_OPENSSL_API_VERSION = OPENSSL_API_VERSION_INFO
 ENCODING_PEM = 1
 ENCODING_DER = 2
 PROTO_MINIMUM_SUPPORTED = -2
