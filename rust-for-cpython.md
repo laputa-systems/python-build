@@ -93,8 +93,8 @@ Slices on `m1-scaffold` (never merged into `main`; the owner decides):
   regressed. A second gate started quiet but its final host sample was
   not (`quiet=no`): wall 0.663 [0.649,0.693], 0.733 [0.715,0.738] and
   0.822 [0.712,0.911] on the three targets, with peak RSS 0.97, peak
-  private 0.965 to 0.972 and no guard regressed. The S7 gate decision
-  still needs a quiet host.
+  private 0.965 to 0.972 and no guard regressed. The owner accepted the
+  Linux result on 2026-10-31 despite the non-quiet final sample.
 - Integrated gate. `main` against `m1-scaffold` at `990f7fd` (`bench --gate
   --all-workloads --runs 4`, matched clean builds, quiet) read REJECT on
   `rust_base64_small` wall 1.234, `zip_read_wheel` peak RSS 1.017 and
@@ -150,22 +150,21 @@ Slices on `m1-scaffold` (never merged into `main`; the owner decides):
   and `zipimport_cold`, and 1.035 to 1.089 for the catalog, base64,
   serialization and zlib rows. `compileall_source` produced output that
   differed from the control and was not timed. The integrated timing pass
-  is deferred (host busy).
+  is parked (host busy).
 
-Needs a quieter host: the S7 Linux re-gate overlapped load and the integrated
-timing pass was deferred; the macOS queue for S5, S7, and the borderline rows
-remains. The bench `peak_rss` metric is sampled and noisy below 100 ms.
+Parked after M1: the integrated timing pass on Linux and the macOS re-gates
+for S5, S7, and the borderline rows; they are optional confirmations, not M1
+conditions. The bench `peak_rss` metric is sampled and noisy below 100 ms.
 
-M1 check: S1-S7 landed or recorded (S6 a loss), overlay Rust lines 96,662 against
-100,510, and three catalog workloads improved on an optimized build. The
-Linux x86-64 D1/D2 and U2/U8 proof at the M1 head now matches the accepted
-known-red set. The Linux S5 re-gate kept the private routes; the S7 re-gate
-improved `catalog_request_path` but was inconclusive on the other two targets
-because the host load rose; the borderline gate improved its targets but
-regressed guard peak memory; the integrated memory gate improved several peak
-RSS rows but rejected on peak private memory. No slice gate reads ACCEPT
-because wall intervals straddle the 1 percent floor on this shared host; the
-owner accepted S7 on that basis.
+M1 check (met 2026-10-31): S1-S7 landed or recorded (S6 a loss), overlay Rust
+lines 96,662 against 100,510, and three catalog workloads improved on an
+optimized build. The Linux x86-64 D1/D2 and U2/U8 proof at the M1 head now
+matches the accepted known-red set. The Linux S5 re-gate kept the private
+routes; the borderline gate improved its targets but regressed guard peak
+memory; the integrated memory gate improved several peak RSS rows but rejected
+on peak private memory. The S7 Linux re-gate improved all three catalog
+targets and the owner accepted it despite the non-quiet final sample. The
+integrated timing pass is parked while the host is loaded.
 
 Resume: "Resume the Rust-for-CPython campaign in rust-for-cpython.md with
 the orchestrate skill." First command: `python3 rust-cpython/perf.py status`.
