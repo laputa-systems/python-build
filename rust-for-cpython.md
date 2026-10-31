@@ -90,7 +90,11 @@ Slices on `m1-scaffold` (never merged into `main`; the owner decides):
   the host load rose (`quiet=no`): `catalog_request_path` wall 0.661
   [0.538,0.666] improved; `catalog_search_form` 0.723 [0.698,0.945] and
   `catalog_url_normalize` 0.840 [0.756,0.972] inconclusive; no guard
-  regressed. The S7 gate decision needs a quiet host.
+  regressed. A second gate started quiet but its final host sample was
+  not (`quiet=no`): wall 0.663 [0.649,0.693], 0.733 [0.715,0.738] and
+  0.822 [0.712,0.911] on the three targets, with peak RSS 0.97, peak
+  private 0.965 to 0.972 and no guard regressed. The S7 gate decision
+  still needs a quiet host.
 - Integrated gate. `main` against `m1-scaffold` at `990f7fd` (`bench --gate
   --all-workloads --runs 4`, matched clean builds, quiet) read REJECT on
   `rust_base64_small` wall 1.234, `zip_read_wheel` peak RSS 1.017 and
