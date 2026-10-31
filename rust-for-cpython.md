@@ -133,10 +133,19 @@ Slices on `m1-scaffold` (never merged into `main`; the owner decides):
   and `rust_base64_small` private 1.111/PSS 1.024. Its targets improved on
   wall and peak RSS (`rust_base64_small` 0.924 and 0.906;
   `gzip_extract_1m` 0.189 and 0.907; `zlib_decode_1m` 0.131 and 0.919).
-  The integrated `--all-workloads` memory-only run stopped at
-  `django_wsgi_first_request` with incomplete process-tree samples; the
-  guard rows above and the S5/S7 gates are the usable evidence. The
-  integrated timing pass is deferred (host busy).
+  The integrated `--all-workloads` memory-only gate (`@control` vs
+  `@incumbent`, `--gate --runs 2`) read REJECT, after a sampler fix
+  (`a47a687`) stopped treating a process on its exit path as an
+  incomplete sample. Peak RSS improved on the catalog rows (0.884 to
+  0.914), `difflib` (0.816), `rust_base64_small` 0.900,
+  `rust_base64_large` 0.922, `zlib_decode_1m` 0.921, `gzip_extract_1m`
+  0.920, `zip_read_wheel` 0.934, `serialization_roundtrip` 0.953,
+  `zlib_stream_4k` 0.955 and `multiprocess_pool` 0.978, but peak
+  private memory regressed in 19 rows: 1.09 to 1.19 for the
+  Django rows, `python_startup`, `import_django`, `multiprocess_pool`
+  and `zipimport_cold`, and 1.035 to 1.089 for the catalog, base64,
+  serialization and zlib rows. The integrated timing pass is deferred
+  (host busy).
 
 Needs a quieter host: the S7 Linux re-gate overlapped load and the integrated
 timing pass was deferred; the macOS queue for S5, S7, and the borderline rows
@@ -148,9 +157,10 @@ Linux x86-64 D1/D2 and U2/U8 proof at the M1 head now matches the accepted
 known-red set. The Linux S5 re-gate kept the private routes; the S7 re-gate
 improved `catalog_request_path` but was inconclusive on the other two targets
 because the host load rose; the borderline gate improved its targets but
-regressed guard peak memory. No slice gate reads ACCEPT because wall intervals
-straddle the 1 percent floor on this shared host; the owner accepted S7 on
-that basis.
+regressed guard peak memory; the integrated memory gate improved several peak
+RSS rows but rejected on peak private memory. No slice gate reads ACCEPT
+because wall intervals straddle the 1 percent floor on this shared host; the
+owner accepted S7 on that basis.
 
 Resume: "Resume the Rust-for-CPython campaign in rust-for-cpython.md with
 the orchestrate skill." First command: `python3 rust-cpython/perf.py status`.
@@ -467,8 +477,8 @@ Linux proof (done 2026-10-31 at the M1 head; see Status and Baseline):
   `test_locale`, and `test_str` pass; `test_unicodedata` repeats the 5
   accepted failures from the fork test file.
 - The optimized `perf.py` harness now builds and measures on Linux
-  (`9e0604a`); the S5/S7/borderline re-gates and the integrated
-  `django_wsgi_first_request` memory-only limitation are in Status.
+  (`9e0604a`); the S5/S7/borderline re-gates and the integrated memory-only
+  gate are in Status.
 - Any source rebase (U7) on both hosts remains open.
 
 Linux arm64 has no lane builder and is not claimed.
