@@ -29,6 +29,7 @@ import ctypes
 import os
 import sys
 import time
+from types import SimpleNamespace
 
 _FIELDS = ["ri_user_time", "ri_system_time", "ri_pkg_idle_wkups", "ri_interrupt_wkups", "ri_pageins", "ri_wired_size", "ri_resident_size", "ri_phys_footprint", "ri_proc_start_abstime", "ri_proc_exit_abstime", "ri_child_user_time", "ri_child_system_time", "ri_child_pkg_idle_wkups", "ri_child_interrupt_wkups", "ri_child_pageins", "ri_child_elapsed_abstime", "ri_diskio_bytesread", "ri_diskio_byteswritten", "ri_cpu_time_qos_default", "ri_cpu_time_qos_maintenance", "ri_cpu_time_qos_background", "ri_cpu_time_qos_utility", "ri_cpu_time_qos_legacy", "ri_cpu_time_qos_user_initiated", "ri_cpu_time_qos_user_interactive", "ri_billed_system_time", "ri_serviced_system_time", "ri_logical_writes", "ri_lifetime_max_phys_footprint", "ri_instructions", "ri_cycles", "ri_billed_energy", "ri_serviced_energy", "ri_interval_max_phys_footprint", "ri_runnable_time"]
 
@@ -39,24 +40,41 @@ class _RUsageInfoV4(ctypes.Structure):
     _fields_ = [("ri_uuid", ctypes.c_uint8 * 16)] + [(name, ctypes.c_uint64) for name in _FIELDS]
 
 
-_LIBSYSTEM = ctypes.CDLL("/usr/lib/libSystem.B.dylib", use_errno=True)
-_LIBSYSTEM.proc_pid_rusage.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_void_p]
-_LIBSYSTEM.proc_rlimit_control.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_void_p]
-_RUSAGE_INFO_V4 = 4
-_RLIMIT_FOOTPRINT_INTERVAL = 4
-_FOOTPRINT_INTERVAL_RESET = 1
+if sys.platform == "darwin":
+    _LIBSYSTEM = ctypes.CDLL("/usr/lib/libSystem.B.dylib", use_errno=True)
+    _LIBSYSTEM.proc_pid_rusage.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_void_p]
+    _LIBSYSTEM.proc_rlimit_control.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_void_p]
+    _RUSAGE_INFO_V4 = 4
+    _RLIMIT_FOOTPRINT_INTERVAL = 4
+    _FOOTPRINT_INTERVAL_RESET = 1
 
 
-def _usage() -> _RUsageInfoV4:
-    info = _RUsageInfoV4()
-    if _LIBSYSTEM.proc_pid_rusage(os.getpid(), _RUSAGE_INFO_V4, ctypes.byref(info)) != 0:
-        raise OSError(ctypes.get_errno(), "proc_pid_rusage failed")
-    return info
+def _linux_usage():
+    values = {}
+    with open("/proc/self/status") as status:
+        for line in status:
+            if line.startswith(("VmRSS:", "VmHWM:")):
+                name, value, *_ = line.split()
+                values[name.rstrip(":")] = int(value) * 1024
+    resident = values.get("VmRSS", 0)
+    return SimpleNamespace(ri_user_time=0, ri_system_time=0,
+                           ri_phys_footprint=resident, ri_resident_size=resident,
+                           ri_interval_max_phys_footprint=values.get("VmHWM", resident))
+
+
+def _usage():
+    if sys.platform == "darwin":
+        info = _RUsageInfoV4()
+        if _LIBSYSTEM.proc_pid_rusage(os.getpid(), _RUSAGE_INFO_V4, ctypes.byref(info)) != 0:
+            raise OSError(ctypes.get_errno(), "proc_pid_rusage failed")
+        return info
+    return _linux_usage()
 
 
 def _reset_interval_peak() -> None:
-    if _LIBSYSTEM.proc_rlimit_control(os.getpid(), _RLIMIT_FOOTPRINT_INTERVAL,
-                                      ctypes.c_void_p(_FOOTPRINT_INTERVAL_RESET)) != 0:
+    if sys.platform == "darwin" and _LIBSYSTEM.proc_rlimit_control(
+            os.getpid(), _RLIMIT_FOOTPRINT_INTERVAL,
+            ctypes.c_void_p(_FOOTPRINT_INTERVAL_RESET)) != 0:
         raise OSError(ctypes.get_errno(), "footprint interval reset failed")
 
 

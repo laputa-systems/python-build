@@ -262,6 +262,21 @@ def host_lease(kind: str, what: str, *, timings: dict[str, float] | None = None)
 
 
 def _cpu_idle_percent() -> float | None:
+    if lb.IS_LINUX:
+        def read() -> tuple[int, int]:
+            fields = Path("/proc/stat").read_text().splitlines()[0].split()[1:]
+            values = [int(value) for value in fields]
+            idle = values[3] + (values[4] if len(values) > 4 else 0)
+            return idle, sum(values)
+        try:
+            idle_before, total_before = read()
+            time.sleep(1)
+            idle_after, total_after = read()
+        except (OSError, ValueError, IndexError):
+            return None
+        if total_after <= total_before:
+            return None
+        return 100.0 * (idle_after - idle_before) / (total_after - total_before)
     # `top`'s first sample averages since boot; the next two each cover one
     # second, so a single-second blip does not decide quietness alone.
     result = subprocess.run(["/usr/bin/top", "-l", "3", "-n", "0", "-s", "1"],
@@ -271,6 +286,15 @@ def _cpu_idle_percent() -> float | None:
 
 
 def _on_ac_power() -> bool | None:
+    if lb.IS_LINUX:
+        supplies = list(Path("/sys/class/power_supply").glob("*/online"))
+        states = []
+        for path in supplies:
+            try:
+                states.append(path.read_text().strip())
+            except OSError:
+                continue
+        return any(state == "1" for state in states) if states else None
     result = subprocess.run(["/usr/bin/pmset", "-g", "batt"], capture_output=True, text=True, check=False)
     if result.returncode != 0:
         return None
@@ -287,7 +311,14 @@ def _host_sample(min_idle: float, *, wait_seconds: float = 0) -> dict[str, Any]:
             "ac_power": _on_ac_power(),
             "load_average": list(os.getloadavg()),
         }
-        sample["quiet"] = (idle is not None and idle >= min_idle and sample["ac_power"] is not False)
+        if lb.IS_LINUX:
+            limit = float(os.environ.get("PERF_GATE_MAX_LOAD", "0.7"))
+            cores = os.cpu_count() or 1
+            sample["quiet"] = (sample["load_average"][0] <= limit * cores
+                               and sample["ac_power"] is not False)
+        else:
+            sample["quiet"] = (idle is not None and idle >= min_idle
+                               and sample["ac_power"] is not False)
         if sample["quiet"] or time.monotonic() >= deadline:
             return sample
         time.sleep(3)
@@ -296,7 +327,7 @@ def _host_sample(min_idle: float, *, wait_seconds: float = 0) -> dict[str, Any]:
 # ------------------------------------------------------------------- build
 
 
-def _perf_flags(toolchain, target) -> dict[str, str]:
+def _perf_flags(toolchain, target, *, stage: Path) -> dict[str, str]:
     # Fast iteration over maximum optimization: -O2 instead of -O3, no
     # debug info, no link-time optimization. Profile-guided optimization
     # is off by construction: configure never receives
@@ -304,6 +335,10 @@ def _perf_flags(toolchain, target) -> dict[str, str]:
     # can still run focused CPython suites and the full suite for
     # correctness. Cargo uses the release profile through MAKE_VARS: a dev
     # profile would punish the Rust routes and is not a performance result.
+    if lb.IS_LINUX:
+        flags = lb._platform_flags(toolchain, target, prefix=stage)
+        optimized = flags["CFLAGS"].replace("-O0 -g3", "-O2")
+        return {**flags, "CFLAGS": optimized, "CXXFLAGS": optimized}
     flags = " ".join(("-O2", target.cpu_baseline_cflag, "-fPIC",
                       f"-mmacosx-version-min={toolchain.deployment_target}"))
     return {
@@ -417,7 +452,8 @@ def verify_release_artifacts(build: Path, stage: Path, members: set[str]) -> dic
     target = build / "target" / lb.TARGET
     if (target / "debug").exists():
         raise LaneError(f"a dev-profile Cargo tree exists: {target / 'debug'}")
-    release = {_sha256_file(path) for path in (target / "release").rglob("*.dylib")
+    suffix = "*.so" if lb.IS_LINUX else "*.dylib"
+    release = {_sha256_file(path) for path in (target / "release").rglob(suffix)
                if path.is_file() and not path.is_symlink()}
     installed: dict[str, str] = {}
     dynload = next(stage.glob("lib/python3.*/lib-dynload"), None)
@@ -436,7 +472,7 @@ def verify_release_artifacts(build: Path, stage: Path, members: set[str]) -> dic
     return installed
 
 
-def verify_upstream_compression(stage: Path) -> None:
+def verify_upstream_compression(stage: Path, toolchain) -> None:
     """Prove the stock zlib, bzip2 and CRC modules carry no system codec library."""
     dynload = next(stage.glob("lib/python3.*/lib-dynload"), None)
     if dynload is None:
@@ -445,10 +481,17 @@ def verify_upstream_compression(stage: Path) -> None:
         extensions = sorted(dynload.glob(f"{module}.*.so"))
         if len(extensions) != 1:
             raise LaneError(f"expected one installed {module} extension, found {len(extensions)}")
-        linked = subprocess.run(["otool", "-L", str(extensions[0])], capture_output=True,
-                                text=True, check=True).stdout
-        system_codecs = [line.split()[0] for line in linked.splitlines()[1:]
-                         if re.search(r"/lib(z|bz2)\.", line.split()[0])]
+        if lb.IS_LINUX:
+            readelf = toolchain.llvm_prefix / "bin" / "llvm-readelf"
+            text = subprocess.run([str(readelf), "-d", str(extensions[0])],
+                                  capture_output=True, text=True, check=True).stdout
+            needed = re.findall(r"\(NEEDED\)\s+Shared library: \[([^\]]+)\]", text)
+            system_codecs = [name for name in needed if re.search(r"lib(z|bz2)\.so", name)]
+        else:
+            linked = subprocess.run(["otool", "-L", str(extensions[0])], capture_output=True,
+                                    text=True, check=True).stdout
+            system_codecs = [line.split()[0] for line in linked.splitlines()[1:]
+                             if re.search(r"/lib(z|bz2)\.", line.split()[0])]
         if system_codecs:
             raise LaneError(f"{extensions[0].name} links system codec libraries: {system_codecs}")
     private = sorted(path.name for module in UPSTREAM_COMPRESSION_OMITTED_MEMBERS
@@ -860,7 +903,7 @@ def _worker_count(jobs: int | None) -> int:
 
 def _build_environment(toolchain, target, paths: dict[str, Path], *, workers: int, sandbox) -> dict[str, str]:
     env = lb._environment(toolchain, offline=True, build_dir=paths["build"])
-    env.update(_perf_flags(toolchain, target))
+    env.update(_perf_flags(toolchain, target, stage=paths["stage"]))
     env.update({
         "PY_CC": str(toolchain.llvm_prefix / "bin" / "clang"),
         "PY_CPPFLAGS": env["CPPFLAGS"],
@@ -882,8 +925,6 @@ def _report_route(report: dict[str, Any]) -> CompressionRoute:
 
 def cargo(*, name: str, arguments: list[str]) -> int:
     _check_name(name)
-    if lb.IS_LINUX:
-        raise LaneError("perf builds currently support only native Apple Silicon macOS")
     paths = _paths(name)
     with host_lease("build", f"cargo {_tag(name)}"):
         previous = _read_report(paths["report"])
@@ -906,8 +947,6 @@ def cargo(*, name: str, arguments: list[str]) -> int:
 def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
           incremental: bool = False, upstream_compression: bool = False) -> int:
     _check_name(name)
-    if lb.IS_LINUX:
-        raise LaneError("perf builds currently support only native Apple Silicon macOS")
     if jobs is not None and jobs < 1:
         raise LaneError("build jobs must be positive")
     if incremental and empty_overlay:
@@ -998,7 +1037,7 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
                     or previous.get("target") != lb.TARGET
                     or previous.get("cargo_lock_sha256") != _sha256_file(source / 'Cargo.lock')):
                 raise LaneError("C placement requires unchanged prior source, target and Cargo lock")
-            flags = _perf_flags(toolchain, target)
+            flags = _perf_flags(toolchain, target, stage=paths["stage"])
             for flag in ('CFLAGS', 'CPPFLAGS', 'LDFLAGS'):
                 if lb._make_value(paths['build'] / 'Makefile', 'CONFIGURE_' + flag) != flags[flag]:
                     raise LaneError("C placement requires unchanged configured compiler flags")
@@ -1026,7 +1065,7 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
             for item in files:
                 _copy_file(paths["overlay_staging"] / item, source / item)
     _write_json(paths["overlay_manifest"], files)
-    if not empty_overlay:
+    if not empty_overlay and not lb.IS_LINUX:
         proof, object_stores = _builtin_artifact_verifier()
         try:
             proof.validate_builtin_source(source, lb.TARGET, object_stores)
@@ -1062,11 +1101,19 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
                 source, env, target_dir=paths["build"] / "compression-target", profile="release",
                 log=paths["compression_log"], sealed=sandbox)
             env.update(engine_environment)
+        if lb.IS_LINUX:
+            env.update(lb._build_mpdecimal(toolchain, target, workers, sandbox))
         lb._require_command(configure, cwd=paths["build"], env=env,
                             log=paths["configure_log"], sealed=sandbox)
         setup_local = source / "Modules" / "Setup.local"
         if setup_local.is_file():
-            _copy_file(setup_local, paths["build"] / "Modules" / "Setup.local")
+            contents = setup_local.read_text()
+            if lb.IS_LINUX:
+                contents = lb.lane_linux.setup_local_with_shared_ssl_rs(contents)
+            setup_target = paths["build"] / "Modules" / "Setup.local"
+            setup_target.parent.mkdir(parents=True, exist_ok=True)
+            setup_target.write_text(contents)
+            setup_target.chmod(setup_local.stat().st_mode & 0o777)
         state["configured"] = True
     if placement:
         # The existing generators own module registration and linker recipes.
@@ -1117,7 +1164,7 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
                        if std_metadata is not None else None)
     rust_extensions = verify_release_artifacts(paths["build"], paths["stage"], members)
     if route == "upstream":
-        verify_upstream_compression(paths["stage"])
+        verify_upstream_compression(paths["stage"], toolchain)
     rust_builtins = {}
     if not empty_overlay:
         proof, object_stores = _builtin_artifact_verifier()
@@ -1727,13 +1774,15 @@ def profile(*, ref: str, workload: str | None, module: str | None, tool: str, it
         site = None
         if spec.packages:
             from benchmarks.harness.inputs import (
+                LINUX_CP316_LOCK_PATH,
                 MACOS_CP316_LOCK_PATH,
                 load_lock,
                 prepare_site,
             )
 
+            lock = LINUX_CP316_LOCK_PATH if lb.IS_LINUX else MACOS_CP316_LOCK_PATH
             prepared = prepare_site(side["python"], Path(temp) / "site", groups={"django"},
-                                    lock=load_lock(MACOS_CP316_LOCK_PATH))
+                                    lock=load_lock(lock))
             site = prepared.site_packages
             subprocess.run([python, "-m", "compileall", "-q", str(site)], check=True, timeout=300)
         env = workload_environment(site)
@@ -1822,9 +1871,9 @@ def _profile_module(*, ref: str, route: str, tool: str, iterations: int | None, 
 
 
 def _clone_tree(source: Path, target: Path) -> None:
-    # APFS clonefile copy: cheap, and private to the worktree afterwards.
     target.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["/bin/cp", "-cR", str(source), str(target)], check=True)
+    flags = "-a" if lb.IS_LINUX else "-cR"
+    subprocess.run(["/bin/cp", flags, str(source), str(target)], check=True)
 
 
 def setup_worktree() -> int:
@@ -1860,9 +1909,15 @@ def setup_worktree() -> int:
 
 
 def fetch() -> int:
-    from benchmarks.harness.inputs import MACOS_CP316_LOCK_PATH, fetch_inputs, load_lock
+    from benchmarks.harness.inputs import (
+        LINUX_CP316_LOCK_PATH,
+        MACOS_CP316_LOCK_PATH,
+        fetch_inputs,
+        load_lock,
+    )
 
-    print(f"OK    Django closure -> {fetch_inputs(load_lock(MACOS_CP316_LOCK_PATH), groups={'django'})}")
+    lock = LINUX_CP316_LOCK_PATH if lb.IS_LINUX else MACOS_CP316_LOCK_PATH
+    print(f"OK    Django closure -> {fetch_inputs(load_lock(lock), groups={'django'})}")
     return 0
 
 
@@ -1915,7 +1970,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Rust-for-CPython fast-iteration perf builds and hill climbing")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("doctor", help="report host and locked input readiness")
-    commands.add_parser("fetch", help="fetch the locked macOS cp316 Django closure (online)")
+    commands.add_parser("fetch", help="fetch the locked cp316 Django closure (online)")
     commands.add_parser("setup-worktree", help="share verified caches from the primary checkout")
     commands.add_parser("status", help="show the host lease and perf builds")
     build_parser = commands.add_parser("build", help="build an optimized no-PGO no-LTO interpreter")

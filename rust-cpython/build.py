@@ -1041,23 +1041,23 @@ def _binary_identity(path: Path, toolchain) -> dict[str, Any]:
             "dependencies": macho.dependencies(path), "rpaths": macho.rpaths(path)}
 
 
-def _check_linux_interpreter(python: Path, toolchain) -> None:
+def _check_linux_interpreter(python: Path, toolchain, install: Path) -> None:
     """The installed interpreter must find libpython relative to itself."""
     dynamic = lane_linux.elf_dynamic(toolchain, python.resolve())
     # configure repeats LDFLAGS on the link line, so the entry can repeat.
     entries = {entry for value in dynamic["rpaths"] for entry in value.split(":")}
-    if entries != {str(STAGE / "lib")}:
+    if entries != {str(install / "lib")}:
         raise LaneError(f"installed interpreter runpath is {dynamic['rpaths']!r}")
     if not any(name.startswith("libpython3.16") for name in dynamic["needed"]):
         raise LaneError("installed interpreter does not link the shared libpython")
-    allowed = {str(STAGE / "lib")}
-    for binary in sorted((STAGE / "lib").glob("**/*.so*")):
+    allowed = {str(install / "lib")}
+    for binary in sorted((install / "lib").glob("**/*.so*")):
         if binary.is_symlink() or not binary.is_file():
             continue
         runpaths = lane_linux.elf_dynamic(toolchain, binary)["rpaths"]
         found = {entry for value in runpaths for entry in value.split(":")}
         if not found <= allowed:
-            raise LaneError(f"{binary.relative_to(STAGE)} has unexpected runpath {sorted(found)}")
+            raise LaneError(f"{binary.relative_to(install)} has unexpected runpath {sorted(found)}")
 
 
 def _defined_symbols(path: Path, toolchain) -> str:
@@ -1135,7 +1135,7 @@ print(json.dumps({
     dependencies = binary["dependencies"]
     rpaths = binary["rpaths"]
     if IS_LINUX:
-        _check_linux_interpreter(python, toolchain)
+        _check_linux_interpreter(python, toolchain, install)
     forbidden_markers = (
         "/opt/homebrew", ".rustup", ".cargo-home", "/.cache/llvm/",
     )
@@ -1248,8 +1248,13 @@ def compression_engine_environment(
             raise LaneError(f"compression engine archive was not built: {archive}")
         include = _package_include_directory(source, cargo_env, engine.engine_crate)
         variables[f"{engine.configure_prefix}_CFLAGS"] = f"-I{include}"
-        variables[f"{engine.configure_prefix}_LIBS"] = (
-            f"-L{archive.parent} -Wl,-hidden-l{engine.library} -Wl,-dead_strip")
+        if IS_LINUX:
+            variables[f"{engine.configure_prefix}_LIBS"] = (
+                f"-L{archive.parent} -Wl,--exclude-libs,ALL -Wl,--gc-sections "
+                f"-l{engine.library}")
+        else:
+            variables[f"{engine.configure_prefix}_LIBS"] = (
+                f"-L{archive.parent} -Wl,-hidden-l{engine.library} -Wl,-dead_strip")
     return variables
 
 

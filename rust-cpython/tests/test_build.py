@@ -59,7 +59,8 @@ class CompressionEngineEnvironmentTests(unittest.TestCase):
                     archive = root / "target" / "release" / engine.archive
                     archive.parent.mkdir(parents=True, exist_ok=True)
                     archive.write_text("")
-            with mock.patch.object(perf.lb, "_require_command", side_effect=build) as command, \
+            with mock.patch.object(perf.lb, "IS_LINUX", False), \
+                    mock.patch.object(perf.lb, "_require_command", side_effect=build) as command, \
                     mock.patch.object(perf.lb.subprocess, "run", return_value=metadata):
                 variables = perf.lb.compression_engine_environment(
                     root, {"PATH": "p"}, target_dir=root / "target", profile="release",
@@ -73,6 +74,35 @@ class CompressionEngineEnvironmentTests(unittest.TestCase):
                 "ZLIB_LIBS": f"-L{root / 'target/release'} -Wl,-hidden-lcpython_libz_rs -Wl,-dead_strip",
                 "BZIP2_CFLAGS": f"-I{root / 'registry/libbz2-rs-sys/include'}",
                 "BZIP2_LIBS": f"-L{root / 'target/release'} -Wl,-hidden-lcpython_libbz2_rs -Wl,-dead_strip",
+            })
+
+    def test_linux_configure_inputs_hide_the_engine_archives(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            packages = []
+            for engine in perf.lb.COMPRESSION_ENGINES:
+                manifest = root / "registry" / engine.engine_crate / "Cargo.toml"
+                (manifest.parent / "include").mkdir(parents=True)
+                packages.append({"name": engine.engine_crate, "manifest_path": str(manifest)})
+            metadata = SimpleNamespace(returncode=0, stdout=json.dumps({"packages": packages}), stderr="")
+            def build(argv, **kwargs):
+                for engine in perf.lb.COMPRESSION_ENGINES:
+                    archive = root / "target" / "release" / engine.archive
+                    archive.parent.mkdir(parents=True, exist_ok=True)
+                    archive.write_text("")
+            with mock.patch.object(perf.lb, "IS_LINUX", True), \
+                    mock.patch.object(perf.lb, "_require_command", side_effect=build), \
+                    mock.patch.object(perf.lb.subprocess, "run", return_value=metadata):
+                variables = perf.lb.compression_engine_environment(
+                    root, {"PATH": "p"}, target_dir=root / "target", profile="release",
+                    log=root / "log")
+            self.assertEqual(variables, {
+                "ZLIB_CFLAGS": f"-I{root / 'registry/libz-rs-sys/include'}",
+                "ZLIB_LIBS": f"-L{root / 'target/release'} -Wl,--exclude-libs,ALL "
+                             "-Wl,--gc-sections -lcpython_libz_rs",
+                "BZIP2_CFLAGS": f"-I{root / 'registry/libbz2-rs-sys/include'}",
+                "BZIP2_LIBS": f"-L{root / 'target/release'} -Wl,--exclude-libs,ALL "
+                              "-Wl,--gc-sections -lcpython_libbz2_rs",
             })
 
     def test_missing_archive_fails_loudly(self):
@@ -206,7 +236,7 @@ class MacOSDeploymentProbeTests(unittest.TestCase):
         with mock.patch.object(perf.lb, "IS_LINUX", False), \
                 mock.patch.object(perf.lb, "_brew_pkg_config_path", return_value=""):
             for flags in (perf.lb._platform_flags(toolchain, target),
-                          perf._perf_flags(toolchain, target)):
+                          perf._perf_flags(toolchain, target, stage=Path("/stage"))):
                 self.assertEqual(flags.get("ac_cv_func_dup3"), "no")
                 self.assertEqual(flags.get("ac_cv_func_pipe2"), "no")
 
@@ -216,7 +246,7 @@ class MacOSDeploymentProbeTests(unittest.TestCase):
         with mock.patch.object(perf.lb, "IS_LINUX", False), \
                 mock.patch.object(perf.lb, "_brew_pkg_config_path", return_value=""):
             for flags in (perf.lb._platform_flags(toolchain, target),
-                          perf._perf_flags(toolchain, target)):
+                          perf._perf_flags(toolchain, target, stage=Path("/stage"))):
                 self.assertNotIn("ac_cv_func_dup3", flags)
                 self.assertNotIn("ac_cv_func_pipe2", flags)
 

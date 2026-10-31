@@ -1035,7 +1035,7 @@ class CargoCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp, ExitStack() as patches:
             root = Path(temp)
             paths = {name: root / name for name in (
-                "source_parent", "overlay_staging", "overlay_manifest", "build", "report")}
+                "source_parent", "overlay_staging", "overlay_manifest", "build", "stage", "report")}
             source = paths["source_parent"] / "cpython-fixture"
             source.mkdir(parents=True)
             (source / "configure").write_text("")
@@ -1140,11 +1140,20 @@ class CargoCommandTests(unittest.TestCase):
 class IncrementalRecipeTests(unittest.TestCase):
     def exercise(self, incremental, *, bad_install=False, failed_install=False, source_std=True,
                  empty_overlay=False, missing_current_member=False, aggregate=True, missing_aggregate=False,
-                 late_placement_failure=False, abrupt_placement_failure=False, route="private"):
+                 late_placement_failure=False, abrupt_placement_failure=False, route="private",
+                 linux=False):
         with tempfile.TemporaryDirectory() as temp, ExitStack() as patches:
             root = Path(temp)
-            if not source_std:
-                patches.enter_context(mock.patch.object(perf.lb, "TARGET", "x86_64-unknown-linux-gnu"))
+            if linux:
+                patches.enter_context(mock.patch.object(perf.lb, "IS_LINUX", True))
+                patches.enter_context(mock.patch.object(perf.lb, "_build_mpdecimal", return_value={}))
+                patches.enter_context(mock.patch.object(
+                    perf.lb.lane_linux, "setup_local_with_shared_ssl_rs", side_effect=lambda text: text))
+            else:
+                patches.enter_context(mock.patch.object(perf.lb, "IS_LINUX", False))
+            patches.enter_context(mock.patch.object(
+                perf.lb, "TARGET",
+                "x86_64-unknown-linux-gnu" if linux else "aarch64-apple-darwin"))
             source = root / "source"
             source.mkdir()
             (source / "Cargo.lock").write_text("locked fixture")
@@ -1211,7 +1220,7 @@ class IncrementalRecipeTests(unittest.TestCase):
                 "_existing_source": lambda parent: source,
                 "_stage_overlay": lambda paths, route: ({"sha256": "fixture"}, ["Lib/pickle.py"]),
                 "_builtin_artifact_verifier": lambda: (proof, []),
-                "_perf_flags": lambda *a: {"CPPFLAGS": "", "CFLAGS": "fixture flags"},
+                "_perf_flags": lambda *a, **k: {"CPPFLAGS": "", "CFLAGS": "fixture flags"},
                 "_overlay_members": lambda route: {"_fixture_rs"},
                 "_build_python": lambda build: build / "python.exe",
             }
@@ -1346,7 +1355,8 @@ class IncrementalRecipeTests(unittest.TestCase):
                 self.assertEqual(report["incremental"], incremental)
                 self.assertEqual(report["rust_source_aggregate"], {"fixture": "verified"} if source_std and aggregate and not empty_overlay else None)
                 self.assertEqual((source / "Lib/pickle.py").read_text(), "old" if empty_overlay else "new")
-                self.assertEqual(proof.validate_builtin_source.call_count, int(not empty_overlay))
+                self.assertEqual(proof.validate_builtin_source.call_count,
+                             int(not empty_overlay and not linux))
                 self.assertEqual(proof.verify_builtin_artifacts.call_count, int(not empty_overlay))
                 extensions.assert_called_once()
                 checks.assert_called_once_with(paths["install_log"] if single_install else paths["build_log"],
@@ -1386,7 +1396,7 @@ class IncrementalRecipeTests(unittest.TestCase):
         self.exercise(False, failed_install=True)
 
     def test_linux_keeps_existing_release_route_without_source_std_preparation(self):
-        self.exercise(False, source_std=False)
+        self.exercise(False, source_std=False, linux=True)
 
     def test_incremental_rejects_current_dev_transcript_despite_stale_release_log(self):
         self.exercise(True, bad_install=True)
@@ -1409,6 +1419,11 @@ class IncrementalRecipeTests(unittest.TestCase):
 
 
 class SourceAggregateInstallTests(unittest.TestCase):
+    def setUp(self):
+        patcher = mock.patch.object(perf.lb, "IS_LINUX", False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_preparation_uses_named_input_owner_and_lock_metadata(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -1565,6 +1580,14 @@ class SourceAggregateInstallTests(unittest.TestCase):
 
 
 class BuiltinPreflightTests(unittest.TestCase):
+    def setUp(self):
+        patcher = mock.patch.object(perf.lb, "IS_LINUX", False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        target = mock.patch.object(perf.lb, "TARGET", "aarch64-apple-darwin")
+        target.start()
+        self.addCleanup(target.stop)
+
     def source_failure(self, defect, message, *, reaches_fetch=False):
         with tempfile.TemporaryDirectory() as temp, ExitStack() as patches:
             root = Path(temp).resolve()
@@ -1659,6 +1682,11 @@ class BuiltinPreflightTests(unittest.TestCase):
 
 
 class TreeAndArtifactTests(unittest.TestCase):
+    def setUp(self):
+        patcher = mock.patch.object(perf.lb, "IS_LINUX", False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_built_members_survive_interleaved_cargo_progress(self):
         with tempfile.TemporaryDirectory() as temp:
             log = Path(temp) / "build.log"
@@ -1760,7 +1788,53 @@ class LeaseTests(unittest.TestCase):
         self.assertTrue(self._try("host.lock", fcntl.LOCK_EX))
 
 
+class HostQuietnessTests(unittest.TestCase):
+    def test_linux_gate_uses_load_per_core_not_mac_idle(self):
+        with mock.patch.object(perf.lb, "IS_LINUX", True), \
+                mock.patch.object(perf, "_cpu_idle_percent", return_value=50.0), \
+                mock.patch.object(perf, "_on_ac_power", return_value=None), \
+                mock.patch.object(perf.os, "getloadavg", return_value=(12.0, 10.0, 8.0)), \
+                mock.patch.object(perf.os, "cpu_count", return_value=32):
+            sample = perf._host_sample(80.0, wait_seconds=0)
+        self.assertTrue(sample["quiet"])
+        self.assertEqual(sample["cpu_idle_percent"], 50.0)
+
+    def test_linux_gate_rejects_load_above_the_limit(self):
+        with mock.patch.object(perf.lb, "IS_LINUX", True), \
+                mock.patch.object(perf, "_cpu_idle_percent", return_value=50.0), \
+                mock.patch.object(perf, "_on_ac_power", return_value=None), \
+                mock.patch.object(perf.os, "getloadavg", return_value=(30.0, 10.0, 8.0)), \
+                mock.patch.object(perf.os, "cpu_count", return_value=32):
+            sample = perf._host_sample(80.0, wait_seconds=0)
+        self.assertFalse(sample["quiet"])
+
+    def test_macos_gate_still_uses_idle(self):
+        with mock.patch.object(perf.lb, "IS_LINUX", False), \
+                mock.patch.object(perf, "_cpu_idle_percent", return_value=85.0), \
+                mock.patch.object(perf, "_on_ac_power", return_value=True), \
+                mock.patch.object(perf.os, "getloadavg", return_value=(0.0, 0.0, 0.0)):
+            sample = perf._host_sample(80.0, wait_seconds=0)
+        self.assertTrue(sample["quiet"])
+
+    def test_clone_tree_uses_linux_copy(self):
+        with mock.patch.object(perf.lb, "IS_LINUX", True), \
+                mock.patch.object(perf.subprocess, "run") as run:
+            perf._clone_tree(Path("/source"), Path("/target"))
+        run.assert_called_once_with(["/bin/cp", "-a", "/source", "/target"], check=True)
+
+    def test_clone_tree_uses_macos_clonefile(self):
+        with mock.patch.object(perf.lb, "IS_LINUX", False), \
+                mock.patch.object(perf.subprocess, "run") as run:
+            perf._clone_tree(Path("/source"), Path("/target"))
+        run.assert_called_once_with(["/bin/cp", "-cR", "/source", "/target"], check=True)
+
+
 class UpstreamCompressionRouteTests(unittest.TestCase):
+    def setUp(self):
+        patcher = mock.patch.object(perf.lb, "IS_LINUX", False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     setup_local = (
         "*shared*\n_binascii_rs _binascii_rs/Cargo.toml\n"
         "_bz2 _bz2module.c -DPYTHON_RUST_BZ2\n_bz2_rs _bz2_rs/Cargo.toml  # codec\n"
@@ -1827,15 +1901,15 @@ class UpstreamCompressionRouteTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             stage(Path(temp))
             with mock.patch.object(perf.subprocess, "run", return_value=otool(["/usr/lib/libSystem.B.dylib"])):
-                perf.verify_upstream_compression(Path(temp))
+                perf.verify_upstream_compression(Path(temp), None)
             with mock.patch.object(perf.subprocess, "run", return_value=otool(["/usr/lib/libz.1.dylib"])), \
                     self.assertRaisesRegex(perf.LaneError, "system codec libraries"):
-                perf.verify_upstream_compression(Path(temp))
+                perf.verify_upstream_compression(Path(temp), None)
         with tempfile.TemporaryDirectory() as temp:
             stage(Path(temp), extra=("_zlib_rs",))
             with mock.patch.object(perf.subprocess, "run", return_value=otool([])), \
                     self.assertRaisesRegex(perf.LaneError, "private adapters"):
-                perf.verify_upstream_compression(Path(temp))
+                perf.verify_upstream_compression(Path(temp), None)
 
     def test_cargo_syncs_overlay_with_the_recorded_route(self):
         with tempfile.TemporaryDirectory() as temp, ExitStack() as patches:
