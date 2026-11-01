@@ -30,9 +30,10 @@ The verified source is upstream `python/cpython` tag `v3.16.0a1`, commit
 workspace live in [`overlay/`](overlay); the overlay lockfile is the build
 lock, and its digest is pinned in the same source record. The Rust toolchain
 is pinned in [`rust-toolchain.toml`](../rust-toolchain.toml). The private
-Cargo home is used offline after fetching. Do not update the source,
-toolchain, or Cargo lock accidentally; intentional vetted crate additions
-update the overlay lockfile.
+Cargo home is used offline after fetching. Release perf builds build std from
+the pinned `rust-src` with ThinLTO; `fetch` caches the toolchain's std crates
+with the workspace crates. Do not update the source, toolchain, or Cargo lock
+accidentally; intentional vetted crate additions update the overlay lockfile.
 
 The U7 rebase moved the pin from the fork's `b812b4a` (3.16.0a0) to pristine
 upstream `v3.16.0a1`. The 84 files the overlay had shadowed from the fork
@@ -115,9 +116,9 @@ namespaces; macOS uses `sandbox-exec`.
 ## Performance harness
 
 `python3 rust-cpython/perf.py` builds optimized interpreters (`-O2`, Cargo
-`release`, no PGO, LTO, JIT, or tail-call interpreter), runs suites on them,
-profiles, and measures paired comparisons. It is the only entry point while
-measurements may run: it holds the host lease, and the coverage
+`release` with ThinLTO and std built from the pinned `rust-src`, no PGO, JIT,
+or tail-call interpreter), runs suites on them, profiles, and measures paired
+comparisons. It is the only entry point while measurements may run: it holds the host lease, and the coverage
 `build.py build` and `test` commands bypass it. On Linux the optimized harness
 uses the same locked Ubuntu 24.04 userland and `inputs.linux-cp316.lock.json`;
 the macOS harness uses the macOS lock.

@@ -30,7 +30,7 @@ replayed: the stored workload `verdict.json` keeps only old classes and point
 ratios, without `absolute_change`, `noise_allowance` or `baseline.median`.
 Re-measure them before quoting a decision. No CPU work has run.
 
-Slices on `m1-scaffold` (never merged into `main`; the owner decides):
+Slices (landed on `main`):
 
 - S1 done. `_bz2_rs` lost its scoped allocator; `_fractions_rs` and
   `_fnmatch_rs` keep their allocators, now pinned by `GlobalAlloc` contract
@@ -221,9 +221,9 @@ bench `peak_rss` metric is sampled and noisy below 100 ms.
   carrier and import path are the next levers; a quiet confirmation run
   is owed.
 
-- Carrier split experiment, 2026-10-31 (`u7-carrier`, unmerged; owner
-  decides). Linking `_ssl_rs` as a shared extension instead of a static
-  carrier member cut `libpython` from 14.1 MB to 8.5 MB (`_ssl_rs.so` is
+- Carrier split, 2026-10-31 (`u7-carrier`, merged). Linking `_ssl_rs` as a
+  shared extension instead of a static carrier member cut `libpython` from
+  14.1 MB to 8.5 MB (`_ssl_rs.so` is
   3.7 MB). Against `perf-u7-control` the same gate read REJECT on
   `python_startup` peak RSS 1.043 [1.040,1.046] only (was 1.066);
   startup CPU read 1.047 [0.978,1.110] inconclusive (was 1.135
@@ -238,11 +238,12 @@ bench `peak_rss` metric is sampled and noisy below 100 ms.
   1 percent floor until startup paths drop Rust code or the carrier
   loses `std`.
 
-- ThinLTO/build-std spike, 2026-10-31 (`u7-lto`, unmerged; owner decides).
+- ThinLTO/build-std, 2026-10-31 (`u7-lto`, adopted and merged).
   Release builds add `lto = "thin"` plus `-Z build-std=std
   -Z build-std-features=`; dev and coverage builds keep the prebuilt
-  std. std's own crates must be in the private Cargo home (fetched once,
-  not yet pinned). `libpython` falls from 8.52 MB to 7.25 MB;
+  std. `build.py fetch` caches the toolchain's std crates with the
+  workspace crates; the pinned `rust-src` lock pins their versions.
+  `libpython` falls from 8.52 MB to 7.25 MB;
   `_base64` 463 to 245 KB, `_json_rs` 428 to 210 KB, `_zlib_rs` 539 to
   305 KB, `_re_rs` 1.27 to 1.06 MB, `_ssl_rs` 3.74 to 3.51 MB. The clean
   perf build takes 756 s against 462 s. The full suite reads run=51,561
@@ -397,7 +398,8 @@ fewer skips at the M1 head are host and overlay differences, while the
 failed-file set is the parity result.
 
 Loop timings (macOS arm64): focused suite 20-90 s; clean perf build 436 s
-at `--jobs 8` (2026-10-31), coverage build 10-20 min; `test --all` about
+at `--jobs 8` before ThinLTO and 756 s with it (2026-10-31), coverage
+build 10-20 min; `test --all` about
 9 min; verdict unit tests (`python3 -m unittest discover -s
 rust-cpython/tests -p 'test_perf.py'`) about 2 s. Linux x86-64 (Ubuntu
 24.04 container, 32 cores): clean debug build about 9 min at `--jobs 16`;
