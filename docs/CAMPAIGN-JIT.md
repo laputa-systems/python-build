@@ -47,19 +47,21 @@
   on a leaked `os.stat` float that also leaks with `PYTHON_JIT=0`, so it is not
   a JIT leak. python/cpython#160852 needs the tail-call interpreter, which the
   lane keeps disabled.
-- **D6 hybrid verdict:** worth porting by the letter of the rule, with weak
-  evidence; the owner decides (PD6). The first "blocked by OD1" closure was
-  wrong: it read the lane's pruned prefix, not the archive. With the archive's
-  members, the stock merge-base and the PR head both build with LLVM 23.1.2 and
-  a scratch LuaJIT. The fold-pass plugin cannot be built: the release archive
-  omits `llvm/Passes/PassPlugin.h` and ships no shared `libLLVM`. The hybrid was
-  measured without the fold pass (its headline optimization): JIT-set CPU
-  geometric mean 0.89 of stock (min 0.49 `nbody`, max 1.09 `nqueens`; `richards`,
-  `go`, `nqueens` slower), 5 interleaved runs on a loaded host, all 16 digests
-  equal, `test_capi.test_opt` and `test_jit_peephole` pass. The PR head also
-  differs from the merge-base by new uops and optimizer changes, so this is not
-  a pure backend comparison. Porting needs the owner's decision plus
-  `PassPlugin.h` from llvm-project at the same tag.
+- **D6 hybrid verdict:** closed by the J6 rule; do not port (PD6). The first
+  "blocked by OD1" closure was wrong: it read the lane's pruned prefix, not the
+  archive. With the archive's members, the stock merge-base and the PR head both
+  build with LLVM 23.1.2 and a scratch LuaJIT. The release archive omits
+  `llvm/Plugins/PassPlugin.h` and ships no shared `libLLVM`; the header was
+  fetched from llvm-project at `llvmorg-23.1.2` into scratch and the plugin built
+  without LLVM libraries, so the fold pass was active. On a quiet host
+  (`perf-gate-ready` 0 before and after, 5 interleaved runs, CPU time medians)
+  the JIT-set geometric mean is 0.904 of stock, above the 0.90 bar (without the
+  fold pass: 0.89 on a loaded host, so the pass added nothing measurable). Range
+  0.59 `nbody` to 1.007 `deltablue`; all 16 digests equal; `test_capi.test_opt`
+  and `test_jit_peephole` pass. The PR head also differs from the merge-base by
+  new uops and optimizer changes, so this is not a pure backend comparison.
+  Porting would also conflict with the lane contract (handwritten assembly,
+  `Lib/test` changes, aarch64 relocations).
 - **D7 one optimization:** implemented, not gated. `perf-jit-opt` allocates the
   register cache over the whole trace. It keeps `perf-rust-jit`'s failed-file
   set, all 16 digests, the parity probe on release and pydebug builds, and the

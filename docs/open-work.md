@@ -83,13 +83,6 @@ doing, P4 is optional. A debt entry is not success.
   archive's runtime and passes 15 of 16 test files (`docs/CAMPAIGN-JIT.md`
   "Debugging methods"). Run the wider suites and the pydebug `-R` files under
   ASan, and add UBSan, if the JIT is ever promoted past the lane.
-- [ ] **P3 — hybrid DynASM JIT (python/cpython#146235).** Owner decision:
-  port or drop. Without its LLVM fold pass the PR head measured 0.89 of stock
-  on the JIT set (steering, loaded host). Building the fold pass needs
-  `llvm/Passes/PassPlugin.h` from llvm-project at tag `llvmorg-23.1.2`, which
-  the release archive omits, and a plugin that links no LLVM libraries (no
-  shared `libLLVM` ships). Porting conflicts with the lane contract (handwritten
-  assembly, no `Lib/test` changes, aarch64 relocations).
 - [ ] **P4 — beyond the first assignment.** A speculative or optimizing tier,
   unboxed floats and ints in traces, and escape analysis were out of scope.
   The cost table in `docs/CAMPAIGN-JIT.md` ranks type guards (10.5% of
