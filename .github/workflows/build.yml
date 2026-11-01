@@ -23,7 +23,6 @@ env:
   PYTHON_VERSION: "3.15.1"
   PYTHONDONTWRITEBYTECODE: "1"
   RUST_TOOLCHAIN: "nightly-2026-09-15"
-  RTLS_BRANCH: "2026.10.3"
 
 jobs:
   prepare:
@@ -57,7 +56,6 @@ jobs:
       CANDIDATE_RUN_DIR: ${{ github.workspace }}/.work/tmp/openssl-free-macos
       REGRESSION_RUN_DIR: ${{ github.workspace }}/.work/tmp/openssl-free-macos-regression
       ARCHIVE_RUN_DIR: ${{ github.workspace }}/.work/tmp/openssl-free-macos-archive
-      RTLS_SOURCE_DIR: ${{ github.workspace }}/.work/tmp/openssl-free-rtls
       ARCHIVE_NAME: cpython-3.15.1-aarch64-apple-darwin-r2.tar.gz
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -109,12 +107,6 @@ jobs:
       - name: Fetch locked inputs and LLVM
         run: python3.15 build.py fetch --target aarch64-apple-darwin
 
-      - name: Fetch the pinned RTLS source
-        run: |
-          set -eu
-          git clone --depth 1 --branch "$RTLS_BRANCH" \
-            https://github.com/jawah/rtls.git "$RTLS_SOURCE_DIR"
-
       - name: Build the OpenSSL reference interpreter
         env:
           TMPDIR: ${{ github.workspace }}/.work/tmp
@@ -135,19 +127,16 @@ jobs:
           if command -v nproc >/dev/null 2>&1; then JOBS="$(nproc)"; else JOBS="$(sysctl -n hw.ncpu)"; fi
           python3.15 backend/build-no-openssl.py \
             --phase fetch \
-            --run-dir "$CANDIDATE_RUN_DIR" \
-            --rtls-source "$RTLS_SOURCE_DIR"
+            --run-dir "$CANDIDATE_RUN_DIR"
           python3.15 backend/build-no-openssl.py \
             --phase base \
             --run-dir "$CANDIDATE_RUN_DIR" \
-            --jobs "$JOBS" \
-            --rtls-source "$RTLS_SOURCE_DIR"
+            --jobs "$JOBS"
           python3.15 backend/build-no-openssl.py \
             --phase overlay \
             --prefix "$CANDIDATE_RUN_DIR/prefix" \
             --run-dir "$CANDIDATE_RUN_DIR" \
-            --jobs "$JOBS" \
-            --rtls-source "$RTLS_SOURCE_DIR"
+            --jobs "$JOBS"
           python3.15 backend/qualify-no-openssl-regressions.py \
             --prefix "$CANDIDATE_RUN_DIR/relocated prefix" \
             --run-dir "$REGRESSION_RUN_DIR" \
@@ -208,7 +197,6 @@ jobs:
     needs: [prepare]
     env:
       EXPERIMENT_RUN_DIR: ${{ github.workspace }}/.work/tmp/openssl-free-${{ matrix.cache-scope }}
-      RTLS_SOURCE_DIR: ${{ github.workspace }}/.work/tmp/openssl-free-rtls-${{ matrix.cache-scope }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -246,15 +234,6 @@ jobs:
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
-      - name: Fetch the pinned RTLS source
-        env:
-          TMPDIR: ${{ github.workspace }}/.work/tmp
-        run: |
-          set -eu
-          mkdir -p "$TMPDIR"
-          git clone --depth 1 --branch "$RTLS_BRANCH" \
-            https://github.com/jawah/rtls.git "$RTLS_SOURCE_DIR"
-
       - name: Build and qualify the native OpenSSL-free candidate
         env:
           GITHUB_SHA: ${{ github.sha }}
@@ -268,7 +247,6 @@ jobs:
             --run-dir "$EXPERIMENT_RUN_DIR" \
             --jobs "$(nproc)" \
             --source-revision "$GITHUB_SHA" \
-            --rtls-source "$RTLS_SOURCE_DIR" \
             --archive-name "cpython-${PYTHON_VERSION}-${{ matrix.triple }}-r2.tar.gz" \
             --manifest-name artifact.json
 
