@@ -207,10 +207,11 @@ provides a Python-level `ssl` adapter over rustls. The experiment vendors its
 `backend/vendor/rtls/` and replaces the native AWS-LC provider with
 [`rustls-graviola` 0.4.0](https://crates.io/crates/rustls-graviola/0.4.0),
 which uses Graviola 0.4.1. The dependency changes, Rust adapter changes, and
-lockfile update are in [`rtls-graviola.patch`](rtls-graviola.patch).
+lockfile update are in [`rtls-graviola.patch`](rtls-graviola.patch); the PyO3
+0.30.1 upgrade is in [`rtls-pyo3-0.30.patch`](rtls-pyo3-0.30.patch).
 The recorded licenses are in
-[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). The patch removes the
-RTLS AWS-LC native build crates and adds Graviola plus target support crates.
+[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). The RTLS patches remove
+the AWS-LC native build crates and add Graviola plus target support crates.
 It does not measure Rust build time or extension size.
 
 The provider exposes rustls cipher suites, key exchange groups, signature

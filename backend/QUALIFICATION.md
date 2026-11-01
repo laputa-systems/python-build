@@ -48,6 +48,7 @@ completed 10,590 tests across all 43 selected files.
 | Component | Source or integration |
 | --- | --- |
 | TLS sockets, BIO, contexts, C handle binding | `backend/vendor/rtls/` (RTLS `302423b49e494863d07630d50b15a9488ec85ef7`), `rtls-graviola.patch` |
+| Python bindings | `rtls-pyo3-0.30.patch` (PyO3 0.30.1, ABI3-py315) |
 | Selected-path verification | `webpki-policy.patch`, `webpki-strict-policy.patch`, `webpki-crl-policy.patch` |
 | Sessions and TLS controls | `rustls-session-api.patch` |
 | Normal `ssl` and `_ssl` imports | `ssl_facade.py`, `ssl_native_compat.py`, `ssl_metadata.py` |

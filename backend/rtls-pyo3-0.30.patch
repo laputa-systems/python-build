@@ -1,0 +1,142 @@
+--- a/rust/Cargo.toml
++++ b/rust/Cargo.toml
+@@ -13,7 +13,7 @@
+ crate-type = ["cdylib"]
+ 
+ [dependencies]
+-pyo3 = { version = "0.28.2", features = ["extension-module", "abi3-py37"] }
++pyo3 = { version = "0.30.1", features = ["extension-module", "abi3-py315"] }
+ rustls = { version = "0.23", default-features = false, features = ["tls12", "std"] }
+ rustls-pemfile = "2"
+ webpki = { package = "rustls-webpki", version = "=0.103.15", default-features = false, features = ["std"] }
+--- a/rust/Cargo.lock
++++ b/rust/Cargo.lock
+@@ -102,9 +102,9 @@
+ 
+ [[package]]
+ name = "cc"
+-version = "1.6.0"
++version = "1.10.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "f74872d07caf508b30a21f6836e7d7016a2eaf7d9ff4f48deaa58cd8a0407630"
++checksum = "86e055fa6e3e40ad6187ba25b6855eeb635d5271f8e0f0e1e9a5826b8d75bea0"
+ dependencies = [
+  "find-msvc-tools",
+  "shlex",
+@@ -240,9 +240,9 @@
+ 
+ [[package]]
+ name = "find-msvc-tools"
+-version = "0.1.14"
++version = "0.1.15"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "aedcfb3409746eddb02b9e19ebda1c3394f759a152e48ee875a0844d1b955484"
++checksum = "1c66915cc5391097de7a2b0b972e8505aa33c0df401fd3a6811dbdb32881ba48"
+ 
+ [[package]]
+ name = "generic-array"
+@@ -473,9 +473,9 @@
+ 
+ [[package]]
+ name = "pyo3"
+-version = "0.28.3"
++version = "0.30.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "91fd8e38a3b50ed1167fb981cd6fd60147e091784c427b8f7183a7ee32c31c12"
++checksum = "229ca13b8a15bb0d1487b81ab975bfcd97513416499a8312011b6036e42e0de4"
+ dependencies = [
+  "libc",
+  "once_cell",
+@@ -487,18 +487,18 @@
+ 
+ [[package]]
+ name = "pyo3-build-config"
+-version = "0.28.3"
++version = "0.30.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "e368e7ddfdeb98c9bca7f8383be1648fd84ab466bf2bc015e94008db6d35611e"
++checksum = "70130e2b6dd1ee589a8788026a429561ca5c40fa7a2fa7914c2282eddae24700"
+ dependencies = [
+  "target-lexicon",
+ ]
+ 
+ [[package]]
+ name = "pyo3-ffi"
+-version = "0.28.3"
++version = "0.30.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "7f29e10af80b1f7ccaf7f69eace800a03ecd13e883acfacc1e5d0988605f651e"
++checksum = "5e7ff73c555c286d212d4ce7e5fbda845a973c4f61bd5f160f5f2c3c2a04d1c4"
+ dependencies = [
+  "libc",
+  "pyo3-build-config",
+@@ -506,27 +506,26 @@
+ 
+ [[package]]
+ name = "pyo3-macros"
+-version = "0.28.3"
++version = "0.30.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "df6e520eff47c45997d2fc7dd8214b25dd1310918bbb2642156ef66a67f29813"
++checksum = "c46d2e5862c7bb8207e3b639f713dda3c499933444784154c11d013c5a691b60"
+ dependencies = [
+  "proc-macro2",
+  "pyo3-macros-backend",
+  "quote",
+- "syn 2.0.119",
++ "syn 3.0.6",
+ ]
+ 
+ [[package]]
+ name = "pyo3-macros-backend"
+-version = "0.28.3"
++version = "0.30.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "c4cdc218d835738f81c2338f822078af45b4afdf8b2e33cbb5916f108b813acb"
++checksum = "38b89f066f2ae72a2aef52d1537ca2fcd104440ebfadee06e97aa90738a25b9b"
+ dependencies = [
+  "heck",
+  "proc-macro2",
+- "pyo3-build-config",
+  "quote",
+- "syn 2.0.119",
++ "syn 3.0.6",
+ ]
+ 
+ [[package]]
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -6,7 +6,7 @@
+ name = "rtls"
+ description = "A drop-in replacement for Python's ssl module, backed by rustls"
+ readme = "README.md"
+-requires-python = ">=3.7"
++requires-python = ">=3.15"
+ license = { file = "LICENSE" }
+ authors = [
+   {name = "Ahmed R. TAHRI", email="tahri.ahmed@proton.me"},
+@@ -23,14 +23,7 @@
+     "Programming Language :: Python :: Implementation :: CPython",
+     "Programming Language :: Python",
+     "Programming Language :: Python :: 3",
+-    "Programming Language :: Python :: 3.7",
+-    "Programming Language :: Python :: 3.8",
+-    "Programming Language :: Python :: 3.9",
+-    "Programming Language :: Python :: 3.10",
+-    "Programming Language :: Python :: 3.11",
+-    "Programming Language :: Python :: 3.12",
+-    "Programming Language :: Python :: 3.13",
+-    "Programming Language :: Python :: 3.14",
++    "Programming Language :: Python :: 3.15",
+     "Topic :: Internet :: WWW/HTTP",
+     "Programming Language :: Python :: Free Threading :: 4 - Resilient",
+     "Environment :: WebAssembly",
+@@ -53,7 +46,7 @@
+ exclude = [
+   { path = "**/__pycache__/**", format = "sdist" },
+ ]
+-features = ["pyo3/extension-module", "pyo3/abi3-py37", "pyo3/generate-import-lib"]
++features = ["pyo3/extension-module", "pyo3/abi3-py315", "pyo3/generate-import-lib"]
+ module-name = "rtls._rustls"
+ python-source = "src"
+ manifest-path = "rust/Cargo.toml"

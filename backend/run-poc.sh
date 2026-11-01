@@ -15,10 +15,12 @@ checkout="$work_dir/rtls"
 
 cp -R "$repo_root/backend/vendor/rtls" "$checkout"
 
-patch -d "$checkout" -p1 --batch --forward --fuzz=0 --dry-run \
-    -i "$repo_root/backend/rtls-graviola.patch"
-patch -d "$checkout" -p1 --batch --forward --fuzz=0 \
-    -i "$repo_root/backend/rtls-graviola.patch"
+for patch_name in rtls-graviola.patch rtls-pyo3-0.30.patch; do
+    patch -d "$checkout" -p1 --batch --forward --fuzz=0 --dry-run \
+        -i "$repo_root/backend/$patch_name"
+    patch -d "$checkout" -p1 --batch --forward --fuzz=0 \
+        -i "$repo_root/backend/$patch_name"
+done
 
 mkdir -p "$work_dir/tmp"
 export TMPDIR="$work_dir/tmp"

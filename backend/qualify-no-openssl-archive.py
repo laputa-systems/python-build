@@ -1914,7 +1914,7 @@ def build_experimental_manifest(
     if not target.is_macos:
         cpython_patches.extend(linux_evidence["source"]["cpython_experimental_patches"])
     rtls_patch_names = (
-        "rtls-graviola.patch",
+        *research_driver.RTLS_PATCHES,
         "webpki-policy.patch",
         "webpki-crl-policy.patch",
         "webpki-strict-policy.patch",

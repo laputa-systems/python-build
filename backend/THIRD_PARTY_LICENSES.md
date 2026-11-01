@@ -11,6 +11,7 @@ these packages:
 | `x509-parser` (signature-verification feature) | 0.16.0 | MIT OR Apache-2.0 |
 | `ring` (RSA/SHA1 implicit-anchor verification) | 0.17.14 | Apache-2.0 AND ISC |
 | RTLS source (`backend/vendor/rtls/`, commit `302423b49e494863d07630d50b15a9488ec85ef7`) | 2026.10.3 | MIT |
+| `pyo3` (upgrade, ABI3-py315) | 0.30.1 | MIT OR Apache-2.0 |
 | `rustls-graviola` | 0.4.0 | Apache-2.0 OR ISC OR MIT-0 |
 | `graviola` | 0.4.1 | Apache-2.0 OR ISC OR MIT-0 |
 | `getrandom` | 0.3.4 | MIT OR Apache-2.0 |
@@ -26,8 +27,10 @@ these packages:
 
 The `getrandom`, `r-efi`, `wasip2`, and `wit-bindgen` entries are target
 support dependencies recorded by Cargo. The lockfile also removes the AWS-LC
-native build dependencies. Exact registry checksums remain in
-[`rtls-graviola.patch`](rtls-graviola.patch).
+native build dependencies. The PyO3 upgrade also moves `cc` to 1.10.0 and
+`find-msvc-tools` to 0.1.15; both remain MIT OR Apache-2.0. Exact registry
+checksums remain in [`rtls-graviola.patch`](rtls-graviola.patch) and
+[`rtls-pyo3-0.30.patch`](rtls-pyo3-0.30.patch).
 
 The no-`_ssl` contract harness uses certificate and key fixtures from the
 CPython 3.15.1 `Lib/test/certdata` directory, including its PSF-licensed test

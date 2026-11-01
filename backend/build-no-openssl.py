@@ -32,6 +32,7 @@ LINUX_CPU_FEATURES = {
 }
 RTLS_REVISION = "302423b49e494863d07630d50b15a9488ec85ef7"
 RTLS_VENDOR = REPO / "backend" / "vendor" / "rtls"
+RTLS_PATCHES = ("rtls-graviola.patch", "rtls-pyo3-0.30.patch")
 RUST_VERSION = "1.100.0-nightly"
 RUST_CHANNEL = "nightly-2026-09-15"
 DISABLED_MODULES = ("_ssl", "_hashlib")
@@ -829,7 +830,8 @@ def fetch_rust_inputs(
     checksum = inputs / "rtls-source.sha256"
     if inputs.is_symlink() or checksum.exists() or checksum.is_symlink():
         raise BuildError(f"refusing to replace a staged RTLS source digest: {checksum}")
-    apply_rtls_patch(checkout, "rtls-graviola.patch")
+    for name in RTLS_PATCHES:
+        apply_rtls_patch(checkout, name)
     hashing_build = stage_hashing_source(hashing_source, run_dir, inputs)
     helper = load_webpki_helper()
     webpki_archive = inputs / f"rustls-webpki-{helper.VERSION}.crate"

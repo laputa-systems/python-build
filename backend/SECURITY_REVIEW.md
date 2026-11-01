@@ -7,7 +7,8 @@ external human audit; an external audit remains a separate decision.
 Scope: `backend/hashing/src`, `backend/hashing/_hashlib.py` (Rust and Python
 hashing FFI); `backend/ssl_facade.py`, the three webpki patches, the session
 patch, and the verification, trust, hostname, SNI, session, BIO, and socket
-hunks of `rtls-graviola.patch`.
+hunks of `rtls-graviola.patch`. The PyO3 0.30.1 upgrade in
+`rtls-pyo3-0.30.patch` postdates this review and was not re-reviewed.
 
 ## Hashing FFI
 
