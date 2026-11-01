@@ -26,9 +26,9 @@ panic = "abort"
 panic = "abort"
 lto = "thin"
 
-# The TLS engine's vendored rustls and rustls-webpki carry the maintained
+# The TLS engine's rustls and rustls-webpki forks carry the maintained
 # session-API and policy patches. Every workspace requirement resolves to
 # these trees so the engine, its provider, and its verifier share one copy.
 [patch.crates-io]
-rustls = { path = "Modules/_ssl_rs/rustls" }
-rustls-webpki = { path = "Modules/_ssl_rs/webpki" }
+rustls = { git = "https://github.com/laputa-systems/rustls", branch = "laputa/0.23.45" }
+rustls-webpki = { git = "https://github.com/laputa-systems/webpki", branch = "laputa/0.103.15" }
