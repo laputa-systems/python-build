@@ -1,6 +1,6 @@
 """Output identity for traces built under adversarial tier-2 conditions.
 
-J8 acceptance probe. Every case must print identical lines under the
+Every case must print identical lines under the
 candidate JIT interpreter and under each reference interpreter (the JIT-off
 sibling and the incumbent JIT build): the register-cache allocation of a trace
 may change which machine code runs, never what the program observes. Run:

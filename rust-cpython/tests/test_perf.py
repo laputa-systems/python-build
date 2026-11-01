@@ -1244,7 +1244,7 @@ class IncrementalRecipeTests(unittest.TestCase):
                 perf.lb, "jit_build_evidence",
                 return_value=(perf.lb.JitEvidence(True, "23.1.2", "stencil-digest", "3.12.3")
                               if jit else
-                              perf.lb.JitEvidence(False, None, None, "3.12.3"))))
+                              perf.lb.JitEvidence(False, None, None, None))))
             patches.enter_context(mock.patch.object(perf.lb, "_extract_fresh", return_value=source))
             patches.enter_context(mock.patch.object(perf.lb, "_verify_cargo_lock"))
             patches.enter_context(mock.patch.object(perf.lb, "_require_command", side_effect=command))
@@ -1421,7 +1421,7 @@ class IncrementalRecipeTests(unittest.TestCase):
         self.assertFalse(report["jit"])
         self.assertIsNone(report["jit_llvm_version"])
         self.assertIsNone(report["jit_stencils_sha256"])
-        self.assertEqual(report["python_for_regen"], "3.12.3")
+        self.assertIsNone(report["python_for_regen"])
         self.assertIn("--enable-experimental-jit=no", report["configure_arguments"])
 
     def test_late_placement_report_failure_keeps_failed_state_and_refuses_retry(self):

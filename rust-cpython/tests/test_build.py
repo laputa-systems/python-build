@@ -89,6 +89,21 @@ class JitConfigurationTests(unittest.TestCase):
         makefile, _ = self.regen("3.12.3")
         self.assertEqual(perf.lb._python_for_regen_version(makefile, {}), "3.12.3")
 
+    def test_a_build_without_the_jit_never_needs_the_regen_interpreter(self) -> None:
+        makefile, _ = self.regen("3.9.6")
+        with mock.patch.object(perf.lb, "_jit_stage_state", return_value={}), \
+                mock.patch.object(perf.lb, "_require_jit_state"):
+            evidence = perf.lb.jit_build_evidence(
+                build_dir=makefile.parent, python=Path("python"), env={},
+                toolchain=self.toolchain, target_triple="x86_64-unknown-linux-gnu",
+                jit=False, logs=())
+        self.assertIsNone(evidence.python_for_regen)
+
+    def test_stencil_clang_scan_ignores_other_clang_tools(self) -> None:
+        found = perf.lb.stencil_clangs(
+            "/opt/llvm/bin/clang -c a.c /usr/bin/clang-format x /opt/llvm/bin/clang-23 y")
+        self.assertEqual(found, {"/opt/llvm/bin/clang", "/opt/llvm/bin/clang-23"})
+
     def test_jit_command_must_select_the_locked_llvm(self) -> None:
         root = Path(self.enterContext(tempfile.TemporaryDirectory()))
         makefile = root / "Makefile"

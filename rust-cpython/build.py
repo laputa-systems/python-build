@@ -1140,7 +1140,7 @@ def _check_jit_command(makefile: Path, toolchain) -> None:
         )
 
 
-_JIT_CLANG_PATH = re.compile(r"((?:/[A-Za-z0-9._+~-]+)+/bin/clang(?:-[0-9]+)?)")
+_JIT_CLANG_PATH = re.compile(r"((?:/[A-Za-z0-9._+~-]+)+/bin/clang(?:-[0-9]+)?(?![A-Za-z0-9_+.-]))")
 
 
 def stencil_clangs(log: str) -> set[str]:
@@ -1164,17 +1164,18 @@ class JitEvidence:
     enabled: bool
     llvm_version: str | None
     stencils_sha256: str | None
-    python_for_regen: str
+    python_for_regen: str | None
 
 
 def jit_build_evidence(*, build_dir: Path, python: Path, env: dict[str, str],
                        toolchain, target_triple: str, jit: bool,
                        logs: tuple[Path, ...]) -> JitEvidence:
     makefile = build_dir / "Makefile"
-    regen = _python_for_regen_version(makefile, env)
+    regen = None
     digest = None
     llvm_version = None
     if jit:
+        regen = _python_for_regen_version(makefile, env)
         _check_jit_command(makefile, toolchain)
         _check_jit_logs(logs, toolchain)
         header = build_dir / f"jit_stencils-{target_triple}.h"

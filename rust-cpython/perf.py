@@ -901,8 +901,11 @@ def _copy_changed_overlay(paths: dict[str, Path], source: Path, changes: dict[st
 
 
 def _remove_tree(path: Path) -> None:
-    subprocess.run(["chmod", "-R", "u+rwx", str(path)], check=True)
-    shutil.rmtree(path)
+    try:
+        shutil.rmtree(path)
+    except PermissionError:
+        subprocess.run(["chmod", "-R", "u+rwx", str(path)], check=True)
+        shutil.rmtree(path)
 
 
 def _worker_count(jobs: int | None) -> int:
@@ -1403,9 +1406,10 @@ def _gate_checks(baseline: dict[str, Any], candidate: dict[str, Any]) -> None:
 
 
 def eligible_workloads() -> list[str]:
-    from benchmarks.workloads.registry import WORKLOADS
+    from benchmarks.workloads.registry import JIT_SET, WORKLOADS
 
-    return [item.name for item in WORKLOADS if item.name not in UNAVAILABLE_WORKLOADS]
+    return [item.name for item in WORKLOADS
+            if item.name not in UNAVAILABLE_WORKLOADS and item.name not in JIT_SET]
 
 
 def module_routes() -> list[str]:
