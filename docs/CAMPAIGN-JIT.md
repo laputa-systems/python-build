@@ -22,10 +22,26 @@
   gate deferred by the owner until feature completion (OD3). Waived: owner OD3.
 - **D5 hardening:** pydebug JIT build passes all 31 listed suites, including
   the candidate. `-R 3:3` is red on upstream causes that reproduce without the
-  Rust overlay, and the candidate matches the baseline exactly. ASan is blocked
-  by the LLVM pin and python/cpython#160852 needs the tail-call interpreter.
-- **D6 hybrid verdict:** closed, blocked by OD1 (owner confirmed). The locked
-  archive has no `opt`, `llvm-config`, or LLVM headers.
+  Rust overlay, and the candidate matches the baseline exactly. ASan builds
+  together with the JIT on the first attempt (locked clang plus the archive's
+  ASan runtime, `--with-address-sanitizer --enable-experimental-jit=yes`): 15 of
+  16 files pass, and `test_capi` fails only `test_144068_daemon_thread_jit_cleanup`
+  on a leaked `os.stat` float that also leaks with `PYTHON_JIT=0`, so it is not
+  a JIT leak. python/cpython#160852 needs the tail-call interpreter, which the
+  lane keeps disabled.
+- **D6 hybrid verdict:** worth porting by the letter of the rule, with weak
+  evidence; the owner decides (PD6). The first "blocked by OD1" closure was
+  wrong: it read the lane's pruned prefix, not the archive. With the archive's
+  members, the stock merge-base and the PR head both build with LLVM 23.1.2 and
+  a scratch LuaJIT. The fold-pass plugin cannot be built: the release archive
+  omits `llvm/Passes/PassPlugin.h` and ships no shared `libLLVM`. The hybrid was
+  measured without the fold pass (its headline optimization): JIT-set CPU
+  geometric mean 0.89 of stock (min 0.49 `nbody`, max 1.09 `nqueens`; `richards`,
+  `go`, `nqueens` slower), 5 interleaved runs on a loaded host, all 16 digests
+  equal, `test_capi.test_opt` and `test_jit_peephole` pass. The PR head also
+  differs from the merge-base by new uops and optimizer changes, so this is not
+  a pure backend comparison. Porting needs the owner's decision plus
+  `PassPlugin.h` from llvm-project at the same tag.
 - **D7 one optimization:** implemented, not gated. `perf-jit-opt` allocates the
   register cache over the whole trace. It keeps `perf-rust-jit`'s failed-file
   set, all 16 digests, the parity probe on release and pydebug builds, and the
@@ -147,7 +163,18 @@ Learned in J5-J8. Use them before inventing new ones.
    `sys._stats_dump()`. Without the directory, the dump goes to stderr.
    Summarize with the build's `Tools/scripts/summarize_stats.py`. The stats
    dir is container-local; copy it out in the same `docker run`.
-8. **Harness traps.**
+8. **Look in the archive, not the prefix.** The verified LLVM prefix holds about
+   13 tools; the locked archive is the full release (`tar -tJf
+   .cache/llvm/objects/<sha>.blob`, BusyBox `tar` has no `--wildcards`: build
+   an explicit `-T` list, and list files, not directories). ASan: configure the
+   assembled source out of tree with the locked clang, `-resource-dir` pointing
+   at a scratch dir whose `lib` is the archive's `lib/clang/23/lib` and whose
+   `include` is the prefix's, and `LLVM_VERSION=23 LLVM_TOOLS_INSTALL_DIR`.
+   Symbolize with the archive's `llvm-symbolizer` via `ASAN_SYMBOLIZER_PATH`.
+   Hybrid spike: `llvm-config-23` must exist or its pass-plugin build raises
+   instead of skipping; a missing `PassPlugin.h` makes it fall back silently
+   to an unfolded build, so check for `jit_fold_pass.so`.
+9. **Harness traps.**
    - Two containers with one working directory collide on
      `test_python_<pid>` (container pids repeat), giving spurious
      `FileExistsError` and `IsADirectoryError`. Run suites one at a time per
@@ -174,7 +201,11 @@ Learned in J5-J8. Use them before inventing new ones.
   supported" is accepted. No LLVM 21, Homebrew LLVM, or host clang is
   fetched, locked, or used, including in the hybrid spike. If LLVM 23 breaks
   a target's stencils, fix `Tools/jit` through the overlay or park that
-  target.
+  target. **Amended 2026-11-01 (owner: "widen the pin"):** the pin stays and no
+  lock file changes. The lane's verified prefix keeps about 13 tools, but the
+  locked archive is the full official release; spikes may extract further
+  members of that same archive into `.work/` scratch (`opt`, `llvm-config`,
+  `llvm-symbolizer`, headers, `libLLVM*.a`, the ASan runtime).
 - **OD2, goal (`campaign-jit.md`): scope is the first research
   assignment.** Build reproducible JIT and no-JIT baselines on macOS arm64
   and Linux x86-64, investigate the hybrid experiment, compare against the
