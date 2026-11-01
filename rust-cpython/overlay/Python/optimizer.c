@@ -1657,6 +1657,10 @@ stack_allocate(_PyUOpInstruction *buffer, _PyUOpInstruction *output, int length)
         while (_PyUop_Caching[uop].entries[lowest_input].opcode <= 0) {
             lowest_input++;
         }
+        int highest_input = STACK_ALLOCATION_DEPTHS - 1;
+        while (_PyUop_Caching[uop].entries[highest_input].opcode <= 0) {
+            highest_input--;
+        }
         for (int input = lowest_input; input < STACK_ALLOCATION_DEPTHS; input++) {
             const _PyUopTOSentry *entry = &_PyUop_Caching[uop].entries[input];
             if (entry->opcode <= 0) {
@@ -1665,6 +1669,11 @@ stack_allocate(_PyUOpInstruction *buffer, _PyUOpInstruction *output, int length)
             for (int previous = 0; previous < STACK_ALLOCATION_DEPTHS; previous++) {
                 if (row[previous].spills == STACK_ALLOCATION_UNREACHABLE ||
                     (input > previous && input != lowest_input)) {
+                    continue;
+                }
+                int required_input = previous < lowest_input ? lowest_input :
+                                     previous > highest_input ? highest_input : previous;
+                if (input != required_input && input == 0 && previous >= 2) {
                     continue;
                 }
                 uint16_t spills = row[previous].spills + (previous != input);
