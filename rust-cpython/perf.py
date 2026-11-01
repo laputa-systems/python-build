@@ -987,9 +987,10 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
         report["phase_seconds"] = phase_seconds
         _write_json(paths["report"], report)
     kind = "incremental" if incremental else "clean"
+    extensions = ("pristine control, no Rust extensions" if empty_overlay else
+                  f"{len(report['rust_extensions_sha256'])} release Rust extensions verified")
     print(f"OK    perf CPython {report['interpreter']['version'].split()[0]} ({kind}, "
-          f"{len(report['rust_extensions_sha256'])} release Rust extensions verified, "
-          f"{report['build_seconds']:.0f}s) -> {paths['stage']}")
+          f"{extensions}, {report['build_seconds']:.0f}s) -> {paths['stage']}")
     return 0
 
 
@@ -1216,7 +1217,8 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
         "rust_source_aggregate": rust_source_aggregate,
         "pgo": False,
         "lto": False,
-        "interpreter": lb._module_report(paths["stage"], python, toolchain),
+        "interpreter": lb._module_report(paths["stage"], python, toolchain,
+                                         rust_base64=not empty_overlay),
         "build_interpreter": str(_build_python(paths["build"])),
         "rust": lb._rust_identity(shutil.which("rustup")),
         "c_toolchain": toolchain.identity(),

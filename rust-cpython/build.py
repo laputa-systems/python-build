@@ -1076,37 +1076,43 @@ def _defined_symbols(path: Path, toolchain) -> str:
     return str(symbols["output"])
 
 
-def _module_report(install: Path, python: Path, toolchain) -> dict[str, Any]:
-    code = r'''
-import base64, binascii, json, sys, sysconfig, _base64
-vectors = [b"", b"f", b"fo", b"foo", bytes(range(256)), b"rust-cpython" * 4096]
-for value in vectors:
-    actual = _base64.standard_b64encode(value)
-    expected = binascii.b2a_base64(value, newline=False)
-    if actual != expected or actual != base64.b64encode(value):
-        raise SystemExit("_base64 disagrees with the CPython base64/binascii result")
-for value in (bytearray(b"buffer"), memoryview(b"view")):
-    if _base64.standard_b64encode(value) != binascii.b2a_base64(value, newline=False):
-        raise SystemExit("_base64 buffer-protocol result differs from binascii")
-if sys.implementation.name != "cpython" or sys.version_info[:2] != (3, 16):
-    raise SystemExit("interpreter is not CPython 3.16")
-if sysconfig.get_config_var("Py_GIL_DISABLED") in (1, "1"):
-    raise SystemExit("the experimental build unexpectedly disabled the GIL")
-if hasattr(sys, "_is_gil_enabled") and not sys._is_gil_enabled():
-    raise SystemExit("the interpreter reports that the GIL is disabled")
-print(json.dumps({
-    "implementation": sys.implementation.name,
-    "version": sys.version,
-    "gil_disabled": sysconfig.get_config_var("Py_GIL_DISABLED"),
-    "gil_enabled": sys._is_gil_enabled() if hasattr(sys, "_is_gil_enabled") else True,
-    "extension_suffix": sysconfig.get_config_var("EXT_SUFFIX"),
-    "config_args": sysconfig.get_config_var("CONFIG_ARGS"),
-    "cflags": sysconfig.get_config_var("CFLAGS"),
-    "ldflags": sysconfig.get_config_var("LDFLAGS"),
-    "base64_vectors": len(vectors) + 2,
-    "base64_matches_binascii": True,
-}))
-'''
+def _module_report(install: Path, python: Path, toolchain, *,
+                   rust_base64: bool = True) -> dict[str, Any]:
+    lines = ["import json, sys, sysconfig"]
+    if rust_base64:
+        lines += [
+            "import base64, binascii, _base64",
+            'vectors = [b"", b"f", b"fo", b"foo", bytes(range(256)), b"rust-cpython" * 4096]',
+            "for value in vectors:",
+            "    actual = _base64.standard_b64encode(value)",
+            "    expected = binascii.b2a_base64(value, newline=False)",
+            "    if actual != expected or actual != base64.b64encode(value):",
+            '        raise SystemExit("_base64 disagrees with the CPython base64/binascii result")',
+            'for value in (bytearray(b"buffer"), memoryview(b"view")):',
+            "    if _base64.standard_b64encode(value) != binascii.b2a_base64(value, newline=False):",
+            '        raise SystemExit("_base64 buffer-protocol result differs from binascii")',
+        ]
+    lines += [
+        'if sys.implementation.name != "cpython" or sys.version_info[:2] != (3, 16):',
+        '    raise SystemExit("interpreter is not CPython 3.16")',
+        'if sysconfig.get_config_var("Py_GIL_DISABLED") in (1, "1"):',
+        '    raise SystemExit("the experimental build unexpectedly disabled the GIL")',
+        'if hasattr(sys, "_is_gil_enabled") and not sys._is_gil_enabled():',
+        '    raise SystemExit("the interpreter reports that the GIL is disabled")',
+        'fields = {"implementation": sys.implementation.name,',
+        '          "version": sys.version,',
+        '          "gil_disabled": sysconfig.get_config_var("Py_GIL_DISABLED"),',
+        '          "gil_enabled": sys._is_gil_enabled() if hasattr(sys, "_is_gil_enabled") else True,',
+        '          "extension_suffix": sysconfig.get_config_var("EXT_SUFFIX"),',
+        '          "config_args": sysconfig.get_config_var("CONFIG_ARGS"),',
+        '          "cflags": sysconfig.get_config_var("CFLAGS"),',
+        '          "ldflags": sysconfig.get_config_var("LDFLAGS")}',
+    ]
+    if rust_base64:
+        lines += ['fields["base64_vectors"] = len(vectors) + 2',
+                  'fields["base64_matches_binascii"] = True']
+    lines.append("print(json.dumps(fields))")
+    code = "\n".join(lines)
     env = _environment(toolchain, offline=True)
     result = subprocess.run(
         [str(python), "-I", "-S", "-c", code],
@@ -1119,13 +1125,17 @@ print(json.dumps({
     )
     if result.returncode != 0:
         raise LaneError(
-            "installed interpreter/_base64 smoke test failed: "
+            f"installed interpreter{'/_base64' if rust_base64 else ''} smoke test failed: "
             f"{(result.stderr or result.stdout).strip()[-1000:]}"
         )
     try:
         interpreter = json.loads(result.stdout.strip().splitlines()[-1])
     except (IndexError, json.JSONDecodeError) as error:
         raise LaneError(f"cannot parse installed interpreter report: {result.stdout!r}") from error
+    if IS_LINUX:
+        _check_linux_interpreter(python, toolchain, install)
+    if not rust_base64:
+        return interpreter
     suffix = interpreter["extension_suffix"]
     module_path = Path(subprocess.run(
         [str(python), "-I", "-S", "-c", "import _base64; print(_base64.__file__)"],
@@ -1141,8 +1151,6 @@ print(json.dumps({
     binary = _binary_identity(module_path, toolchain)
     dependencies = binary["dependencies"]
     rpaths = binary["rpaths"]
-    if IS_LINUX:
-        _check_linux_interpreter(python, toolchain, install)
     forbidden_markers = (
         "/opt/homebrew", ".rustup", ".cargo-home", "/.cache/llvm/",
     )
