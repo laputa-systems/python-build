@@ -749,10 +749,12 @@ def _fetch_llvm_archive(toolchain, llvm_cache: Cache) -> Path:
 
 
 def _jit_llvm_tools(toolchain) -> Path:
-    """Extract the locked release's disassembler and DWARF dumper for JIT builds."""
+    """Extract the locked release's object inspection tools for JIT builds."""
     directory = WORK / "jit-tools" / toolchain.llvm_version / "bin"
+    names = ("llvm-objdump", "llvm-dwarfdump") if IS_LINUX else (
+        "llvm-objdump", "llvm-dwarfdump", "llvm-readobj")
     missing = [
-        name for name in ("llvm-objdump", "llvm-dwarfdump")
+        name for name in names
         if not (directory / name).is_file()
     ]
     if not missing:

@@ -175,7 +175,7 @@ class JitConfigurationTests(unittest.TestCase):
         archive = root / "llvm" / "objects" / f"{'a' * 64}.blob"
         archive.parent.mkdir(parents=True)
         with tarfile.open(archive, "w:xz") as tar:
-            for name in ("LLVM-root/bin/llvm-objdump", "LLVM-root/bin/llvm-dwarfdump"):
+            for name in ("LLVM-root/bin/llvm-objdump", "LLVM-root/bin/llvm-dwarfdump", "LLVM-root/bin/llvm-readobj"):
                 data = b"#!/bin/sh\nexit 0\n"
                 member = tarfile.TarInfo(name)
                 member.size = len(data)
@@ -185,10 +185,11 @@ class JitConfigurationTests(unittest.TestCase):
             llvm_version="23.1.2", llvm_archive_root="LLVM-root",
             llvm_input=lambda: SimpleNamespace(sha256="a" * 64))
         with mock.patch.object(perf.lb, "CACHE_ROOT", root), \
-                mock.patch.object(perf.lb, "WORK", root / "work"):
+                mock.patch.object(perf.lb, "WORK", root / "work"), \
+                mock.patch.object(perf.lb, "IS_LINUX", False):
             directory = perf.lb._jit_llvm_tools(toolchain)
             self.assertEqual(sorted(path.name for path in directory.iterdir()),
-                             ["llvm-dwarfdump", "llvm-objdump"])
+                             ["llvm-dwarfdump", "llvm-objdump", "llvm-readobj"])
             self.assertTrue((directory / "llvm-objdump").stat().st_mode & 0o100)
             self.assertEqual(perf.lb._jit_llvm_tools(toolchain), directory)
 
