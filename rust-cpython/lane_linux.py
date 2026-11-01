@@ -417,13 +417,18 @@ def setup_local_with_shared_ssl_rs(contents: str) -> str:
         raise LinuxHostError("Setup.local lacks a required module section") from error
     if not shared < static < disabled:
         raise LinuxHostError("Setup.local module sections are out of order")
-    ssl_entries = [
-        index for index in range(static + 1, disabled)
-        if lines[index].strip() == "_ssl_rs"
-    ]
-    if len(ssl_entries) != 1:
-        raise LinuxHostError("Setup.local must declare exactly one static _ssl_rs module")
-    lines.pop(ssl_entries[0])
+
+    def ssl_entries(start: int, stop: int) -> list[int]:
+        return [index for index in range(start, stop)
+                if lines[index].split()[:1] == ["_ssl_rs"]]
+
+    shared_entries = ssl_entries(shared + 1, static)
+    static_entries = ssl_entries(static + 1, disabled)
+    if len(shared_entries) + len(static_entries) != 1:
+        raise LinuxHostError("Setup.local must declare exactly one _ssl_rs module")
+    if shared_entries:
+        return "\n".join(lines) + "\n"
+    lines.pop(static_entries[0])
     ssl_entry = "_ssl_rs _ssl_rs/Cargo.toml _ssl_rs/src/lib.rs"
     insertion = static
     while insertion > shared + 1 and not lines[insertion - 1].strip():

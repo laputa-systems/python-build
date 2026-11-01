@@ -45,6 +45,143 @@ class RustLauncherTests(unittest.TestCase):
             self.assertEqual(result.stdout, "cargo\npinned-rustc\n")
 
 
+class JitConfigurationTests(unittest.TestCase):
+    toolchain = SimpleNamespace(llvm_version="23.1.2", llvm_prefix=Path("/opt/llvm/23.1.2"))
+
+    def test_both_flavors_use_the_locked_llvm(self) -> None:
+        enabled = perf.lb.jit_configuration(self.toolchain, jit=True)
+        self.assertTrue(enabled.enabled)
+        self.assertEqual(enabled.argument, "--enable-experimental-jit=yes")
+        self.assertEqual(enabled.environment, {
+            "LLVM_VERSION": "23", "LLVM_TOOLS_INSTALL_DIR": "/opt/llvm/23.1.2"})
+        self.assertEqual(enabled.llvm_version, "23.1.2")
+        disabled = perf.lb.jit_configuration(self.toolchain, jit=False)
+        self.assertFalse(disabled.enabled)
+        self.assertEqual(disabled.argument, "--enable-experimental-jit=no")
+        self.assertEqual(disabled.environment["LLVM_VERSION"], "23")
+
+    def test_configuration_applies_the_jit_argument_and_environment(self) -> None:
+        target = SimpleNamespace(triple="x86_64-unknown-linux-gnu")
+        with mock.patch.object(perf.lb, "_environment", return_value={}), \
+                mock.patch.object(perf.lb, "_platform_flags", return_value={"CFLAGS": "-O2"}):
+            enabled_args, enabled_env = perf.lb._configuration(self.toolchain, target, jit=True)
+            disabled_args, disabled_env = perf.lb._configuration(self.toolchain, target, jit=False)
+        self.assertIn("--enable-experimental-jit=yes", enabled_args)
+        self.assertIn("--enable-experimental-jit=no", disabled_args)
+        self.assertEqual(enabled_env["LLVM_TOOLS_INSTALL_DIR"], "/opt/llvm/23.1.2")
+        self.assertEqual(disabled_env["LLVM_VERSION"], "23")
+
+    def regen(self, version: str) -> tuple[Path, Path]:
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        script = root / "regen-python"
+        script.write_text(f'#!/bin/sh\necho "Python {version} (main) [GCC 13]"\n')
+        script.chmod(0o755)
+        makefile = root / "Makefile"
+        makefile.write_text(f"PYTHON_FOR_REGEN={script}\n")
+        return makefile, script
+
+    def test_python_for_regen_rejects_a_pre_311_host(self) -> None:
+        makefile, _ = self.regen("3.10.14")
+        with self.assertRaisesRegex(perf.lb.LaneError, "older than 3.11"):
+            perf.lb._python_for_regen_version(makefile, {})
+        makefile, _ = self.regen("3.12.3")
+        self.assertEqual(perf.lb._python_for_regen_version(makefile, {}), "3.12.3")
+
+    def test_jit_command_must_select_the_locked_llvm(self) -> None:
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        makefile = root / "Makefile"
+        makefile.write_text(
+            "REGEN_JIT_COMMAND=python Tools/jit/build.py --llvm-version=\"23\" "
+            "--llvm-tools-install-dir=\"/opt/llvm/23.1.2\"\n")
+        perf.lb._check_jit_command(makefile, self.toolchain)
+        makefile.write_text(
+            "REGEN_JIT_COMMAND=python Tools/jit/build.py --llvm-version=\"21\" "
+            "--llvm-tools-install-dir=\"/opt/llvm/23.1.2\"\n")
+        with self.assertRaisesRegex(perf.lb.LaneError, "selects LLVM 21"):
+            perf.lb._check_jit_command(makefile, self.toolchain)
+        makefile.write_text(
+            "REGEN_JIT_COMMAND=python Tools/jit/build.py --llvm-version=\"23\" "
+            "--llvm-tools-install-dir=\"/usr/lib/llvm\"\n")
+        with self.assertRaisesRegex(perf.lb.LaneError, "locked LLVM"):
+            perf.lb._check_jit_command(makefile, self.toolchain)
+
+    def test_stencil_clang_must_be_the_locked_binary(self) -> None:
+        self.assertEqual(
+            perf.lb.stencil_clangs("ok /opt/llvm/23.1.2/bin/clang -c\n"),
+            {"/opt/llvm/23.1.2/bin/clang"})
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        log = root / "build.log"
+        log.write_text("clang -c fixture.c\n")
+        perf.lb._check_jit_logs((log,), self.toolchain)
+        log.write_text("/usr/bin/clang-18 -c fixture.c\n")
+        with self.assertRaisesRegex(perf.lb.LaneError, "stencil clang"):
+            perf.lb._check_jit_logs((log,), self.toolchain)
+
+    def test_activation_requirements_fail_loudly(self) -> None:
+        perf.lb._require_jit_state(
+            {"available": True, "enabled": True, "active": True}, jit=True)
+        perf.lb._require_jit_state(
+            {"available": False, "enabled": False, "active": False}, jit=False)
+        with self.assertRaisesRegex(perf.lb.LaneError, "available and enabled"):
+            perf.lb._require_jit_state(
+                {"available": False, "enabled": False, "active": False}, jit=True)
+        with self.assertRaisesRegex(perf.lb.LaneError, "did not become active"):
+            perf.lb._require_jit_state(
+                {"available": True, "enabled": True, "active": False}, jit=True)
+        with self.assertRaisesRegex(perf.lb.LaneError, "no-JIT stage"):
+            perf.lb._require_jit_state(
+                {"available": True, "enabled": False, "active": False}, jit=False)
+
+    def evidence(self, jit: bool, state: str,
+                 *, header: bool = True) -> tuple[perf.lb.JitEvidence, Path]:
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        build_dir = root / "build"
+        build_dir.mkdir()
+        script = root / "regen-python"
+        script.write_text('#!/bin/sh\necho "Python 3.12.3 (main) [GCC 13]"\n')
+        script.chmod(0o755)
+        python = root / "python"
+        python.write_text(f'#!/bin/sh\necho \'{state}\'\n')
+        python.chmod(0o755)
+        (build_dir / "Makefile").write_text(
+            f"PYTHON_FOR_REGEN={script}\n"
+            "REGEN_JIT_COMMAND=python Tools/jit/build.py --llvm-version=\"23\" "
+            "--llvm-tools-install-dir=\"/opt/llvm/23.1.2\"\n")
+        if header:
+            (build_dir / "jit_stencils-x86_64-unknown-linux-gnu.h").write_bytes(b"stencils\n")
+        log = root / "build.log"
+        log.write_text("/opt/llvm/23.1.2/bin/clang -c fixture.c\n")
+        evidence = perf.lb.jit_build_evidence(
+            build_dir=build_dir, python=python, env={}, toolchain=self.toolchain,
+            target_triple="x86_64-unknown-linux-gnu", jit=jit, logs=(log,))
+        return evidence, build_dir
+
+    def test_evidence_records_the_stencil_digest_and_regen_version(self) -> None:
+        state = '{"available": true, "enabled": true, "active": true}'
+        evidence, build_dir = self.evidence(True, state)
+        self.assertTrue(evidence.enabled)
+        self.assertEqual(evidence.llvm_version, "23.1.2")
+        self.assertEqual(evidence.stencils_sha256, hashlib.sha256(b"stencils\n").hexdigest())
+        self.assertEqual(evidence.python_for_regen, "3.12.3")
+        disabled, _ = self.evidence(
+            False, '{"available": false, "enabled": false, "active": false}', header=False)
+        self.assertFalse(disabled.enabled)
+        self.assertIsNone(disabled.llvm_version)
+        self.assertIsNone(disabled.stencils_sha256)
+
+    def test_missing_stencil_header_fails_the_build(self) -> None:
+        state = '{"available": true, "enabled": true, "active": true}'
+        with self.assertRaisesRegex(perf.lb.LaneError, "did not generate"):
+            self.evidence(True, state, header=False)
+
+    def test_inactive_jit_and_available_no_jit_fail_the_build(self) -> None:
+        with self.assertRaisesRegex(perf.lb.LaneError, "did not become active"):
+            self.evidence(True, '{"available": true, "enabled": true, "active": false}')
+        with self.assertRaisesRegex(perf.lb.LaneError, "no-JIT stage"):
+            self.evidence(False, '{"available": true, "enabled": false, "active": false}',
+                          header=False)
+
+
 class CompressionEngineEnvironmentTests(unittest.TestCase):
     def test_configure_inputs_name_each_engine_archive_and_its_own_header(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -211,6 +348,24 @@ class LinuxSetupTests(unittest.TestCase):
         self.assertEqual(
             perf.lb.lane_linux.setup_local_with_shared_ssl_rs(contents),
             expected,
+        )
+
+    def test_already_shared_ssl_rs_is_left_in_place(self) -> None:
+        contents = (
+            "*shared*\n"
+            "_bz2 _bz2module.c\n"
+            "_ssl_rs _ssl_rs/Cargo.toml _ssl_rs/src/lib.rs\n"
+            "\n"
+            "*static*\n"
+            "_random_rs\n"
+            "_tempfile_rs\n"
+            "\n"
+            "*disabled*\n"
+            "_ssl\n"
+        )
+        self.assertEqual(
+            perf.lb.lane_linux.setup_local_with_shared_ssl_rs(contents),
+            contents,
         )
 
 
