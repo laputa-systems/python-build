@@ -6,10 +6,8 @@
   `main` is untouched at `96f4112`. Do not push. The remaining work is in
   `docs/open-work.md`.
 - **Lane host** command: `.work/tmp/lane.sh <cmd>` wraps the `docker run` in
-  **Lane host** (recreate it from that section). Builds kept for the deferred
-  gates: `perf-upstream`, `perf-rust`, `perf-upstream-jit`, `perf-rust-jit`,
-  `perf-rust-jit-stats`, `perf-jit-opt`. Rebuild `perf-rust` and `perf-rust-jit`
-  before any gate: the overlay now carries `Python/optimizer.c`.
+  **Lane host** (recreate it from that section). Builds kept: `perf-upstream`, `perf-rust`, `perf-upstream-jit`, `perf-rust-jit`,
+  `perf-rust-jit-stats`, `perf-jit-opt`.
 - **D1 JIT builds with the pinned LLVM:** met (J1; stencils from the locked
   LLVM 23.1.2 clang, activation checked).
 - **D2 kernel set:** met (J2; 16 kernels, wheel digest checked). Review found
@@ -18,8 +16,28 @@
   environment**.
 - **D4 Linux baseline matrix:** failed-file sets equal their siblings' (the
   RDS `testPeek` hang also hangs the no-JIT build), all 16 kernel digests equal
-  across five builds. The four `--jit-set --gate` verdicts were not run: perf
-  gate deferred by the owner until feature completion (OD3). Waived: owner OD3.
+  across five builds. The four `--jit-set --gate` verdicts ran on 2026-11-01 on
+  a quiet host (`perf-gate-ready` 0 before and after each; two runs each; wall
+  only, the verdicts carry no CPU metric). Geometric mean of the 16 kernels' wall
+  ratio, candidate/baseline:
+  - `@control` vs `perf-upstream-jit`: REJECT, 0.806. Wall improved on 15 of 16
+    (nbody 0.55, scimark_lu 0.55, spectral_norm 0.61; raytrace inconclusive).
+    The reject is memory: peak RSS +2-9% and private +2-12% from the JIT's code
+    regions and extra `libpython` text.
+  - `@incumbent` vs `perf-rust-jit`: INCONCLUSIVE, 0.821. Wall improved on 14
+    kernels, none regressed; memory within noise.
+  - `perf-upstream-jit` vs `perf-rust-jit`: REJECT, 0.833 only because Rust zlib
+    and gzip cut `zlib_decode_1m`/`gzip_extract_1m` wall to 0.11-0.15. Kernels
+    are equal within noise; the rejects are `django_template_realistic` wall
+    1.078, `import_django` wall 1.070 and +12-16% private, which `@control` vs
+    `@incumbent` shows without the JIT.
+  - `@control` vs `@incumbent` (no JIT): REJECT; the same `django_template_realistic`
+    (1.077) and `import_django` (1.054) wall and +21% private. This is lane
+    debt, not a JIT effect.
+  - J8: `perf-rust-jit` vs `perf-jit-opt`: INCONCLUSIVE, kernel wall geometric
+    mean 0.9993; every kernel's interval sits inside 0.98-1.03 and memory is
+    within budget. The allocator's 8.0% fewer spill uops is not measurable at
+    the 1% floor, as the static estimate (about 0.6% of executed uops) predicted.
 - **D5 hardening:** pydebug JIT build passes all 31 listed suites, including
   the candidate. `-R 3:3` is red on upstream causes that reproduce without the
   Rust overlay, and the candidate matches the baseline exactly. ASan builds
@@ -678,8 +696,6 @@ python3 rust-cpython/perf.py profile --ref perf-rust-jit --workload nbody --tool
   `com.apple.security.cs.allow-jit` with `MAP_JIT`, or
   `allow-unsigned-executable-memory`, because `Python/jit.c` maps RW then
   `mprotect`s RX. That is a stage-6 packaging question and a non-goal here.
-- **Quiet host:** any J4 or J8 gate left as "perf gate deferred: host busy",
-  with its exact command.
 
 ## Execution boundary and non-goals
 

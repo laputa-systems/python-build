@@ -56,14 +56,11 @@ doing, P4 is optional. A debt entry is not success.
   code size; revisit only with a different, streaming mechanism.
 - [ ] **P3 — `compileall_source`.** Its output still differs from control, so it
   is not timed. Fix the difference before using it.
-- [ ] **P2 — JIT timing gates.** Owner deferred every JIT timing verdict until
-  feature completion. Run the four `perf.py bench --jit-set --gate` comparisons
-  from `docs/CAMPAIGN-JIT.md` J4 and the J8 `--baseline @incumbent-jit
-  --candidate perf-jit-opt` gate on a quiet host, and report the JIT-set CPU
-  geometric mean. Rebuild `perf-rust` and `perf-rust-jit` first: the overlay
-  now carries `Python/optimizer.c`. J8's expected effect is well under the 1%
-  floor (static estimate: 8.0% fewer spill and reload uops, about 0.6% of
-  executed uops).
+- [ ] **P3 — J8 register-cache allocator.** The timing gate was inconclusive
+  (kernel wall geometric mean 0.9993). It adds a DP allocator to the overlay
+  `Python/optimizer.c` and forbids voluntary 2→0 and 3→0 spills because those
+  crash for an unisolated reason. Recommendation: revert it unless the crash is
+  explained and a larger win appears. Owner decides.
 - [ ] **P2 — macOS arm64 JIT.** Nothing JIT ran on macOS. Run the
   `docs/CAMPAIGN-JIT.md` "Needs environment" commands: Mach-O stencils with
   LLVM 23.1.4 (J1M), `perf.py profile --tool sample`, and JIT code residency.
