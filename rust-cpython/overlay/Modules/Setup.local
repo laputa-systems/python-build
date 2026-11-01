@@ -38,6 +38,7 @@ _shlex_rs _shlex_rs/Cargo.toml _shlex_rs/src/lib.rs
 _shutil_rs _shutil_rs/Cargo.toml _shutil_rs/src/lib.rs
 _sqlite3_rs _sqlite3_rs/Cargo.toml _sqlite3_rs/src/lib.rs
 _socket_rs _socket_rs/Cargo.toml _socket_rs/src/lib.rs
+_ssl_rs _ssl_rs/Cargo.toml _ssl_rs/src/lib.rs
 _statistics_rs _statistics_rs/Cargo.toml _statistics_rs/src/lib.rs
 _strptime_rs _strptime_rs/Cargo.toml _strptime_rs/src/lib.rs
 _struct_rs _struct_rs/Cargo.toml _struct_rs/src/lib.rs
@@ -68,7 +69,6 @@ _heapq_rs
 _html_parser_rs
 _itertools_rs
 _posixpath_rs
-_ssl_rs
 _tempfile_rs
 
 *disabled*
