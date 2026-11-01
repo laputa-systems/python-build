@@ -27,7 +27,7 @@ env:
 
 jobs:
   prepare:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
     steps:
@@ -196,7 +196,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - runs-on: ubuntu-24.04
+          - runs-on: ubuntu-latest
             platform: linux/amd64
             triple: x86_64-unknown-linux-musl
             cache-scope: linux-amd64
@@ -311,7 +311,7 @@ jobs:
           if-no-files-found: warn
 
   assemble:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     needs: [prepare, build-macos, build-linux]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -413,7 +413,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - runs-on: ubuntu-24.04
+          - runs-on: ubuntu-latest
             platform: linux/amd64
             runtime_image: alpine@sha256:266f29255458134745f2bf588cb23ed1ed1768b96ff2580a05d70a8aba59e145
             uv_target: x86_64-unknown-linux-musl
@@ -495,7 +495,7 @@ jobs:
             '
 
   publish:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     needs: [prepare, assemble, smoke-macos, smoke-linux]
     permissions:
       contents: write
