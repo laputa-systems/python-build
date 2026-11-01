@@ -954,10 +954,12 @@ def cargo(*, name: str, arguments: list[str]) -> int:
 
 def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
           incremental: bool = False, upstream_compression: bool = False,
-          jit: bool = False) -> int:
+          jit: bool = False, pystats: bool = False) -> int:
     _check_name(name)
     if jobs is not None and jobs < 1:
         raise LaneError("build jobs must be positive")
+    if pystats and not jit:
+        raise LaneError("--pystats collects tier-2 statistics and requires --jit")
     if incremental and empty_overlay:
         raise LaneError("the pristine control is always a clean build")
     if upstream_compression and (incremental or empty_overlay):
@@ -981,21 +983,26 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
             if bool(previous.get("jit", False)) != jit:
                 raise LaneError("incremental build refused: the JIT flag changed; "
                                 "run a clean build")
+            if bool(previous.get("pystats", False)) != pystats:
+                raise LaneError("incremental build refused: the pystats flag changed; "
+                                "run a clean build")
             configured = True
             route = _report_route(previous)
         _write_json(paths["report"], {"status": "building", "name": _tag(name),
                                       "pristine": empty_overlay, "configured": configured,
-                                      "jit": jit, "compression_route": route})
+                                      "jit": jit, "pystats": pystats, "compression_route": route})
         state = {"configured": configured}
         if incremental:
             state["previous"] = previous
         try:
             report = _build_locked(name, paths, empty_overlay=empty_overlay, jobs=jobs,
-                                   incremental=incremental, state=state, route=route, jit=jit)
+                                   incremental=incremental, state=state, route=route, jit=jit,
+                                   pystats=pystats)
         except BaseException as error:
             _write_json(paths["report"], {"status": "failed", "name": _tag(name),
                                           "pristine": empty_overlay, "configured": state["configured"],
-                                          "jit": jit, "compression_route": route, "error": str(error)})
+                                          "jit": jit, "pystats": pystats, "compression_route": route,
+                                          "error": str(error)})
             raise
         report["build_seconds"] = round(time.monotonic() - started, 1)
         report["phase_seconds"] = phase_seconds
@@ -1010,7 +1017,8 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
 
 def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, jobs: int | None,
                   incremental: bool, state: dict[str, Any],
-                  route: CompressionRoute = "private", jit: bool = False) -> dict[str, Any]:
+                  route: CompressionRoute = "private", jit: bool = False,
+                  pystats: bool = False) -> dict[str, Any]:
     toolchain, target = lb._toolchain()
     lb._llvm_ready(toolchain)
     git_state = _git_state()
@@ -1101,6 +1109,8 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
     configure = [str(source / "configure"), f"--prefix={paths['stage']}", "--enable-shared",
                  jit_config.argument, "--with-tail-call-interp=no",
                  "--without-ensurepip"]
+    if pystats:
+        configure.append("--enable-pystats")
     # Only the aggregate workspace requires the pinned source-built runtime.
     # Locked Cargo fetch has already validated every declared workspace dependency.
     source_aggregate = (not empty_overlay and lb.TARGET == "aarch64-apple-darwin"
@@ -1230,6 +1240,7 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
         "make_variables": list(MAKE_VARS),
         "cflags": env["CFLAGS"],
         "jit": evidence.enabled,
+        "pystats": pystats,
         "jit_llvm_version": evidence.llvm_version,
         "jit_stencils_sha256": evidence.stencils_sha256,
         "python_for_regen": evidence.python_for_regen,
@@ -1355,6 +1366,8 @@ def _label(side: dict[str, Any]) -> str:
     flags = []
     if report.get("jit"):
         flags.append("jit")
+    if report.get("pystats"):
+        flags.append("pystats")
     if report.get("incremental"):
         flags.append("incremental")
     if report.get("compression_route") == "upstream":
@@ -2197,6 +2210,9 @@ def main(argv: list[str] | None = None) -> int:
     build_parser.add_argument("--jobs", type=int, metavar="N", help="parallel build jobs")
     build_parser.add_argument("--jit", action="store_true",
                               help="build the experimental JIT with the locked LLVM")
+    build_parser.add_argument("--pystats", action="store_true",
+                              help="enable CPython's specialization and tier-2 statistics; "
+                                   "requires --jit")
     cargo_parser = commands.add_parser(
         "cargo", help="run the pinned cargo in a perf build's assembled source, after an overlay sync")
     cargo_parser.add_argument("--name", required=True, help="isolated build name to run cargo in")
@@ -2287,7 +2303,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "build":
             return build(name=args.name, empty_overlay=args.empty_overlay, jobs=args.jobs,
                          incremental=args.incremental, upstream_compression=args.upstream_compression,
-                         jit=args.jit)
+                         jit=args.jit, pystats=args.pystats)
         if args.command == "cargo":
             return cargo(name=args.name, arguments=args.cargo_args)
         if args.command == "test":

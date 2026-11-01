@@ -104,7 +104,7 @@ and `inputs.linux-cp316.lock.json`; the macOS harness uses the macOS lock.
 
 | Command | Purpose |
 | --- | --- |
-| `build --name N [--incremental] [--jobs J] [--jit]` | Clean optimized build verified per Rust extension; `--incremental` syncs changed overlay files and refuses build-system, Cargo, or JIT-flag changes |
+| `build --name N [--incremental] [--jobs J] [--jit [--pystats]]` | Clean optimized build verified per Rust extension; `--incremental` syncs changed overlay files and refuses build-system, Cargo, JIT-flag, or pystats-flag changes; `--pystats` adds CPython's statistics counters to a JIT build |
 | `build --name perf-upstream --empty-overlay` | Pristine-upstream control |
 | `build --name perf-upstream-jit --empty-overlay --jit` | Pristine-upstream JIT control |
 | `build --name N --upstream-compression` | Link CPython's stock `zlib`, `_bz2` and `binascii` against static `zlib-rs` and `libbz2-rs` archives of the locked crates, and omit the private `_zlib_rs`, `_bz2_rs` and `Lib/zlib.py` |

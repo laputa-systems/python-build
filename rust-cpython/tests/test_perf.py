@@ -1142,7 +1142,7 @@ class IncrementalRecipeTests(unittest.TestCase):
     def exercise(self, incremental, *, bad_install=False, failed_install=False, source_std=True,
                  empty_overlay=False, missing_current_member=False, aggregate=True, missing_aggregate=False,
                  late_placement_failure=False, abrupt_placement_failure=False, route="private",
-                 linux=False, jit=False):
+                 linux=False, jit=False, pystats=False):
         with tempfile.TemporaryDirectory() as temp, ExitStack() as patches:
             root = Path(temp)
             if linux:
@@ -1349,7 +1349,7 @@ class IncrementalRecipeTests(unittest.TestCase):
             else:
                 report = perf._build_locked("fixture", paths, empty_overlay=empty_overlay, jobs=4,
                                             incremental=incremental, state={"configured": True},
-                                            route=route, jit=jit)
+                                            route=route, jit=jit, pystats=pystats)
                 self.assertEqual(report["compression_route"], route)
                 self.assertEqual(engines.call_count, int(route == "upstream"))
                 self.assertEqual(upstream_proof.call_count, int(route == "upstream"))
@@ -1405,6 +1405,16 @@ class IncrementalRecipeTests(unittest.TestCase):
         self.assertEqual(report["jit_stencils_sha256"], "stencil-digest")
         self.assertEqual(report["python_for_regen"], "3.12.3")
         self.assertIn("--enable-experimental-jit=yes", report["configure_arguments"])
+
+    def test_pystats_build_configures_and_records_statistics(self):
+        report = self.exercise(False, jit=True, pystats=True)
+        self.assertTrue(report["pystats"])
+        self.assertIn("--enable-pystats", report["configure_arguments"])
+
+    def test_default_build_has_no_pystats(self):
+        report = self.exercise(False, jit=True)
+        self.assertFalse(report["pystats"])
+        self.assertNotIn("--enable-pystats", report["configure_arguments"])
 
     def test_no_jit_build_records_disabled_jit(self):
         report = self.exercise(False)
@@ -2013,6 +2023,31 @@ class JitSelectionTests(unittest.TestCase):
                 with self.assertRaisesRegex(perf.LaneError, "JIT flag changed"):
                     perf.build(name="fixture", empty_overlay=False, incremental=True,
                                jit=requested)
+                built.assert_not_called()
+
+
+    def test_pystats_requires_jit(self):
+        with mock.patch.object(perf.lb, "doctor_report", return_value={"ok": True}):
+            with self.assertRaisesRegex(perf.LaneError, "requires --jit"):
+                perf.build(name="fixture", empty_overlay=False, pystats=True)
+
+    def test_incremental_refuses_a_pystats_flag_change(self):
+        for previous, requested in ((False, True), (True, False)):
+            with self.subTest(previous=previous), tempfile.TemporaryDirectory() as temp, \
+                    ExitStack() as patches:
+                report = Path(temp) / "report.json"
+                report.write_text(json.dumps({"configured": True, "pristine": False,
+                                              "jit": True, "pystats": previous}))
+                patches.enter_context(mock.patch.object(perf, "_paths",
+                                                        return_value={"report": report}))
+                patches.enter_context(mock.patch.object(perf.lb, "doctor_report",
+                                                        return_value={"ok": True}))
+                patches.enter_context(mock.patch.object(perf, "host_lease",
+                                                        return_value=nullcontext()))
+                built = patches.enter_context(mock.patch.object(perf, "_build_locked"))
+                with self.assertRaisesRegex(perf.LaneError, "pystats flag changed"):
+                    perf.build(name="fixture", empty_overlay=False, incremental=True,
+                               jit=True, pystats=requested)
                 built.assert_not_called()
 
 
