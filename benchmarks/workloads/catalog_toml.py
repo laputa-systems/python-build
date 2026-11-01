@@ -75,9 +75,9 @@ def catalog_document() -> str:
             f"modified = 2026-01-{1 + index % 28:02d}T{index % 24:02d}:{index % 60:02d}:00{zone}",
             f"due = 2026-{1 + index % 12:02d}-{1 + index % 28:02d}",
             f"labels = [\"Public\", \"Group-{index % 17}\", \"{'été' if index % 7 == 0 else 'stable'}\"]",
-            f"history = [{{ rev = {1 + index % 9}, by = \"{owners[index % 3]}\" }}, "
-            f"{{ rev = {2 + index % 9}, by = \"{owners[(index + 1) % 3]}\" }}]",
-            f"[entry.attributes]",
+            (f"history = [{{ rev = {1 + index % 9}, by = \"{owners[index % 3]}\" }}, "
+             f"{{ rev = {2 + index % 9}, by = \"{owners[(index + 1) % 3]}\" }}]"),
+            "[entry.attributes]",
             f'uri = "https://catalog.example/items/{index}?view=full&lang=ja"',
             f'owner = "{owners[index % 3]}"',
             f'mime = "{mimes[index % 3]}"',

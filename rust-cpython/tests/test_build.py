@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -228,10 +228,10 @@ class CargoLockTests(unittest.TestCase):
                     perf.lb._verify_cargo_lock(source)
 
     def test_assembled_lock_is_required(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            with mock.patch.object(perf.lb, "_read_lock", return_value=({}, None)), \
-                    self.assertRaisesRegex(perf.lb.LaneError, "no Cargo.lock"):
-                perf.lb._verify_cargo_lock(Path(temporary))
+        with tempfile.TemporaryDirectory() as temporary, \
+                mock.patch.object(perf.lb, "_read_lock", return_value=({}, None)), \
+                self.assertRaisesRegex(perf.lb.LaneError, "no Cargo.lock"):
+            perf.lb._verify_cargo_lock(Path(temporary))
 
 
 class MacOSDependencyProbeTests(unittest.TestCase):
