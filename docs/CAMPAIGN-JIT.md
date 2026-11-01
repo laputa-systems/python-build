@@ -2,23 +2,23 @@
 
 ## Status
 
-- **Goal:** in the `rust-cpython/` lane (CPython 3.16.0a1 plus the Rust
-  overlay), build JIT-enabled interpreters with the pinned LLVM. Measure them
-  against their JIT-off siblings and the Rust overlay. Rule on the hybrid
-  DynASM experiment, rank the hottest remaining execution costs, and land one
-  optimization with complete differential evidence. Production stays
-  unchanged.
-- **Scope:** every JIT build, measurement, and overlay change in this campaign
-  belongs to `rust-cpython/` on the pinned 3.16.0a1 source. The shipping 3.15.1
-  product build (`build.py`, `buildsys/`, `backend/`, `patches/`, and the
-  release matrix) is not a JIT target and keeps the JIT disabled. Do not port
-  JIT configuration, sources, or artifacts into the product.
-- **Base:** `main` at `96f4112`. Integration branch: `campaign/jit`, which
-  holds this doc.
-- **State:** winding down 2026-11-01.
-- **Accepted:** J0, J1, J2, J3.
-- **Red or parked:** none.
-- **Next:** J4 (Linux baseline matrix).
+- **Paused 2026-11-01.** Resume prompt: "Resume the rust-cpython JIT
+  campaign at J4; read docs/CAMPAIGN-JIT.md for scope, decisions, and
+  acceptance."
+- **First command** (the **Lane host** container, `TMPDIR=$PWD/.work/tmp`):
+  `python3 rust-cpython/perf.py status`. Expect `perf-upstream`,
+  `perf-rust`, and `perf-upstream-jit` built and `host lease: free`.
+- **Last accepted:** J0-J3 at `24d4943`; the docs-only freeze is `9153034`.
+  `campaign/jit` is green for those slices: 140 `test_perf.py` and 25
+  `test_build.py` tests pass, and J3's container `jit-stats` checks report
+  4 JIT code mappings / 268 KiB with `sys._jit` active on
+  `perf-upstream-jit` and 0 mappings on `@control`.
+- **Parked:** none. `main` is untouched at `96f4112`. Do not push;
+  `origin/campaign/jit` is at `24d4943`, behind this branch.
+- **Next slice:** J4, the Linux baseline matrix: build `perf-rust-jit`, run
+  both JIT full suites against their J0 sibling sets, then the four
+  `--jit-set --gate` comparisons. OD3 waives only the timing verdicts
+  until J9; digests, suites, and parity still decide.
 
 ## Charter
 
