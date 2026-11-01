@@ -112,7 +112,7 @@ def select_workloads(suite: str, profile: str, name: str | None, category: str |
             "multiprocess_pool",
         )]
     elif suite in {"realworld", "full"}:
-        selected = list(WORKLOADS)
+        selected = [w for w in WORKLOADS if w.name not in JIT_SET]
         if profile == "quick" and name is None and category is None:
             quick = {"django_wsgi_request", "django_orm_10k", "pycparser_source", "python_startup", "serialization_roundtrip"}
             selected = [w for w in selected if w.name in quick]
