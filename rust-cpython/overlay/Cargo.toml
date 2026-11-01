@@ -24,6 +24,7 @@ panic = "abort"
 
 [profile.release]
 panic = "abort"
+lto = "thin"
 
 # The TLS engine's vendored rustls and rustls-webpki carry the maintained
 # session-API and policy patches. Every workspace requirement resolves to
