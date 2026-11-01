@@ -900,6 +900,11 @@ def _copy_changed_overlay(paths: dict[str, Path], source: Path, changes: dict[st
     print(f"OK    incremental overlay sync: {len(changes['changed'])} changed file(s)")
 
 
+def _remove_tree(path: Path) -> None:
+    subprocess.run(["chmod", "-R", "u+rwx", str(path)], check=True)
+    shutil.rmtree(path)
+
+
 def _worker_count(jobs: int | None) -> int:
     return jobs if jobs is not None else max(1, (os.cpu_count() or 4) - 1)
 
@@ -1120,7 +1125,7 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
     if not incremental:
         for path in (paths["build"], paths["stage"]):
             if path.exists():
-                shutil.rmtree(path)
+                _remove_tree(path)
             path.mkdir(parents=True)
         if source_aggregate:
             std_metadata = _prepare_csv_source_std(paths, env)
@@ -1298,6 +1303,8 @@ def test(*, name: str, suites: list[str], all_suites: bool = False,
     log = lb.LOGS / f"{_tag(name)}-{label}.log"
     workers = jobs if jobs is not None else lb._test_jobs()
     with host_lease("test", f"test {_tag(name)} {label}"):
+        for stale in (paths["build"] / "build").glob("test_python_*"):
+            _remove_tree(stale)
         result = lb._run_python_test(
             [str(build_python), "-m", "test", "-j", str(workers), "--timeout=900", *suites],
             cwd=paths["build"], env=env, log=log,

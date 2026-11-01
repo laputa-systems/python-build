@@ -2051,6 +2051,44 @@ class JitSelectionTests(unittest.TestCase):
                 built.assert_not_called()
 
 
+class StaleTestDirectoryTests(unittest.TestCase):
+    def test_remove_tree_deletes_an_unreadable_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "test_python_11"
+            (root / "dirE").mkdir(parents=True)
+            (root / "dirE" / "file").write_text("x")
+            (root / "dirE").chmod(0)
+            perf._remove_tree(root)
+            self.assertFalse(root.exists())
+
+    def test_suite_run_clears_leftovers_of_a_crashed_run(self) -> None:
+        with tempfile.TemporaryDirectory() as temp, ExitStack() as patches:
+            build = Path(temp)
+            stale = build / "build" / "test_python_11"
+            (stale / "dirE").mkdir(parents=True)
+            (stale / "dirE").chmod(0)
+            seen = []
+            def run(*args, **kwargs):
+                seen.append(stale.exists())
+                return {"returncode": 0}
+            patches.enter_context(mock.patch.object(perf, "_paths", return_value={
+                "build": build, "report": build / "report.json"}))
+            patches.enter_context(mock.patch.object(perf, "_read_report",
+                                                    return_value={"status": "built"}))
+            patches.enter_context(mock.patch.object(perf, "COMPLETED", ("built",)))
+            patches.enter_context(mock.patch.object(perf, "_build_python",
+                                                    return_value=Path(__file__)))
+            patches.enter_context(mock.patch.object(perf.lb, "_toolchain",
+                                                    return_value=(mock.Mock(), mock.Mock())))
+            patches.enter_context(mock.patch.object(perf.lb, "_test_environment", return_value={}))
+            patches.enter_context(mock.patch.object(perf.lb, "_run_python_test", side_effect=run))
+            patches.enter_context(mock.patch.object(perf, "host_lease", return_value=nullcontext()))
+            patches.enter_context(mock.patch.object(perf, "_git_state", return_value={}))
+            patches.enter_context(mock.patch.object(perf, "_write_json"))
+            self.assertEqual(perf.test(name="fixture", suites=["test_pathlib"]), 0)
+            self.assertEqual(seen, [False])
+
+
 class JitStatsTests(unittest.TestCase):
     def test_anonymous_exec_mappings_exclude_file_backed_code(self) -> None:
         smaps = (
