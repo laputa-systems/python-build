@@ -836,6 +836,7 @@ def _fetch_cargo_dependencies(source: Path, toolchain) -> None:
     env["PATH"] = f"{CARGO_HOME / 'bin'}:{env['PATH']}"
     command = [
         str(CARGO_HOME / "bin" / "cargo"), "fetch", "--locked",
+        "-Z", "build-std=std", "-Z", "build-std-features=",
         "--manifest-path", str(source / "Cargo.toml"),
     ]
     cargo_lock = source / "Cargo.lock"

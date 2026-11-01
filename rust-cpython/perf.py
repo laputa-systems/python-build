@@ -1075,6 +1075,7 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
     if not empty_overlay:
         lb._require_command(
             [str(lb.CARGO_HOME / "bin" / "cargo"), "fetch", "--locked", "--offline",
+             "-Z", "build-std=std", "-Z", "build-std-features=",
              "--manifest-path", str(source / "Cargo.toml")],
             cwd=source, env=lb._environment(toolchain, offline=True, build_dir=paths["build"]),
             log=paths["cargo_log"],
@@ -1184,7 +1185,7 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
     report = {
         "status": "built",
         "configured": True,
-        "build_mode": "perf-no-pgo-no-lto",
+        "build_mode": "perf-no-pgo-thinlto",
         "compression_route": route,
         "compression_engine_environment": (
             state.get("previous", {}).get("compression_engine_environment") if incremental
@@ -1216,7 +1217,7 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
         "rust_builtin_artifacts": rust_builtins,
         "rust_source_aggregate": rust_source_aggregate,
         "pgo": False,
-        "lto": False,
+        "lto": "thin",
         "interpreter": lb._module_report(paths["stage"], python, toolchain,
                                          rust_base64=not empty_overlay),
         "build_interpreter": str(_build_python(paths["build"])),
