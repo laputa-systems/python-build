@@ -39,8 +39,9 @@ upstream `v3.16.0a1`. The 84 files the overlay had shadowed from the fork
 were reconciled against a1: of the 54 that differed, 47 merged without a
 conflict and seven were hand-resolved. On Linux x86-64 the a1 tree builds,
 `test_embed` passes, and the full suite reads 51,432 tests with 14 failures
-in the six known-red files recorded in the live campaign. macOS U7
-requalification and the sealed macOS build remain open.
+in the six known-red files recorded in the live campaign. On the sealed
+macOS arm64 build, `test --all` reads 51,561 tests with 4 failures in two
+files, `test_ssl` and `test_support`.
 
 ## Active commands
 

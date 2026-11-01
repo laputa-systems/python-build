@@ -177,8 +177,20 @@ Slices on `m1-scaffold` (never merged into `main`; the owner decides):
   (`test_bz2`, `test_lzma`, `test_plistlib`, `test_tempfile`,
   `test_strptime`, `test_difflib`, `test_marshal`, `test_io`,
   `test_importlib`, `test_faulthandler`, `test_py_compile`, `test_compile`,
-  `test_audit`) are green. macOS U7 requalification and the sealed macOS
-  build have not run.
+  `test_audit`) are green. macOS arm64 requalification 2026-10-31 on the
+  sealed debug build: `build.py test --all --jobs 4` reads run=51,561,
+  failures=4, skipped=2,821, 551/560 files and nine resource denials, with
+  two failed files: `test_ssl` (4 failures plus 6 errors, the accepted RTLS
+  policy gaps) and `test_support` (14 errors, hashlib shim). `test_embed`,
+  `test_unicodedata`, `test_heapq`, `test_zlib`, and both XML suites pass,
+  so the macOS known-red set drops from three files to two. The sealed
+  build (`build.py build`; source `22d79d9`, overlay `0e182071`, Cargo lock
+  `1cadb244`, LLVM 23.1.4, Xcode SDK 27.0) ran under `sandbox-exec` after
+  its live-listener network-denial self-test; that containment is weaker
+  than the Linux namespace boundary. A subinterpreter probe returns `None`
+  for `_bz2_rs`, `_marshal_rs`, `_zlib_rs`, and the touched C modules;
+  `_elementtree_rs` and `_ast_rs` remain single-phase modules and reject
+  subinterpreters exactly as they did on the pre-rebase `perf-rust` stage.
 
 Parked after M1: the integrated timing pass on Linux and the macOS re-gates
 for S5, S7, and the borderline rows; they are optional confirmations, not M1
@@ -301,12 +313,13 @@ Delegated (executor decides within the bound, records the call in Status):
 
 ## Baseline
 
-Known red on accepted main (macOS arm64, debug, `python3 rust-cpython/build.py
-test --all --jobs 4`, 50,158 run): `test_ssl` 4 failures plus 6 errors
-(RTLS policy gaps), `test_support` 14 errors (hashlib shim), and
-`test_unicodedata` 5 failures (fork test file predates Unicode 18). Seen
-intermittently: `test_audit` (parallel `.pyc` churn), `test_os`, and
-`test_mailbox`. Nine files are resource-denied: `test_curses`,
+Known red on the a1 tree (macOS arm64, debug, `python3 rust-cpython/build.py
+test --all --jobs 4`, 2026-10-31, run=51,561, failures=4, skipped=2,821,
+551/560 files): `test_ssl` 4 failures plus 6 errors (RTLS policy gaps) and
+`test_support` 14 errors (hashlib shim). `test_unicodedata` passes because
+a1's test file reads the loaded `unidata_version` instead of pinning
+Unicode 15.1. Seen intermittently: `test_audit` (parallel `.pyc` churn),
+`test_os`, and `test_mailbox`. Nine files are resource-denied: `test_curses`,
 `test_peg_generator`, `test_smtpnet`, `test_socketserver`,
 `test_urllib2net`, `test_urllibnet`, `test_winsound`, `test_xpickle`, and
 `test_zipfile64`.
@@ -514,8 +527,9 @@ Linux proof (done 2026-10-31 at the M1 head; see Status and Baseline):
 - The optimized `perf.py` harness now builds and measures on Linux
   (`9e0604a`); the S5/S7/borderline re-gates and the integrated memory-only
   gate are in Status.
-- U7 source rebase: the Linux x86-64 proof is done 2026-10-31 (see
-  Status); macOS requalification and the sealed macOS build remain open.
+- U7 source rebase: done on both hosts 2026-10-31. Linux x86-64 and the
+  sealed macOS arm64 build and suite are in Status; macOS known-red is
+  `test_ssl` and `test_support` only.
 
 Linux arm64 has no lane builder and is not claimed.
 
