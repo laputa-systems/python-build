@@ -221,6 +221,23 @@ bench `peak_rss` metric is sampled and noisy below 100 ms.
   carrier and import path are the next levers; a quiet confirmation run
   is owed.
 
+- Carrier split experiment, 2026-10-31 (`u7-carrier`, unmerged; owner
+  decides). Linking `_ssl_rs` as a shared extension instead of a static
+  carrier member cut `libpython` from 14.1 MB to 8.5 MB (`_ssl_rs.so` is
+  3.7 MB). Against `perf-u7-control` the same gate read REJECT on
+  `python_startup` peak RSS 1.043 [1.040,1.046] only (was 1.066);
+  startup CPU read 1.047 [0.978,1.110] inconclusive (was 1.135
+  regressed), the Django CPU rows read inconclusive, and the targets
+  improved: `catalog_request_path` wall 0.493, CPU 0.597, peak RSS
+  0.914; `catalog_search_form` 0.324, 0.370, 0.889;
+  `catalog_url_normalize` 0.775, 0.787, 0.915; `rust_base64_small`
+  0.399, 0.859, 0.917. `test_ssl` keeps the accepted 4 failures plus 6
+  errors, and 13 neighboring suites pass 4,835 run/384 skipped. The
+  remaining 2.7 MB of Rust text is `std` plus the two
+  startup-imported modules, so the startup RSS row stays above the
+  1 percent floor until startup paths drop Rust code or the carrier
+  loses `std`.
+
 M1 check (met 2026-10-31): S1-S7 landed or recorded (S6 a loss), overlay Rust
 lines 96,662 against 100,510, and three catalog workloads improved on an
 optimized build. The Linux x86-64 D1/D2 and U2/U8 proof at the M1 head now
