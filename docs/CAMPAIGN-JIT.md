@@ -2,23 +2,23 @@
 
 ## Status
 
-- **Paused 2026-11-01.** Resume prompt: "Resume the rust-cpython JIT
-  campaign at J4; read docs/CAMPAIGN-JIT.md for scope, decisions, and
-  acceptance."
-- **First command** (the **Lane host** container, `TMPDIR=$PWD/.work/tmp`):
-  `python3 rust-cpython/perf.py status`. Expect `perf-upstream`,
-  `perf-rust`, and `perf-upstream-jit` built and `host lease: free`.
-- **Last accepted:** J0-J3 at `24d4943`; the docs-only freeze is `9153034`.
-  `campaign/jit` is green for those slices: 140 `test_perf.py` and 25
-  `test_build.py` tests pass, and J3's container `jit-stats` checks report
-  4 JIT code mappings / 268 KiB with `sys._jit` active on
-  `perf-upstream-jit` and 0 mappings on `@control`.
-- **Parked:** none. `main` is untouched at `96f4112`. Do not push;
-  `origin/campaign/jit` is at `24d4943`, behind this branch.
-- **Next slice:** J4, the Linux baseline matrix: build `perf-rust-jit`, run
-  both JIT full suites against their J0 sibling sets, then the four
-  `--jit-set --gate` comparisons. OD3 waives only the timing verdicts
-  until J9; digests, suites, and parity still decide.
+- **Resume prompt:** "Resume the rust-cpython JIT campaign at J5; read
+  docs/CAMPAIGN-JIT.md for scope, decisions, and acceptance."
+- **Lane host** command: `.work/tmp/lane.sh <cmd>` wraps the `docker run` in
+  **Lane host** (recreate it from that section if `.work/` is gone).
+  Built: `perf-upstream`, `perf-rust`, `perf-upstream-jit`, `perf-rust-jit`.
+- **Last accepted:** J0-J4 on `campaign/jit`. J4 (M1): `perf-rust-jit` built
+  (621 s) and both JIT full suites ran. `perf-rust-jit` fails exactly
+  `perf-rust`'s set. `perf-upstream-jit` fails `perf-upstream`'s set plus
+  `test_socket`, a 15-minute hang in `RDSTest.testPeek` that also hangs the
+  no-JIT `perf-upstream` in a focused run (host RDS; known red, not the JIT).
+  All 16 kernel digests are equal across the four builds. `jit-stats --jit-set`
+  on both JIT builds: 2-6 maps and 24-2408 KiB per kernel, `sys._jit` active.
+  The four `--jit-set --gate` verdicts are not run: perf gate deferred by the
+  owner until feature completion (OD3, reaffirmed 2026-11-01).
+- **Parked:** none. `main` is untouched at `96f4112`. Do not push.
+- **Next slice:** J5 (hardening, pydebug JIT build) and J6 (hybrid spike) in
+  parallel, then J7.
 
 ## Charter
 
@@ -189,8 +189,9 @@ Measured 2026-11-01 at `96f4112` on this host: Alpine x86-64, 32 cores,
   run focused.
 - `perf-rust`: the same three plus `test_socket`, `test_ssl`, `test_support`
   (the lane's known red set).
-- `perf-upstream-jit`: no full-suite run before the pause; its pristine
-  sibling is the `perf-upstream` row.
+- `perf-upstream-jit` (J4): the `perf-upstream` set plus `test_socket`
+  (RDS `testPeek` hang, also on the no-JIT build). `perf-rust-jit` (J4):
+  the `perf-rust` set.
 
 **Known red.**
 

@@ -59,6 +59,14 @@ differently under calibration.
   tried, measure against the ThinLTO baseline.
 - The overlay import path adds a `marshal._loads_importlib_bytecode` call per
   pyc load and extra imports; this is visible on import-heavy Django rows.
+- JIT, Linux x86-64 (locked LLVM 23.1.2, GIL build). Both JIT builds fail
+  exactly their no-JIT siblings' full-suite sets, plus `test_socket`
+  `RDSTest.testPeek` hanging to the 15-minute timeout on `perf-upstream-jit`;
+  it hangs identically on the no-JIT `perf-upstream`, so the cause is the host
+  RDS socket, not the JIT. All 16 JIT-set kernel digests are identical across
+  the four builds. The JIT adds about 0.4 MB of `libpython` text on the
+  upstream build; every kernel maps 2-6 anonymous `r-x` regions after a hot
+  loop. Timing verdicts are deferred.
 - `_bz2_rs` once gave a codec a `&mut [u8]` over uninitialized `bytes`
   storage; the shared writer wrapper replaced it.
 
