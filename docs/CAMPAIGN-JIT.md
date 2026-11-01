@@ -2,9 +2,10 @@
 
 ## Status
 
-- **Closed 2026-11-01 on `campaign/jit`.** J0-J9 are done. Nothing is parked.
-  `main` is untouched at `96f4112`. Do not push. The remaining work is in
-  `docs/open-work.md`.
+- **Linux closed 2026-11-01 on `campaign/jit`.** J0-J9 are done. Only macOS
+  arm64 is parked, with its handoff in **Needs environment**. `main` is
+  untouched at `96f4112`. Do not push unless the owner asks. Other follow-ups
+  are in `docs/open-work.md`.
 - **Lane host** command: `.work/tmp/lane.sh <cmd>` wraps the `docker run` in
   **Lane host** (recreate it from that section). Builds kept: `perf-upstream`, `perf-rust`, `perf-upstream-jit`, `perf-rust-jit`,
   `perf-rust-jit-stats`.
@@ -670,10 +671,14 @@ else is serial.
 | D7. One accepted optimization | J8 accept | Gate ACCEPT vs `@incumbent-jit`, M2 parity, differential test green | REJECT, INCONCLUSIVE, or a parity change; parked with cause |
 | D8. Cost ranking | J7 accept | Ranked table with commands | Claims without a stats command |
 
-## Needs environment
+## Needs environment (macOS arm64 handoff)
 
-Run these on the macOS arm64 host (Xcode SDK; the `bootstrap.lock.json`
-LLVM 23.1.4) after J3 lands, from a checkout of `campaign/jit`:
+Everything that can run on Linux is done (J0-J9; verdicts in **Status**). What
+is left needs a macOS arm64 host with the Xcode SDK, from a checkout of
+`campaign/jit` (the lane's `bootstrap.lock.json` supplies LLVM 23.1.4). Nothing
+JIT has ever run on macOS, so expect the first build to be the finding.
+
+Order, stopping at the first failure and recording it in **Status**:
 
 ```sh
 python3 rust-cpython/build.py fetch && python3 rust-cpython/perf.py fetch
@@ -682,20 +687,46 @@ python3 rust-cpython/perf.py build --name perf-upstream-jit --empty-overlay --ji
 python3 rust-cpython/perf.py build --name perf-rust
 python3 rust-cpython/perf.py build --name perf-rust-jit --jit
 python3 rust-cpython/perf.py test --name perf-rust-jit --all
+python3 rust-cpython/perf.py test --name perf-rust --all
 python3 rust-cpython/perf.py bench --baseline @control --candidate perf-upstream-jit --jit-set --gate
 python3 rust-cpython/perf.py bench --baseline @incumbent --candidate perf-rust-jit --jit-set --gate
 python3 rust-cpython/perf.py profile --ref perf-rust-jit --workload nbody --tool sample
 ```
 
+Run each `--gate` bench only when `perf-gate-ready` exits 0 immediately before
+and `perf-gate-ready -1` immediately after (see **Timing evidence**). Builds
+are 7-13 minutes each; run them one at a time.
+
+What to decide and record:
+
 - **J1M:** the JIT build either works with LLVM 23.1.4 Mach-O stencils, or
   fails with a recorded stencil or relocation error. The Linux probe could
   not cover this. On failure, fix `Tools/jit` through the overlay (OD1) or
-  leave macOS JIT parked.
+  leave macOS JIT parked with the error text.
+- **Parity (PD8):** `perf-rust-jit` must fail exactly the failed-file set of
+  `perf-rust`, and every JIT-set kernel digest must equal across the four
+  builds on that host. Compare against the same host's no-JIT sibling, not
+  against the Linux results.
+- **Timing:** the Linux result to compare against is kernel wall geometric mean
+  0.81-0.82 with the JIT, RSS +2-9% and private +2-12%. Report the same table
+  for macOS. Use CPU time where the verdict carries it.
+- **Code residency (D3):** `vmmap` or `mach_vm_region` on a live process after
+  a hot loop, if either works unprivileged. Otherwise report "unavailable";
+  never estimate. Linux maps 2-6 anonymous `r-x` regions per kernel.
+- **Profiling:** `--tool sample` on `nbody`. Linux native sampling failed, so
+  the cost table (type guards 10.5%, `_SET_IP` 9.6%, `_CHECK_VALIDITY` 8.1%)
+  is uop share only; a macOS CPU profile would be the first real attribution.
 - **Executable memory:** unsigned lane builds need no entitlement. A
   hardened-runtime or packaged build would need
   `com.apple.security.cs.allow-jit` with `MAP_JIT`, or
   `allow-unsigned-executable-memory`, because `Python/jit.c` maps RW then
   `mprotect`s RX. That is a stage-6 packaging question and a non-goal here.
+
+Method notes for the Mac: the **Debugging methods** section above applies
+as written (build the JIT baseline separately, pure-Python repro, pydebug with
+`PYTHON_LLTRACE=2`). Production keeps the JIT disabled. The overlay's only
+JIT-related file is `Python/optimizer.c` (the `--pystats` abort fix); do not
+reintroduce the reverted register-cache allocator (D7).
 
 ## Execution boundary and non-goals
 
