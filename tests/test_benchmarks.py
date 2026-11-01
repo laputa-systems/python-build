@@ -57,6 +57,9 @@ class WorkloadRegistryTests(unittest.TestCase):
             for profile in ("quick", "standard", "rigorous"):
                 names = {w.name for w in select_workloads(suite, profile, None, None)}
                 self.assertFalse(names & set(JIT_SET), (suite, profile))
+        for suite in ("realworld", "full"):
+            self.assertEqual(
+                [w.name for w in select_workloads(suite, "standard", "nbody", None)], ["nbody"])
 
     def test_realworld_suite_covers_required_application_paths(self):
         from benchmarks.workloads.registry import JIT_SET
