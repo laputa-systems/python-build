@@ -192,9 +192,34 @@ Slices on `m1-scaffold` (never merged into `main`; the owner decides):
   `_elementtree_rs` and `_ast_rs` remain single-phase modules and reject
   subinterpreters exactly as they did on the pre-rebase `perf-rust` stage.
 
-Parked after M1: the integrated timing pass on Linux and the macOS re-gates
-for S5, S7, and the borderline rows; they are optional confirmations, not M1
-conditions. The bench `peak_rss` metric is sampled and noisy below 100 ms.
+Parked after M1: the integrated timing pass on Linux and the macOS S5 route
+re-gate; the macOS S7 and borderline rows were re-gated against a matched a1
+control (below). They are optional confirmations, not M1 conditions. The
+bench `peak_rss` metric is sampled and noisy below 100 ms.
+
+- macOS matched a1 gate, 2026-10-31. `perf-u7` (a1 `22d79d9` plus the
+  current overlay, 57 release Rust extensions) against `perf-u7-control`
+  (pristine a1), `bench --gate --runs 2` over the three S7 catalog rows,
+  `rust_base64_small`, and the seven guards. Both attempts ran while
+  another job held the host (`quiet=no`), so this is evidence, not an
+  acceptance. Targets improved in every run: `catalog_request_path` wall
+  0.503, CPU 0.614, peak RSS 0.924; `catalog_search_form` 0.338, 0.383,
+  0.907; `catalog_url_normalize` 0.793, 0.801, 0.941;
+  `rust_base64_small` 0.420, 0.846, 0.934. `gzip_extract_1m` and
+  `zlib_decode_1m` improved; `serialization_roundtrip` read inconclusive
+  on wall and CPU and improved on peak RSS. `python_startup` CPU 1.135
+  and peak RSS 1.066 and
+  `django_template_realistic` CPU 1.079 regressed in both attempts; the
+  second attempt also rejected `django_wsgi_request` CPU 1.141 and
+  `import_django` wall 1.087 and CPU 1.065. The matched control now
+  builds on a1 (`--empty-overlay` had assumed the fork's in-tree Cargo
+  workspace; repaired in `b6dac55` and `f39ccb3`). `libpython` carries
+  8.3 MB of static Rust text (14.1 MB against the control's 5.8 MB). A
+  Django profile shows the overlay's import path adding a
+  `marshal._loads_importlib_bytecode` call per pyc load (0.034 s over 478
+  loads against 0.025 s for `marshal.loads`) and 53 more imports. The
+  carrier and import path are the next levers; a quiet confirmation run
+  is owed.
 
 M1 check (met 2026-10-31): S1-S7 landed or recorded (S6 a loss), overlay Rust
 lines 96,662 against 100,510, and three catalog workloads improved on an
@@ -351,7 +376,10 @@ Findings that bind design (from the `d17607f` ledger):
   proportional to the 8 MB of Rust text. Trimming libpython's export list
   moved nothing (vmmap showed identical sections). Less code, LTO, or a
   smaller static carrier are the remaining levers, so consolidation is the
-  route to that debt.
+  route to that debt. The a1 control measurement puts the carrier at 8.3 MB
+  (libpython 14.1 MB against 5.8 MB) and adds a CPU row: startup CPU 1.135
+  and import-heavy Django CPU 1.065 to 1.141 against pristine a1, with the
+  overlay's marshal bytecode call and extra imports in the profile.
 - `no_std` variants cut extension load footprint (decimal 0.66-0.78x) but
   never replicated to an acceptance. A `cdylib` plus `rlib` crate without
   `std` needs its own global allocator and panic handler, which blocked
