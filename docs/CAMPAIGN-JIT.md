@@ -8,11 +8,16 @@
   DynASM experiment, rank the hottest remaining execution costs, and land one
   optimization with complete differential evidence. Production stays
   unchanged.
+- **Scope:** every JIT build, measurement, and overlay change in this campaign
+  belongs to `rust-cpython/` on the pinned 3.16.0a1 source. The shipping 3.15.1
+  product build (`build.py`, `buildsys/`, `backend/`, `patches/`, and the
+  release matrix) is not a JIT target and keeps the JIT disabled. Do not port
+  JIT configuration, sources, or artifacts into the product.
 - **Base:** `main` at `96f4112`. Integration branch: `campaign/jit`, which
   holds this doc.
-- **Accepted:** none.
+- **Accepted:** J2.
 - **Red or parked:** none.
-- **Next:** J0.
+- **Next:** J0 (finish the baseline builds and failed-file sets), then J1.
 
 ## Charter
 

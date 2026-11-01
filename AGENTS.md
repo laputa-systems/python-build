@@ -33,8 +33,10 @@ python3 build/uvmirror.py --tag <tag> --repo <owner/repo>
 - A sealed build must identify the enforced network boundary; macOS
   `sandbox-exec` containment is weaker than a Linux container and is reported
   as such.
-- PGO is deferred until the owner reopens it. JIT, BOLT, the free-threaded
-  ABI, and the tail-call interpreter stay disabled.
+- PGO is deferred until the owner reopens it. BOLT, the free-threaded ABI, and
+  the tail-call interpreter stay disabled. The experimental JIT is disabled in
+  production and opt-in only for `rust-cpython/` lane builds; JIT work never
+  changes the product build.
 - Lane crates pin exact versions in the overlay `Cargo.lock`, record their
   license, and add no production dependency or platform.
 - Never relax suite or benchmark thresholds to hit a score.
