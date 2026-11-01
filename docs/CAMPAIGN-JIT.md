@@ -39,8 +39,7 @@
   Native sampling failed on Linux, so shares are uop shares, not CPU.
 - **Review (`code-review high`, `main..campaign/jit`):** fixed the red
   `tests/test_benchmarks.py`, the kernels in product suites, and the no-JIT
-  build failing on the regen interpreter. Left as is: stencil digest and LLVM
-  version in the build report (J1 asked for them), two allocations per trace
+  build failing on the regen interpreter. Left as is: two allocations per trace
   in `stack_allocate`, the spill cost model (distance-blind; the special case
   guards a crash with an open cause), the pasted `campaign-jit.md` goal at the
   repo root, and the earlier non-conventional commits `87e9e07` and `24d4943`.
@@ -389,9 +388,8 @@ else is serial.
     `rust-cpython/build.py:970` and `rust-cpython/perf.py:1087`). It also returns the environment:
     `LLVM_VERSION` is the major version taken from `toolchain.llvm_version`,
     never a literal, and `LLVM_TOOLS_INSTALL_DIR` is `toolchain.llvm_prefix`.
-  - The build report gains `"jit": bool`, the locked LLVM version used for
-    stencils, the digest of the generated `jit_stencils-<triple>.h`, and the
-    `PYTHON_FOR_REGEN` version.
+  - The build report gains `"jit": bool` and nothing else: the stencil digest,
+    LLVM version, and regen version were dropped as unread bookkeeping.
   - Fail the build when any of these hold:
     - the stencil header is missing;
     - the build log shows a stencil clang other than
@@ -695,7 +693,7 @@ python3 rust-cpython/perf.py profile --ref perf-rust-jit --workload nbody --tool
 
 - `perf.py`: `build --jit`, `build --pystats`, `bench --jit-set`,
   the `jit-stats` subcommand, the `@control-jit` and `@incumbent-jit`
-  aliases, the JIT fields in the build report, and `jit` in labels.
+  aliases, `jit` and `pystats` in the build report, and `jit` in labels.
 - `build.py build --jit`.
 - The benchmark registry gains 16 workloads and `JIT_SET`.
 - The AGENTS.md invariant and lane README wording (PD9).

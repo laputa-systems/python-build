@@ -1184,7 +1184,7 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
     python = paths["stage"] / "bin" / "python3.16"
     if not python.is_file():
         raise LaneError(f"perf install did not produce {python}")
-    evidence = lb.jit_build_evidence(
+    lb.verify_jit_build(
         build_dir=paths["build"], python=python, env=env, toolchain=toolchain,
         target_triple=lb.TARGET, jit=jit,
         logs=(paths["build_log"], paths["install_log"]),
@@ -1247,11 +1247,8 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
         "configure_arguments": configure,
         "make_variables": list(MAKE_VARS),
         "cflags": env["CFLAGS"],
-        "jit": evidence.enabled,
+        "jit": jit,
         "pystats": pystats,
-        "jit_llvm_version": evidence.llvm_version,
-        "jit_stencils_sha256": evidence.stencils_sha256,
-        "python_for_regen": evidence.python_for_regen,
         "cargo_profile": None if empty_overlay else "release",
         "cargo_profile_selected_by": None if empty_overlay else
             "make command-line override on build and install "

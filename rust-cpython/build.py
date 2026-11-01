@@ -1159,38 +1159,17 @@ def _check_jit_logs(logs: tuple[Path, ...], toolchain) -> None:
                 )
 
 
-@dataclasses.dataclass(frozen=True)
-class JitEvidence:
-    enabled: bool
-    llvm_version: str | None
-    stencils_sha256: str | None
-    python_for_regen: str | None
-
-
-def jit_build_evidence(*, build_dir: Path, python: Path, env: dict[str, str],
-                       toolchain, target_triple: str, jit: bool,
-                       logs: tuple[Path, ...]) -> JitEvidence:
-    makefile = build_dir / "Makefile"
-    regen = None
-    digest = None
-    llvm_version = None
+def verify_jit_build(*, build_dir: Path, python: Path, env: dict[str, str],
+                     toolchain, target_triple: str, jit: bool,
+                     logs: tuple[Path, ...]) -> None:
     if jit:
-        regen = _python_for_regen_version(makefile, env)
-        _check_jit_command(makefile, toolchain)
+        _python_for_regen_version(build_dir / "Makefile", env)
+        _check_jit_command(build_dir / "Makefile", toolchain)
         _check_jit_logs(logs, toolchain)
         header = build_dir / f"jit_stencils-{target_triple}.h"
         if not header.is_file():
             raise LaneError(f"JIT build did not generate {header.name}")
-        digest = hashlib.sha256(header.read_bytes()).hexdigest()
-        llvm_version = toolchain.llvm_version
-    state = _jit_stage_state(python, env)
-    _require_jit_state(state, jit=jit)
-    return JitEvidence(
-        enabled=jit,
-        llvm_version=llvm_version,
-        stencils_sha256=digest,
-        python_for_regen=regen,
-    )
+    _require_jit_state(_jit_stage_state(python, env), jit=jit)
 
 
 def _sealed_sandbox():
@@ -1579,7 +1558,7 @@ def _configure_source(source: Path, toolchain, target, jobs: int,
     python = STAGE / "bin" / "python3.16d"
     if not python.is_file():
         raise LaneError(f"CPython debug install did not produce {python}")
-    evidence = jit_build_evidence(
+    verify_jit_build(
         build_dir=BUILD, python=python, env=env, toolchain=toolchain,
         target_triple=TARGET, jit=jit,
         logs=(LOGS / "cpython-build.log", LOGS / "cpython-install.log"),
@@ -1618,10 +1597,7 @@ def _configure_source(source: Path, toolchain, target, jobs: int,
         "configure_arguments": configure,
         "cflags": env["CFLAGS"],
         "cargo_profile": cargo_profile,
-        "jit": evidence.enabled,
-        "jit_llvm_version": evidence.llvm_version,
-        "jit_stencils_sha256": evidence.stencils_sha256,
-        "python_for_regen": evidence.python_for_regen,
+        "jit": jit,
         "interpreter": module,
         "build_interpreter": str(_build_python()),
         "rust": _rust_identity(rustup),

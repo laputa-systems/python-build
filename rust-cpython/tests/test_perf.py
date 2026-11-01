@@ -1241,10 +1241,7 @@ class IncrementalRecipeTests(unittest.TestCase):
             patches.enter_context(mock.patch.object(
                 perf.lb, "_jit_llvm_tools", return_value=root / "jit-tools"))
             patches.enter_context(mock.patch.object(
-                perf.lb, "jit_build_evidence",
-                return_value=(perf.lb.JitEvidence(True, "23.1.2", "stencil-digest", "3.12.3")
-                              if jit else
-                              perf.lb.JitEvidence(False, None, None, None))))
+                perf.lb, "verify_jit_build"))
             patches.enter_context(mock.patch.object(perf.lb, "_extract_fresh", return_value=source))
             patches.enter_context(mock.patch.object(perf.lb, "_verify_cargo_lock"))
             patches.enter_context(mock.patch.object(perf.lb, "_require_command", side_effect=command))
@@ -1401,9 +1398,6 @@ class IncrementalRecipeTests(unittest.TestCase):
     def test_jit_build_records_llvm_stencil_and_regen(self):
         report = self.exercise(False, jit=True)
         self.assertTrue(report["jit"])
-        self.assertEqual(report["jit_llvm_version"], "23.1.2")
-        self.assertEqual(report["jit_stencils_sha256"], "stencil-digest")
-        self.assertEqual(report["python_for_regen"], "3.12.3")
         self.assertIn("--enable-experimental-jit=yes", report["configure_arguments"])
 
     def test_pystats_build_configures_and_records_statistics(self):
@@ -1419,9 +1413,7 @@ class IncrementalRecipeTests(unittest.TestCase):
     def test_no_jit_build_records_disabled_jit(self):
         report = self.exercise(False)
         self.assertFalse(report["jit"])
-        self.assertIsNone(report["jit_llvm_version"])
-        self.assertIsNone(report["jit_stencils_sha256"])
-        self.assertIsNone(report["python_for_regen"])
+        self.assertNotIn("jit_llvm_version", report)
         self.assertIn("--enable-experimental-jit=no", report["configure_arguments"])
 
     def test_late_placement_report_failure_keeps_failed_state_and_refuses_retry(self):

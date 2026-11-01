@@ -93,11 +93,10 @@ class JitConfigurationTests(unittest.TestCase):
         makefile, _ = self.regen("3.9.6")
         with mock.patch.object(perf.lb, "_jit_stage_state", return_value={}), \
                 mock.patch.object(perf.lb, "_require_jit_state"):
-            evidence = perf.lb.jit_build_evidence(
+            perf.lb.verify_jit_build(
                 build_dir=makefile.parent, python=Path("python"), env={},
                 toolchain=self.toolchain, target_triple="x86_64-unknown-linux-gnu",
                 jit=False, logs=())
-        self.assertIsNone(evidence.python_for_regen)
 
     def test_stencil_clang_scan_ignores_other_clang_tools(self) -> None:
         found = perf.lb.stencil_clangs(
@@ -149,8 +148,7 @@ class JitConfigurationTests(unittest.TestCase):
             perf.lb._require_jit_state(
                 {"available": True, "enabled": False, "active": False}, jit=False)
 
-    def evidence(self, jit: bool, state: str,
-                 *, header: bool = True) -> tuple[perf.lb.JitEvidence, Path]:
+    def verify(self, jit: bool, state: str, *, header: bool = True) -> None:
         root = Path(self.enterContext(tempfile.TemporaryDirectory()))
         build_dir = root / "build"
         build_dir.mkdir()
@@ -168,10 +166,9 @@ class JitConfigurationTests(unittest.TestCase):
             (build_dir / "jit_stencils-x86_64-unknown-linux-gnu.h").write_bytes(b"stencils\n")
         log = root / "build.log"
         log.write_text("/opt/llvm/23.1.2/bin/clang -c fixture.c\n")
-        evidence = perf.lb.jit_build_evidence(
+        perf.lb.verify_jit_build(
             build_dir=build_dir, python=python, env={}, toolchain=self.toolchain,
             target_triple="x86_64-unknown-linux-gnu", jit=jit, logs=(log,))
-        return evidence, build_dir
 
     def test_missing_jit_tools_are_extracted_from_the_locked_archive(self) -> None:
         root = Path(self.enterContext(tempfile.TemporaryDirectory()))
@@ -205,29 +202,21 @@ class JitConfigurationTests(unittest.TestCase):
             with self.assertRaisesRegex(perf.lb.LaneError, "archive is missing"):
                 perf.lb._jit_llvm_tools(toolchain)
 
-    def test_evidence_records_the_stencil_digest_and_regen_version(self) -> None:
-        state = '{"available": true, "enabled": true, "active": true}'
-        evidence, build_dir = self.evidence(True, state)
-        self.assertTrue(evidence.enabled)
-        self.assertEqual(evidence.llvm_version, "23.1.2")
-        self.assertEqual(evidence.stencils_sha256, hashlib.sha256(b"stencils\n").hexdigest())
-        self.assertEqual(evidence.python_for_regen, "3.12.3")
-        disabled, _ = self.evidence(
-            False, '{"available": false, "enabled": false, "active": false}', header=False)
-        self.assertFalse(disabled.enabled)
-        self.assertIsNone(disabled.llvm_version)
-        self.assertIsNone(disabled.stencils_sha256)
+    def test_a_complete_jit_build_and_a_complete_no_jit_build_verify(self) -> None:
+        self.verify(True, '{"available": true, "enabled": true, "active": true}')
+        self.verify(False, '{"available": false, "enabled": false, "active": false}',
+                    header=False)
 
     def test_missing_stencil_header_fails_the_build(self) -> None:
         state = '{"available": true, "enabled": true, "active": true}'
         with self.assertRaisesRegex(perf.lb.LaneError, "did not generate"):
-            self.evidence(True, state, header=False)
+            self.verify(True, state, header=False)
 
     def test_inactive_jit_and_available_no_jit_fail_the_build(self) -> None:
         with self.assertRaisesRegex(perf.lb.LaneError, "did not become active"):
-            self.evidence(True, '{"available": true, "enabled": true, "active": false}')
+            self.verify(True, '{"available": true, "enabled": true, "active": false}')
         with self.assertRaisesRegex(perf.lb.LaneError, "no-JIT stage"):
-            self.evidence(False, '{"available": true, "enabled": false, "active": false}',
+            self.verify(False, '{"available": true, "enabled": false, "active": false}',
                           header=False)
 
 
