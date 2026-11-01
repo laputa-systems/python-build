@@ -15,11 +15,10 @@
   JIT configuration, sources, or artifacts into the product.
 - **Base:** `main` at `96f4112`. Integration branch: `campaign/jit`, which
   holds this doc.
-- **Accepted:** J0, J1, J2.
-- **Red or parked:** J3 parked on `lane/J3`; its implementation and unit tests
-  are green, but the container `jit-stats` acceptance commands were not run
-  before the winddown.
-- **Next:** resume J3, then J4.
+- **State:** winding down 2026-11-01.
+- **Accepted:** J0, J1, J2, J3.
+- **Red or parked:** none.
+- **Next:** J4 (Linux baseline matrix).
 
 ## Charter
 
@@ -176,17 +175,28 @@ and are never acceptance evidence.
 Measured 2026-11-01 at `96f4112` on this host: Alpine x86-64, 32 cores,
 60 GB RAM, 243 GB free disk, shared host load 25-37.
 
-**Lane state.** No perf builds exist (`rust-cpython/work/` is absent).
-`.cache` lacks the locked LLVM 23.1.2 archive, the CPython archive, and
-mpdecimal, so `build.py doctor` in the container lists only fetch-needed
-problems. The `perf-upstream` and `perf-rust` builds that `@control` and
-`@incumbent` resolve to must be built first (J0).
+**Lane state after J0.** `perf-upstream` (439 s) and `perf-rust` (670 s,
+58 release Rust extensions) are built and verified; `perf-upstream-jit`
+(J1, 474 s) adds the locked LLVM 23.1.2 JIT. `@control`, `@incumbent`,
+`@control-jit`, and `@incumbent-jit` resolve.
+
+**J0 failed-file sets** (container `rust-cpython-linux:20260401`, `-j 4`):
+
+- `perf-upstream`: `test.test_multiprocessing_fork.test_misc`,
+  `test.test_multiprocessing_forkserver.test_misc`,
+  `test.test_multiprocessing_spawn.test_misc`. The failing case is
+  `test_forkserver_requires_writeable_tempdir`; all three files pass when
+  run focused.
+- `perf-rust`: the same three plus `test_socket`, `test_ssl`, `test_support`
+  (the lane's known red set).
+- `perf-upstream-jit`: no full-suite run before the pause; its pristine
+  sibling is the `perf-upstream` row.
 
 **Known red.**
 
 - Lane full suite (ENGINEERING.md "Known red"): `test_ssl` and
   `test_support`. On Linux hosts, also `test_socket` RDS and multiprocessing
-  `TMPDIR` cases. J0 re-measures the exact set in the container.
+  `TMPDIR` cases, matching the J0 sets above.
 - `python3 -m unittest discover -s benchmarks/tests -t .` (host
   Python 3.15.1): 4 pre-existing failures.
   `test_baseline.BaselineSnapshotTests.test_pbs_preset_uses_native_macos_reference_and_product_artifact`,
@@ -195,7 +205,7 @@ problems. The `perf-upstream` and `perf-rust` builds that `@control` and
   `test_tooling.ToolingFixtureTests.test_python_corpus_is_checked_in_and_package_sized`.
   They are not this campaign's. Run new benchmark tests by module.
 - `python3 -m unittest discover -s rust-cpython/tests -p 'test_perf.py'`:
-  green, 136 tests, 7 skipped.
+  green, 140 tests.
 
 **Loop timings.**
 
