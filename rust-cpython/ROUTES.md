@@ -5,13 +5,12 @@ interpreter routes to Rust, the complete CPython suites that qualified it,
 and the coverage commit. The suites are the behavior contract: a change that
 consolidates, replaces, or deletes a route keeps every suite on its line
 green on a perf build, with baseline skips only. Counts are from the
-2026-10 coverage qualification on macOS arm64 (debug); later parity
-deviations are listed under Baseline in
-[`rust-for-cpython.md`](../rust-for-cpython.md).
+2026-10 coverage qualification on macOS arm64 (debug); the current
+known-red set is in [`ENGINEERING.md`](ENGINEERING.md).
 
 A route may move to a shared, upstream, or maintained implementation (for
 example CPython's `zlibmodule.c` over the zlib-rs engine) under rule 8 of
-the campaign contract. Update the line in the same commit.
+[`ENGINEERING.md`](ENGINEERING.md). Update the line in the same commit.
 
 ## Common application paths
 

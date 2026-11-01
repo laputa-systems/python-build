@@ -36,3 +36,21 @@ successful, complete probes for a match. Benchmarks use the shared harness
 only when explicitly requested. Reproduction is opt-in and compares two
 independent clean builds, including payload entry types, modes, symlink
 targets, content, archives, and normalized Mach-O identity.
+
+Two clean builds at the same path reproduce compiled content; the only
+differences are Mach-O UUIDs and ad-hoc signatures. Builds at different paths
+do not reproduce: the build directory is baked into sysconfigdata, pkg-config
+files, `python-config`, `config.c`, `build-details.json`, and some extension
+images. CI uses fixed run-directory names so equal-runner builds share a path;
+the builder path still ships in the archive until a separate path-mapping
+change removes it. The Linux x86-64 reproduction is open.
+
+A uv install rewrites install names, which invalidates an ad-hoc signature and
+kills the interpreter at launch. Images are signed linker-style so the result
+survives that rewrite. The qualifier checks the installed bytes for this.
+
+The final release additionally requires P1-P5 receipts, the Linux wave, a
+fresh three-platform qualification at the release revision, exact uv-installed
+archive checksums, source and tag identity, and no stale production claims.
+See [ci-and-releases.md](ci-and-releases.md) and
+[open-work.md](open-work.md).

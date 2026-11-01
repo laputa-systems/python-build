@@ -2,7 +2,7 @@
 
 **Historical research qualification:** This predates product adoption.
 Statements below that production was unchanged apply to that earlier
-checkout, not current main. See [plan.md](../plan.md).
+checkout, not current main. See [docs/open-work.md](../docs/open-work.md).
 
 ## Result
 

@@ -40,6 +40,11 @@ dependencies out of the production locks and bootstrap. Keep its source pin,
 per-architecture bootstrap lockfiles, and license record together when
 refreshing the prototype.
 
+Linux `_dbm` is the only consumer of Berkeley DB 6.0.19, whose Sleepycat
+license differs from later AGPL releases; `_dbm` stays. `buildsys/notices.py`
+installs the bundled notices plus `SOURCES.md` in each artifact, and the
+qualifier's `license_notices` check verifies them in the extracted archive.
+
 Ships: CPython 3.15.1, shared libpython, useful standard library, extension
 build metadata, and private static native dependencies.
 

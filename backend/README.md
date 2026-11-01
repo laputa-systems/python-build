@@ -3,7 +3,7 @@
 **Current release status (2026-10-29):** The OpenSSL-free backend is now
 the official product on all three platforms; the [2026-10-26 release workflow](https://github.com/laputa-systems/python-build/actions/runs/40330042202)
 passed. Older paragraphs below retain experimental chronology and may say
-adoption is pending. For current open guarantees use [plan.md](../plan.md),
+adoption is pending. For current open guarantees use [docs/open-work.md](../docs/open-work.md),
 not those historical status assertions.
 
 This is the official TLS and hashing backend: fully OpenSSL-free CPython
