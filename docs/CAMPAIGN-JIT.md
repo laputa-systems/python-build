@@ -15,9 +15,11 @@
   JIT configuration, sources, or artifacts into the product.
 - **Base:** `main` at `96f4112`. Integration branch: `campaign/jit`, which
   holds this doc.
-- **Accepted:** J2.
-- **Red or parked:** none.
-- **Next:** J0 (finish the baseline builds and failed-file sets), then J1.
+- **Accepted:** J0, J1, J2.
+- **Red or parked:** J3 parked on `lane/J3`; its implementation and unit tests
+  are green, but the container `jit-stats` acceptance commands were not run
+  before the winddown.
+- **Next:** resume J3, then J4.
 
 ## Charter
 

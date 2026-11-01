@@ -7,12 +7,13 @@ run no benchmarks, and never touch the real host lease.
 from __future__ import annotations
 
 import fcntl
+import io
 import json
 import os
 import sys
 import tempfile
 import unittest
-from contextlib import ExitStack, nullcontext
+from contextlib import ExitStack, nullcontext, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -2013,6 +2014,92 @@ class JitSelectionTests(unittest.TestCase):
                     perf.build(name="fixture", empty_overlay=False, incremental=True,
                                jit=requested)
                 built.assert_not_called()
+
+
+class JitStatsTests(unittest.TestCase):
+    def test_anonymous_exec_mappings_exclude_file_backed_code(self) -> None:
+        smaps = (
+            "00400000-00401000 r-xp 00000000 00:00 0\n"
+            "Size:                  4 kB\n"
+            "Rss:                   4 kB\n"
+            "7f0000000000-7f0000001000 r-xp 00000000 08:01 42 /usr/lib/libc.so\n"
+            "Size:                  4 kB\n"
+            "Rss:                   4 kB\n"
+            "7f1000000000-7f1000001000 r-xp 00000000 00:00 0 [anon:cpython:jit]\n"
+            "Size:                  4 kB\n"
+            "Rss:                   8 kB\n"
+            "7f2000000000-7f2000001000 rw-p 00000000 00:00 0\n"
+            "Size:                  4 kB\n"
+            "Rss:                   4 kB\n"
+        )
+        self.assertEqual(perf.parse_anonymous_exec(smaps),
+                         {"mappings": 2, "rss_kib": 12})
+
+    def test_libpython_sections_sum_text_and_data(self) -> None:
+        dump = (
+            "  [ 1] .text             PROGBITS        0000000000001000 001000 001234 00  AX  0   0 16\n"
+            "  [ 2] .rodata           PROGBITS        0000000000003000 003000 000456 00   A  0   0  8\n"
+            "  [ 3] .data             PROGBITS        0000000000004000 004000 000078 00  WA  0   0  8\n"
+            "  [ 4] .bss              NOBITS          0000000000005000 005000 000100 00  WA  0   0  8\n"
+        )
+        self.assertEqual(perf.parse_libpython_sections(dump), {
+            "text_bytes": 0x1234, "data_bytes": 0x178, "rodata_bytes": 0x456})
+
+    def test_jit_set_selection_adds_the_frozen_kernels(self) -> None:
+        from benchmarks.workloads.registry import JIT_SET
+        targets, workloads, modules = perf.selection(
+            workloads=[], modules=[], gate=False, jit_set=True)
+        self.assertEqual(targets, list(JIT_SET))
+        self.assertEqual(workloads, list(JIT_SET))
+        self.assertEqual(modules, [])
+        targets, workloads, _ = perf.selection(
+            workloads=["zlib_stream_4k"], modules=[], gate=True, jit_set=True)
+        self.assertEqual(targets, ["zlib_stream_4k", *JIT_SET])
+        self.assertEqual(workloads, ["zlib_stream_4k", *JIT_SET, *perf.GATE_WORKLOADS])
+
+    def test_jit_stats_requires_one_selector_and_a_jit_kernel(self) -> None:
+        with self.assertRaisesRegex(perf.LaneError, "exactly one"):
+            perf.jit_stats(ref="@control-jit", workload=None, jit_set=False)
+        with self.assertRaisesRegex(perf.LaneError, "not a JIT-set"):
+            perf.jit_stats(ref="@control-jit", workload="zlib_decode_1m", jit_set=False)
+
+    def test_jit_stats_renders_residency_sizes_and_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temp, ExitStack() as patches:
+            side = {"ref": "@control-jit", "name": "perf-upstream-jit",
+                    "stage": Path(temp), "python": Path("/python"),
+                    "report": {"target": "x86_64-unknown-linux-gnu"}}
+            patches.enter_context(mock.patch.object(perf, "resolve", return_value=side))
+            patches.enter_context(mock.patch.object(perf, "host_lease",
+                                                    return_value=nullcontext()))
+            patches.enter_context(mock.patch.object(perf, "_verify_stage"))
+            patches.enter_context(mock.patch.object(perf, "_libpython_sizes",
+                                                    return_value={"path": "/lib/libpython3.16.so",
+                                                                  "text_bytes": 1234,
+                                                                  "data_bytes": 56,
+                                                                  "rodata_bytes": 78}))
+            patches.enter_context(mock.patch.object(perf, "_jit_stats_probe", return_value={
+                "name": "nbody", "passes": [0.2, 0.1, 0.1], "warmup": 2.0,
+                "residency": {"mappings": 3, "rss_kib": 12}, "operation_count": 20000,
+                "jit": {"available": True, "enabled": True, "active": True}}))
+            patches.enter_context(mock.patch.object(perf, "LANE", Path(temp)))
+            patches.enter_context(mock.patch.object(
+                perf.lb, "_toolchain", return_value=(mock.Mock(), None)))
+            output = io.StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(perf.jit_stats(ref="@control-jit", workload="nbody",
+                                                jit_set=False), 0)
+            rendered = output.getvalue()
+            self.assertIn("nbody", rendered)
+            self.assertIn("rss_kib", rendered)
+            self.assertIn("available=true enabled=true active=true", rendered)
+            self.assertIn("text=1234 bytes data=56 bytes", rendered)
+
+    def test_bench_parser_forwards_jit_set(self) -> None:
+        with mock.patch.object(perf, "bench", return_value=0) as bench:
+            self.assertEqual(perf.main([
+                "bench", "--baseline", "@control", "--candidate", "@incumbent", "--jit-set",
+            ]), 0)
+        self.assertTrue(bench.call_args.kwargs["jit_set"])
 
 
 class SelectionTests(unittest.TestCase):

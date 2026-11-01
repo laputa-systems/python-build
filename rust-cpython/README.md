@@ -111,7 +111,8 @@ and `inputs.linux-cp316.lock.json`; the macOS harness uses the macOS lock.
 | `test --name N --suite test_X ...` or `--all` | Complete CPython suites on a perf build |
 | `cargo --name N -- <cargo args>` | Sync changed overlay files as `build --incremental` does, then run the pinned cargo in build `N`'s assembled source with the build's environment; exits with cargo's status |
 | `profile --ref R (--module M \| --workload W) --tool sample\|cprofile\|importtime` | Native stacks, Python call costs, or import time |
-| `bench --baseline R --candidate R [--module M] [--workload W] [--gate]` | Paired measurement with a coded verdict |
+| `bench --baseline R --candidate R [--module M] [--workload W] [--gate] [--jit-set]` | Paired measurement with a coded verdict |
+| `jit-stats --ref R (--workload W \| --jit-set)` | JIT residency, warmup ratio, libpython text/data size, and `sys._jit` state; diagnostic only |
 | `calibrate --ref R --gate` | Self-comparison; identical interpreters must not read different |
 | `goals [--candidate R] [--module M ...]` | Module rows against the control |
 | `setup-worktree` | Share verified caches from the primary checkout into a worktree |
@@ -119,7 +120,10 @@ and `inputs.linux-cp316.lock.json`; the macOS harness uses the macOS lock.
 
 `@control` is the primary checkout's `perf-upstream` and `@incumbent` its
 `perf-rust`; `@control-jit` and `@incumbent-jit` are their JIT builds. A bare
-name is a build in the current worktree. Builds, suites,
+name is a build in the current worktree. `jit-stats` reports anonymous
+executable mapping count and RSS from `/proc/<pid>/smaps` on Linux, the
+first-pass over median-pass CPU ratio in one process, and the installed
+libpython text/data sizes. It diagnoses only and never feeds a verdict. Builds, suites,
 and profiles share the host, while `bench` and `calibrate` hold it exclusively
 (`WAIT  host lease busy` is normal). A bench refuses a stage whose bytes
 changed since its build. `--gate` requires clean builds of committed overlays,

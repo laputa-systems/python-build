@@ -1394,12 +1394,12 @@ def module_routes() -> list[str]:
     return list(perf_modules.KERNELS)
 
 
-def selection(*, workloads: list[str], modules: list[str], gate: bool, all_workloads: bool = False,
-              all_modules: bool = False) -> tuple[list[str], list[str], list[str]]:
+def selection(*, workloads: list[str], modules: list[str], gate: bool, jit_set: bool = False,
+              all_workloads: bool = False, all_modules: bool = False) -> tuple[list[str], list[str], list[str]]:
     """Return (targets, evaluated workloads, evaluated modules)."""
-    from benchmarks.workloads.registry import BY_NAME
+    from benchmarks.workloads.registry import BY_NAME, JIT_SET
 
-    workloads = [*workloads, *(eligible_workloads() if all_workloads else ())]
+    workloads = [*workloads, *(JIT_SET if jit_set else ()), *(eligible_workloads() if all_workloads else ())]
     modules = [*modules, *(module_routes() if all_modules else ())]
     for name in workloads:
         if name not in BY_NAME:
@@ -1414,7 +1414,7 @@ def selection(*, workloads: list[str], modules: list[str], gate: bool, all_workl
     evaluated_workloads = list(dict.fromkeys([*workloads, *(GATE_WORKLOADS if gate else ())]))
     evaluated_modules = list(dict.fromkeys(modules))
     if not evaluated_workloads and not evaluated_modules:
-        raise LaneError("select --module M, --workload W (both repeatable), --gate, or --all-*")
+        raise LaneError("select --module M, --workload W (both repeatable), --gate, --jit-set, or --all-*")
     return targets or list(GATE_WORKLOADS), evaluated_workloads, evaluated_modules
 
 
@@ -1533,13 +1533,13 @@ def _measure(*, baseline_ref: str, candidate_ref: str, workloads: list[str], mod
              gate: bool, runs: int, profile: str, timing_only: bool, min_idle: float,
              self_compare: bool, record_baselines: bool, slug_prefix: str = "",
              memory_only: bool = False, matched_prefix: bool = False,
-             matched_executable: bool = False) -> dict[str, Any]:
+             matched_executable: bool = False, jit_set: bool = False) -> dict[str, Any]:
     if matched_prefix and not memory_only:
         raise LaneError("--matched-prefix requires --memory-only")
     if matched_executable and not matched_prefix:
         raise LaneError("--matched-executable requires --matched-prefix")
     targets, evaluated_workloads, evaluated_modules = selection(
-        workloads=workloads, modules=modules, gate=gate)
+        workloads=workloads, modules=modules, gate=gate, jit_set=jit_set)
     samples: list[dict[str, Any]] = []
     observations: dict[str, list[dict[str, Any]]] = {
         name: [] for name in [*evaluated_workloads, *evaluated_modules]}
@@ -1730,7 +1730,8 @@ def bench(*, baseline_ref: str, candidate_ref: str, workloads: list[str], gate: 
           runs: int | None, profile: str, timing_only: bool, min_idle: float,
           modules: list[str] | None = None, all_workloads: bool = False, all_modules: bool = False,
           record_baselines: bool = False, self_compare: bool = False, memory_only: bool = False,
-          matched_prefix: bool = False, matched_executable: bool = False) -> int:
+          matched_prefix: bool = False, matched_executable: bool = False,
+          jit_set: bool = False) -> int:
     runs = runs if runs is not None else (2 if gate or memory_only else 1)
     if runs < 1:
         raise LaneError("runs must be positive")
@@ -1746,7 +1747,7 @@ def bench(*, baseline_ref: str, candidate_ref: str, workloads: list[str], gate: 
                       modules=modules, gate=gate, runs=runs, profile=profile, timing_only=timing_only,
                       min_idle=min_idle, self_compare=self_compare, record_baselines=record_baselines,
                       memory_only=memory_only, matched_prefix=matched_prefix,
-                      matched_executable=matched_executable)
+                      matched_executable=matched_executable, jit_set=jit_set)
     print(perf_verdict.render(record["entities"], record["decision"], record["goals"] or None))
     print(f"LOG   {record['directory']}/verdict.json")
     return 0
@@ -1771,6 +1772,178 @@ def goals(*, candidate_ref: str, modules: list[str], runs: int, profile: str, mi
     if not memory_only and not record["decision"]["quiet"]:
         print("WARN  host was not quiet: statuses may carry host noise; rerun before recording")
     print(f"LOG   {record['directory']}/verdict.json")
+    return 0
+
+
+# ---------------------------------------------------------------- jit-stats
+
+
+def parse_anonymous_exec(smaps: str) -> dict[str, int]:
+    """Count anonymous executable mappings and their resident bytes."""
+    mappings = 0
+    rss_kib = 0
+    current = False
+    for line in smaps.splitlines():
+        fields = line.split()
+        if len(fields) >= 5 and "-" in fields[0] and re.fullmatch(
+                r"[r-][w-][x-][ps]", fields[1] or ""):
+            current = bool(
+                fields[1].startswith("r-x")
+                and (len(fields) == 5 or fields[5].startswith("[anon:"))
+            )
+            if current:
+                mappings += 1
+        elif fields[:1] == ["Rss:"] and current:
+            rss_kib += int(fields[1])
+    return {"mappings": mappings, "rss_kib": rss_kib}
+
+
+def parse_libpython_sections(dump: str) -> dict[str, int]:
+    """Sum .text, initialized+zero data, and read-only data section sizes."""
+    sizes: dict[str, int] = {}
+    pattern = re.compile(
+        r"^\s*\[\s*\d+\]\s+(?P<name>\S+)\s+\S+\s+[0-9a-fA-F]+\s+[0-9a-fA-F]+\s+"
+        r"(?P<size>[0-9a-fA-F]+)\s"
+    )
+    for line in dump.splitlines():
+        match = pattern.match(line)
+        if match:
+            sizes[match["name"]] = int(match["size"], 16)
+    return {
+        "text_bytes": sizes.get(".text", 0),
+        "data_bytes": sizes.get(".data", 0) + sizes.get(".bss", 0),
+        "rodata_bytes": sizes.get(".rodata", 0),
+    }
+
+
+_JIT_STATS_PROBE = """
+import json, statistics, sys, time
+sys.path.insert(0, "rust-cpython")
+import perf
+from benchmarks.workloads import jit_kernels
+
+name = sys.argv[1]
+passes = []
+operation_count = 0
+for _ in range(5):
+    started = time.process_time()
+    result = jit_kernels.run(name)
+    passes.append(time.process_time() - started)
+    operation_count = result["operation_count"]
+try:
+    residency = perf.parse_anonymous_exec(
+        open("/proc/self/smaps", encoding="ascii", errors="replace").read())
+except OSError:
+    residency = {"status": "unavailable"}
+
+def hot(n):
+    total = 0
+    for i in range(n):
+        total += (i * 3) % 11
+        if sys._jit.is_active():
+            return True
+    return False
+
+active = hot(200_000)
+median = statistics.median(passes[2:]) if passes[2:] else 0
+print(json.dumps({
+    "name": name,
+    "passes": passes,
+    "warmup": passes[0] / median if median else None,
+    "residency": residency,
+    "operation_count": operation_count,
+    "jit": {"available": sys._jit.is_available(),
+            "enabled": sys._jit.is_enabled(),
+            "active": active},
+}))
+"""
+
+
+def _jit_stats_probe(python: Path, name: str, env: dict[str, str],
+                     scratch: Path) -> dict[str, Any]:
+    probe_env = dict(env)
+    probe_env["TMPDIR"] = str(scratch)
+    result = subprocess.run(
+        [str(python), "-S", "-c", _JIT_STATS_PROBE, name],
+        cwd=REPO, env=probe_env, capture_output=True, text=True, timeout=1800,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise LaneError(
+            f"jit-stats probe for {name} failed: "
+            f"{(result.stderr or result.stdout).strip()[-2000:]}"
+        )
+    try:
+        return json.loads(result.stdout.strip().splitlines()[-1])
+    except (IndexError, json.JSONDecodeError) as error:
+        raise LaneError(f"cannot parse jit-stats probe for {name}: {result.stdout!r}") from error
+
+
+def _libpython_sizes(side: dict[str, Any], toolchain) -> dict[str, Any]:
+    if not lb.IS_LINUX:
+        return {"status": "unavailable"}
+    candidates = [
+        path for path in (side["stage"] / "lib").glob("libpython3.16.so*")
+        if path.is_file() and not path.is_symlink()
+    ]
+    if not candidates:
+        raise LaneError(f"{side['ref']}: installed libpython is missing")
+    library = max(candidates, key=lambda path: path.stat().st_size)
+    result = subprocess.run(
+        [str(toolchain.llvm_prefix / "bin" / "llvm-readelf"), "-S", "--wide", str(library)],
+        env=lb._environment(toolchain, offline=True), capture_output=True, text=True,
+        timeout=120, check=False,
+    )
+    if result.returncode != 0:
+        raise LaneError(
+            f"cannot read {library.name} sections: "
+            f"{(result.stderr or result.stdout).strip()[-1000:]}"
+        )
+    return {"path": str(library), **parse_libpython_sections(result.stdout)}
+
+
+def jit_stats(*, ref: str, workload: str | None, jit_set: bool) -> int:
+    """Report JIT code residency, in-process warmup, sizes, and sys._jit state."""
+    from benchmarks.harness.runner import workload_environment
+    from benchmarks.workloads.registry import JIT_SET
+
+    if (workload is None) == (not jit_set):
+        raise LaneError("select exactly one of --workload or --jit-set")
+    if workload is not None and workload not in JIT_SET:
+        raise LaneError(f"{workload!r} is not a JIT-set kernel; see JIT_SET")
+    names = [workload] if workload is not None else list(JIT_SET)
+    side = resolve(ref)
+    toolchain, _target = lb._toolchain()
+    with host_lease("measure", f"jit-stats {ref}"):
+        _verify_stage(side)
+        sizes = _libpython_sizes(side, toolchain)
+        env = workload_environment(None)
+        scratch = LANE / "work" / "tmp" / "jit-stats"
+        scratch.mkdir(parents=True, exist_ok=True)
+        rows = [_jit_stats_probe(side["python"], name, env, scratch) for name in names]
+        _verify_stage(side)
+
+    print(f"REF   {ref} -> {side['name']}")
+    if "text_bytes" in sizes:
+        print(f"LIB   {sizes['path']} text={sizes['text_bytes']} bytes "
+              f"data={sizes['data_bytes']} bytes rodata={sizes['rodata_bytes']} bytes")
+    else:
+        print(f"LIB   unavailable for {side['report'].get('target', 'this target')}")
+    print(f"{'workload':<30} {'maps':>5} {'rss_kib':>8} {'warmup':>7} {'ops':>10}  jit")
+    for row in rows:
+        residency = row["residency"]
+        if "mappings" in residency:
+            maps = str(residency["mappings"])
+            rss = str(residency["rss_kib"])
+        else:
+            maps = rss = "unavailable"
+        warmup = "n/a" if row["warmup"] is None else f"{row['warmup']:.2f}"
+        jit = row["jit"]
+        state = " ".join(
+            f"{key}={str(jit[key]).lower()}" for key in ("available", "enabled", "active")
+        )
+        print(f"{row['name']:<30} {maps:>5} {rss:>8} {warmup:>7} "
+              f"{row['operation_count']:>10}  {state}")
     return 0
 
 
@@ -2054,6 +2227,8 @@ def main(argv: list[str] | None = None) -> int:
                          help="evaluate every workload with locked 3.16 inputs")
         sub.add_argument("--gate", action="store_true",
                          help="acceptance mode: clean committed builds, gate workloads as guards, 2 runs")
+        sub.add_argument("--jit-set", action="store_true",
+                         help="evaluate the 16 predeclared JIT kernels")
         sub.add_argument("--runs", type=int, help="independent runs (default 2 with --gate, else 1)")
         sub.add_argument("--profile", choices=("quick", "standard", "rigorous"), default="standard")
         sub.add_argument("--memory-only", action="store_true",
@@ -2079,6 +2254,13 @@ def main(argv: list[str] | None = None) -> int:
                               help="with --matched-prefix: also match executable launch-path lengths")
     goals_parser.add_argument("--min-idle", type=float, default=DEFAULT_MIN_IDLE)
     commands.add_parser("modules", help="list module kernel routes")
+    stats_parser = commands.add_parser(
+        "jit-stats", help="report JIT code residency, warmup, sizes, and sys._jit state")
+    stats_parser.add_argument("--ref", required=True,
+                              help="@control, @control-jit, or a local build name")
+    stats_group = stats_parser.add_mutually_exclusive_group(required=True)
+    stats_group.add_argument("--workload", metavar="NAME", help="one JIT-set kernel")
+    stats_group.add_argument("--jit-set", action="store_true", help="all 16 JIT-set kernels")
     profile_parser = commands.add_parser("profile", help="profile one workload or module kernel on one build")
     profile_parser.add_argument("--ref", required=True, help="@control, @incumbent, or a local build name")
     profile_parser.add_argument("--workload", help="application workload")
@@ -2117,14 +2299,16 @@ def main(argv: list[str] | None = None) -> int:
                          min_idle=args.min_idle, modules=args.module,
                          all_workloads=args.all_workloads, all_modules=args.all_modules,
                          record_baselines=args.record_baselines, memory_only=args.memory_only,
-                         matched_prefix=args.matched_prefix, matched_executable=args.matched_executable)
+                         matched_prefix=args.matched_prefix, matched_executable=args.matched_executable,
+                         jit_set=args.jit_set)
         if args.command == "calibrate":
             return bench(baseline_ref=args.ref, candidate_ref=args.ref, workloads=args.workload,
                          gate=args.gate, runs=args.runs, profile=args.profile,
                          timing_only=args.timing_only, min_idle=args.min_idle, modules=args.module,
                          all_workloads=args.all_workloads, all_modules=args.all_modules,
                          self_compare=True, memory_only=args.memory_only,
-                         matched_prefix=args.matched_prefix, matched_executable=args.matched_executable)
+                         matched_prefix=args.matched_prefix, matched_executable=args.matched_executable,
+                         jit_set=args.jit_set)
         if args.command == "goals":
             return goals(candidate_ref=args.candidate, modules=args.module, runs=args.runs,
                          profile=args.profile, min_idle=args.min_idle, memory_only=args.memory_only,
@@ -2132,6 +2316,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "modules":
             print("\n".join(module_routes()))
             return 0
+        if args.command == "jit-stats":
+            return jit_stats(ref=args.ref, workload=args.workload, jit_set=args.jit_set)
         if args.command == "profile":
             return profile(ref=args.ref, workload=args.workload, module=args.module, tool=args.tool,
                            iterations=args.iterations, seconds=args.seconds)
