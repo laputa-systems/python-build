@@ -1228,11 +1228,12 @@ class IncrementalRecipeTests(unittest.TestCase):
                 patches.enter_context(mock.patch.object(perf, name, value))
             for name, value in {
                 "_toolchain": (toolchain, "fixture"), "_environment": {},
-                "_sealed_sandbox": sandbox, "_workspace_members": members,
-                "_read_lock": ({"commit": "source"}, mock.Mock(sha256="source hash")),
+                "_sealed_sandbox": sandbox, "_read_lock": ({"commit": "source"}, mock.Mock(sha256="source hash")),
                 "_module_report": {"version": "fixture"}, "_rust_identity": {"fixture": True},
             }.items():
                 patches.enter_context(mock.patch.object(perf.lb, name, return_value=value))
+            workspace_members = patches.enter_context(
+                mock.patch.object(perf.lb, "_workspace_members", return_value=members))
             patches.enter_context(mock.patch.object(perf.lb, "_llvm_ready"))
             patches.enter_context(mock.patch.object(perf.lb, "_extract_fresh", return_value=source))
             patches.enter_context(mock.patch.object(perf.lb, "_verify_cargo_lock"))
@@ -1350,7 +1351,10 @@ class IncrementalRecipeTests(unittest.TestCase):
                 else:
                     self.assertIsNone(report["compression_engine_environment"])
                     self.assertFalse(any("ZLIB_LIBS" in environment for environment in configure_environments))
-                self.assertEqual(len(report["rust_extensions_sha256"]), 58)
+                self.assertEqual(report["rust_extensions_sha256"],
+                                 {} if empty_overlay else {str(i): "hash" for i in range(58)})
+                self.assertEqual(report["cargo_lock_sha256"], None if empty_overlay else
+                                 perf._sha256_file(source / "Cargo.lock"))
                 self.assertEqual(report["rust_builtin_artifacts"], {} if empty_overlay else {"fixture": "verified"})
                 self.assertEqual(report["stage_identity"], perf.tree_digest(paths["stage"]))
                 self.assertEqual(report["incremental"], incremental)
@@ -1359,10 +1363,18 @@ class IncrementalRecipeTests(unittest.TestCase):
                 self.assertEqual(proof.validate_builtin_source.call_count,
                              int(not empty_overlay and not linux))
                 self.assertEqual(proof.verify_builtin_artifacts.call_count, int(not empty_overlay))
-                extensions.assert_called_once()
-                checks.assert_called_once_with(paths["install_log"] if single_install else paths["build_log"],
-                                               paths["install_log"])
-            if not incremental and not bad_install and not failed_install:
+                if empty_overlay:
+                    extensions.assert_not_called()
+                    checks.assert_not_called()
+                    workspace_members.assert_not_called()
+                    compiled.assert_not_called()
+                    self.assertFalse(any("fetch" in argv for argv in commands))
+                else:
+                    extensions.assert_called_once()
+                    checks.assert_called_once_with(
+                        paths["install_log"] if single_install else paths["build_log"],
+                        paths["install_log"])
+            if not incremental and not bad_install and not failed_install and not empty_overlay:
                 compiled.assert_called_once_with(paths["install_log"] if single_install else paths["build_log"], members)
             self.assertEqual(len(preparations), int(source_std and aggregate and not empty_overlay))
             make = [argv for argv in commands if argv[0] == "/make"]

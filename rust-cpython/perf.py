@@ -1071,12 +1071,13 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
             proof.validate_builtin_source(source, lb.TARGET, object_stores)
         except proof.BuiltinArtifactError as error:
             raise LaneError(f"built-in Rust source preflight failed: {error}") from error
-    lb._require_command(
-        [str(lb.CARGO_HOME / "bin" / "cargo"), "fetch", "--locked", "--offline",
-         "--manifest-path", str(source / "Cargo.toml")],
-        cwd=source, env=lb._environment(toolchain, offline=True, build_dir=paths["build"]),
-        log=paths["cargo_log"],
-    )
+    if not empty_overlay:
+        lb._require_command(
+            [str(lb.CARGO_HOME / "bin" / "cargo"), "fetch", "--locked", "--offline",
+             "--manifest-path", str(source / "Cargo.toml")],
+            cwd=source, env=lb._environment(toolchain, offline=True, build_dir=paths["build"]),
+            log=paths["cargo_log"],
+        )
     workers = _worker_count(jobs)
     sandbox = lb._sealed_sandbox()
     env = _build_environment(toolchain, target, paths, workers=workers, sandbox=sandbox)
@@ -1140,39 +1141,44 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
                             env=env, log=paths["build_log"], sealed=sandbox)
         lb._require_command([str(toolchain.make), "install", *MAKE_VARS], cwd=paths["build"],
                             env=env, log=paths["install_log"], sealed=sandbox)
-        _check_logs(paths["build_log"], paths["install_log"])
+        if not empty_overlay:
+            _check_logs(paths["build_log"], paths["install_log"])
     if placement:
         verify_c_placement_compilation(paths['install_log'], placement, placement_modes)
         _verify_c_placement_rules(paths['build'], placement, placement_modes)
     python = paths["stage"] / "bin" / "python3.16"
     if not python.is_file():
         raise LaneError(f"perf install did not produce {python}")
-    cargo_default = lb._make_value(paths["build"] / "Makefile", "CARGO_PROFILE")
-    if cargo_default != "dev":
-        raise LaneError(f"unexpected configured Cargo default {cargo_default!r}; expected 'dev'")
-    members = set(lb._workspace_members(source, env))
-    required = {"_base64", "cpython-sys"} | (set() if empty_overlay else _overlay_members(route))
-    if not required <= members:
-        raise LaneError("perf workspace is missing members: "
-                        + ", ".join(sorted(required - members)))
-    if not incremental:
-        compile_log = paths["install_log"] if std_metadata is not None else paths["build_log"]
-        missing = required - set(_built_members(compile_log, members))
-        if missing:
-            raise LaneError("perf build did not compile Rust members: " + ", ".join(sorted(missing)))
-    rust_source_aggregate = (_install_source_aggregate(source, paths, std_metadata)
-                       if std_metadata is not None else None)
-    rust_extensions = verify_release_artifacts(paths["build"], paths["stage"], members)
-    if route == "upstream":
-        verify_upstream_compression(paths["stage"], toolchain)
-    rust_builtins = {}
+    members: set[str] = set()
+    rust_extensions: dict[str, str] = {}
+    rust_builtins: dict[str, str] = {}
+    rust_source_aggregate = None
     if not empty_overlay:
+        cargo_default = lb._make_value(paths["build"] / "Makefile", "CARGO_PROFILE")
+        if cargo_default != "dev":
+            raise LaneError(f"unexpected configured Cargo default {cargo_default!r}; expected 'dev'")
+        members = set(lb._workspace_members(source, env))
+        required = {"_base64", "cpython-sys"} | _overlay_members(route)
+        if not required <= members:
+            raise LaneError("perf workspace is missing members: "
+                            + ", ".join(sorted(required - members)))
+        if not incremental:
+            compile_log = paths["install_log"] if std_metadata is not None else paths["build_log"]
+            missing = required - set(_built_members(compile_log, members))
+            if missing:
+                raise LaneError("perf build did not compile Rust members: "
+                                + ", ".join(sorted(missing)))
+        rust_source_aggregate = (_install_source_aggregate(source, paths, std_metadata)
+                                 if std_metadata is not None else None)
+        rust_extensions = verify_release_artifacts(paths["build"], paths["stage"], members)
         proof, object_stores = _builtin_artifact_verifier()
         try:
             rust_builtins = proof.verify_builtin_artifacts(
                 source, paths["build"], paths["stage"], lb.TARGET, object_stores)
         except proof.BuiltinArtifactError as error:
             raise LaneError(f"built-in Rust artifact proof failed: {error}") from error
+    if route == "upstream":
+        verify_upstream_compression(paths["stage"], toolchain)
     metadata, source_input = lb._read_lock()
     report = {
         "status": "built",
@@ -1196,12 +1202,14 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
         "source_commit": metadata["commit"],
         "source_archive_sha256": source_input.sha256,
         "overlay": overlay,
-        "cargo_lock_sha256": hashlib.sha256((source / "Cargo.lock").read_bytes()).hexdigest(),
+        "cargo_lock_sha256": (hashlib.sha256((source / "Cargo.lock").read_bytes()).hexdigest()
+                              if not empty_overlay else None),
         "configure_arguments": configure,
         "make_variables": list(MAKE_VARS),
         "cflags": env["CFLAGS"],
-        "cargo_profile": "release",
-        "cargo_profile_selected_by": "make command-line override on build and install "
+        "cargo_profile": None if empty_overlay else "release",
+        "cargo_profile_selected_by": None if empty_overlay else
+            "make command-line override on build and install "
             "(configure defaults to dev without its PGO flag)",
         "rust_extensions_sha256": rust_extensions,
         "rust_builtin_artifacts": rust_builtins,
@@ -1297,7 +1305,8 @@ def resolve(ref: str) -> dict[str, Any]:
     report = _read_report(paths["report"])
     if report.get("status") not in COMPLETED:
         raise LaneError(f"{ref}: build report is not a completed build ({report.get('status')})")
-    if report.get("cargo_profile") != "release" or "stage_identity" not in report:
+    if (not report.get("pristine") and report.get("cargo_profile") != "release") \
+            or "stage_identity" not in report:
         raise LaneError(f"{ref}: build predates release-profile verification; rebuild it")
     python = paths["stage"] / "bin" / "python3.16"
     if not python.is_file():
