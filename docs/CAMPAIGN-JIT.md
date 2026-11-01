@@ -102,6 +102,13 @@ and are never acceptance evidence.
   Production keeps JIT, PGO, BOLT, tail-call, and free-threading disabled.
   The goal's stages 4-6 are non-goals here: a speculative or optimizing tier,
   escape analysis, and a JIT-enabled distribution.
+- **OD3, 2026-11-01: perf gates are waived until feature completion.** The
+  shared host is noisy, so J4's four `--gate` verdicts and J8's ACCEPT gate do
+  not block acceptance while the campaign lands features. Record each waived
+  run with its exact command and `waived: owner OD3`; keep the digest, suite,
+  parity, and differential evidence. This waives only the timing verdict, not
+  suite parity, digests, or the J8 differential test. Reopen the gates at J9
+  if the owner asks.
 
 ### Prescribed (the owner may overrule)
 
