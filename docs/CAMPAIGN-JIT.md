@@ -2,10 +2,9 @@
 
 ## Status
 
-- **Linux closed 2026-11-01 on `campaign/jit`.** J0-J9 are done. Only macOS
-  arm64 is parked, with its handoff in **Needs environment**. `main` is
-  untouched at `96f4112`. Do not push unless the owner asks. Other follow-ups
-  are in `docs/open-work.md`.
+- **Linux and macOS arm64 research closed 2026-11-01 on `campaign/jit`.**
+  J0-J9 and the macOS handoff are done. `main` is untouched at `96f4112`.
+  Do not push unless the owner asks. Other follow-ups are in `docs/open-work.md`.
 - **Lane host** command: `.work/tmp/lane.sh <cmd>` wraps the `docker run` in
   **Lane host** (recreate it from that section). Builds kept: `perf-upstream`, `perf-rust`, `perf-upstream-jit`, `perf-rust-jit`,
   `perf-rust-jit-stats`.
@@ -13,8 +12,8 @@
   LLVM 23.1.2 clang, activation checked).
 - **D2 kernel set:** met (J2; 16 kernels, wheel digest checked). Review found
   they were also selected by the `realworld` and `full` product suites; fixed.
-- **D3 metrics:** met on Linux (J3). macOS residency is on **Needs
-  environment**.
+- **D3 metrics:** Linux J3 and the macOS live mapping probe are complete.
+  The macOS results and limits are in **macOS arm64 results**.
 - **D4 Linux baseline matrix:** failed-file sets equal their siblings' (the
   RDS `testPeek` hang also hangs the no-JIT build), all 16 kernel digests equal
   across five builds. The four `--jit-set --gate` verdicts ran on 2026-11-01 on
@@ -243,8 +242,7 @@ Learned in J5-J8. Use them before inventing new ones.
 ### Prescribed (the owner may overrule)
 
 - **PD1: execution host.** Linux x86-64 runs here, in the container above.
-  macOS arm64 proof goes on **Needs environment**. Reverse it if the
-  executor runs on the Mac; the macOS items then become local slices.
+  macOS arm64 proof runs locally on a Mac and is otherwise parked.
 - **PD2: JIT mode.** `--enable-experimental-jit=yes` (on by default). Pairs
   differ by build, not by `PYTHON_JIT`: a JIT build and a no-JIT build from
   the same overlay commit. `PYTHON_JIT=0` runs are diagnostics only.
@@ -671,62 +669,49 @@ else is serial.
 | D7. One accepted optimization | J8 accept | Gate ACCEPT vs `@incumbent-jit`, M2 parity, differential test green | REJECT, INCONCLUSIVE, or a parity change; parked with cause |
 | D8. Cost ranking | J7 accept | Ranked table with commands | Claims without a stats command |
 
-## Needs environment (macOS arm64 handoff)
+## macOS arm64 results
 
-Everything that can run on Linux is done (J0-J9; verdicts in **Status**). What
-is left needs a macOS arm64 host with the Xcode SDK, from a checkout of
-`campaign/jit` (the lane's `bootstrap.lock.json` supplies LLVM 23.1.4). Nothing
-JIT has ever run on macOS, so expect the first build to be the finding.
+On 2026-11-01, the four clean lane builds passed on an arm64 Mac with Xcode
+27.0 and locked LLVM 23.1.4. The first pristine JIT build failed because the
+lane omitted `llvm-readobj`, which Mach-O stencil generation requires. The
+lane now extracts it from the same locked archive. Both JIT builds passed the
+activation check and the overlay builds verified 58 Rust extensions.
 
-Order, stopping at the first failure and recording it in **Status**:
+`perf.py test --name perf-rust-jit --all` and `--name perf-rust --all`
+failed the same two files: `test_ssl` and `test_support`, the known lane
+failures. All 16 kernel digests matched across the four builds and both gate
+runs.
 
-```sh
-python3 rust-cpython/build.py fetch && python3 rust-cpython/perf.py fetch
-python3 rust-cpython/perf.py build --name perf-upstream --empty-overlay
-python3 rust-cpython/perf.py build --name perf-upstream-jit --empty-overlay --jit
-python3 rust-cpython/perf.py build --name perf-rust
-python3 rust-cpython/perf.py build --name perf-rust-jit --jit
-python3 rust-cpython/perf.py test --name perf-rust-jit --all
-python3 rust-cpython/perf.py test --name perf-rust --all
-python3 rust-cpython/perf.py bench --baseline @control --candidate perf-upstream-jit --jit-set --gate
-python3 rust-cpython/perf.py bench --baseline @incumbent --candidate perf-rust-jit --jit-set --gate
-python3 rust-cpython/perf.py profile --ref perf-rust-jit --workload nbody --tool sample
-```
+Both `perf.py bench --jit-set --gate` comparisons had `perf-gate-ready` exit
+0 immediately before and `perf-gate-ready -1` exit 0 immediately after.
+Each used two independent runs. The table gives the geometric mean of the 16
+kernels' pooled median candidate-to-baseline ratios and the range of their
+pooled median peak RSS ratios. Both coded verdicts rejected peak RSS. These
+are research measurements, not a production speed claim: two runs do not
+establish five-run reproducibility, and the profile does not identify every
+JIT frame.
 
-Run each `--gate` bench only when `perf-gate-ready` exits 0 immediately before
-and `perf-gate-ready -1` immediately after (see **Timing evidence**). Builds
-are 7-13 minutes each; run them one at a time.
+| Baseline → candidate | Wall | CPU | Peak RSS range | Verdict |
+| --- | ---: | ---: | ---: | --- |
+| `@control` → `perf-upstream-jit` | 0.749 | 0.870 | 1.008–1.049 | REJECT |
+| `@incumbent` → `perf-rust-jit` | 0.747 | 0.883 | 1.014–1.052 | REJECT |
 
-What to decide and record:
+`perf.py profile --ref perf-rust-jit --workload nbody --tool sample
+--iterations 200 --seconds 10` captured float allocation and thread-local
+access, plus unnamed executable addresses. It cannot attribute those
+addresses to individual uops. The default one-iteration sample mostly caught
+startup. The installed overlay `libpython` `__text` section measured
+2,971,352 bytes without the JIT and 3,288,216 bytes with it using `size -m`.
 
-- **J1M:** the JIT build either works with LLVM 23.1.4 Mach-O stencils, or
-  fails with a recorded stencil or relocation error. The Linux probe could
-  not cover this. On failure, fix `Tools/jit` through the overlay (OD1) or
-  leave macOS JIT parked with the error text.
-- **Parity (PD8):** `perf-rust-jit` must fail exactly the failed-file set of
-  `perf-rust`, and every JIT-set kernel digest must equal across the four
-  builds on that host. Compare against the same host's no-JIT sibling, not
-  against the Linux results.
-- **Timing:** the Linux result to compare against is kernel wall geometric mean
-  0.81-0.82 with the JIT, RSS +2-9% and private +2-12%. Report the same table
-  for macOS. Use CPU time where the verdict carries it.
-- **Code residency (D3):** `vmmap` or `mach_vm_region` on a live process after
-  a hot loop, if either works unprivileged. Otherwise report "unavailable";
-  never estimate. Linux maps 2-6 anonymous `r-x` regions per kernel.
-- **Profiling:** `--tool sample` on `nbody`. Linux native sampling failed, so
-  the cost table (type guards 10.5%, `_SET_IP` 9.6%, `_CHECK_VALIDITY` 8.1%)
-  is uop share only; a macOS CPU profile would be the first real attribution.
-- **Executable memory:** unsigned lane builds need no entitlement. A
-  hardened-runtime or packaged build would need
-  `com.apple.security.cs.allow-jit` with `MAP_JIT`, or
-  `allow-unsigned-executable-memory`, because `Python/jit.c` maps RW then
-  `mprotect`s RX. That is a stage-6 packaging question and a non-goal here.
+An unprivileged `vmmap -w` of a live process after a hot integer loop showed
+three private executable untagged mappings, each 16 KiB resident, with the
+JIT active. The same loop in the no-JIT sibling showed none of that form.
+The mappings are consistent with JIT code but are untagged; this probe does
+not measure per-kernel residency. `jit-stats` still reports macOS mappings
+and section sizes as unavailable because its parsers are Linux-specific.
 
-Method notes for the Mac: the **Debugging methods** section above applies
-as written (build the JIT baseline separately, pure-Python repro, pydebug with
-`PYTHON_LLTRACE=2`). Production keeps the JIT disabled. The overlay's only
-JIT-related file is `Python/optimizer.c` (the `--pystats` abort fix); do not
-reintroduce the reverted register-cache allocator (D7).
+A hardened-runtime or packaged JIT build needs an executable-memory entitlement.
+Packaging is outside this lane and production keeps the JIT disabled.
 
 ## Execution boundary and non-goals
 

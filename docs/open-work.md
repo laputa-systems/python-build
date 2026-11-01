@@ -56,11 +56,6 @@ doing, P4 is optional. A debt entry is not success.
   code size; revisit only with a different, streaming mechanism.
 - [ ] **P3 — `compileall_source`.** Its output still differs from control, so it
   is not timed. Fix the difference before using it.
-- [ ] **P2 — macOS arm64 JIT.** Nothing JIT ran on macOS. The handoff is
-  `docs/CAMPAIGN-JIT.md` "Needs environment (macOS arm64 handoff)": build with
-  LLVM 23.1.4 Mach-O stencils (J1M), parity against the no-JIT sibling, the two
-  JIT-set gates, `perf.py profile --tool sample`, and JIT code residency.
-  Packaging a JIT build would need `com.apple.security.cs.allow-jit`.
 - [ ] **P3 — upstream tier-2 findings on 3.16.0a1.** A function that started
   function-entry tracing and then runs under `sys.settrace` leaks one allocator
   block per function with the JIT on (repro: `def f(): return 1`, 8 calls,
