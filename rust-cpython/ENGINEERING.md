@@ -72,10 +72,9 @@ differently under calibration.
   and `import_django` rejects are present without the JIT.
 - JIT cost profile: of executed tier-2 uops, type guards are 10.5%, `_SET_IP`
   9.6%, `_CHECK_VALIDITY` 8.1%, and `_SPILL_OR_RELOAD` 7.5%; side exits are
-  0.7%. The register-cache allocator now minimizes spills over the whole trace
-  (8.0% fewer on the JIT set, kernel wall 0.9993: no measurable gain);
-  `perf-jit-opt` keeps `perf-rust-jit`'s
-  failed-file set and kernel digests.
+  0.7%. A whole-trace register-cache
+  allocator cut spill uops 8.0% but moved kernel wall by 0.9993, so it was
+  reverted.
 - `_bz2_rs` once gave a codec a `&mut [u8]` over uninitialized `bytes`
   storage; the shared writer wrapper replaced it.
 

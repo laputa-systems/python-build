@@ -56,21 +56,10 @@ doing, P4 is optional. A debt entry is not success.
   code size; revisit only with a different, streaming mechanism.
 - [ ] **P3 — `compileall_source`.** Its output still differs from control, so it
   is not timed. Fix the difference before using it.
-- [ ] **P3 — J8 register-cache allocator.** The timing gate was inconclusive
-  (kernel wall geometric mean 0.9993). It adds a DP allocator to the overlay
-  `Python/optimizer.c` and forbids voluntary 2→0 and 3→0 spills because those
-  crash for an unisolated reason. Recommendation: revert it unless the crash is
-  explained and a larger win appears. Owner decides.
 - [ ] **P2 — macOS arm64 JIT.** Nothing JIT ran on macOS. Run the
   `docs/CAMPAIGN-JIT.md` "Needs environment" commands: Mach-O stencils with
   LLVM 23.1.4 (J1M), `perf.py profile --tool sample`, and JIT code residency.
   Packaging a JIT build would need `com.apple.security.cs.allow-jit`.
-- [ ] **P3 — JIT register-cache allocation.** Spilling from cached depth 2 or
-  3 to 0 when the uop could run at its current depth crashes `test_pathlib`,
-  `test_tarfile`, and `test_profiling`, and the cause in the tier-2 code
-  generator is not isolated (bisect in `docs/CAMPAIGN-JIT.md` "Debugging
-  methods"). The allocation forbids those two transitions. Find the cause, then
-  weight spills by distance instead of the special case.
 - [ ] **P3 — upstream tier-2 findings on 3.16.0a1.** A function that started
   function-entry tracing and then runs under `sys.settrace` leaks one allocator
   block per function with the JIT on (repro: `def f(): return 1`, 8 calls,

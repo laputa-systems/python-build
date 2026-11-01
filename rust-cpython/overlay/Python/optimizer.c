@@ -1601,15 +1601,6 @@ int effective_trace_length(_PyUOpInstruction *buffer, int length)
 #endif
 
 
-typedef struct {
-    uint16_t spills;
-    int8_t input_depth;
-    int8_t previous_depth;
-} StackAllocation;
-
-#define STACK_ALLOCATION_UNREACHABLE UINT16_MAX
-#define STACK_ALLOCATION_DEPTHS (MAX_CACHED_REGISTER + 1)
-
 static int
 stack_allocate(_PyUOpInstruction *buffer, _PyUOpInstruction *output, int length)
 {
@@ -1627,87 +1618,14 @@ stack_allocate(_PyUOpInstruction *buffer, _PyUOpInstruction *output, int length)
     else {
         assert(output + UOP_MAX_TRACE_LENGTH == buffer);
     }
-    int count = 0;
-    for (int i = 0; i < length; i++) {
-        count += buffer[i].opcode != _NOP;
-    }
-    StackAllocation *table = PyMem_Malloc(
-        sizeof(StackAllocation) * STACK_ALLOCATION_DEPTHS * (count + 1));
-    int8_t *input_depths = PyMem_Malloc(count + 1);
-    if (table == NULL || input_depths == NULL) {
-        PyMem_Free(table);
-        PyMem_Free(input_depths);
-        PyErr_NoMemory();
-        return -1;
-    }
-    StackAllocation *row = table;
-    for (int d = 0; d < STACK_ALLOCATION_DEPTHS; d++) {
-        row[d] = (StackAllocation){d == 0 ? 0 : STACK_ALLOCATION_UNREACHABLE, 0, 0};
-    }
-    for (int i = 0; i < length; i++) {
-        int uop = buffer[i].opcode;
-        if (uop == _NOP) {
-            continue;
-        }
-        StackAllocation *next = row + STACK_ALLOCATION_DEPTHS;
-        for (int d = 0; d < STACK_ALLOCATION_DEPTHS; d++) {
-            next[d] = (StackAllocation){STACK_ALLOCATION_UNREACHABLE, 0, 0};
-        }
-        int lowest_input = 0;
-        while (_PyUop_Caching[uop].entries[lowest_input].opcode <= 0) {
-            lowest_input++;
-        }
-        int highest_input = STACK_ALLOCATION_DEPTHS - 1;
-        while (_PyUop_Caching[uop].entries[highest_input].opcode <= 0) {
-            highest_input--;
-        }
-        for (int input = lowest_input; input < STACK_ALLOCATION_DEPTHS; input++) {
-            const _PyUopTOSentry *entry = &_PyUop_Caching[uop].entries[input];
-            if (entry->opcode <= 0) {
-                continue;
-            }
-            for (int previous = 0; previous < STACK_ALLOCATION_DEPTHS; previous++) {
-                if (row[previous].spills == STACK_ALLOCATION_UNREACHABLE ||
-                    (input > previous && input != lowest_input)) {
-                    continue;
-                }
-                int required_input = previous < lowest_input ? lowest_input :
-                                     previous > highest_input ? highest_input : previous;
-                if (input != required_input && input == 0 && previous >= 2) {
-                    continue;
-                }
-                uint16_t spills = row[previous].spills + (previous != input);
-                if (spills < next[entry->output].spills) {
-                    next[entry->output] = (StackAllocation){
-                        spills, (int8_t)input, (int8_t)previous};
-                }
-            }
-        }
-        row = next;
-    }
-    assert(row == table + count * STACK_ALLOCATION_DEPTHS);
     int depth = 0;
-    for (int d = 1; d < STACK_ALLOCATION_DEPTHS; d++) {
-        if (row[d].spills < row[depth].spills) {
-            depth = d;
-        }
-    }
-    assert(row[depth].spills != STACK_ALLOCATION_UNREACHABLE);
-    for (int k = count; k > 0; k--) {
-        const StackAllocation *step = &table[k * STACK_ALLOCATION_DEPTHS + depth];
-        input_depths[k - 1] = step->input_depth;
-        depth = step->previous_depth;
-    }
-    PyMem_Free(table);
-    depth = 0;
     _PyUOpInstruction *write = output;
-    int k = 0;
     for (int i = 0; i < length; i++) {
         int uop = buffer[i].opcode;
         if (uop == _NOP) {
             continue;
         }
-        int new_depth = input_depths[k++];
+        int new_depth = _PyUop_Caching[uop].best[depth];
         if (new_depth != depth) {
             write->opcode = _PyUop_SpillsAndReloads[depth][new_depth];
             assert(write->opcode != 0);
@@ -1724,7 +1642,6 @@ stack_allocate(_PyUOpInstruction *buffer, _PyUOpInstruction *output, int length)
         write++;
         depth = _PyUop_Caching[uop].entries[depth].output;
     }
-    PyMem_Free(input_depths);
     return (int)(write - output);
 }
 
@@ -1789,9 +1706,6 @@ uop_optimize(
     OPT_HIST(effective_trace_length(buffer, length), optimized_trace_length_hist);
     _PyUOpInstruction *output = &_tstate->jit_tracer_state->uop_array[0];
     length = stack_allocate(buffer, output, length);
-    if (length < 0) {
-        return -1;
-    }
     buffer = output;
     length = prepare_for_execution(buffer, length);
     assert(length <= UOP_MAX_TRACE_LENGTH);

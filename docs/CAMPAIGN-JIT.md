@@ -7,7 +7,7 @@
   `docs/open-work.md`.
 - **Lane host** command: `.work/tmp/lane.sh <cmd>` wraps the `docker run` in
   **Lane host** (recreate it from that section). Builds kept: `perf-upstream`, `perf-rust`, `perf-upstream-jit`, `perf-rust-jit`,
-  `perf-rust-jit-stats`, `perf-jit-opt`.
+  `perf-rust-jit-stats`.
 - **D1 JIT builds with the pinned LLVM:** met (J1; stencils from the locked
   LLVM 23.1.2 clang, activation checked).
 - **D2 kernel set:** met (J2; 16 kernels, wheel digest checked). Review found
@@ -34,7 +34,7 @@
   - `@control` vs `@incumbent` (no JIT): REJECT; the same `django_template_realistic`
     (1.077) and `import_django` (1.054) wall and +21% private. This is lane
     debt, not a JIT effect.
-  - J8: `perf-rust-jit` vs `perf-jit-opt`: INCONCLUSIVE, kernel wall geometric
+  - J8 (reverted, see D7): `perf-rust-jit` vs `perf-jit-opt`: INCONCLUSIVE, kernel wall geometric
     mean 0.9993; every kernel's interval sits inside 0.98-1.03 and memory is
     within budget. The allocator's 8.0% fewer spill uops is not measurable at
     the 1% floor, as the static estimate (about 0.6% of executed uops) predicted.
@@ -62,22 +62,20 @@
   new uops and optimizer changes, so this is not a pure backend comparison.
   Porting would also conflict with the lane contract (handwritten assembly,
   `Lib/test` changes, aarch64 relocations).
-- **D7 one optimization:** implemented, not gated. `perf-jit-opt` allocates the
-  register cache over the whole trace. It keeps `perf-rust-jit`'s failed-file
-  set, all 16 digests, the parity probe on release and pydebug builds, and the
-  `-R 3:3` results. Timing is waived: owner OD3 (command: `perf.py bench
-  --baseline @incumbent-jit --candidate perf-jit-opt --jit-set --gate`); the
-  PD4 geometric mean was not measured. Expect well under the 1% floor.
-  Bisecting the first version's crashes found that spilling from cached depth
-  2 or 3 to 0 crashes pathlib, tarfile, and profiling; the cause is open.
+- **D7 one optimization:** tried and reverted. A whole-trace register-cache
+  allocator (dynamic programming over cached depths, `5035638`..`c305179`) cut
+  static spill and reload uops 8.0% and kept parity, but its gate against
+  `perf-rust-jit` was INCONCLUSIVE (kernel wall geometric mean 0.9993), under
+  the 1% floor as predicted. It also had to forbid spills from cached depth 2 or
+  3 to 0, which crashed pathlib, tarfile, and profiling for a cause never
+  isolated. The overlay keeps only the `effective_trace_length` fix that the
+  pystats build needs.
 - **D8 cost ranking:** met (J7). Type guards 10.5% of executed uops, `_SET_IP`
   9.6%, `_CHECK_VALIDITY` 8.1%, `_SPILL_OR_RELOAD` 7.5%; side exits 0.7%.
   Native sampling failed on Linux, so shares are uop shares, not CPU.
 - **Review (`code-review high`, `main..campaign/jit`):** fixed the red
   `tests/test_benchmarks.py`, the kernels in product suites, and the no-JIT
-  build failing on the regen interpreter. Left as is: two allocations per trace
-  in `stack_allocate`, the spill cost model (distance-blind; the special case
-  guards a crash with an open cause), the pasted `campaign-jit.md` goal at the
+  build failing on the regen interpreter. Left as is: the pasted `campaign-jit.md` goal at the
   repo root, and the earlier non-conventional commits `87e9e07` and `24d4943`.
 
 ## Charter
