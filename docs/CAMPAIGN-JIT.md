@@ -2,77 +2,48 @@
 
 ## Status
 
-- **Resume prompt:** "Resume the rust-cpython JIT campaign at J8; read
-  docs/CAMPAIGN-JIT.md for scope, decisions, and acceptance."
+- **Closed 2026-11-01 on `campaign/jit`.** J0-J9 are done. Nothing is parked.
+  `main` is untouched at `96f4112`. Do not push. The remaining work is in
+  `docs/open-work.md`.
 - **Lane host** command: `.work/tmp/lane.sh <cmd>` wraps the `docker run` in
-  **Lane host** (recreate it from that section if `.work/` is gone). Do not
-  run two containers with the same working directory at once: concurrent
-  `libregrtest` runs collide on `build/test_python_*` and fail spuriously.
-  Built: `perf-upstream`, `perf-rust`, `perf-upstream-jit`, `perf-rust-jit`,
-  `perf-rust-jit-stats`, and the pydebug JIT stage (`rust-cpython/stage`).
-  `perf-rust` and `perf-rust-jit` predate the `overlay/Python/optimizer.c`
-  fix below; rebuild them before any J8 gate.
-- **Accepted:** J0-J7 on `campaign/jit`.
-  - **J4 (M1):** `perf-rust-jit` fails exactly `perf-rust`'s full-suite set.
-    `perf-upstream-jit` fails `perf-upstream`'s plus `test_socket`, a
-    15-minute `RDSTest.testPeek` hang that also hangs the no-JIT build (host
-    RDS, known red). All 16 kernel digests are equal across the four builds.
-    The four `--jit-set --gate` verdicts are not run: perf gate deferred by
-    the owner until feature completion (OD3, reaffirmed 2026-11-01).
-  - **J5:** pydebug JIT build passes 28 of 29 listed suites (`test_cprofile`
-    does not exist in 3.16). `-R 3:3` on `test_capi.test_opt`,
-    `test_monitoring`, `test_sys_settrace`, and `test_optimizer` is red with
-    upstream causes recorded for J9's `docs/open-work.md`:
-    - `test_capi.test_opt` and `test_monitoring` fail from the second
-      repetition because the GC invalidates cold executors and the backoff
-      counters block re-tracing (pure-Python repro without the test runner).
-    - Under the JIT, a function that has started function-entry tracing and
-      then runs under `sys.settrace` leaks one allocator block per function
-      (`def f(): return 1`, 8 calls, `settrace`, 1.05 blocks per fresh
-      function with the JIT, 0.05 with `PYTHON_JIT=0`). `test_sys_settrace`
-      shows it. Cause not isolated.
-    - `test_optimizer` leaks 6 references per run with or without the JIT.
-    - ASan is blocked: the locked LLVM 23.1.2 ships no ASan runtime (OD1).
-    - python/cpython#160852 needs the tail-call interpreter, which the lane
-      keeps disabled, so it is not applicable.
-  - **J6 (closed, blocked by OD1, owner confirmed 2026-11-01):** the locked
-    archive has no `opt`, `llvm-config`, or LLVM headers/libLLVM, so the
-    hybrid's fold-pass plugin cannot be built. No build was attempted.
-  - **J7:** `perf-rust-jit-stats` (JIT + `--enable-pystats`) built. Commit
-    `fix(jit): compute the Py_STATS trace length from base uop ids` fixes an
-    upstream abort that made every pystats build die on its first optimized
-    trace. Native sampling failed: host `perf record -p` on the container
-    process captured 0.002 MB, so Linux uses pystats only. Shares below are
-    of executed uops and are not CPU shares. Command for every row: three
-    `jit_kernels.run(K)` passes per kernel under `PYTHONSTATS=1` on
-    `perf-rust-jit-stats`, then `sys._stats_dump()` and the pinned
-    `Tools/scripts/summarize_stats.py`; static rows come from
-    `_opcode.get_executor` dumps of `perf-rust-jit`.
-
-    | # | Cost | Mean share | Kernels at 5% or more |
-    | - | --- | --- | --- |
-    | 1 | Type and shape guards (`_GUARD_*`) | 10.5% | 16 of 16 (max `scimark_lu` 17.8%) |
-    | 2 | `_SET_IP` (movabs + store, 14 B) | 9.6% | 16 |
-    | 3 | `_CHECK_VALIDITY` (cmpb + je, 12 B) | 8.1% | 15 |
-    | 4 | `_SPILL_OR_RELOAD` | 7.5% | 14 (static: optimal allocation removes 9.0% of spills) |
-    | 5 | Int guards and ops | 6.7% | 9 (max `fannkuch` 15.1%) |
-    | 6 | Frame push, pop, and calls | 6.3% | 10 (max `deltablue` 13.8%) |
-    | 7 | Float guards and ops | 5.3% | 9 (max `scimark_sparse_mat_mult` 15.6%) |
-    | 8 | Executor invalidations | 98 total | `go` 46, `raytrace` 19, `deltablue` 18, `richards` 14, `float` 1 |
-    | 9 | Traces ended by fitness | 78 total | 7 kernels (`go` 30) |
-    | 10 | Side exits (`_EXIT_TRACE`, `_DEOPT`, `_DYNAMIC_EXIT`) | 0.7% | 0 |
-
-    `_POP_TOP_NOP` is 10.8% of executed uops in 15 kernels but costs nothing:
-    its stencil is empty in states r10, r21, and r32 and one `addq` in r00. The
-    tier-2 uop share of executed work is 75.6% (`richards`) to 99.8%
-    (`scimark_sparse_mat_mult`); no unsupported-opcode or abort-reason counters
-    fired beyond the fitness terminations above.
-- **Parked:** none. `main` is untouched at `96f4112`. Do not push.
-- **Next slice:** J8, then J9. Mechanism 1 is optimal register-cache stack
-  allocation (row 4 is the largest row with real machine cost that the
-  existing tier-2 passes do not already minimize: `remove_unneeded_uops`
-  already keeps only the `_SET_IP` and `_CHECK_VALIDITY` each escape needs).
-  Expect well under 1% CPU. The J8 gate stays deferred.
+  **Lane host** (recreate it from that section). Builds kept for the deferred
+  gates: `perf-upstream`, `perf-rust`, `perf-upstream-jit`, `perf-rust-jit`,
+  `perf-rust-jit-stats`, `perf-jit-opt`. Rebuild `perf-rust` and `perf-rust-jit`
+  before any gate: the overlay now carries `Python/optimizer.c`.
+- **D1 JIT builds with the pinned LLVM:** met (J1; stencils from the locked
+  LLVM 23.1.2 clang, activation checked).
+- **D2 kernel set:** met (J2; 16 kernels, wheel digest checked). Review found
+  they were also selected by the `realworld` and `full` product suites; fixed.
+- **D3 metrics:** met on Linux (J3). macOS residency is on **Needs
+  environment**.
+- **D4 Linux baseline matrix:** failed-file sets equal their siblings' (the
+  RDS `testPeek` hang also hangs the no-JIT build), all 16 kernel digests equal
+  across five builds. The four `--jit-set --gate` verdicts were not run: perf
+  gate deferred by the owner until feature completion (OD3). Waived: owner OD3.
+- **D5 hardening:** pydebug JIT build passes all 31 listed suites, including
+  the candidate. `-R 3:3` is red on upstream causes that reproduce without the
+  Rust overlay, and the candidate matches the baseline exactly. ASan is blocked
+  by the LLVM pin and python/cpython#160852 needs the tail-call interpreter.
+- **D6 hybrid verdict:** closed, blocked by OD1 (owner confirmed). The locked
+  archive has no `opt`, `llvm-config`, or LLVM headers.
+- **D7 one optimization:** implemented, not gated. `perf-jit-opt` allocates the
+  register cache over the whole trace. It keeps `perf-rust-jit`'s failed-file
+  set, all 16 digests, the parity probe on release and pydebug builds, and the
+  `-R 3:3` results. Timing is waived: owner OD3 (command: `perf.py bench
+  --baseline @incumbent-jit --candidate perf-jit-opt --jit-set --gate`); the
+  PD4 geometric mean was not measured. Expect well under the 1% floor.
+  Bisecting the first version's crashes found that spilling from cached depth
+  2 or 3 to 0 crashes pathlib, tarfile, and profiling; the cause is open.
+- **D8 cost ranking:** met (J7). Type guards 10.5% of executed uops, `_SET_IP`
+  9.6%, `_CHECK_VALIDITY` 8.1%, `_SPILL_OR_RELOAD` 7.5%; side exits 0.7%.
+  Native sampling failed on Linux, so shares are uop shares, not CPU.
+- **Review (`code-review high`, `main..campaign/jit`):** fixed the red
+  `tests/test_benchmarks.py`, the kernels in product suites, and the no-JIT
+  build failing on the regen interpreter. Left as is: stencil digest and LLVM
+  version in the build report (J1 asked for them), two allocations per trace
+  in `stack_allocate`, the spill cost model (distance-blind; the special case
+  guards a crash with an open cause), the pasted `campaign-jit.md` goal at the
+  repo root, and the earlier non-conventional commits `87e9e07` and `24d4943`.
 
 ## Charter
 

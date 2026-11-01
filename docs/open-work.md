@@ -56,6 +56,42 @@ doing, P4 is optional. A debt entry is not success.
   code size; revisit only with a different, streaming mechanism.
 - [ ] **P3 — `compileall_source`.** Its output still differs from control, so it
   is not timed. Fix the difference before using it.
+- [ ] **P2 — JIT timing gates.** Owner deferred every JIT timing verdict until
+  feature completion. Run the four `perf.py bench --jit-set --gate` comparisons
+  from `docs/CAMPAIGN-JIT.md` J4 and the J8 `--baseline @incumbent-jit
+  --candidate perf-jit-opt` gate on a quiet host, and report the JIT-set CPU
+  geometric mean. Rebuild `perf-rust` and `perf-rust-jit` first: the overlay
+  now carries `Python/optimizer.c`. J8's expected effect is well under the 1%
+  floor (static estimate: 8.0% fewer spill and reload uops, about 0.6% of
+  executed uops).
+- [ ] **P2 — macOS arm64 JIT.** Nothing JIT ran on macOS. Run the
+  `docs/CAMPAIGN-JIT.md` "Needs environment" commands: Mach-O stencils with
+  LLVM 23.1.4 (J1M), `perf.py profile --tool sample`, and JIT code residency.
+  Packaging a JIT build would need `com.apple.security.cs.allow-jit`.
+- [ ] **P3 — JIT register-cache allocation.** Spilling from cached depth 2 or
+  3 to 0 when the uop could run at its current depth crashes `test_pathlib`,
+  `test_tarfile`, and `test_profiling`, and the cause in the tier-2 code
+  generator is not isolated (bisect in `docs/CAMPAIGN-JIT.md` "Debugging
+  methods"). The allocation forbids those two transitions. Find the cause, then
+  weight spills by distance instead of the special case.
+- [ ] **P3 — upstream tier-2 findings on 3.16.0a1.** A function that started
+  function-entry tracing and then runs under `sys.settrace` leaks one allocator
+  block per function with the JIT on (repro: `def f(): return 1`, 8 calls,
+  `settrace`). `test_capi.test_opt` and `test_monitoring` fail from the second
+  `-R` repetition because the GC invalidates cold executors. `test_optimizer`
+  leaks 6 references per run with or without the JIT. All reproduce without
+  the Rust overlay. The pystats abort in `effective_trace_length` is fixed in
+  `overlay/Python/optimizer.c`.
+- [ ] **P3 — JIT sanitizer coverage.** The locked LLVM 23.1.2 ships no ASan
+  runtime, so the JIT never ran under ASan. Lifting this needs an owner
+  decision on the LLVM pin.
+- [ ] **P4 — hybrid DynASM JIT.** python/cpython#146235 cannot be built under
+  the locked LLVM (no `opt`, `llvm-config`, or LLVM headers). Evaluate only if
+  the owner widens the LLVM pin.
+- [ ] **P4 — beyond the first assignment.** A speculative or optimizing tier,
+  unboxed floats and ints in traces, and escape analysis were out of scope.
+  The cost table in `docs/CAMPAIGN-JIT.md` ranks type guards (10.5% of
+  executed uops), `_SET_IP` (9.6%), and `_CHECK_VALIDITY` (8.1%) first.
 
 Linux arm64 is not implemented in the lane and must not be described as
 qualified. PGO stays deferred. Do not relax suite or benchmark thresholds to

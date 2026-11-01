@@ -67,6 +67,11 @@ differently under calibration.
   the four builds. The JIT adds about 0.4 MB of `libpython` text on the
   upstream build; every kernel maps 2-6 anonymous `r-x` regions after a hot
   loop. Timing verdicts are deferred.
+- JIT cost profile: of executed tier-2 uops, type guards are 10.5%, `_SET_IP`
+  9.6%, `_CHECK_VALIDITY` 8.1%, and `_SPILL_OR_RELOAD` 7.5%; side exits are
+  0.7%. The register-cache allocator now minimizes spills over the whole trace
+  (8.0% fewer on the JIT set); `perf-jit-opt` keeps `perf-rust-jit`'s
+  failed-file set and kernel digests.
 - `_bz2_rs` once gave a codec a `&mut [u8]` over uninitialized `bytes`
   storage; the shared writer wrapper replaced it.
 
