@@ -137,6 +137,61 @@ measurement "perf gate deferred: host busy". Keep the item open, move to
 the next item, and retry at the next checkpoint. Runs without `--gate` steer
 and are never acceptance evidence.
 
+## Debugging methods
+
+Learned in J5-J8. Use them before inventing new ones.
+
+1. **Separate the JIT from the baseline first.** `PYTHON_JIT=0` on a JIT build
+   skips every `requires_jit_enabled` test, so a green run proves nothing for
+   tier-2 tests. Compare against the JIT-off sibling build, or against the
+   greedy behavior of the code you changed.
+2. **Shrink to pure Python before reading C.** Probe with
+   `sys.getallocatedblocks()` deltas over fresh `exec`'d functions, and
+   `_opcode.get_executor(code, i)` to see whether a trace exists. Leaks and
+   missing executors reproduced this way need no test runner. Remember the GC
+   invalidates cold executors and backoff counters then block re-tracing.
+3. **A release SIGSEGV becomes an assertion in the pydebug stage.**
+   `build.py build --jit`, then run the same test on
+   `rust-cpython/stage/bin/python3.16d`. `PYTHON_LLTRACE=2` there prints every
+   optimized trace as it is created; the last one before the abort is the
+   suspect. The abort's `executor_cases.c.h:<line>` is not reliable evidence
+   of the faulting uop.
+4. **Bisect a code-generation change with a runtime mask in a scratch build.**
+   Read an env var once inside the changed function (for J8, a bit per
+   `previous*4+input` spill transition), build it as a throwaway name such as
+   `perf-jit-probe`, and run the failing tests once per bit in a single
+   container. Deterministic crashes name the unsafe transition in minutes
+   instead of one rebuild per guess. Delete the build and the mask before
+   committing.
+5. **Model an allocator offline.** Dump the optimized trace of each kernel with
+   `_opcode.get_executor` from `perf-rust-jit`, parse `_PyUop_Caching` from
+   `Include/internal/pycore_uop_metadata.h`, and replay greedy and candidate
+   choices in Python. Keep `-1` default entries in the table parse or every
+   later input depth shifts. Measure the saving before building.
+6. **Uop share is not CPU.** Check the stencil body size in
+   `jit_stencils-<triple>.h` (`code_body[N]`, empty for `_POP_TOP_NOP` in
+   r10, r21, r32) before ranking a cost.
+7. **pystats recipe.** Build `--jit --pystats`. Per kernel:
+   `mkdir /tmp/py_stats`, run `PYTHONSTATS=1 build/python -c` with
+   `sys._stats_clear()`, the kernel passes, `sys._stats_off()`, and
+   `sys._stats_dump()`. Without the directory, the dump goes to stderr.
+   Summarize with the build's `Tools/scripts/summarize_stats.py`. The stats
+   dir is container-local; copy it out in the same `docker run`.
+8. **Harness traps.**
+   - Two containers with one working directory collide on
+     `test_python_<pid>` (container pids repeat), giving spurious
+     `FileExistsError` and `IsADirectoryError`. Run suites one at a time per
+     directory or give each its own `cd` scratch inside the container.
+   - A crashed test leaves mode-000 directories (`dirE`) under
+     `work/perf/<name>/build/build/test_python_*`; the next clean build then
+     fails with `Permission denied`. `chmod -R u+rwx` and remove them.
+   - A crash drops `core` in the repo root; delete it.
+   - Never run bare `make` in a perf build directory: it creates a dev-profile
+     cargo tree and `--incremental` refuses it. Use `perf.py build
+     --incremental`, which also resyncs changed overlay files.
+   - `rc=2` right after a crashed run is usually leftover scratch, not a
+     product failure. Re-run once from a clean scratch before concluding.
+
 ## Decisions
 
 ### Owner
