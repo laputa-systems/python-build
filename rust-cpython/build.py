@@ -19,6 +19,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tarfile
 import tempfile
 import tomllib
 from pathlib import Path
@@ -747,6 +748,47 @@ def _fetch_llvm_archive(toolchain, llvm_cache: Cache) -> Path:
         raise LaneError(f"cannot provision the locked LLVM toolchain: {error}") from error
 
 
+def _jit_llvm_tools(toolchain) -> Path:
+    """Extract the locked release's disassembler and DWARF dumper for JIT builds."""
+    directory = WORK / "jit-tools" / toolchain.llvm_version / "bin"
+    missing = [
+        name for name in ("llvm-objdump", "llvm-dwarfdump")
+        if not (directory / name).is_file()
+    ]
+    if not missing:
+        return directory
+    archive = _object_path(CACHE_ROOT / "llvm", toolchain.llvm_input())
+    if not archive.is_file():
+        raise LaneError(f"locked LLVM archive is missing: {archive}")
+    directory.mkdir(parents=True, exist_ok=True)
+    wanted = {f"{toolchain.llvm_archive_root}/bin/{name}": name for name in missing}
+    found: set[str] = set()
+    with tarfile.open(archive, "r|xz") as tar:
+        for member in tar:
+            name = wanted.get(member.name)
+            if name is None:
+                continue
+            if not member.isfile() or member.size > 64 * 1024 * 1024:
+                raise LaneError(f"LLVM archive member is not a bounded file: {member.name}")
+            source = tar.extractfile(member)
+            if source is None:
+                raise LaneError(f"cannot read LLVM archive member: {member.name}")
+            temporary = directory / f".{name}.part"
+            with temporary.open("wb") as output:
+                shutil.copyfileobj(source, output)
+            temporary.chmod(0o755)
+            os.replace(temporary, directory / name)
+            found.add(name)
+            if found == set(missing):
+                break
+    missing = [name for name in missing if not (directory / name).is_file()]
+    if missing:
+        raise LaneError(
+            f"locked LLVM archive lacks JIT tools: {', '.join(missing)}"
+        )
+    return directory
+
+
 def _environment(toolchain, *, offline: bool, build_dir: Path | None = None) -> dict[str, str]:
     if build_dir is None:
         build_dir = BUILD
@@ -962,19 +1004,192 @@ def _cargo_linker_variable() -> str:
     return f"CARGO_TARGET_{TARGET.upper().replace('-', '_')}_LINKER"
 
 
-def _configuration(toolchain, target) -> tuple[list[str], dict[str, str]]:
+@dataclasses.dataclass(frozen=True)
+class JitConfiguration:
+    enabled: bool
+    argument: str
+    environment: dict[str, str]
+    llvm_version: str
+
+
+def jit_configuration(toolchain, *, jit: bool) -> JitConfiguration:
+    major = toolchain.llvm_version.split(".", 1)[0]
+    return JitConfiguration(
+        enabled=jit,
+        argument=f"--enable-experimental-jit={'yes' if jit else 'no'}",
+        environment={
+            "LLVM_VERSION": major,
+            "LLVM_TOOLS_INSTALL_DIR": str(toolchain.llvm_prefix),
+        },
+        llvm_version=toolchain.llvm_version,
+    )
+
+
+def _configuration(toolchain, target, *, jit: bool = False) -> tuple[list[str], dict[str, str]]:
     platform_flags = _platform_flags(toolchain, target)
+    jit_config = jit_configuration(toolchain, jit=jit)
     args = [
         f"--prefix={STAGE}",
         "--enable-shared",
-        "--enable-experimental-jit=no",
+        jit_config.argument,
         "--with-tail-call-interp=no",
         "--without-ensurepip",
     ]
     args.append("--with-pydebug")
     env = _environment(toolchain, offline=True)
     env.update(platform_flags)
+    env.update(jit_config.environment)
     return args, env
+
+
+_JIT_PROBE = """
+import json, sys
+def hot(n):
+    total = 0
+    for i in range(n):
+        total += (i * 3) % 11
+        if sys._jit.is_active():
+            return True
+    return False
+active = hot(200_000)
+print(json.dumps({"available": sys._jit.is_available(),
+                  "enabled": sys._jit.is_enabled(),
+                  "active": active}))
+"""
+
+
+def _jit_stage_state(python: Path, env: dict[str, str]) -> dict[str, bool]:
+    result = subprocess.run(
+        [str(python), "-I", "-S", "-c", _JIT_PROBE],
+        env=env, capture_output=True, text=True, timeout=300, check=False,
+    )
+    if result.returncode != 0:
+        raise LaneError(
+            "JIT activation probe failed: "
+            f"{(result.stderr or result.stdout).strip()[-1000:]}"
+        )
+    try:
+        state = json.loads(result.stdout.strip().splitlines()[-1])
+    except (IndexError, json.JSONDecodeError) as error:
+        raise LaneError(f"cannot parse JIT activation probe: {result.stdout!r}") from error
+    if set(state) != {"available", "enabled", "active"} or not all(
+            isinstance(value, bool) for value in state.values()):
+        raise LaneError(f"JIT activation probe returned {state!r}")
+    return state
+
+
+def _require_jit_state(state: dict[str, bool], *, jit: bool) -> None:
+    if jit:
+        if not (state["available"] and state["enabled"]):
+            raise LaneError("JIT stage does not report sys._jit available and enabled")
+        if not state["active"]:
+            raise LaneError(
+                "JIT stage did not become active in a 200,000-iteration hot loop"
+            )
+    elif state["available"]:
+        raise LaneError("no-JIT stage reports sys._jit.is_available()")
+
+
+def _python_for_regen_version(makefile: Path, env: dict[str, str]) -> str:
+    value = _make_value(makefile, "PYTHON_FOR_REGEN")
+    if not value:
+        raise LaneError("configured Makefile has no PYTHON_FOR_REGEN")
+    result = subprocess.run(
+        [*shlex.split(value), "-VV"], env=env, capture_output=True, text=True,
+        timeout=60, check=False,
+    )
+    if result.returncode != 0:
+        raise LaneError(
+            f"cannot run PYTHON_FOR_REGEN {value!r}: "
+            f"{(result.stderr or result.stdout).strip()[-1000:]}"
+        )
+    match = re.match(r"Python (\d+)\.(\d+)\.(\d+)", result.stdout)
+    if match is None:
+        raise LaneError(f"cannot parse PYTHON_FOR_REGEN version: {result.stdout!r}")
+    version = tuple(int(part) for part in match.groups())
+    rendered = ".".join(str(part) for part in version)
+    if version[:2] < (3, 11):
+        raise LaneError(f"PYTHON_FOR_REGEN {rendered} is older than 3.11")
+    return rendered
+
+
+def _check_jit_command(makefile: Path, toolchain) -> None:
+    command = ""
+    for line in makefile.read_text(errors="replace").splitlines():
+        if "Tools/jit/build.py" in line:
+            command = line
+            break
+    if not command:
+        raise LaneError("JIT build has no Tools/jit/build.py recipe")
+    major = toolchain.llvm_version.split(".", 1)[0]
+
+    def option(name: str) -> str:
+        match = re.search(rf'--{name}="?([^"\s]+)"?', command)
+        if match is None:
+            raise LaneError(f"JIT command does not pass --{name}")
+        return match.group(1)
+
+    if option("llvm-version") != major:
+        raise LaneError(
+            f"JIT command selects LLVM {option('llvm-version')}, expected {major}"
+        )
+    if Path(option("llvm-tools-install-dir")) != toolchain.llvm_prefix:
+        raise LaneError(
+            "JIT command does not select the locked LLVM at "
+            f"{toolchain.llvm_prefix}"
+        )
+
+
+_JIT_CLANG_PATH = re.compile(r"((?:/[A-Za-z0-9._+~-]+)+/bin/clang(?:-[0-9]+)?)")
+
+
+def stencil_clangs(log: str) -> set[str]:
+    return set(_JIT_CLANG_PATH.findall(log))
+
+
+def _check_jit_logs(logs: tuple[Path, ...], toolchain) -> None:
+    locked = str(toolchain.llvm_prefix / "bin" / "clang")
+    for log in logs:
+        if not log.is_file():
+            continue
+        for found in stencil_clangs(log.read_text(errors="replace")):
+            if os.path.normpath(found) != locked:
+                raise LaneError(
+                    f"{log.name} shows a stencil clang other than {locked}: {found}"
+                )
+
+
+@dataclasses.dataclass(frozen=True)
+class JitEvidence:
+    enabled: bool
+    llvm_version: str | None
+    stencils_sha256: str | None
+    python_for_regen: str
+
+
+def jit_build_evidence(*, build_dir: Path, python: Path, env: dict[str, str],
+                       toolchain, target_triple: str, jit: bool,
+                       logs: tuple[Path, ...]) -> JitEvidence:
+    makefile = build_dir / "Makefile"
+    regen = _python_for_regen_version(makefile, env)
+    digest = None
+    llvm_version = None
+    if jit:
+        _check_jit_command(makefile, toolchain)
+        _check_jit_logs(logs, toolchain)
+        header = build_dir / f"jit_stencils-{target_triple}.h"
+        if not header.is_file():
+            raise LaneError(f"JIT build did not generate {header.name}")
+        digest = hashlib.sha256(header.read_bytes()).hexdigest()
+        llvm_version = toolchain.llvm_version
+    state = _jit_stage_state(python, env)
+    _require_jit_state(state, jit=jit)
+    return JitEvidence(
+        enabled=jit,
+        llvm_version=llvm_version,
+        stencils_sha256=digest,
+        python_for_regen=regen,
+    )
 
 
 def _sealed_sandbox():
@@ -1005,10 +1220,10 @@ def _linux_sandbox() -> lane_linux.SealedRun:
 
 
 def _make_value(makefile: Path, name: str) -> str:
-    prefix = f"{name}="
     for line in makefile.read_text(errors="replace").splitlines():
-        if line.startswith(prefix):
-            return line[len(prefix):].strip()
+        for separator in (f"{name}?=", f"{name}="):
+            if line.startswith(separator):
+                return line[len(separator):].strip()
     return ""
 
 
@@ -1320,14 +1535,17 @@ def _build_mpdecimal(toolchain, target, jobs: int, sandbox) -> dict[str, str]:
 
 
 def _configure_source(source: Path, toolchain, target, jobs: int,
-                      sandbox: SealedRun, overlay: dict[str, Any]) -> dict[str, Any]:
+                      sandbox: SealedRun, overlay: dict[str, Any], *,
+                      jit: bool) -> dict[str, Any]:
     rustup = _require_nightly()
     _rust_tool_wrappers(rustup)
     for path in (BUILD, STAGE):
         if path.exists():
             shutil.rmtree(path)
         path.mkdir(parents=True)
-    args, env = _configuration(toolchain, target)
+    args, env = _configuration(toolchain, target, jit=jit)
+    if jit:
+        env["PATH"] = f"{_jit_llvm_tools(toolchain)}:{env['PATH']}"
     if IS_LINUX:
         env.update(_build_mpdecimal(toolchain, target, jobs, sandbox))
     env.update({
@@ -1360,6 +1578,11 @@ def _configure_source(source: Path, toolchain, target, jobs: int,
     python = STAGE / "bin" / "python3.16d"
     if not python.is_file():
         raise LaneError(f"CPython debug install did not produce {python}")
+    evidence = jit_build_evidence(
+        build_dir=BUILD, python=python, env=env, toolchain=toolchain,
+        target_triple=TARGET, jit=jit,
+        logs=(LOGS / "cpython-build.log", LOGS / "cpython-install.log"),
+    )
     module = _module_report(STAGE, python, toolchain)
     makefile = BUILD / "Makefile"
     cargo_profile = _make_value(makefile, "CARGO_PROFILE")
@@ -1394,6 +1617,10 @@ def _configure_source(source: Path, toolchain, target, jobs: int,
         "configure_arguments": configure,
         "cflags": env["CFLAGS"],
         "cargo_profile": cargo_profile,
+        "jit": evidence.enabled,
+        "jit_llvm_version": evidence.llvm_version,
+        "jit_stencils_sha256": evidence.stencils_sha256,
+        "python_for_regen": evidence.python_for_regen,
         "interpreter": module,
         "build_interpreter": str(_build_python()),
         "rust": _rust_identity(rustup),
@@ -1416,7 +1643,7 @@ def _platform_sdk_report(toolchain) -> dict[str, Any]:
     }
 
 
-def build(*, jobs: int | None = None) -> int:
+def build(*, jobs: int | None = None, jit: bool = False) -> int:
     _require_host()
     if jobs is not None and jobs < 1:
         raise LaneError("build jobs must be positive")
@@ -1435,7 +1662,7 @@ def build(*, jobs: int | None = None) -> int:
     )
     sandbox = _sealed_sandbox()
     workers = jobs if jobs is not None else max(1, (os.cpu_count() or 4) - 1)
-    report = _configure_source(source, toolchain, target, workers, sandbox, overlay)
+    report = _configure_source(source, toolchain, target, workers, sandbox, overlay, jit=jit)
     print(f"OK    debug CPython {report['interpreter']['version'].split()[0]} -> {STAGE}")
     return 0
 
@@ -1526,6 +1753,8 @@ def main(argv: list[str] | None = None) -> int:
     test_parser = commands.add_parser("test", help="run complete named CPython Python suites")
     commands.add_parser("clean", help="remove generated outputs")
     build_parser.add_argument("--jobs", type=int, metavar="N", help="parallel build jobs")
+    build_parser.add_argument("--jit", action="store_true",
+                              help="build the experimental JIT with the locked LLVM")
     test_parser.add_argument("--all", action="store_true", help="run all default-resource CPython tests")
     test_parser.add_argument("--jobs", type=int, metavar="N", help="parallel test workers")
     test_parser.add_argument("--suite", action="append", default=[], metavar="TEST_NAME",
@@ -1537,7 +1766,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "fetch":
             return fetch()
         if args.command == "build":
-            return build(jobs=args.jobs)
+            return build(jobs=args.jobs, jit=args.jit)
         if args.command == "test":
             return test(args.suite, all_suites=args.all, jobs=args.jobs)
         return clean()

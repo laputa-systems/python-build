@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -77,7 +79,7 @@ class JitConfigurationTests(unittest.TestCase):
         script.write_text(f'#!/bin/sh\necho "Python {version} (main) [GCC 13]"\n')
         script.chmod(0o755)
         makefile = root / "Makefile"
-        makefile.write_text(f"PYTHON_FOR_REGEN={script}\n")
+        makefile.write_text(f"PYTHON_FOR_REGEN?={script}\n")
         return makefile, script
 
     def test_python_for_regen_rejects_a_pre_311_host(self) -> None:
@@ -91,17 +93,17 @@ class JitConfigurationTests(unittest.TestCase):
         root = Path(self.enterContext(tempfile.TemporaryDirectory()))
         makefile = root / "Makefile"
         makefile.write_text(
-            "REGEN_JIT_COMMAND=python Tools/jit/build.py --llvm-version=\"23\" "
-            "--llvm-tools-install-dir=\"/opt/llvm/23.1.2\"\n")
+            "\t$(PYTHON_FOR_REGEN) Tools/jit/build.py x86_64-unknown-linux-gnu "
+            "--llvm-version=\"23\" --llvm-tools-install-dir=\"/opt/llvm/23.1.2\"\n")
         perf.lb._check_jit_command(makefile, self.toolchain)
         makefile.write_text(
-            "REGEN_JIT_COMMAND=python Tools/jit/build.py --llvm-version=\"21\" "
-            "--llvm-tools-install-dir=\"/opt/llvm/23.1.2\"\n")
+            "\t$(PYTHON_FOR_REGEN) Tools/jit/build.py x86_64-unknown-linux-gnu "
+            "--llvm-version=\"21\" --llvm-tools-install-dir=\"/opt/llvm/23.1.2\"\n")
         with self.assertRaisesRegex(perf.lb.LaneError, "selects LLVM 21"):
             perf.lb._check_jit_command(makefile, self.toolchain)
         makefile.write_text(
-            "REGEN_JIT_COMMAND=python Tools/jit/build.py --llvm-version=\"23\" "
-            "--llvm-tools-install-dir=\"/usr/lib/llvm\"\n")
+            "\t$(PYTHON_FOR_REGEN) Tools/jit/build.py x86_64-unknown-linux-gnu "
+            "--llvm-version=\"23\" --llvm-tools-install-dir=\"/usr/lib/llvm\"\n")
         with self.assertRaisesRegex(perf.lb.LaneError, "locked LLVM"):
             perf.lb._check_jit_command(makefile, self.toolchain)
 
@@ -144,9 +146,9 @@ class JitConfigurationTests(unittest.TestCase):
         python.write_text(f'#!/bin/sh\necho \'{state}\'\n')
         python.chmod(0o755)
         (build_dir / "Makefile").write_text(
-            f"PYTHON_FOR_REGEN={script}\n"
-            "REGEN_JIT_COMMAND=python Tools/jit/build.py --llvm-version=\"23\" "
-            "--llvm-tools-install-dir=\"/opt/llvm/23.1.2\"\n")
+            f"PYTHON_FOR_REGEN?={script}\n"
+            "\t$(PYTHON_FOR_REGEN) Tools/jit/build.py x86_64-unknown-linux-gnu "
+            "--llvm-version=\"23\" --llvm-tools-install-dir=\"/opt/llvm/23.1.2\"\n")
         if header:
             (build_dir / "jit_stencils-x86_64-unknown-linux-gnu.h").write_bytes(b"stencils\n")
         log = root / "build.log"
@@ -155,6 +157,38 @@ class JitConfigurationTests(unittest.TestCase):
             build_dir=build_dir, python=python, env={}, toolchain=self.toolchain,
             target_triple="x86_64-unknown-linux-gnu", jit=jit, logs=(log,))
         return evidence, build_dir
+
+    def test_missing_jit_tools_are_extracted_from_the_locked_archive(self) -> None:
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        archive = root / "llvm" / "objects" / f"{'a' * 64}.blob"
+        archive.parent.mkdir(parents=True)
+        with tarfile.open(archive, "w:xz") as tar:
+            for name in ("LLVM-root/bin/llvm-objdump", "LLVM-root/bin/llvm-dwarfdump"):
+                data = b"#!/bin/sh\nexit 0\n"
+                member = tarfile.TarInfo(name)
+                member.size = len(data)
+                member.mode = 0o755
+                tar.addfile(member, io.BytesIO(data))
+        toolchain = SimpleNamespace(
+            llvm_version="23.1.2", llvm_archive_root="LLVM-root",
+            llvm_input=lambda: SimpleNamespace(sha256="a" * 64))
+        with mock.patch.object(perf.lb, "CACHE_ROOT", root), \
+                mock.patch.object(perf.lb, "WORK", root / "work"):
+            directory = perf.lb._jit_llvm_tools(toolchain)
+            self.assertEqual(sorted(path.name for path in directory.iterdir()),
+                             ["llvm-dwarfdump", "llvm-objdump"])
+            self.assertTrue((directory / "llvm-objdump").stat().st_mode & 0o100)
+            self.assertEqual(perf.lb._jit_llvm_tools(toolchain), directory)
+
+    def test_missing_jit_tools_fail_loudly(self) -> None:
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        toolchain = SimpleNamespace(
+            llvm_version="23.1.2", llvm_archive_root="LLVM-root",
+            llvm_input=lambda: SimpleNamespace(sha256="b" * 64))
+        with mock.patch.object(perf.lb, "CACHE_ROOT", root), \
+                mock.patch.object(perf.lb, "WORK", root / "work"):
+            with self.assertRaisesRegex(perf.lb.LaneError, "archive is missing"):
+                perf.lb._jit_llvm_tools(toolchain)
 
     def test_evidence_records_the_stencil_digest_and_regen_version(self) -> None:
         state = '{"available": true, "enabled": true, "active": true}'

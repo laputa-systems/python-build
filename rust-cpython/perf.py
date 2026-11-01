@@ -61,7 +61,12 @@ import perf_verdict
 
 CONTROL = "perf-upstream"
 INCUMBENT = "perf-rust"
-ALIASES = {"@control": CONTROL, "@incumbent": INCUMBENT}
+ALIASES = {
+    "@control": CONTROL,
+    "@incumbent": INCUMBENT,
+    "@control-jit": f"{CONTROL}-jit",
+    "@incumbent-jit": f"{INCUMBENT}-jit",
+}
 # The gate guards use stdlib-only workloads plus the
 # Django workloads covered by benchmarks/inputs.macos-cp316.lock.json.
 GATE_WORKLOADS = (
@@ -899,9 +904,11 @@ def _worker_count(jobs: int | None) -> int:
     return jobs if jobs is not None else max(1, (os.cpu_count() or 4) - 1)
 
 
-def _build_environment(toolchain, target, paths: dict[str, Path], *, workers: int, sandbox) -> dict[str, str]:
+def _build_environment(toolchain, target, paths: dict[str, Path], *, workers: int, sandbox,
+                       jit: bool = False) -> dict[str, str]:
     env = lb._environment(toolchain, offline=True, build_dir=paths["build"])
     env.update(_perf_flags(toolchain, target, stage=paths["stage"]))
+    env.update(lb.jit_configuration(toolchain, jit=jit).environment)
     env.update({
         "PY_CC": str(toolchain.llvm_prefix / "bin" / "clang"),
         "PY_CPPFLAGS": env["CPPFLAGS"],
@@ -911,6 +918,8 @@ def _build_environment(toolchain, target, paths: dict[str, Path], *, workers: in
         lb._cargo_linker_variable(): str(toolchain.llvm_prefix / "bin" / "clang"),
         "IPHONEOS_DEPLOYMENT_TARGET": "",
     })
+    if jit:
+        env["PATH"] = f"{lb._jit_llvm_tools(toolchain)}:{env.get('PATH', '')}"
     return sandbox.environment(env)
 
 
@@ -937,13 +946,15 @@ def cargo(*, name: str, arguments: list[str]) -> int:
         toolchain, target = lb._toolchain()
         lb._llvm_ready(toolchain)
         env = _build_environment(toolchain, target, paths, workers=_worker_count(None),
-                                 sandbox=lb._sealed_sandbox())
+                                 sandbox=lb._sealed_sandbox(),
+                                 jit=bool(previous.get("jit", False)))
         return subprocess.run([str(lb.CARGO_HOME / "bin" / "cargo"), *arguments],
                               cwd=sync.source, env=env, check=False).returncode
 
 
 def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
-          incremental: bool = False, upstream_compression: bool = False) -> int:
+          incremental: bool = False, upstream_compression: bool = False,
+          jit: bool = False) -> int:
     _check_name(name)
     if jobs is not None and jobs < 1:
         raise LaneError("build jobs must be positive")
@@ -967,21 +978,24 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
             previous = _read_report(paths["report"])
             if not previous.get("configured") or previous.get("pristine"):
                 raise LaneError(f"no configured candidate build named {name!r}; run a clean build")
+            if bool(previous.get("jit", False)) != jit:
+                raise LaneError("incremental build refused: the JIT flag changed; "
+                                "run a clean build")
             configured = True
             route = _report_route(previous)
         _write_json(paths["report"], {"status": "building", "name": _tag(name),
                                       "pristine": empty_overlay, "configured": configured,
-                                      "compression_route": route})
+                                      "jit": jit, "compression_route": route})
         state = {"configured": configured}
         if incremental:
             state["previous"] = previous
         try:
             report = _build_locked(name, paths, empty_overlay=empty_overlay, jobs=jobs,
-                                   incremental=incremental, state=state, route=route)
+                                   incremental=incremental, state=state, route=route, jit=jit)
         except BaseException as error:
             _write_json(paths["report"], {"status": "failed", "name": _tag(name),
                                           "pristine": empty_overlay, "configured": state["configured"],
-                                          "compression_route": route, "error": str(error)})
+                                          "jit": jit, "compression_route": route, "error": str(error)})
             raise
         report["build_seconds"] = round(time.monotonic() - started, 1)
         report["phase_seconds"] = phase_seconds
@@ -996,7 +1010,7 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
 
 def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, jobs: int | None,
                   incremental: bool, state: dict[str, Any],
-                  route: CompressionRoute = "private") -> dict[str, Any]:
+                  route: CompressionRoute = "private", jit: bool = False) -> dict[str, Any]:
     toolchain, target = lb._toolchain()
     lb._llvm_ready(toolchain)
     git_state = _git_state()
@@ -1082,9 +1096,10 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
         )
     workers = _worker_count(jobs)
     sandbox = lb._sealed_sandbox()
-    env = _build_environment(toolchain, target, paths, workers=workers, sandbox=sandbox)
+    env = _build_environment(toolchain, target, paths, workers=workers, sandbox=sandbox, jit=jit)
+    jit_config = lb.jit_configuration(toolchain, jit=jit)
     configure = [str(source / "configure"), f"--prefix={paths['stage']}", "--enable-shared",
-                 "--enable-experimental-jit=no", "--with-tail-call-interp=no",
+                 jit_config.argument, "--with-tail-call-interp=no",
                  "--without-ensurepip"]
     # Only the aggregate workspace requires the pinned source-built runtime.
     # Locked Cargo fetch has already validated every declared workspace dependency.
@@ -1151,6 +1166,11 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
     python = paths["stage"] / "bin" / "python3.16"
     if not python.is_file():
         raise LaneError(f"perf install did not produce {python}")
+    evidence = lb.jit_build_evidence(
+        build_dir=paths["build"], python=python, env=env, toolchain=toolchain,
+        target_triple=lb.TARGET, jit=jit,
+        logs=(paths["build_log"], paths["install_log"]),
+    )
     members: set[str] = set()
     rust_extensions: dict[str, str] = {}
     rust_builtins: dict[str, str] = {}
@@ -1209,6 +1229,10 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
         "configure_arguments": configure,
         "make_variables": list(MAKE_VARS),
         "cflags": env["CFLAGS"],
+        "jit": evidence.enabled,
+        "jit_llvm_version": evidence.llvm_version,
+        "jit_stencils_sha256": evidence.stencils_sha256,
+        "python_for_regen": evidence.python_for_regen,
         "cargo_profile": None if empty_overlay else "release",
         "cargo_profile_selected_by": None if empty_overlay else
             "make command-line override on build and install "
@@ -1295,12 +1319,13 @@ def _runtime_prefix_aliases(baseline: Path, candidate: Path) -> Iterator[tuple[P
 
 
 def resolve(ref: str) -> dict[str, Any]:
-    """Resolve `@control`, `@incumbent`, or a local build name to its stage."""
+    """Resolve `@control`, `@incumbent`, their `-jit` aliases, or a build name."""
     if ref in ALIASES:
         lane = _primary_repo() / "rust-cpython"
         name = ALIASES[ref]
     elif ref.startswith("@"):
-        raise LaneError(f"unknown reference {ref!r}; use @control, @incumbent, or a build name")
+        raise LaneError(f"unknown reference {ref!r}; use {', '.join(sorted(ALIASES))}, "
+                        "or a build name")
     else:
         lane = LANE
         name = _check_name(ref)
@@ -1328,6 +1353,8 @@ def _label(side: dict[str, Any]) -> str:
     report = side["report"]
     commit = report.get("git", {}).get("commit", "unknown")[:10]
     flags = []
+    if report.get("jit"):
+        flags.append("jit")
     if report.get("incremental"):
         flags.append("incremental")
     if report.get("compression_route") == "upstream":
@@ -1995,6 +2022,8 @@ def main(argv: list[str] | None = None) -> int:
                               help="link CPython's stock zlib, _bz2 and binascii modules against "
                                    "zlib-rs and libbz2-rs instead of the private _zlib_rs and _bz2_rs")
     build_parser.add_argument("--jobs", type=int, metavar="N", help="parallel build jobs")
+    build_parser.add_argument("--jit", action="store_true",
+                              help="build the experimental JIT with the locked LLVM")
     cargo_parser = commands.add_parser(
         "cargo", help="run the pinned cargo in a perf build's assembled source, after an overlay sync")
     cargo_parser.add_argument("--name", required=True, help="isolated build name to run cargo in")
@@ -2075,7 +2104,8 @@ def main(argv: list[str] | None = None) -> int:
             return status()
         if args.command == "build":
             return build(name=args.name, empty_overlay=args.empty_overlay, jobs=args.jobs,
-                         incremental=args.incremental, upstream_compression=args.upstream_compression)
+                         incremental=args.incremental, upstream_compression=args.upstream_compression,
+                         jit=args.jit)
         if args.command == "cargo":
             return cargo(name=args.name, arguments=args.cargo_args)
         if args.command == "test":

@@ -1055,7 +1055,7 @@ class CargoCommandTests(unittest.TestCase):
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(data)
                 return {"files": len(staged)}, sorted(staged)
-            toolchain = mock.Mock(llvm_prefix=root / "llvm")
+            toolchain = mock.Mock(llvm_prefix=root / "llvm", llvm_version="23.1.2")
             sandbox = mock.Mock()
             sandbox.environment.side_effect = lambda env: {**env, "SEALED": "1"}
             leases = []
@@ -1141,7 +1141,7 @@ class IncrementalRecipeTests(unittest.TestCase):
     def exercise(self, incremental, *, bad_install=False, failed_install=False, source_std=True,
                  empty_overlay=False, missing_current_member=False, aggregate=True, missing_aggregate=False,
                  late_placement_failure=False, abrupt_placement_failure=False, route="private",
-                 linux=False):
+                 linux=False, jit=False):
         with tempfile.TemporaryDirectory() as temp, ExitStack() as patches:
             root = Path(temp)
             if linux:
@@ -1174,7 +1174,8 @@ class IncrementalRecipeTests(unittest.TestCase):
             (paths["overlay_staging"] / "Lib").mkdir(parents=True)
             (paths["overlay_staging"] / "Lib/pickle.py").write_text("new")
             paths["build_log"].write_text("stale cargo --profile release")
-            toolchain = mock.Mock(make=Path("/make"), llvm_prefix=root / "llvm")
+            toolchain = mock.Mock(make=Path("/make"), llvm_prefix=root / "llvm",
+                                  llvm_version="23.1.2")
             toolchain.identity.return_value = {"fixture": True}
             sandbox = mock.Mock()
             sandbox.environment.side_effect = lambda env: env
@@ -1184,6 +1185,7 @@ class IncrementalRecipeTests(unittest.TestCase):
             commands = []
             configure_environments = []
             preparations = []
+            report = None
             def command(argv, *, log, **kwargs):
                 commands.append(argv)
                 if argv[0].endswith("/configure"):
@@ -1235,6 +1237,13 @@ class IncrementalRecipeTests(unittest.TestCase):
             workspace_members = patches.enter_context(
                 mock.patch.object(perf.lb, "_workspace_members", return_value=members))
             patches.enter_context(mock.patch.object(perf.lb, "_llvm_ready"))
+            patches.enter_context(mock.patch.object(
+                perf.lb, "_jit_llvm_tools", return_value=root / "jit-tools"))
+            patches.enter_context(mock.patch.object(
+                perf.lb, "jit_build_evidence",
+                return_value=(perf.lb.JitEvidence(True, "23.1.2", "stencil-digest", "3.12.3")
+                              if jit else
+                              perf.lb.JitEvidence(False, None, None, "3.12.3"))))
             patches.enter_context(mock.patch.object(perf.lb, "_extract_fresh", return_value=source))
             patches.enter_context(mock.patch.object(perf.lb, "_verify_cargo_lock"))
             patches.enter_context(mock.patch.object(perf.lb, "_require_command", side_effect=command))
@@ -1339,7 +1348,7 @@ class IncrementalRecipeTests(unittest.TestCase):
             else:
                 report = perf._build_locked("fixture", paths, empty_overlay=empty_overlay, jobs=4,
                                             incremental=incremental, state={"configured": True},
-                                            route=route)
+                                            route=route, jit=jit)
                 self.assertEqual(report["compression_route"], route)
                 self.assertEqual(engines.call_count, int(route == "upstream"))
                 self.assertEqual(upstream_proof.call_count, int(route == "upstream"))
@@ -1383,9 +1392,26 @@ class IncrementalRecipeTests(unittest.TestCase):
                                     ["/make", "install", *perf.MAKE_VARS]]))
             if single_install:
                 self.assertFalse(paths["build_log"].exists())
+            return report
 
     def test_abrupt_placement_mutation_persists_nonresumable_state_before_copy(self):
         self.exercise(True, aggregate=False, abrupt_placement_failure=True)
+
+    def test_jit_build_records_llvm_stencil_and_regen(self):
+        report = self.exercise(False, jit=True)
+        self.assertTrue(report["jit"])
+        self.assertEqual(report["jit_llvm_version"], "23.1.2")
+        self.assertEqual(report["jit_stencils_sha256"], "stencil-digest")
+        self.assertEqual(report["python_for_regen"], "3.12.3")
+        self.assertIn("--enable-experimental-jit=yes", report["configure_arguments"])
+
+    def test_no_jit_build_records_disabled_jit(self):
+        report = self.exercise(False)
+        self.assertFalse(report["jit"])
+        self.assertIsNone(report["jit_llvm_version"])
+        self.assertIsNone(report["jit_stencils_sha256"])
+        self.assertEqual(report["python_for_regen"], "3.12.3")
+        self.assertIn("--enable-experimental-jit=no", report["configure_arguments"])
 
     def test_late_placement_report_failure_keeps_failed_state_and_refuses_retry(self):
         self.exercise(True, aggregate=False, late_placement_failure=True)
@@ -1938,6 +1964,55 @@ class UpstreamCompressionRouteTests(unittest.TestCase):
             with self.assertRaises(LookupError):
                 perf.cargo(name="fixture", arguments=["metadata"])
             sync.assert_called_once_with(paths, "upstream")
+
+
+class JitSelectionTests(unittest.TestCase):
+    def test_aliases_resolve_to_the_jit_builds(self):
+        with tempfile.TemporaryDirectory() as temp, ExitStack() as patches:
+            root = Path(temp)
+            lane = root / "rust-cpython"
+            for name, pristine in (("perf-upstream-jit", True), ("perf-rust-jit", False)):
+                report = lane / "results" / f"{name}.json"
+                report.parent.mkdir(parents=True, exist_ok=True)
+                report.write_text(json.dumps({
+                    "status": "built", "pristine": pristine,
+                    "cargo_profile": None if pristine else "release",
+                    "stage_identity": {"sha256": "fixture"}, "jit": True,
+                }))
+                python = lane / f"stage-{name}" / "bin/python3.16"
+                python.parent.mkdir(parents=True)
+                python.write_text("")
+            patches.enter_context(mock.patch.object(perf, "_primary_repo", return_value=root))
+            self.assertEqual(perf.resolve("@control-jit")["name"], "perf-upstream-jit")
+            self.assertEqual(perf.resolve("@incumbent-jit")["name"], "perf-rust-jit")
+            with self.assertRaisesRegex(perf.LaneError, "unknown reference"):
+                perf.resolve("@control-pgo")
+
+    def test_jit_label_is_visible(self):
+        label = perf._label({"name": "perf-rust-jit", "report": {
+            "git": {"commit": "0123456789abcdef"}, "jit": True, "incremental": False}})
+        self.assertEqual(label, "perf-rust-jit@0123456789 (jit)")
+        self.assertNotIn("jit", perf._label({"name": "perf-rust", "report": {
+            "git": {"commit": "0123456789abcdef"}}}))
+
+    def test_incremental_refuses_a_jit_flag_change(self):
+        for previous, requested in ((False, True), (True, False)):
+            with self.subTest(previous=previous), tempfile.TemporaryDirectory() as temp, \
+                    ExitStack() as patches:
+                report = Path(temp) / "report.json"
+                report.write_text(json.dumps({"configured": True, "pristine": False,
+                                              "jit": previous}))
+                patches.enter_context(mock.patch.object(perf, "_paths",
+                                                        return_value={"report": report}))
+                patches.enter_context(mock.patch.object(perf.lb, "doctor_report",
+                                                        return_value={"ok": True}))
+                patches.enter_context(mock.patch.object(perf, "host_lease",
+                                                        return_value=nullcontext()))
+                built = patches.enter_context(mock.patch.object(perf, "_build_locked"))
+                with self.assertRaisesRegex(perf.LaneError, "JIT flag changed"):
+                    perf.build(name="fixture", empty_overlay=False, incremental=True,
+                               jit=requested)
+                built.assert_not_called()
 
 
 class SelectionTests(unittest.TestCase):

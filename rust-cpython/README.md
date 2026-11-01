@@ -1,7 +1,9 @@
 # Rust-for-CPython research lane
 
 This isolated lane builds upstream CPython **3.16.0a1** with a Rust overlay.
-It is not the shipping 3.15.1 product. All 71 named public-behavior coverage
+It is not the shipping 3.15.1 product. JIT experiments run only in this lane:
+the product build keeps the JIT disabled, and `--jit` here never changes the
+product configuration. All 71 named public-behavior coverage
 targets passed their complete relevant CPython suites on native macOS arm64
 and Linux x86-64; later parity runs keep the known-red set recorded in
 [ENGINEERING.md](ENGINEERING.md). Linux arm64 is not implemented here and is
@@ -33,6 +35,7 @@ ThinLTO release builds. Build, test, and benchmark commands run through
 python3 rust-cpython/build.py doctor
 python3 rust-cpython/build.py fetch
 python3 rust-cpython/build.py build
+python3 rust-cpython/build.py build --jit
 python3 rust-cpython/build.py test --suite test_bz2
 python3 rust-cpython/build.py test --all
 python3 rust-cpython/build.py clean
@@ -40,7 +43,9 @@ python3 rust-cpython/build.py clean
 
 `build` configures CPython with `--with-pydebug`, no PGO or LTO, C/C++
 `-O0 -g3`, and the overlay's Cargo `dev` profile. It runs offline and installs
-`stage/bin/python3.16d`. `test` accepts repeated `--suite test_NAME` options
+`stage/bin/python3.16d`. `build --jit` enables the experimental JIT and
+generates its stencils with the locked LLVM; a build without the flag keeps
+the JIT disabled. `test` accepts repeated `--suite test_NAME` options
 and runs only those complete CPython Python test modules or packages.
 `test --all` runs all CPython test modules under the test runner's default
 resource policy on the integrated tree. Each test file has a 900-second
@@ -90,17 +95,18 @@ namespaces; macOS uses `sandbox-exec`.
 ## Performance harness
 
 `python3 rust-cpython/perf.py` builds optimized interpreters (`-O2`, Cargo
-`release` with ThinLTO and std built from the pinned `rust-src`, no PGO, JIT,
-or tail-call interpreter), runs suites on them, profiles, and measures paired
-comparisons. It is the only entry point while measurements may run: it holds
+`release` with ThinLTO and std built from the pinned `rust-src`, no PGO or
+tail-call interpreter; `--jit` opts into the experimental JIT), runs suites on
+them, profiles, and measures paired comparisons. It is the only entry point while measurements may run: it holds
 the host lease, and the coverage `build.py build` and `test` commands bypass
 it. On Linux the optimized harness uses the same locked Ubuntu 24.04 userland
 and `inputs.linux-cp316.lock.json`; the macOS harness uses the macOS lock.
 
 | Command | Purpose |
 | --- | --- |
-| `build --name N [--incremental] [--jobs J]` | Clean optimized build verified per Rust extension; `--incremental` syncs changed overlay files and refuses build-system or Cargo changes |
+| `build --name N [--incremental] [--jobs J] [--jit]` | Clean optimized build verified per Rust extension; `--incremental` syncs changed overlay files and refuses build-system, Cargo, or JIT-flag changes |
 | `build --name perf-upstream --empty-overlay` | Pristine-upstream control |
+| `build --name perf-upstream-jit --empty-overlay --jit` | Pristine-upstream JIT control |
 | `build --name N --upstream-compression` | Link CPython's stock `zlib`, `_bz2` and `binascii` against static `zlib-rs` and `libbz2-rs` archives of the locked crates, and omit the private `_zlib_rs`, `_bz2_rs` and `Lib/zlib.py` |
 | `test --name N --suite test_X ...` or `--all` | Complete CPython suites on a perf build |
 | `cargo --name N -- <cargo args>` | Sync changed overlay files as `build --incremental` does, then run the pinned cargo in build `N`'s assembled source with the build's environment; exits with cargo's status |
@@ -112,7 +118,8 @@ and `inputs.linux-cp316.lock.json`; the macOS harness uses the macOS lock.
 | `status` | Lease holders and every perf build with commit, flags, and suite state |
 
 `@control` is the primary checkout's `perf-upstream` and `@incumbent` its
-`perf-rust`; a bare name is a build in the current worktree. Builds, suites,
+`perf-rust`; `@control-jit` and `@incumbent-jit` are their JIT builds. A bare
+name is a build in the current worktree. Builds, suites,
 and profiles share the host, while `bench` and `calibrate` hold it exclusively
 (`WAIT  host lease busy` is normal). A bench refuses a stage whose bytes
 changed since its build. `--gate` requires clean builds of committed overlays,
