@@ -106,6 +106,27 @@ def emit() -> None:
 
     say("generators", generators())
 
+    def hot_function_entries():
+        def leaf(a):
+            return a + 1
+
+        def mid(a, b):
+            return leaf(a) + leaf(b)
+
+        def chained(n):
+            return (mid(i, i + 1) for i in range(n))
+
+        def recurse(n):
+            return 0 if n == 0 else 1 + recurse(n - 1)
+
+        total = 0
+        for _ in range(HOT // 100):
+            total += sum(value for value in chained(100))
+            total += recurse(20)
+        return total
+
+    say("hot-function-entries", hot_function_entries())
+
     log = []
 
     class Noisy:
