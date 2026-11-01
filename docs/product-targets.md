@@ -34,11 +34,11 @@ pinned nightly Rust toolchain. Rust extensions use the musl dynamic CRT
 with a static CRT); no glibc symbols may appear in any payload. Do not claim a
 build-time gain without a clean before-and-after measurement.
 
-`backend/` keeps the RTLS provider patch, the hashing backend,
-and the replay procedures behind the official build. Keep its Rust
-dependencies out of the production locks and bootstrap. Keep its source pin,
-per-architecture bootstrap lockfiles, and license record together when
-refreshing the prototype.
+`backend/` keeps the vendored RTLS source, the RTLS provider patch, the
+hashing backend, and the replay procedures behind the official build. Keep its
+Rust dependencies out of the production locks and bootstrap. Keep its vendored
+source pin, per-architecture bootstrap lockfiles, and license record together
+when refreshing the prototype.
 
 Linux `_dbm` is the only consumer of Berkeley DB 6.0.19, whose Sleepycat
 license differs from later AGPL releases; `_dbm` stays. `buildsys/notices.py`

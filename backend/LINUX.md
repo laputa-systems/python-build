@@ -15,13 +15,6 @@ printf '\n.work/\n' >> "$(git rev-parse --git-path info/exclude)"
 mkdir -p .work/tmp
 ```
 
-Fetch the pinned RTLS checkout:
-
-```sh
-git clone --depth 1 --branch 2026.10.3 \
-    https://github.com/jawah/rtls.git .work/tmp/rtls-linux-source
-```
-
 Build and qualify a fresh candidate:
 
 ```sh
@@ -30,8 +23,7 @@ python3.15 backend/docker-linux.py \
     --target aarch64-unknown-linux-musl \
     --run-dir .work/tmp/openssl-free-linux-arm64 \
     --jobs 6 \
-    --source-revision "$(git rev-parse HEAD)" \
-    --rtls-source .work/tmp/rtls-linux-source
+    --source-revision "$(git rev-parse HEAD)"
 ```
 
 For x86-64, pass `--target x86_64-unknown-linux-musl` with a native amd64

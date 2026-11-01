@@ -31,7 +31,7 @@ LINUX_CPU_FEATURES = {
     LINUX_X86_64_TRIPLE: {"aes", "pclmulqdq", "avx", "avx2", "bmi1", "bmi2", "fma", "movbe"},
 }
 RTLS_REVISION = "302423b49e494863d07630d50b15a9488ec85ef7"
-RTLS_ARCHIVE_SHA256 = "8f188c405d18da8d099e9923722a764f14a93c466c0d1d9c548a42d47540639a"
+RTLS_VENDOR = REPO / "backend" / "vendor" / "rtls"
 RUST_VERSION = "1.100.0-nightly"
 RUST_CHANNEL = "nightly-2026-09-15"
 DISABLED_MODULES = ("_ssl", "_hashlib")
@@ -377,7 +377,7 @@ def build_cpython(
             lock_path=REPO / "sources.lock.json",
             source_revision=source_revision(),
             rtls_revision=RTLS_REVISION,
-            rtls_archive_sha256=RTLS_ARCHIVE_SHA256,
+            rtls_source_sha256=rtls_source_digest(RTLS_VENDOR),
         )
     except NoticeError as error:
         raise BuildError(f"cannot install bundled-input notices: {error}") from error
@@ -565,28 +565,18 @@ def rust_toolchain() -> tuple[Path, Path, Path | None]:
     return cargo, rustc, kache
 
 
-def validate_adapter_sources(rtls_source: Path, hashing_source: Path) -> tuple[Path, Path]:
-    rtls_source = Path(rtls_source).resolve()
+def validate_adapter_sources(hashing_source: Path) -> tuple[Path, Path]:
+    rtls_source = RTLS_VENDOR.resolve()
     hashing_source = Path(hashing_source).resolve()
     if not rtls_source.is_dir():
-        raise BuildError(f"RTLS checkout does not exist: {rtls_source}")
+        raise BuildError(f"vendored RTLS source does not exist: {rtls_source}")
     if not hashing_source.is_dir():
         raise BuildError(f"hashing lane does not exist: {hashing_source}")
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=rtls_source,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    if result.stdout.strip() != RTLS_REVISION:
-        raise BuildError(
-            f"RTLS checkout must be {RTLS_REVISION}, found {result.stdout.strip()}"
-        )
     hashing_source_digest(hashing_source)
     rtls_manifest = rtls_source / "rust" / "Cargo.toml"
     if not rtls_manifest.is_file():
         raise BuildError(f"RTLS Rust manifest is missing: {rtls_manifest}")
+    rtls_source_digest(rtls_source)
     return rtls_source, hashing_source
 
 
@@ -806,46 +796,39 @@ def apply_rtls_patch(checkout: Path, name: str) -> None:
     try:
         apply_patch(checkout, patch)
     except PatchError as error:
-        raise BuildError(f"cannot apply {name} to the pinned RTLS source: {error}") from error
+        raise BuildError(f"cannot apply {name} to the vendored RTLS source: {error}") from error
+
+
+def stage_rtls_source(source: Path, run_dir: Path) -> Path:
+    source = Path(source).resolve()
+    run_dir = Path(run_dir).resolve()
+    destination = run_dir / "rtls-build"
+    if destination.exists() or destination.is_symlink():
+        raise BuildError(f"refusing to replace prepared RTLS checkout: {destination}")
+    before = rtls_source_digest(source)
+    with tempfile.TemporaryDirectory(dir=run_dir, prefix=".rtls-source-") as temporary:
+        staged = Path(temporary) / "rtls-build"
+        shutil.copytree(source, staged)
+        staged_digest = rtls_source_digest(staged)
+        after = rtls_source_digest(source)
+        if before != after or staged_digest != before:
+            raise BuildError("vendored RTLS source changed while its fetch snapshot was created")
+        os.replace(staged, destination)
+    return destination
 
 
 def fetch_rust_inputs(
     run_dir: Path,
-    rtls_source: Path,
     hashing_source: Path,
     cargo: Path,
 ) -> None:
-    from buildsys.inputs import safe_extract
-
-    rtls_source, hashing_source = validate_adapter_sources(rtls_source, hashing_source)
-    checkout = run_dir / "rtls-build"
-    if checkout.exists() or checkout.is_symlink():
-        raise BuildError(f"refusing to replace prepared RTLS checkout: {checkout}")
+    rtls_source, hashing_source = validate_adapter_sources(hashing_source)
+    checkout = stage_rtls_source(rtls_source, run_dir)
     inputs = run_dir / "inputs"
     inputs.mkdir(parents=True, exist_ok=True)
     checksum = inputs / "rtls-source.sha256"
     if inputs.is_symlink() or checksum.exists() or checksum.is_symlink():
         raise BuildError(f"refusing to replace a staged RTLS source digest: {checksum}")
-    source_archive = inputs / "rtls-source.tar"
-    with source_archive.open("wb") as output:
-        result = subprocess.run(
-            ["git", "archive", "--format=tar", RTLS_REVISION],
-            cwd=rtls_source,
-            stdout=output,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=False,
-        )
-    if result.returncode:
-        raise BuildError(f"cannot archive pinned RTLS source: {result.stderr[-4000:]}")
-    with source_archive.open("rb") as archive:
-        archive_digest = hashlib.file_digest(archive, "sha256").hexdigest()
-    if archive_digest != RTLS_ARCHIVE_SHA256:
-        raise BuildError(
-            "the pinned RTLS source archive differs from the verified bytes: "
-            f"expected {RTLS_ARCHIVE_SHA256}, found {archive_digest}"
-        )
-    safe_extract(source_archive, checkout)
     apply_rtls_patch(checkout, "rtls-graviola.patch")
     hashing_build = stage_hashing_source(hashing_source, run_dir, inputs)
     helper = load_webpki_helper()
@@ -1502,10 +1485,10 @@ def run_linux(args, target, toolchain) -> int:
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "tmp").mkdir(exist_ok=True)
     if args.phase == "fetch":
-        if args.rtls_source is None or args.prefix is not None:
-            raise BuildError("fetch requires --rtls-source and no --prefix")
+        if args.prefix is not None:
+            raise BuildError("fetch does not accept --prefix")
         cargo, _, _ = rust_toolchain()
-        fetch_rust_inputs(run_dir, args.rtls_source, args.hashing_source, cargo)
+        fetch_rust_inputs(run_dir, args.hashing_source, cargo)
         return 0
     isolation = linux_isolation()
     linux_cpu_features(target)
@@ -1645,7 +1628,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--run-dir", type=Path)
     parser.add_argument("--prefix", type=Path)
-    parser.add_argument("--rtls-source", type=Path)
     parser.add_argument(
         "--hashing-source",
         type=Path,
@@ -1685,8 +1667,8 @@ def main(argv: list[str] | None = None) -> int:
         if not target.is_macos:
             return run_linux(args, target, toolchain)
         if args.phase == "fetch" and not args.inside_sandbox:
-            if args.prefix is not None or args.rtls_source is None:
-                raise BuildError("--phase fetch requires --rtls-source and does not accept --prefix")
+            if args.prefix is not None:
+                raise BuildError("--phase fetch does not accept --prefix")
             work_parent = REPO / ".work" / "tmp"
             work_parent.mkdir(parents=True, exist_ok=True)
             run_dir = require_work_path(
@@ -1695,12 +1677,9 @@ def main(argv: list[str] | None = None) -> int:
                 else Path(tempfile.mkdtemp(prefix="openssl-free-fetch-", dir=work_parent))
             )
             run_dir.mkdir(parents=True, exist_ok=True)
-            rtls_source, hashing_source = validate_adapter_sources(
-                args.rtls_source,
-                args.hashing_source,
-            )
+            _, hashing_source = validate_adapter_sources(args.hashing_source)
             cargo, _, _ = rust_toolchain()
-            fetch_rust_inputs(run_dir, rtls_source, hashing_source, cargo)
+            fetch_rust_inputs(run_dir, hashing_source, cargo)
             print(f"FETCHED no-OpenSSL Rust inputs -> {run_dir}")
             return 0
 
@@ -1709,12 +1688,7 @@ def main(argv: list[str] | None = None) -> int:
             if not all(path is not None and path.is_file() for path in (cargo, rustc)):
                 raise BuildError("sealed Rust build tools were not provided")
         elif args.phase in {"all", "overlay"}:
-            if args.rtls_source is None:
-                raise BuildError(f"--phase {args.phase} requires --rtls-source")
-            args.rtls_source, args.hashing_source = validate_adapter_sources(
-                args.rtls_source,
-                args.hashing_source,
-            )
+            _, args.hashing_source = validate_adapter_sources(args.hashing_source)
             cargo, rustc, kache = rust_toolchain()
         else:
             cargo = rustc = kache = None

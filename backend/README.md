@@ -202,13 +202,12 @@ dependencies. That lane also targets a 3.16 development fork. It does not
 provide a production-ready OpenSSL replacement for CPython 3.15.1.
 
 [RTLS](https://github.com/jawah/rtls/tree/302423b49e494863d07630d50b15a9488ec85ef7)
-provides a Python-level `ssl` adapter over rustls. The experiment pins its
-2026.10.3 tag to commit `302423b49e494863d07630d50b15a9488ec85ef7` and replaces
-the native AWS-LC provider with
+provides a Python-level `ssl` adapter over rustls. The experiment vendors its
+2026.10.3 tag at commit `302423b49e494863d07630d50b15a9488ec85ef7` under
+`backend/vendor/rtls/` and replaces the native AWS-LC provider with
 [`rustls-graviola` 0.4.0](https://crates.io/crates/rustls-graviola/0.4.0),
-which uses Graviola 0.4.1. The source pin, dependency changes, Rust adapter
-changes, and lockfile update are in
-[`rtls-graviola.patch`](rtls-graviola.patch).
+which uses Graviola 0.4.1. The dependency changes, Rust adapter changes, and
+lockfile update are in [`rtls-graviola.patch`](rtls-graviola.patch).
 The recorded licenses are in
 [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). The patch removes the
 RTLS AWS-LC native build crates and adds Graviola plus target support crates.

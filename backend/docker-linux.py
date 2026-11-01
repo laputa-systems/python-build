@@ -647,14 +647,12 @@ def run_build(
     revision: str,
     dirty: bool,
     jobs: int,
-    rtls_source: Path,
     hashing_source: Path,
     daemon: dict,
     locked_digest: str,
 ) -> dict:
     relative_run = run_dir.relative_to(REPO).as_posix()
     container_run = f"/work/{relative_run}"
-    rtls_path = host_to_container(rtls_source, REPO)
     hashing_path = host_to_container(hashing_source, REPO)
     home = run_dir / "home"
     cargo_home = run_dir / "cargo-home"
@@ -679,7 +677,7 @@ def run_build(
     driver_command = [
         "python3", "backend/build-no-openssl.py",
         "--phase", "all", "--run-dir", container_run, "--jobs", str(jobs),
-        "--rtls-source", rtls_path, "--hashing-source", hashing_path,
+        "--hashing-source", hashing_path,
     ]
     command = [
         "sh", "-ec",
@@ -760,7 +758,6 @@ def networked_fetch(
     run_dir: Path,
     image: str,
     jobs: int,
-    rtls_source: Path,
     hashing_source: Path,
 ) -> None:
     relative_run = run_dir.relative_to(REPO).as_posix()
@@ -779,7 +776,6 @@ def networked_fetch(
     command = [
         "python3", "backend/build-no-openssl.py",
         "--phase", "fetch", "--run-dir", container_run, "--jobs", str(jobs),
-        "--rtls-source", host_to_container(rtls_source, REPO),
         "--hashing-source", host_to_container(hashing_source, REPO),
     ]
     argv = [
@@ -1314,7 +1310,6 @@ def run_fetch(
     jobs: int,
     revision: str,
     dirty: bool,
-    rtls_source: Path,
     hashing_source: Path,
     bootstrap: dict,
     experimental: dict,
@@ -1355,7 +1350,7 @@ def run_fetch(
             "probe": probe["probe"],
         },
     )
-    networked_fetch(run_dir, image, jobs, rtls_source, hashing_source)
+    networked_fetch(run_dir, image, jobs, hashing_source)
     return image, base_image, overlay_image
 
 
@@ -1365,7 +1360,6 @@ def run_build_and_qualification(
     jobs: int,
     revision: str,
     dirty: bool,
-    rtls_source: Path,
     hashing_source: Path,
     bootstrap: dict,
     experimental: dict,
@@ -1376,7 +1370,7 @@ def run_build_and_qualification(
 ) -> None:
     if phase in {"fetch", "all"}:
         image, _, _ = run_fetch(
-            run_dir, jobs, revision, dirty, rtls_source, hashing_source,
+            run_dir, jobs, revision, dirty, hashing_source,
             bootstrap, experimental, locked_digest,
         )
     else:
@@ -1386,7 +1380,7 @@ def run_build_and_qualification(
         image, _, _ = prepare_toolchain_image(run_dir, bootstrap, experimental, locked_digest)
     if phase in {"build", "all"}:
         run_build(
-            run_dir, image, revision, dirty, jobs, rtls_source, hashing_source, daemon, locked_digest
+            run_dir, image, revision, dirty, jobs, hashing_source, daemon, locked_digest
         )
     if phase in {"qualify", "all"}:
         if not (run_dir / "docker-build.json").is_file():
@@ -1413,7 +1407,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--jobs", type=int, default=2)
     parser.add_argument("--source-revision")
-    parser.add_argument("--rtls-source", type=Path, required=True)
     parser.add_argument("--hashing-source", type=Path, default=REPO / "backend" / "hashing")
     parser.add_argument("--archive-name", default=None)
     parser.add_argument("--manifest-name", default=None)
@@ -1425,7 +1418,6 @@ def main(argv: list[str] | None = None) -> int:
         daemon = docker_daemon()
         run_dir = require_work_dir(args.run_dir, fresh=args.phase == "all")
         revision, dirty = source_identity(args.source_revision)
-        rtls_source = args.rtls_source.resolve(strict=True)
         hashing_source = args.hashing_source.resolve(strict=True)
         bootstrap, experimental, locked_digest = load_locks()
         (run_dir / "logs").mkdir(exist_ok=True)
@@ -1435,7 +1427,6 @@ def main(argv: list[str] | None = None) -> int:
             args.jobs,
             revision,
             dirty,
-            rtls_source,
             hashing_source,
             bootstrap,
             experimental,

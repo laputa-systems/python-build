@@ -1,0 +1,732 @@
+use pyo3::prelude::*;
+use pyo3::types::{PyAny, PyBytes};
+#[cfg(not(target_os = "wasi"))]
+use rustls::client::EchStatus;
+use rustls::{ClientConnection, ServerConnection};
+use std::io::{Cursor, Read, Write};
+use std::sync::Mutex;
+
+use crate::error;
+
+/// Categorized TLS error — carries enough info to map to the right Python
+/// exception type *after* re-acquiring the GIL.
+enum TlsError {
+    CertVerification(String),
+    General(String),
+    CleanEof,
+}
+
+impl From<rustls::Error> for TlsError {
+    fn from(err: rustls::Error) -> Self {
+        match &err {
+            rustls::Error::InvalidCertificate(_) | rustls::Error::NoCertificatesPresented => {
+                TlsError::CertVerification(format!("{}", err))
+            }
+            _ => TlsError::General(format!("{}", err)),
+        }
+    }
+}
+
+impl TlsError {
+    /// Convert to a Python exception (requires the GIL).
+    fn into_pyerr(self, py: Python<'_>) -> PyErr {
+        match self {
+            TlsError::CertVerification(msg) => error::raise_cert_verification(py, &msg),
+            TlsError::General(msg) => error::raise_ssl_error(py, &msg),
+            TlsError::CleanEof => error::raise_zero_return(py),
+        }
+    }
+}
+
+/// Internal mutable state for client connections, protected by a Mutex.
+struct ClientInner {
+    conn: ClientConnection,
+    peer_certs_cache: Option<Vec<Vec<u8>>>,
+    // Updated from IoState after processing, then reduced by plaintext reads.
+    plaintext_pending: usize,
+    // Received close_notify is sticky and independent of local shutdown.
+    peer_has_closed: bool,
+}
+
+/// Client-side TLS connection state machine.
+/// No network I/O — operates purely on byte buffers.
+///
+/// Uses `#[pyclass(frozen)]` to eliminate PyO3 implicit `PyCell` borrow
+/// checker. All mutable state is protected by an explicit `Mutex`.
+#[pyclass(frozen)]
+pub struct RustlsClientConnection {
+    inner: Mutex<ClientInner>,
+}
+
+impl RustlsClientConnection {
+    pub fn new(conn: ClientConnection) -> Self {
+        Self {
+            inner: Mutex::new(ClientInner {
+                conn,
+                peer_certs_cache: None,
+                plaintext_pending: 0,
+                peer_has_closed: false,
+            }),
+        }
+    }
+}
+
+#[pymethods]
+impl RustlsClientConnection {
+    /// Feed ciphertext bytes (from the network) into the TLS state machine.
+    /// Returns number of bytes consumed.
+    fn read_tls(&self, py: Python<'_>, data: &[u8]) -> PyResult<usize> {
+        let inner = &self.inner;
+        let mut cursor = Cursor::new(data);
+        let result = py.detach(|| {
+            let mut guard = inner.lock().unwrap();
+            guard.conn.read_tls(&mut cursor)
+        });
+        result.map_err(|e| error::raise_ssl_error(py, &format!("read_tls failed: {}", e)))
+    }
+
+    /// Process any TLS records that have been buffered by read_tls().
+    /// This drives the handshake and decrypts application data.
+    /// GIL is released during the heavy crypto work.
+    fn process_new_packets(&self, py: Python<'_>) -> PyResult<()> {
+        let inner = &self.inner;
+        let result: Result<(), TlsError> = py.detach(|| {
+            let mut guard = inner.lock().unwrap();
+            let state = guard.conn.process_new_packets().map_err(TlsError::from)?;
+            guard.plaintext_pending = state.plaintext_bytes_to_read();
+            guard.peer_has_closed |= state.peer_has_closed();
+            // Cache peer certs after handshake completes (while lock is held)
+            if !guard.conn.is_handshaking() && guard.peer_certs_cache.is_none() {
+                guard.peer_certs_cache = guard
+                    .conn
+                    .peer_certificates()
+                    .map(|certs| certs.iter().map(|c| c.to_vec()).collect());
+            }
+            Ok(())
+        });
+        result.map_err(|e: TlsError| e.into_pyerr(py))
+    }
+
+    /// Read decrypted plaintext from the TLS state machine.
+    /// Returns empty bytes for WouldBlock; raises SSLZeroReturnError only
+    /// after receiving close_notify and draining all application plaintext.
+    fn read_plaintext(&self, py: Python<'_>, max_len: usize) -> PyResult<Py<PyAny>> {
+        let inner = &self.inner;
+        let mut buf = vec![0u8; max_len];
+        let result: Result<(usize, bool), std::io::Error> = py.detach(|| {
+            let mut guard = inner.lock().unwrap();
+            let n = guard.conn.reader().read(&mut buf)?;
+            guard.plaintext_pending = guard.plaintext_pending.saturating_sub(n);
+            Ok((n, guard.peer_has_closed))
+        });
+        match result {
+            Ok((0, true)) if max_len > 0 => Err(error::raise_zero_return(py)),
+            Ok((n, _)) => {
+                buf.truncate(n);
+                Ok(PyBytes::new(py, &buf).into())
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                Ok(PyBytes::new(py, &[]).into())
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::UnexpectedEof => Err(error::raise_eof(
+                py,
+                "EOF occurred in violation of protocol",
+            )),
+            Err(e) => Err(error::raise_ssl_error(py, &format!("read error: {}", e))),
+        }
+    }
+
+    /// Number of already decrypted bytes, without processing or consuming data.
+    fn pending(&self, py: Python<'_>) -> usize {
+        let inner = &self.inner;
+        py.detach(|| inner.lock().unwrap().plaintext_pending)
+    }
+
+    /// Write plaintext data to be encrypted by the TLS state machine.
+    /// Returns number of bytes accepted.
+    fn write_plaintext(&self, py: Python<'_>, data: &[u8]) -> PyResult<usize> {
+        let inner = &self.inner;
+        let result = py.detach(|| {
+            let mut guard = inner.lock().unwrap();
+            guard.conn.writer().write(data)
+        });
+        result.map_err(|e| error::raise_ssl_error(py, &format!("write error: {}", e)))
+    }
+
+    /// Extract ciphertext bytes from the TLS state machine (to be sent on the network).
+    /// Returns bytes. GIL is released during encryption.
+    fn write_tls(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let inner = &self.inner;
+        let result = py.detach(|| {
+            let mut guard = inner.lock().unwrap();
+            let mut buf = Vec::new();
+            guard.conn.write_tls(&mut buf).map(|_| buf)
+        });
+        match result {
+            Ok(buf) => Ok(PyBytes::new(py, &buf).into()),
+            Err(e) => Err(error::raise_ssl_error(
+                py,
+                &format!("write_tls failed: {}", e),
+            )),
+        }
+    }
+
+    /// Send TLS close_notify alert.
+    fn send_close_notify(&self, py: Python<'_>) {
+        let inner = &self.inner;
+        py.detach(|| {
+            inner.lock().unwrap().conn.send_close_notify();
+        });
+    }
+
+    /// Returns True if the handshake is still in progress.
+    fn is_handshaking(&self, py: Python<'_>) -> bool {
+        let inner = &self.inner;
+        py.detach(|| inner.lock().unwrap().conn.is_handshaking())
+    }
+
+    /// Returns True if the state machine wants to read more ciphertext from the network.
+    fn wants_read(&self, py: Python<'_>) -> bool {
+        let inner = &self.inner;
+        py.detach(|| inner.lock().unwrap().conn.wants_read())
+    }
+
+    /// Returns True if the state machine has ciphertext to send to the network.
+    fn wants_write(&self, py: Python<'_>) -> bool {
+        let inner = &self.inner;
+        py.detach(|| inner.lock().unwrap().conn.wants_write())
+    }
+
+    /// Get peer certificates as list of DER-encoded bytes.
+    /// Returns None if no certificates available (e.g., before handshake).
+    fn peer_certificates(&self, py: Python<'_>) -> PyResult<Option<Vec<Py<PyAny>>>> {
+        let inner = &self.inner;
+        let cached = py.detach(|| {
+            let guard = inner.lock().unwrap();
+            // Try cache first, then live
+            if let Some(ref cached) = guard.peer_certs_cache {
+                return Some(cached.clone());
+            }
+            guard
+                .conn
+                .peer_certificates()
+                .map(|certs| certs.iter().map(|c| c.to_vec()).collect())
+        });
+        match cached {
+            Some(certs) => Ok(Some(
+                certs.iter().map(|c| PyBytes::new(py, c).into()).collect(),
+            )),
+            None => Ok(None),
+        }
+    }
+
+    /// Get the negotiated ALPN protocol, or None.
+    fn alpn_protocol(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let inner = &self.inner;
+        let proto = py.detach(|| {
+            let guard = inner.lock().unwrap();
+            guard.conn.alpn_protocol().map(|p| p.to_vec())
+        });
+        match proto {
+            Some(p) => Ok(Some(PyBytes::new(py, &p).into())),
+            None => Ok(None),
+        }
+    }
+
+    /// Get the negotiated protocol version as a u16 (0x0303=TLS1.2, 0x0304=TLS1.3).
+    fn protocol_version(&self, py: Python<'_>) -> Option<u16> {
+        let inner = &self.inner;
+        py.detach(|| {
+            inner
+                .lock()
+                .unwrap()
+                .conn
+                .protocol_version()
+                .map(|v| match v {
+                    rustls::ProtocolVersion::TLSv1_2 => TLS_V1_2,
+                    rustls::ProtocolVersion::TLSv1_3 => TLS_V1_3,
+                    _ => 0,
+                })
+        })
+    }
+
+    /// Get the negotiated cipher suite name (IANA name).
+    fn negotiated_cipher_suite(&self, py: Python<'_>) -> Option<String> {
+        let inner = &self.inner;
+        py.detach(|| {
+            inner
+                .lock()
+                .unwrap()
+                .conn
+                .negotiated_cipher_suite()
+                .map(|cs| format!("{:?}", cs.suite()))
+        })
+    }
+
+    /// Get the negotiated cipher suite key exchange bits.
+    fn negotiated_cipher_suite_bits(&self, py: Python<'_>) -> Option<u32> {
+        let inner = &self.inner;
+        py.detach(|| {
+            inner
+                .lock()
+                .unwrap()
+                .conn
+                .negotiated_cipher_suite()
+                .map(|cs| {
+                    let name = format!("{:?}", cs.suite());
+                    if name.contains("AES_128") {
+                        128
+                    } else if name.contains("AES_256") || name.contains("CHACHA20") {
+                        256
+                    } else {
+                        0
+                    }
+                })
+        })
+    }
+
+    /// Get the ECH (Encrypted Client Hello) status as a string.
+    /// Returns one of: "not_offered", "grease", "offered", "accepted", "rejected"
+    #[cfg(not(target_os = "wasi"))]
+    fn ech_status(&self, py: Python<'_>) -> &'static str {
+        let inner = &self.inner;
+        py.detach(|| match inner.lock().unwrap().conn.ech_status() {
+            EchStatus::NotOffered => "not_offered",
+            EchStatus::Grease => "grease",
+            EchStatus::Offered => "offered",
+            EchStatus::Accepted => "accepted",
+            EchStatus::Rejected => "rejected",
+        })
+    }
+
+    /// Fused read path: feed ciphertext, process TLS records, and return
+    /// decrypted plaintext — all in **one** Python→Rust call.
+    ///
+    /// This avoids 3 separate PyO3 boundary crossings per recv() and
+    /// handles the "buffer full" case internally by looping
+    /// read_tls → process → drain until all input is consumed.
+    ///
+    /// Returns `(plaintext_bytes, unconsumed_ciphertext_bytes)`.
+    /// Raises SSLZeroReturnError only after received clean EOF is drained.
+    /// `unconsumed` will be non-empty only if we filled `max_plaintext`
+    /// before exhausting the input — the caller should stash it back.
+    fn decrypt_incoming(
+        &self,
+        py: Python<'_>,
+        ciphertext: &[u8],
+        max_plaintext: usize,
+    ) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
+        let inner = &self.inner;
+
+        let result = py.detach(|| -> Result<(Vec<u8>, usize), TlsError> {
+            let mut guard = inner.lock().unwrap();
+
+            let mut plaintext = Vec::with_capacity(max_plaintext);
+            let mut offset: usize = 0;
+            let total = ciphertext.len();
+
+            while offset < total || !guard.conn.wants_read() {
+                // Feed as much ciphertext as rustls will accept
+                if offset < total {
+                    let mut cursor = Cursor::new(&ciphertext[offset..]);
+                    match guard.conn.read_tls(&mut cursor) {
+                        Ok(n) => offset += n,
+                        Err(e) => {
+                            let msg = e.to_string();
+                            if msg.contains("buffer full") {
+                                // Buffer full — process what we have so far
+                            } else {
+                                return Err(TlsError::General(format!("read_tls failed: {}", e)));
+                            }
+                        }
+                    }
+                }
+
+                // Process buffered TLS records (the expensive crypto work)
+                let state = guard.conn.process_new_packets().map_err(TlsError::from)?;
+                guard.plaintext_pending = state.plaintext_bytes_to_read();
+                guard.peer_has_closed |= state.peer_has_closed();
+
+                // Drain available plaintext
+                let remaining = max_plaintext - plaintext.len();
+                if remaining > 0 {
+                    let before = plaintext.len();
+                    plaintext.resize(before + remaining, 0);
+                    match guard.conn.reader().read(&mut plaintext[before..]) {
+                        Ok(n) => {
+                            guard.plaintext_pending = guard.plaintext_pending.saturating_sub(n);
+                            plaintext.truncate(before + n);
+                        }
+                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            plaintext.truncate(before);
+                        }
+                        Err(ref e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                            plaintext.truncate(before);
+                            // Signal EOF — but return what we have first
+                            break;
+                        }
+                        Err(e) => {
+                            return Err(TlsError::General(format!("read error: {}", e)));
+                        }
+                    }
+                }
+
+                // If we've filled the plaintext buffer, stop
+                if plaintext.len() >= max_plaintext {
+                    break;
+                }
+
+                // If all ciphertext consumed and nothing left to process, done
+                if offset >= total || guard.peer_has_closed {
+                    break;
+                }
+            }
+
+            // Cache peer certs if handshake just completed
+            if !guard.conn.is_handshaking() && guard.peer_certs_cache.is_none() {
+                guard.peer_certs_cache = guard
+                    .conn
+                    .peer_certificates()
+                    .map(|certs| certs.iter().map(|c| c.to_vec()).collect());
+            }
+
+            // Empty plaintext alone is not EOF: a live connection may need
+            // more ciphertext. Only signal clean EOF after close_notify and
+            // after returning all buffered application data to the caller.
+            if plaintext.is_empty() && max_plaintext > 0 && guard.peer_has_closed {
+                return Err(TlsError::CleanEof);
+            }
+            Ok((plaintext, offset))
+        });
+
+        match result {
+            Ok((plaintext, consumed)) => {
+                let py_plain = PyBytes::new(py, &plaintext).into();
+                let py_uncons = PyBytes::new(py, &ciphertext[consumed..]).into();
+                Ok((py_plain, py_uncons))
+            }
+            Err(e) => Err(e.into_pyerr(py)),
+        }
+    }
+}
+
+const TLS_V1_2: u16 = 0x0303;
+const TLS_V1_3: u16 = 0x0304;
+
+/// Internal mutable state for server connections, protected by a Mutex.
+struct ServerInner {
+    conn: ServerConnection,
+    peer_certs_cache: Option<Vec<Vec<u8>>>,
+    // Updated from IoState after processing, then reduced by plaintext reads.
+    plaintext_pending: usize,
+    // Received close_notify is sticky and independent of local shutdown.
+    peer_has_closed: bool,
+}
+
+/// Server-side TLS connection state machine.
+///
+/// Uses the same `#[pyclass(frozen)]` + `Mutex` pattern as the client
+/// connection to avoid PyO3's "Already borrowed" RuntimeError.
+#[pyclass(frozen)]
+pub struct RustlsServerConnection {
+    inner: Mutex<ServerInner>,
+}
+
+impl RustlsServerConnection {
+    pub fn new(conn: ServerConnection) -> Self {
+        Self {
+            inner: Mutex::new(ServerInner {
+                conn,
+                peer_certs_cache: None,
+                plaintext_pending: 0,
+                peer_has_closed: false,
+            }),
+        }
+    }
+}
+
+#[pymethods]
+impl RustlsServerConnection {
+    fn read_tls(&self, py: Python<'_>, data: &[u8]) -> PyResult<usize> {
+        let inner = &self.inner;
+        let mut cursor = Cursor::new(data);
+        let result = py.detach(|| {
+            let mut guard = inner.lock().unwrap();
+            guard.conn.read_tls(&mut cursor)
+        });
+        result.map_err(|e| error::raise_ssl_error(py, &format!("read_tls failed: {}", e)))
+    }
+
+    fn process_new_packets(&self, py: Python<'_>) -> PyResult<()> {
+        let inner = &self.inner;
+        let result: Result<(), TlsError> = py.detach(|| {
+            let mut guard = inner.lock().unwrap();
+            let state = guard.conn.process_new_packets().map_err(TlsError::from)?;
+            guard.plaintext_pending = state.plaintext_bytes_to_read();
+            guard.peer_has_closed |= state.peer_has_closed();
+            if !guard.conn.is_handshaking() && guard.peer_certs_cache.is_none() {
+                guard.peer_certs_cache = guard
+                    .conn
+                    .peer_certificates()
+                    .map(|certs| certs.iter().map(|c| c.to_vec()).collect());
+            }
+            Ok(())
+        });
+        result.map_err(|e: TlsError| e.into_pyerr(py))
+    }
+
+    fn read_plaintext(&self, py: Python<'_>, max_len: usize) -> PyResult<Py<PyAny>> {
+        let inner = &self.inner;
+        let mut buf = vec![0u8; max_len];
+        let result: Result<(usize, bool), std::io::Error> = py.detach(|| {
+            let mut guard = inner.lock().unwrap();
+            let n = guard.conn.reader().read(&mut buf)?;
+            guard.plaintext_pending = guard.plaintext_pending.saturating_sub(n);
+            Ok((n, guard.peer_has_closed))
+        });
+        match result {
+            Ok((0, true)) if max_len > 0 => Err(error::raise_zero_return(py)),
+            Ok((n, _)) => {
+                buf.truncate(n);
+                Ok(PyBytes::new(py, &buf).into())
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                Ok(PyBytes::new(py, &[]).into())
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::UnexpectedEof => Err(error::raise_eof(
+                py,
+                "EOF occurred in violation of protocol",
+            )),
+            Err(e) => Err(error::raise_ssl_error(py, &format!("read error: {}", e))),
+        }
+    }
+
+    /// Number of already decrypted bytes, without processing or consuming data.
+    fn pending(&self, py: Python<'_>) -> usize {
+        let inner = &self.inner;
+        py.detach(|| inner.lock().unwrap().plaintext_pending)
+    }
+
+    fn write_plaintext(&self, py: Python<'_>, data: &[u8]) -> PyResult<usize> {
+        let inner = &self.inner;
+        let result = py.detach(|| {
+            let mut guard = inner.lock().unwrap();
+            guard.conn.writer().write(data)
+        });
+        result.map_err(|e| error::raise_ssl_error(py, &format!("write error: {}", e)))
+    }
+
+    fn write_tls(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let inner = &self.inner;
+        let result = py.detach(|| {
+            let mut guard = inner.lock().unwrap();
+            let mut buf = Vec::new();
+            guard.conn.write_tls(&mut buf).map(|_| buf)
+        });
+        match result {
+            Ok(buf) => Ok(PyBytes::new(py, &buf).into()),
+            Err(e) => Err(error::raise_ssl_error(
+                py,
+                &format!("write_tls failed: {}", e),
+            )),
+        }
+    }
+
+    fn send_close_notify(&self, py: Python<'_>) {
+        let inner = &self.inner;
+        py.detach(|| {
+            inner.lock().unwrap().conn.send_close_notify();
+        });
+    }
+
+    fn is_handshaking(&self, py: Python<'_>) -> bool {
+        let inner = &self.inner;
+        py.detach(|| inner.lock().unwrap().conn.is_handshaking())
+    }
+
+    fn wants_read(&self, py: Python<'_>) -> bool {
+        let inner = &self.inner;
+        py.detach(|| inner.lock().unwrap().conn.wants_read())
+    }
+
+    fn wants_write(&self, py: Python<'_>) -> bool {
+        let inner = &self.inner;
+        py.detach(|| inner.lock().unwrap().conn.wants_write())
+    }
+
+    fn peer_certificates(&self, py: Python<'_>) -> PyResult<Option<Vec<Py<PyAny>>>> {
+        let inner = &self.inner;
+        let cached = py.detach(|| {
+            let guard = inner.lock().unwrap();
+            if let Some(ref cached) = guard.peer_certs_cache {
+                return Some(cached.clone());
+            }
+            guard
+                .conn
+                .peer_certificates()
+                .map(|certs| certs.iter().map(|c| c.to_vec()).collect())
+        });
+        match cached {
+            Some(certs) => Ok(Some(
+                certs.iter().map(|c| PyBytes::new(py, c).into()).collect(),
+            )),
+            None => Ok(None),
+        }
+    }
+
+    fn alpn_protocol(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let inner = &self.inner;
+        let proto = py.detach(|| {
+            let guard = inner.lock().unwrap();
+            guard.conn.alpn_protocol().map(|p| p.to_vec())
+        });
+        match proto {
+            Some(p) => Ok(Some(PyBytes::new(py, &p).into())),
+            None => Ok(None),
+        }
+    }
+
+    fn protocol_version(&self, py: Python<'_>) -> Option<u16> {
+        let inner = &self.inner;
+        py.detach(|| {
+            inner
+                .lock()
+                .unwrap()
+                .conn
+                .protocol_version()
+                .map(|v| match v {
+                    rustls::ProtocolVersion::TLSv1_2 => TLS_V1_2,
+                    rustls::ProtocolVersion::TLSv1_3 => TLS_V1_3,
+                    _ => 0,
+                })
+        })
+    }
+
+    fn negotiated_cipher_suite(&self, py: Python<'_>) -> Option<String> {
+        let inner = &self.inner;
+        py.detach(|| {
+            inner
+                .lock()
+                .unwrap()
+                .conn
+                .negotiated_cipher_suite()
+                .map(|cs| format!("{:?}", cs.suite()))
+        })
+    }
+
+    fn negotiated_cipher_suite_bits(&self, py: Python<'_>) -> Option<u32> {
+        let inner = &self.inner;
+        py.detach(|| {
+            inner
+                .lock()
+                .unwrap()
+                .conn
+                .negotiated_cipher_suite()
+                .map(|cs| {
+                    let name = format!("{:?}", cs.suite());
+                    if name.contains("AES_128") {
+                        128
+                    } else if name.contains("AES_256") || name.contains("CHACHA20") {
+                        256
+                    } else {
+                        0
+                    }
+                })
+        })
+    }
+
+    /// Fused read path for server connections — mirrors
+    /// `RustlsClientConnection::decrypt_incoming`.
+    fn decrypt_incoming(
+        &self,
+        py: Python<'_>,
+        ciphertext: &[u8],
+        max_plaintext: usize,
+    ) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
+        let inner = &self.inner;
+
+        let result = py.detach(|| -> Result<(Vec<u8>, usize), TlsError> {
+            let mut guard = inner.lock().unwrap();
+
+            let mut plaintext = Vec::with_capacity(max_plaintext);
+            let mut offset: usize = 0;
+            let total = ciphertext.len();
+
+            while offset < total || !guard.conn.wants_read() {
+                if offset < total {
+                    let mut cursor = Cursor::new(&ciphertext[offset..]);
+                    match guard.conn.read_tls(&mut cursor) {
+                        Ok(n) => offset += n,
+                        Err(e) => {
+                            let msg = e.to_string();
+                            if msg.contains("buffer full") {
+                                // Process what we have so far
+                            } else {
+                                return Err(TlsError::General(format!("read_tls failed: {}", e)));
+                            }
+                        }
+                    }
+                }
+
+                let state = guard.conn.process_new_packets().map_err(TlsError::from)?;
+                guard.plaintext_pending = state.plaintext_bytes_to_read();
+                guard.peer_has_closed |= state.peer_has_closed();
+
+                let remaining = max_plaintext - plaintext.len();
+                if remaining > 0 {
+                    let before = plaintext.len();
+                    plaintext.resize(before + remaining, 0);
+                    match guard.conn.reader().read(&mut plaintext[before..]) {
+                        Ok(n) => {
+                            guard.plaintext_pending = guard.plaintext_pending.saturating_sub(n);
+                            plaintext.truncate(before + n);
+                        }
+                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            plaintext.truncate(before);
+                        }
+                        Err(ref e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                            plaintext.truncate(before);
+                            break;
+                        }
+                        Err(e) => {
+                            return Err(TlsError::General(format!("read error: {}", e)));
+                        }
+                    }
+                }
+
+                if plaintext.len() >= max_plaintext {
+                    break;
+                }
+
+                if offset >= total || guard.peer_has_closed {
+                    break;
+                }
+            }
+
+            // Cache peer certs if handshake just completed
+            if !guard.conn.is_handshaking() && guard.peer_certs_cache.is_none() {
+                guard.peer_certs_cache = guard
+                    .conn
+                    .peer_certificates()
+                    .map(|certs| certs.iter().map(|c| c.to_vec()).collect());
+            }
+
+            // Empty plaintext alone is not EOF: a live connection may need
+            // more ciphertext. Only signal clean EOF after close_notify and
+            // after returning all buffered application data to the caller.
+            if plaintext.is_empty() && max_plaintext > 0 && guard.peer_has_closed {
+                return Err(TlsError::CleanEof);
+            }
+            Ok((plaintext, offset))
+        });
+
+        match result {
+            Ok((plaintext, consumed)) => {
+                let py_plain = PyBytes::new(py, &plaintext).into();
+                let py_uncons = PyBytes::new(py, &ciphertext[consumed..]).into();
+                Ok((py_plain, py_uncons))
+            }
+            Err(e) => Err(e.into_pyerr(py)),
+        }
+    }
+}

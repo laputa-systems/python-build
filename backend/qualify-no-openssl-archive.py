@@ -2101,7 +2101,9 @@ def build_experimental_manifest(
         "rust_active_dependency_closure": rust_graph,
         "rust_source": {
             "rtls_revision": research_driver.RTLS_REVISION,
-            "rtls_archive_sha256": research_driver.RTLS_ARCHIVE_SHA256,
+            "rtls_vendor_sha256": research_driver.rtls_source_digest(
+                research_driver.RTLS_VENDOR
+            ),
             "snapshots_and_locks": rust_locks,
             "patches": rtls_patches,
         },

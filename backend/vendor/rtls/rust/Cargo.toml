@@ -1,0 +1,45 @@
+[package]
+name = "rtls"
+version = "2026.10.3"
+edition = "2021"
+publish = false
+license = "MIT"
+homepage = "https://github.com/jawah/rtls"
+repository = "https://github.com/jawah/rtls.git"
+description = "A drop-in replacement for Python's ssl module, backed by rustls"
+
+[lib]
+name = "_rustls"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.28.2", features = ["extension-module", "abi3-py37"] }
+rustls = { version = "0.23", default-features = false, features = ["tls12", "std"] }
+rustls-pemfile = "2"
+rustls-pki-types = "1"
+x509-parser = "0.16"
+pkcs8 = { version = "0.10", features = ["encryption", "pem", "std", "3des"] }
+pem-rfc7468 = { version = "0.7", features = ["alloc"] }
+# For traditional OpenSSL encrypted PEM key decryption (Proc-Type/DEK-Info)
+md-5 = "0.10"
+aes = "0.8"
+cbc = "0.1"
+des = "0.8"
+cipher = { version = "0.4", features = ["block-padding"] }
+base64ct = { version = "1", features = ["alloc"] }
+
+[target.'cfg(target_os = "wasi")'.dependencies]
+rustls = { version = "0.23", default-features = false, features = ["ring", "tls12", "std"] }
+
+[target.'cfg(not(target_os = "wasi"))'.dependencies]
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "tls12", "std"] }
+
+[package.metadata.maturin]
+python-source = "rtls"
+
+[profile.release]
+opt-level = 3
+debug = false
+lto = true
+codegen-units = 1
+strip = "symbols"

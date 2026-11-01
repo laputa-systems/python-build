@@ -79,7 +79,7 @@ def install_notices(
     lock_path: Path,
     source_revision: str,
     rtls_revision: str,
-    rtls_archive_sha256: str,
+    rtls_source_sha256: str,
 ) -> dict[str, object]:
     locked = {entry.name: entry for entry in load_lock(lock_path)}
     names = bundled_native_names(target)
@@ -114,7 +114,7 @@ def install_notices(
     record = install / SOURCES_RECORD
     _refuse_existing(record)
     record.write_text(_sources_record(
-        locked, names, source_revision, rtls_revision, rtls_archive_sha256
+        locked, names, source_revision, rtls_revision, rtls_source_sha256
     ), encoding="utf-8")
     record.chmod(0o644)
     written.append(SOURCES_RECORD)
@@ -197,7 +197,7 @@ def _sources_record(
     names: tuple[str, ...],
     source_revision: str,
     rtls_revision: str,
-    rtls_archive_sha256: str,
+    rtls_source_sha256: str,
 ) -> str:
     lines = [
         "# Bundled component sources",
@@ -242,13 +242,14 @@ def _sources_record(
         "## Rust components",
         "",
         (
-            f"TLS runs on RTLS, <{RTLS_URL}> at revision `{rtls_revision}` "
-            f"(`git archive` tar SHA-256 `{rtls_archive_sha256}`), with the patches "
-            "named above. The hashing backend source is `backend/hashing/` in the "
-            "repository revision above. Crates come from crates.io at the versions "
-            "and checksums in the RTLS `rust/Cargo.lock` (as patched) and "
-            "`backend/hashing/Cargo.lock`; `rust/THIRD_PARTY_LICENSES.md` lists "
-            "every active package with its source identity and notices."
+            f"TLS runs on the vendored RTLS source <{RTLS_URL}> at revision "
+            f"`{rtls_revision}` (source tree SHA-256 `{rtls_source_sha256}`), with "
+            "the patches named above. The hashing backend source is "
+            "`backend/hashing/` in the repository revision above. Crates come from "
+            "crates.io at the versions and checksums in the RTLS "
+            "`rust/Cargo.lock` (as patched) and `backend/hashing/Cargo.lock`; "
+            "`rust/THIRD_PARTY_LICENSES.md` lists every active package with its "
+            "source identity and notices."
         ),
         "",
     ))

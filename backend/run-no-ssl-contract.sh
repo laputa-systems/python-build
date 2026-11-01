@@ -39,19 +39,12 @@ cp "$repo_root/backend/no_ssl_contract.py" "$harness"
 cp "$repo_root/backend/ssl_utilities_contract.py" \
     "$utilities_harness"
 
-git clone --depth 1 --branch 2026.10.3 \
-    https://github.com/jawah/rtls.git "$checkout"
-actual=$(git -C "$checkout" rev-parse HEAD)
-expected=302423b49e494863d07630d50b15a9488ec85ef7
-if [ "$actual" != "$expected" ]; then
-    printf 'RTLS source mismatch: expected %s, found %s\n' "$expected" "$actual" >&2
-    exit 1
-fi
+cp -R "$repo_root/backend/vendor/rtls" "$checkout"
 
-git -C "$checkout" apply --unidiff-zero --check \
-    "$repo_root/backend/rtls-graviola.patch"
-git -C "$checkout" apply --unidiff-zero \
-    "$repo_root/backend/rtls-graviola.patch"
+patch -d "$checkout" -p1 --batch --forward --fuzz=0 --dry-run \
+    -i "$repo_root/backend/rtls-graviola.patch"
+patch -d "$checkout" -p1 --batch --forward --fuzz=0 \
+    -i "$repo_root/backend/rtls-graviola.patch"
 
 rust_toolchain=${RTLS_RUST_TOOLCHAIN:-stable}
 expected_rust_version=1.100.0-nightly

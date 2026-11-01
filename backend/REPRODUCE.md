@@ -4,8 +4,9 @@ For the complete native Linux arm64 candidate, use the
 [Docker and prerelease procedure](LINUX.md). The replay procedures below
 retain their macOS scope.
 
-Both replay scripts run on native Apple Silicon macOS. They verify RTLS
-commit `302423b49e494863d07630d50b15a9488ec85ef7`, apply
+Both replay scripts run on native Apple Silicon macOS. They copy the
+RTLS source vendored at commit `302423b49e494863d07630d50b15a9488ec85ef7`
+from `backend/vendor/rtls/` and apply
 [`rtls-graviola.patch`](rtls-graviola.patch). They build the
 checked-in Cargo lockfile with Rust nightly-2026-09-15 (`1.100.0-nightly`). The replay verifies and patches
 the pinned rustls-webpki archive before Cargo builds it as a path dependency.
@@ -130,10 +131,10 @@ graph and disables CPython's `_ssl` and original `_hashlib` modules in
 after the interpreter is built. The driver requires native Apple Silicon,
 Python 3.12 or newer, the locked compiler, and Rust nightly-2026-09-15 (`kache` is unused).
 
-The Rust source acquisition is a separate network-enabled step. It archives
-the pinned RTLS commit without using working-tree files, prepares the pinned
-webpki source, applies the consolidated RTLS patch in a private source copy,
-and snapshots the hashing lane into `$run_dir/hashing-build`. That snapshot
+The Rust source acquisition is a separate network-enabled step. It copies
+the vendored RTLS source into a private source tree, prepares the pinned
+webpki source, applies the consolidated RTLS patch, and snapshots the hashing
+lane into `$run_dir/hashing-build`. That snapshot
 includes its Rust and Python sources, Cargo manifest and lockfile, README, and
 license records. The fetch phase runs Cargo against the snapshot and records
 its content digest in `$run_dir/inputs/hashing-source.sha256`. Before the
@@ -150,15 +151,12 @@ profile unless the caller requests release mode.
 
 ```sh
 run_dir=.work/tmp/openssl-free-candidate
-rtls_source=.work/tmp/rtls-build-source
 hashing_source=backend/hashing
-git clone --depth 1 --branch 2026.10.3 \
-    https://github.com/jawah/rtls.git "$rtls_source"
 python3.15 backend/build-no-openssl.py \
-    --phase fetch --run-dir "$run_dir" --rtls-source "$rtls_source" \
+    --phase fetch --run-dir "$run_dir" \
     --hashing-source "$hashing_source"
 python3.15 backend/build-no-openssl.py \
-    --phase all --run-dir "$run_dir" --rtls-source "$rtls_source" \
+    --phase all --run-dir "$run_dir" \
     --hashing-source "$hashing_source"
 ```
 

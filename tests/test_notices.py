@@ -77,7 +77,7 @@ class NoticeFixture:
             lock_path=self.lock_path,
             source_revision="r" * 40,
             rtls_revision="a" * 40,
-            rtls_archive_sha256="b" * 64,
+            rtls_source_sha256="b" * 64,
         )
 
 

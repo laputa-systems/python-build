@@ -1,7 +1,8 @@
 # Third-party licenses
 
-The prototype patch does not vendor third-party source or add production
-dependencies. Its `rust/Cargo.lock` delta adds or changes these packages:
+The prototype vendors the pinned RTLS source under `backend/vendor/rtls/`
+and adds no production dependency. Its `rust/Cargo.lock` delta adds or changes
+these packages:
 
 | Package | Version | License expression |
 | --- | --- | --- |
@@ -9,7 +10,7 @@ dependencies. Its `rust/Cargo.lock` delta adds or changes these packages:
 | `rustls` (session metadata accessors) | 0.23.45 | Apache-2.0 OR ISC OR MIT |
 | `x509-parser` (signature-verification feature) | 0.16.0 | MIT OR Apache-2.0 |
 | `ring` (RSA/SHA1 implicit-anchor verification) | 0.17.14 | Apache-2.0 AND ISC |
-| RTLS source | 2026.10.3 | MIT |
+| RTLS source (`backend/vendor/rtls/`, commit `302423b49e494863d07630d50b15a9488ec85ef7`) | 2026.10.3 | MIT |
 | `rustls-graviola` | 0.4.0 | Apache-2.0 OR ISC OR MIT-0 |
 | `graviola` | 0.4.1 | Apache-2.0 OR ISC OR MIT-0 |
 | `getrandom` | 0.3.4 | MIT OR Apache-2.0 |
