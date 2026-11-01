@@ -238,6 +238,22 @@ bench `peak_rss` metric is sampled and noisy below 100 ms.
   1 percent floor until startup paths drop Rust code or the carrier
   loses `std`.
 
+- ThinLTO/build-std spike, 2026-10-31 (`u7-lto`, unmerged; owner decides).
+  Release builds add `lto = "thin"` plus `-Z build-std=std
+  -Z build-std-features=`; dev and coverage builds keep the prebuilt
+  std. std's own crates must be in the private Cargo home (fetched once,
+  not yet pinned). `libpython` falls from 8.52 MB to 7.25 MB;
+  `_base64` 463 to 245 KB, `_json_rs` 428 to 210 KB, `_zlib_rs` 539 to
+  305 KB, `_re_rs` 1.27 to 1.06 MB, `_ssl_rs` 3.74 to 3.51 MB. The clean
+  perf build takes 756 s against 462 s. The full suite reads run=51,561
+  with only `test_ssl` and `test_support` red. Against `perf-u7-control`
+  the gate reads `python_startup` peak RSS 1.027 [1.027,1.028] (1.043
+  after the carrier split and 1.066 before it) and CPU 1.053
+  [1.005,1.097] inconclusive; `django_template_realistic` CPU 1.126
+  regressed in the `quiet=no` run and needs a quiet re-gate. The
+  remaining control delta is 1.42 MB of used std/core, so removing
+  `std` would have to take most of it to clear the 1 percent floor.
+
 M1 check (met 2026-10-31): S1-S7 landed or recorded (S6 a loss), overlay Rust
 lines 96,662 against 100,510, and three catalog workloads improved on an
 optimized build. The Linux x86-64 D1/D2 and U2/U8 proof at the M1 head now
