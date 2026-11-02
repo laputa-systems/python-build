@@ -40,7 +40,7 @@
   `rust-cpython-linux:20260401` is absent on this host. Retry on a host with
   that image; the execution boundary forbids pulling or building it here.
 - **Linux and macOS arm64 research closed 2026-11-01 on `campaign/jit`.**
-  J0-J9 and the macOS handoff are done. `main` is untouched at `96f4112`.
+  J0-J9 and the macOS handoff are done and merged to `main`.
   Do not push unless the owner asks. Other follow-ups are in `docs/open-work.md`.
 - **Lane host** command: `.work/tmp/lane.sh <cmd>` wraps the `docker run` in
   **Lane host** (recreate it from that section). Builds kept: `perf-upstream`, `perf-rust`, `perf-upstream-jit`, `perf-rust-jit`,
@@ -112,8 +112,8 @@
   Native sampling failed on Linux, so shares are uop shares, not CPU.
 - **Review (`code-review high`, `main..campaign/jit`):** fixed the red
   `tests/test_benchmarks.py`, the kernels in product suites, and the no-JIT
-  build failing on the regen interpreter. Left as is: the pasted `campaign-jit.md` goal at the
-  repo root, and the earlier non-conventional commits `87e9e07` and `24d4943`.
+  build failing on the regen interpreter. Left as is: the earlier
+  non-conventional commits `87e9e07` and `24d4943`.
 
 ## macOS attribution across the full kernel set
 
@@ -379,8 +379,7 @@ Learned in J5-J8. Use them before inventing new ones.
   locked archive is the full official release; spikes may extract further
   members of that same archive into `.work/` scratch (`opt`, `llvm-config`,
   `llvm-symbolizer`, headers, `libLLVM*.a`, the ASan runtime).
-- **OD2, goal (`campaign-jit.md`): scope is the first research
-  assignment.** Build reproducible JIT and no-JIT baselines on macOS arm64
+- **OD2, goal: scope is the first research assignment.** Build reproducible JIT and no-JIT baselines on macOS arm64
   and Linux x86-64, investigate the hybrid experiment, compare against the
   Rust overlay, find the hottest remaining costs, and land one optimization.
   Production keeps JIT, PGO, BOLT, tail-call, and free-threading disabled.
@@ -393,6 +392,14 @@ Learned in J5-J8. Use them before inventing new ones.
   parity, and differential evidence. This waives only the timing verdict, not
   suite parity, digests, or the J8 differential test. Reopen the gates at J9
   if the owner asks.
+- **OD4: memory gates stay as written.** JIT against no-JIT keeps its REJECT
+  on peak RSS as a recorded cost. Gate each attribution optimization against
+  `@incumbent-jit`. Nobody sets a JIT-specific RSS budget.
+- **OD5: no unboxing and no speculative tier.** Cross-uop float or int
+  unboxing, escape analysis, and a new tier stay out of scope until a new
+  owner decision.
+- **OD6: `212822d` gets measured, then kept or reverted.** Attribution J0
+  decided: reverted.
 
 ### Prescribed (the owner may overrule)
 
