@@ -75,6 +75,13 @@ differently under calibration.
   0.7%. A whole-trace register-cache
   allocator cut spill uops 8.0% but moved kernel wall by 0.9993, so it was
   reverted.
+- macOS JIT compact-integer fast path (`212822d`): the clean parent and
+  candidate builds ran `perf.py bench --baseline perf-jit-base --candidate
+  perf-jit-compact --jit-set --gate`. The two-run verdict was INCONCLUSIVE,
+  with `perf-gate-ready` passing before and after. The geometric mean of the
+  16 pooled median candidate-to-baseline ratios was 0.9961 CPU and 0.9886
+  wall. `spectral_norm` wall was 0.916, `scimark_fft` 0.964, and
+  `scimark_sor` 0.970. The candidate is reverted.
 - macOS JIT float allocation probe: `nbody` samples spent time in float
   allocation and deallocation's thread-local interpreter lookup. A stencil
   experiment reused its thread-state argument for both freelist paths. Five

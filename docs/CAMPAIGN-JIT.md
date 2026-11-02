@@ -2,6 +2,13 @@
 
 ## Status
 
+- **Attribution J0:** the matched clean `perf-jit-base` and
+  `perf-jit-compact` two-run gate was INCONCLUSIVE on 2026-11-01.
+  `perf-gate-ready` passed before and after. The candidate is reverted;
+  ratios are in `rust-cpython/ENGINEERING.md`.
+- **Attribution J1 Linux:** parked. The prescribed local image
+  `rust-cpython-linux:20260401` is absent on this host. Retry on a host with
+  that image; the execution boundary forbids pulling or building it here.
 - **Linux and macOS arm64 research closed 2026-11-01 on `campaign/jit`.**
   J0-J9 and the macOS handoff are done. `main` is untouched at `96f4112`.
   Do not push unless the owner asks. Other follow-ups are in `docs/open-work.md`.
