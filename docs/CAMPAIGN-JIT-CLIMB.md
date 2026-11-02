@@ -13,7 +13,8 @@ attribution J3 goal ("one optimization, 10% CPU") and its OD5.
 
 ## Handoff (2026-11-02)
 
-P0 is done. The loop has not started.
+P0 is done. T1 thread-state forwarding and T2 float fusion are in progress.
+No optimization has passed acceptance; the incumbent and `S0` are unchanged.
 
 - **Done, P0.1 (`a7d0de5`):** kernel-region CPU. Training and held-out
   kernels report `getrusage` deltas over their timed loop. Process CPU
@@ -354,6 +355,12 @@ The loop stops and waits for the owner when any of these happens:
   the owner.
 - **OD4 (unchanged):** memory gates stay as written. The milestone memory
   bars above add to them.
+- **OD10, 2026-11-02, delegated scope decision:** under the owner's full
+  unattended decision-making grant, approve `overlay/Python/bytecodes.c`
+  for the T2 float-fusion experiment and `overlay/Python/frame.c` and
+  `overlay/Python/ceval.c` for T1 thread-state forwarding. Require independent
+  review and the unchanged acceptance gates. Other new Python overlays
+  remain subject to the boundary below.
 
 ## Boundary
 
@@ -362,10 +369,43 @@ macOS arm64 only. Linux x86-64 confirmation waits for the
 of the lane. No production change, no lock change, no new dependency, no
 push, and no change to `perf_verdict.py` thresholds. Each new overlay file
 under `rust-cpython/overlay/Python/` is a contract change for owner review,
-including the existing `PYTHON_JIT_MAP` output.
+including the existing `PYTHON_JIT_MAP` output. OD10 approves the three
+specific overlays above.
 
 ## Ledger
 
 | Date | Step | Mechanism | Ref | `S` before → after | Moved >1% | Verdict | Directory |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-11-02 | M0 | instrument | `perf-rust-jit` | — → 0.7474 | A/A max 0.19% | MEASURED | `rust-cpython/results/perf-bench/20261102T174650Z-perf-climb-ref-vs-perf-rust-jit` |
+
+### T1 experiments (2026-11-02)
+
+The refreshed training profiles attribute 15.9% of sampled time to
+`_tlv_get_addr`. Unsafe probes below are diagnostic only and must never
+become an incumbent.
+
+- Removing only `CHECK_VALIDITY` (`dc3cdc8`) gives a 0.9951 CPU ratio
+  over two runs: INCONCLUSIVE, insufficient to pursue alone. Removing
+  instruction-pointer updates too breaks `spectral_norm` and is invalid.
+- Skipping frame-local releases (`1c52713`) retains references and changes
+  allocation behavior: `raytrace` CPU is 1.447 and peak RSS is 3.64 times
+  the incumbent. It does not establish a frame-cleanup ceiling.
+- Blanket type/version guard removal (`5df5602`) fails `richards` warmup.
+  It does not establish a guard-elision ceiling.
+- Serial-install global-state probe (`2c78338`) gives a 0.9221 CPU ratio
+  over two runs, INCONCLUSIVE under the full policy. Its state is unsafe
+  for threads and it cannot land. The earlier parallel-install artifact
+  crashed during `compileall` and lacked caches; those comparisons are
+  discarded. Comparison controllers also need
+  `PYTHONDONTWRITEBYTECODE=1` to preserve strict stage identity.
+- Inline state forwarding (`66b5194`) screens at 0.9841 but regresses
+  several object kernels by 2–4%. Sharing the C operations (`8086ccf`)
+  screens at 0.9794, with `deltablue` at 1.0138. These are one-run screens,
+  not acceptance evidence. Frame cleanup forwarding is the next bounded
+  variant; numeric reference-tracer counts match the incumbent with the
+  JIT both enabled and disabled.
+
+Probe and screen reports remain in their isolated `.work/wt/jit-t1*`
+result directories while the experiments are active. T2 starts with a
+bounded multiply-add fusion that keeps boxed values at every side exit;
+it has not yet been measured.
