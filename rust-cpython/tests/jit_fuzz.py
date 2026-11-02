@@ -4,13 +4,19 @@ Usage: python3 rust-cpython/tests/jit_fuzz.py --python BUILD/bin/python3 [--prog
 
 Each generated program runs in a batch process twice, under PYTHON_JIT=1 and PYTHON_JIT=0. Values
 (floats by bit pattern), exception logs, finalizer order, and reference counts of objects the
-program creates must match exactly, as must the set of lines that tracing and monitoring
-report for generated code on the program's own thread, and whether pymalloc blocks grew by more
-than LEAK_BLOCKS over the loop's second half; other threads' lines, such as a joining
-main thread's, are timing-dependent and ignored. Event counts are not compared: on a pristine JIT-off interpreter, the LINE count at a
-set_events boundary varies by one loop iteration between identical runs. The JIT-off side runs
-twice, and a difference between those runs fails as a nondeterministic program. On the JIT side, at least MIN_JIT_COVERAGE of the programs
-must run their loop in JIT code at least once, or the run fails as untested.
+program creates must match exactly, as must the set of lines that tracing reports for generated
+code on the program's own thread; other threads' lines, such as a joining main thread's, are
+timing-dependent and ignored. Monitoring lines are collected and must be identical between the
+two JIT-off runs, but they are not compared across the JIT: the JIT reports LINE events only at
+side exits, so a mid-loop set_events sees fewer lines than the interpreter on the pristine
+control too. Event counts are not compared: on a pristine JIT-off interpreter, the LINE count at
+a set_events boundary varies by one loop iteration between identical runs. Each program also
+reports pymalloc block growth over the loop's last fifth, after the tracing and monitoring
+windows; the JIT side may exceed the interpreter side by at most LEAK_BLOCKS, since a refcount
+leak grows with the loop and the program's own retention cancels between the two sides. The
+JIT-off side runs twice, and a difference between those runs fails as a nondeterministic
+program. On the JIT side, at least MIN_JIT_COVERAGE of the programs must run their loop in JIT
+code at least once, or the run fails as untested.
 """
 
 from __future__ import annotations
@@ -32,6 +38,7 @@ JIT_WARMUP_ITERATIONS = 4096
 BATCH_SIZE = 50
 MIN_JIT_COVERAGE = 0.9
 BATCH_TIMEOUT_SECONDS = 600
+JIT_VARIANT_FIELDS = ("monitor_lines", "leak_blocks")
 
 VARIABLES = ("a", "b", "c", "acc")
 VALUES = (
@@ -111,15 +118,18 @@ def report(index, function, args):
     TRACE_LINES.clear()
     MONITOR_LINES.clear()
     JITTED[0] = False
+    leak_blocks = None
     try:
-        result = ["ok", show(function(LOOP_ITERATIONS, *args))]
+        value = function(LOOP_ITERATIONS, *args)
+        leak_blocks = value[-1]
+        result = ["ok", show(value[:-1])]
     except Exception as error:
         result = ["raised", type(error).__name__, str(error)]
     sys.settrace(None)
     gc.collect()
     print(json.dumps({"program": index, "result": result, "events": list(EVENTS),
                       "trace_lines": sorted(TRACE_LINES), "monitor_lines": sorted(MONITOR_LINES),
-                      "jitted": JITTED[0]}, sort_keys=True), flush=True)
+                      "leak_blocks": leak_blocks, "jitted": JITTED[0]}, sort_keys=True), flush=True)
 '''
 
 
@@ -151,7 +161,8 @@ def _guarded(writer: _Writer, statement: str) -> None:
 
 
 RAISING_DIVISOR_SHARE = 0.2
-LEAK_BLOCKS = 2000
+LEAK_BLOCKS = 1000
+LEAK_NOISE_BLOCKS = 100
 
 
 def _binary(rng: random.Random, left: str, right: str) -> str:
@@ -259,17 +270,17 @@ def generate(seed: int, index: int) -> Program:
     writer.line("for k in range(n):")
     writer.depth = 2
     writer.line("JITTED[0] = JITTED[0] or sys._jit.is_active()")
-    writer.line("if k == n // 2:")
+    writer.line("if k == n * 4 // 5:")
     writer.line("    gc.collect()")
-    writer.line("    midpoint_blocks = sys.getallocatedblocks()")
+    writer.line("    leak_baseline = sys.getallocatedblocks()")
     for _ in range(rng.randint(3, 9)):
         _statement(rng, writer, index, features)
     writer.depth = 1
     writer.line("gc.collect()")
-    writer.line(f"leaked = sys.getallocatedblocks() - midpoint_blocks > {LEAK_BLOCKS}")
+    writer.line("leak_blocks = sys.getallocatedblocks() - leak_baseline")
     writer.line("tracked = [x for x in (a, b, c, acc, keep, box.v, *buf) if type(x) in (FSub, ISub)]")
     writer.line("refs = [sys.getrefcount(x) for x in tracked]")
-    writer.line("return [acc, a, b, c, hits, errors, refs, buf, leaked]")
+    writer.line("return [acc, a, b, c, hits, errors, refs, buf, leak_blocks]")
     writer.depth = 0
     args = ", ".join(rng.choice(VALUES) for _ in range(3))
     threaded = rng.random() < 0.15
@@ -311,20 +322,50 @@ class Mismatch:
 
 
 def compare(jit: dict[int, dict[str, object]],
-            interpreter: dict[int, dict[str, object]]) -> list[Mismatch]:
+            interpreter: dict[int, dict[str, object]],
+            *, ignore: Sequence[str] = ()) -> list[Mismatch]:
+    ignored = {"jitted", *ignore}
     mismatches = []
     for program in sorted(set(jit) | set(interpreter)):
         left, right = jit.get(program), interpreter.get(program)
         strip = lambda record: None if record is None else {
-            key: value for key, value in record.items() if key != "jitted"}
+            key: value for key, value in record.items() if key not in ignored}
         if strip(left) != strip(right):
             mismatches.append(Mismatch(program, left, right))
     return mismatches
 
 
+def leak_mismatches(left: dict[int, dict[str, object]],
+                    right: dict[int, dict[str, object]], *,
+                    tolerance: int, excess_only: bool) -> list[Mismatch]:
+    mismatches = []
+    for program in sorted(set(left) & set(right)):
+        first, second = left[program], right[program]
+        first_blocks, second_blocks = first.get("leak_blocks"), second.get("leak_blocks")
+        if not isinstance(first_blocks, int) or not isinstance(second_blocks, int):
+            continue
+        difference = first_blocks - second_blocks
+        exceeded = difference > tolerance if excess_only else abs(difference) > tolerance
+        if exceeded:
+            mismatches.append(Mismatch(program, first, second))
+    return mismatches
+
+
+def batch_command(python: Path, source: Path, jit: bool) -> tuple[list[str], dict[str, str]]:
+    env = {
+        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+        "HOME": str(Path.home()),
+        "TMPDIR": str(source.parent),
+        "PYTHONHASHSEED": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHON_JIT": "1" if jit else "0",
+    }
+    return [str(python), "-s", "-P", str(source)], env
+
+
 def _run_batch(python: Path, source: Path, jit: bool) -> str:
-    env = dict(os.environ, PYTHON_JIT="1" if jit else "0")
-    completed = subprocess.run([str(python), "-I", str(source)], env=env, capture_output=True,
+    argv, env = batch_command(python, source, jit)
+    completed = subprocess.run(argv, env=env, capture_output=True,
                                text=True, timeout=BATCH_TIMEOUT_SECONDS)
     if completed.returncode != 0:
         raise RuntimeError(f"{source.name} exited {completed.returncode} with "
@@ -362,11 +403,20 @@ def fuzz(python: Path, *, programs: int, seed: int, jobs: int, scratch: Path) ->
         interpreter_reports.update(parse_reports(stdout))
     for stdout in repeat_out:
         repeat_reports.update(parse_reports(stdout))
-    nondeterministic = compare(interpreter_reports, repeat_reports)
+    nondeterministic = compare(interpreter_reports, repeat_reports, ignore=("leak_blocks",))
+    nondeterministic += leak_mismatches(interpreter_reports, repeat_reports,
+                                        tolerance=LEAK_NOISE_BLOCKS, excess_only=False)
+    nondeterministic.sort(key=lambda mismatch: mismatch.program)
     unstable = {mismatch.program for mismatch in nondeterministic}
     covered = sum(1 for record in jit_reports.values() if record["jitted"] is True)
-    mismatches = [mismatch for mismatch in compare(jit_reports, interpreter_reports)
+    mismatches = [mismatch for mismatch in compare(jit_reports, interpreter_reports,
+                                                   ignore=JIT_VARIANT_FIELDS)
                   if mismatch.program not in unstable]
+    mismatches += [mismatch for mismatch in
+                   leak_mismatches(jit_reports, interpreter_reports,
+                                   tolerance=LEAK_BLOCKS, excess_only=True)
+                   if mismatch.program not in unstable]
+    mismatches.sort(key=lambda mismatch: mismatch.program)
     return FuzzResult(programs, mismatches, nondeterministic, covered,
                       {program.index: program.source for program in generated})
 

@@ -21,23 +21,36 @@ P0 is partly done. The loop has not started.
   CPU is 0.070 s against 0.18 s for the whole process.
 - **Done, P0.2 (`7d62ac3`):** eight held-out kernels, `--jit-heldout`, and
   the profile refusal.
-- **In progress, P0.3:** `rust-cpython/tests/jit_fuzz.py` (committed with
-  this handoff).
-  - Without the leak oracle, on `perf-rust-jit`, seeds 0-2 with 2,000
-    programs each gave 0 mismatches, 0 nondeterministic programs, and
-    97.3-97.8% JIT coverage. Each run takes about 20 s.
-  - The leak oracle (pymalloc block growth over the loop's second half,
-    `LEAK_BLOCKS`) is written but has not been run. Next, run it on
-    `perf-rust-jit`, seeds 0-1.
-  - The detection proof has not been done. In a worktree under `.work/wt/`,
-    add `rust-cpython/overlay/Tools/jit/template.c`, copied from the
-    upstream `Tools/jit/template.c`. Before `_JIT_ENTRY`, define a static
-    helper that calls the real `PyFloat_FromDouble` and then `Py_XINCREF`s
-    the result. Then `#define PyFloat_FromDouble` to that helper. This makes
-    the bug JIT-only. Build it with `perf.py build --jit --name
-    perf-fuzz-broken` (about 5 minutes clean). The fuzzer must report
-    mismatches on it. Discard the worktree afterwards.
+- **Done, P0.3:** `rust-cpython/tests/jit_fuzz.py` and
+  `rust-cpython/tests/test_jit_fuzz.py`.
+  - The committed fuzzer ran every batch with `-I`, which makes CPython
+    ignore `PYTHON_JIT`; all three sides ran with the JIT on, so the
+    comparison was never differential. It now runs `-s -P` with a minimal
+    environment and passes `PYTHON_JIT` explicitly.
+  - The leak oracle compares pymalloc growth over the loop's last fifth,
+    after the tracing and monitoring windows, and allows the JIT side at
+    most `LEAK_BLOCKS` (1,000) beyond the interpreter side. A per-side
+    threshold was calibrated against each program's own retention and
+    flipped on a 3-block difference. Two JIT-off runs of the same batch
+    differ by a few blocks, so that comparison allows `LEAK_NOISE_BLOCKS`
+    (100).
+  - Monitoring line sets are not compared across the JIT. The JIT reports
+    LINE events only at side exits, so enabling monitoring mid-loop sees
+    fewer lines than the interpreter. `perf-upstream-jit` behaves
+    identically, so this is upstream JIT behavior, not lane drift.
+    Monitoring lines are still compared between the two JIT-off runs.
+  - On `perf-rust-jit`, seeds 0-2 with 2,000 programs each gave 0
+    mismatches, 0 nondeterministic programs, and 97.3-97.8% JIT coverage.
+    Each run takes about 28 s.
+  - Detection proof: a worktree under `.work/wt/` with a
+    `rust-cpython/overlay/Tools/jit/template.c` whose `PyFloat_FromDouble`
+    macro calls a static helper that `Py_XINCREF`s the result reported
+    1,370 mismatches in seed 0, all leak excesses of 2,000-20,000 blocks.
+    The worktree was discarded.
   - Lessons from building the oracle:
+    - `python -I` implies `-E`, which silently discards `PYTHON_JIT`. Any
+      harness that selects the JIT through the environment must not pass
+      `-I`.
     - LINE and trace event counts at `set_events` boundaries vary between
       identical runs, even on pristine upstream with `PYTHON_JIT=0`. The
       fuzzer compares line sets instead.
@@ -47,9 +60,6 @@ P0 is partly done. The loop has not started.
     - JIT warmup takes about 4,000 iterations.
     - A loop that raises on every iteration never gets a trace, so 80% of
       divisor operands are wrapped as `(x or 1)`.
-  - No unit test for the fuzzer exists yet. Add one: the comparison must
-    flag differing records, and generated programs must run cleanly on the
-    host interpreter.
 - **Not started:** P0.4 `perf.py climb-step`, and P0.5 (`climb-ref`, the
   clean incumbent, the A/A spread, and `S0`). P0.5 needs a quiet host and
   about 40 minutes.
