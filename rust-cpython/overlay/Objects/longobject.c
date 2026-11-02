@@ -340,8 +340,6 @@ medium_from_freelist(stwodigits x, struct _Py_freelist *freelist)
     return PyStackRef_FromPyObjectStealMortal((PyObject *)v);
 }
 
-/* Create a new medium int object from a medium int.
- * Do not raise. Return NULL if not medium or can't allocate. */
 static inline _PyStackRef
 medium_from_stwodigits(stwodigits x)
 {

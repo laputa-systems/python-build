@@ -23,6 +23,18 @@ _Py_freelists_GetForInterpreter(PyInterpreterState *interp)
 #endif
 
 static inline struct _Py_freelists *
+_Py_freelists_GetForThreadState(PyThreadState *tstate)
+{
+    assert(tstate != NULL);
+    assert(tstate == _PyThreadState_GET());
+#ifdef Py_GIL_DISABLED
+    return &((_PyThreadStateImpl *)tstate)->freelists;
+#else
+    return _Py_freelists_GetForInterpreter(tstate->interp);
+#endif
+}
+
+static inline struct _Py_freelists *
 _Py_freelists_GET(void)
 {
 #ifdef Py_DEBUG

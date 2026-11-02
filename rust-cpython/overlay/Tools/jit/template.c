@@ -15,7 +15,6 @@
 #include "pycore_dict.h"
 #include "pycore_emscripten_signal.h"
 #include "pycore_floatobject.h"
-#include "pycore_freelist.h"
 #include "pycore_frame.h"
 #include "pycore_function.h"
 #include "pycore_genobject.h"
@@ -27,6 +26,7 @@
 #include "pycore_jit.h"
 #include "pycore_list.h"
 #include "pycore_long.h"
+#include "pycore_object.h"
 #include "pycore_opcode_metadata.h"
 #include "pycore_opcode_utils.h"
 #include "pycore_optimizer.h"
@@ -134,88 +134,30 @@ do {                                                                      \
 #if defined(__APPLE__) && defined(__aarch64__) && !defined(Py_GIL_DISABLED) && \
     !defined(Py_DEBUG) && !defined(Py_REF_DEBUG) && \
     !defined(Py_STACKREF_DEBUG) && !defined(Py_TRACE_REFS)
-static inline PyObject *
-jit_float_from_double(PyThreadState *tstate, double value)
-{
-    struct _Py_freelists *freelists = _Py_freelists_GetForInterpreter(tstate->interp);
-    PyFloatObject *obj = (PyFloatObject *)_PyFreeList_Pop(&freelists->floats);
-    if (obj == NULL) {
-        return PyFloat_FromDouble(value);
-    }
-    obj->ob_fval = value;
-    return (PyObject *)obj;
-}
-
-static inline _PyStackRef
-jit_long_from_value(PyThreadState *tstate, stwodigits value)
-{
-    if (_PY_IS_SMALL_INT(value)) {
-        PyObject *obj = (PyObject *)&_PyLong_SMALL_INTS[(sdigit)value + _PY_NSMALLNEGINTS];
-        return PyStackRef_FromPyObjectBorrow(obj);
-    }
-    if (value < -(stwodigits)PyLong_MASK || value > (stwodigits)PyLong_MASK) {
-        return PyStackRef_NULL;
-    }
-    struct _Py_freelists *freelists = _Py_freelists_GetForInterpreter(tstate->interp);
-    PyLongObject *obj = (PyLongObject *)_PyFreeList_Pop(&freelists->ints);
-    if (obj == NULL) {
-        return PyStackRef_NULL;
-    }
-    _PyLong_SetSignAndDigitCount(obj, value < 0 ? -1 : 1, 1);
-    obj->long_value.ob_digit[0] = (digit)(value < 0 ? -value : value);
-    return PyStackRef_FromPyObjectStealMortal((PyObject *)obj);
-}
-
-static inline _PyStackRef
-jit_compact_long_add(PyThreadState *tstate, PyLongObject *left, PyLongObject *right)
-{
-    stwodigits value = (stwodigits)_PyLong_CompactValue(left) + _PyLong_CompactValue(right);
-    _PyStackRef result = jit_long_from_value(tstate, value);
-    return PyStackRef_IsNull(result) ? _PyCompactLong_Add(left, right) : result;
-}
-
-static inline _PyStackRef
-jit_compact_long_subtract(PyThreadState *tstate, PyLongObject *left, PyLongObject *right)
-{
-    stwodigits value = (stwodigits)_PyLong_CompactValue(left) - _PyLong_CompactValue(right);
-    _PyStackRef result = jit_long_from_value(tstate, value);
-    return PyStackRef_IsNull(result) ? _PyCompactLong_Subtract(left, right) : result;
-}
-
-static inline _PyStackRef
-jit_compact_long_multiply(PyThreadState *tstate, PyLongObject *left, PyLongObject *right)
-{
-    stwodigits value = (stwodigits)_PyLong_CompactValue(left) * _PyLong_CompactValue(right);
-    _PyStackRef result = jit_long_from_value(tstate, value);
-    return PyStackRef_IsNull(result) ? _PyCompactLong_Multiply(left, right) : result;
-}
+typedef enum {
+    JIT_RELEASE_OBJECT,
+    JIT_RELEASE_FLOAT,
+    JIT_RELEASE_LONG,
+} JitReleaseKind;
 
 static inline void
-jit_dealloc(PyThreadState *tstate, PyObject *obj)
-{
-    if (_PyRuntime.ref_tracer.tracer_func == NULL) {
-        struct _Py_freelists *freelists = _Py_freelists_GetForInterpreter(tstate->interp);
-        if (PyFloat_CheckExact(obj)) {
-            _PyFreeList_Free(&freelists->floats, obj, Py_floats_MAXFREELIST, PyObject_Free);
-            return;
-        }
-        if (PyLong_CheckExact(obj) && _PyLong_IsCompact((PyLongObject *)obj) &&
-            !_PyLong_IsSmallInt((PyLongObject *)obj)) {
-            _PyFreeList_Free(&freelists->ints, obj, Py_ints_MAXFREELIST, PyObject_Free);
-            return;
-        }
-    }
-    _Py_Dealloc(obj);
-}
-
-static inline void
-jit_stackref_close(PyThreadState *tstate, _PyStackRef ref)
+jit_stackref_close(PyThreadState *tstate, _PyStackRef ref, JitReleaseKind kind)
 {
     if (PyStackRef_RefcountOnObject(ref)) {
         PyObject *obj = PyStackRef_AsPyObjectBorrow(ref);
         _Py_DECREF_STAT_INC();
         if (--obj->ob_refcnt == 0) {
-            jit_dealloc(tstate, obj);
+            switch (kind) {
+                case JIT_RELEASE_OBJECT:
+                    _PyObject_DeallocWithThreadState(tstate, obj);
+                    break;
+                case JIT_RELEASE_FLOAT:
+                    _PyFloat_ExactDeallocWithThreadState(tstate, obj);
+                    break;
+                case JIT_RELEASE_LONG:
+                    _PyLong_ExactDeallocWithThreadState(tstate, obj);
+                    break;
+            }
         }
     }
 }
@@ -223,20 +165,25 @@ jit_stackref_close(PyThreadState *tstate, _PyStackRef ref)
 static inline void
 jit_stackref_close_specialized(PyThreadState *tstate, _PyStackRef ref, destructor destruct)
 {
-    if ((destruct == _PyFloat_ExactDealloc || destruct == _PyLong_ExactDealloc) &&
-        _PyRuntime.ref_tracer.tracer_func == NULL) {
-        jit_stackref_close(tstate, ref);
-        return;
+    if (_PyRuntime.ref_tracer.tracer_func == NULL) {
+        if (destruct == _PyFloat_ExactDealloc) {
+            jit_stackref_close(tstate, ref, JIT_RELEASE_FLOAT);
+            return;
+        }
+        if (destruct == _PyLong_ExactDealloc) {
+            jit_stackref_close(tstate, ref, JIT_RELEASE_LONG);
+            return;
+        }
     }
     PyStackRef_CLOSE_SPECIALIZED(ref, destruct);
 }
 
-#define PyFloat_FromDouble(VALUE) jit_float_from_double(tstate, (VALUE))
-#define _PyCompactLong_Add(LEFT, RIGHT) jit_compact_long_add(tstate, (LEFT), (RIGHT))
-#define _PyCompactLong_Subtract(LEFT, RIGHT) jit_compact_long_subtract(tstate, (LEFT), (RIGHT))
-#define _PyCompactLong_Multiply(LEFT, RIGHT) jit_compact_long_multiply(tstate, (LEFT), (RIGHT))
-#define PyStackRef_CLOSE(REF) jit_stackref_close(tstate, (REF))
-#define PyStackRef_XCLOSE(REF) jit_stackref_close(tstate, (REF))
+#define PyFloat_FromDouble(VALUE) _PyFloat_FromDoubleWithThreadState(tstate, (VALUE))
+#define _PyCompactLong_Add(LEFT, RIGHT) _PyCompactLong_AddWithThreadState(tstate, (LEFT), (RIGHT))
+#define _PyCompactLong_Subtract(LEFT, RIGHT) _PyCompactLong_SubtractWithThreadState(tstate, (LEFT), (RIGHT))
+#define _PyCompactLong_Multiply(LEFT, RIGHT) _PyCompactLong_MultiplyWithThreadState(tstate, (LEFT), (RIGHT))
+#define PyStackRef_CLOSE(REF) jit_stackref_close(tstate, (REF), JIT_RELEASE_OBJECT)
+#define PyStackRef_XCLOSE(REF) jit_stackref_close(tstate, (REF), JIT_RELEASE_OBJECT)
 #define PyStackRef_CLOSE_SPECIALIZED(REF, DESTRUCT) \
     jit_stackref_close_specialized(tstate, (REF), (DESTRUCT))
 #endif
