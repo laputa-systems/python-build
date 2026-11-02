@@ -115,6 +115,30 @@
   build failing on the regen interpreter. Left as is: the pasted `campaign-jit.md` goal at the
   repo root, and the earlier non-conventional commits `87e9e07` and `24d4943`.
 
+## macOS attribution across the full kernel set
+
+The five J2 kernels were supplemented with five-second `sample` profiles
+of the remaining 11 on 2026-11-01, with `perf-gate-ready` passing before and
+after the sequence. Run `TMPDIR="$PWD/.work/tmp" python3 rust-cpython/perf.py
+profile --ref perf-jit-map --workload NAME --tool sample --iterations N
+--seconds 5 --jit-map` for `raytrace:51`, `fannkuch:33`, `deltablue:3850`,
+`chaos:178`, `go:124`, `nqueens:152`, `hexiom:51`, `scimark_sor:1546`,
+`scimark_sparse_mat_mult:3153`, `scimark_fft:2538`, and
+`scimark_monte_carlo:24288088`. All 11 mapped at least 94.0% of samples in
+recorded JIT ranges; `go` mapped 94.0% and `deltablue` 97.6%, with address
+reuse left unresolved. The other nine mapped 100%.
+
+Weighting the exclusive sample shares of all 16 workloads equally, the
+largest shared cost is `_tlv_get_addr` at 16.09%, followed by
+`_PyFrame_ClearExceptCode` at 3.18%, `PyFloat_FromDouble` at 2.79%, and
+`_POP_TOP` at 2.28%. These are sampled stack shares, not hardware CPU-cycle
+counts; the longer profile iteration counts also change warmup weighting
+relative to the gate. The thread-local cost appears in multiple runtime
+callers, including list slicing, float allocation, and frame operations. A
+single generic-pop special case does not cover enough of that cost and its
+extra checks regressed unrelated kernels. Further implementation needs a new
+owner decision after the one-optimization J3 experiment.
+
 ## macOS five-run JIT comparisons
 
 On 2026-11-01, run `perf-gate-ready`, then `TMPDIR="$PWD/.work/tmp"
