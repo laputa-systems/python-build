@@ -15,6 +15,27 @@
   **macOS attribution ranking**. `_tlv_get_addr` is the largest sampled
   cost across the five kernels; float freelist callers dominate it in
   `nbody`, and integer freelist callers contribute in `spectral_norm`.
+- **Attribution J3 macOS:** the generic exact-float pop experiment was
+  REJECTED against `@incumbent-jit` on 2026-11-01 and reverted. The clean
+  two-run gate had matching digests and passed `perf-gate-ready` before and
+  after. The 16-kernel geometric mean candidate/baseline was 1.0045 CPU and
+  1.0102 wall. `hexiom` CPU was 1.019; `deltablue`, `hexiom`, `raytrace`,
+  `scimark_lu`, and `scimark_sor` wall regressed. The `_POP_TOP_r10` stencil
+  grew from 56 to 156 bytes. Its float cleanup removed thread-local lookups
+  but added checks to every generic pop. Exact floats under an active
+  reference tracer retained the original path; mixed-object finalizers and
+  reference-tracer counts matched the controls.
+- **Attribution J4 macOS boundary:** the harness records wall time only
+  inside each JIT kernel, but process CPU via `wait4` includes interpreter
+  startup, imports, wheel verification, and loading. Five interleaved nbody
+  runs with `time.process_time()` sampled at the kernel's existing
+  `perf_counter()` boundaries found median no-JIT/JIT kernel CPU of
+  0.073518/0.044721 seconds and kernel wall of 0.073526/0.044721 seconds;
+  whole-process CPU was 0.177318/0.148736 seconds. All digests matched, and
+  `perf-gate-ready` passed before and after. The roughly 0.104 seconds of
+  common process CPU explains why whole-process CPU ratios move less than
+  kernel wall ratios. The diagnostic samples process CPU immediately after
+  the payload, so shutdown is excluded; the gate's `wait4` includes it.
 - **Attribution J1 Linux:** parked. The prescribed local image
   `rust-cpython-linux:20260401` is absent on this host. Retry on a host with
   that image; the execution boundary forbids pulling or building it here.
