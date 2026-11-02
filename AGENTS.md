@@ -53,6 +53,7 @@ python3 build/uvmirror.py --tag <tag> --repo <owner/repo>
 | Qualification, packaging, reproduction | [docs/qualification-and-packaging.md](docs/qualification-and-packaging.md) |
 | CI and releases | [docs/ci-and-releases.md](docs/ci-and-releases.md) |
 | Remaining production and lane work | [docs/open-work.md](docs/open-work.md) |
+| JIT hill-climb campaign | [docs/CAMPAIGN-JIT-CLIMB.md](docs/CAMPAIGN-JIT-CLIMB.md) |
 | RTLS backend | [backend/README.md](backend/README.md) |
 | Rust lane build and harness | [rust-cpython/README.md](rust-cpython/README.md) |
 | Rust lane contract and verdicts | [rust-cpython/ENGINEERING.md](rust-cpython/ENGINEERING.md) |

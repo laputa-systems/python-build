@@ -2,6 +2,8 @@
 
 ## Status
 
+- **Superseded 2026-11-02:** attribution J3's one-optimization goal and
+  OD5 are replaced by `docs/CAMPAIGN-JIT-CLIMB.md`.
 - **Attribution J0:** the matched clean `perf-jit-base` and
   `perf-jit-compact` two-run gate was INCONCLUSIVE on 2026-11-01.
   `perf-gate-ready` passed before and after. The candidate is reverted;
