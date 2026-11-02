@@ -75,6 +75,20 @@ differently under calibration.
   0.7%. A whole-trace register-cache
   allocator cut spill uops 8.0% but moved kernel wall by 0.9993, so it was
   reverted.
+- macOS JIT float allocation probe: `nbody` samples spent time in float
+  allocation and deallocation's thread-local interpreter lookup. A stencil
+  experiment reused its thread-state argument for both freelist paths. Five
+  paired exploratory runs against `perf-rust-jit` gave an `nbody` CPU ratio
+  of 0.993 and `float` 0.998, with equal digests. Both sides of the run
+  passed `perf-gate-ready`. This did not meet the 1% floor and duplicated
+  reference-count logic, so the experiment was removed. The candidate was
+  incremental and the result is not gate evidence.
+- macOS JIT stencil `-O2` probe: five paired exploratory runs over `nbody`,
+  `float`, `richards`, `spectral_norm`, and `scimark_lu` found no CPU target
+  improvement at the 1% floor. Digests matched and both host checks passed.
+  The clean candidate's `libpython` `__text` was 3,289,304 bytes against
+  3,288,216 for `-Os`. The candidate was uncommitted and is not gate evidence.
+  The existing `-Os` setting stays.
 - `_bz2_rs` once gave a codec a `&mut [u8]` over uninitialized `bytes`
   storage; the shared writer wrapper replaced it.
 
