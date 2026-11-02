@@ -28,6 +28,7 @@ import importlib.util
 import json
 import os
 import re
+import select
 import shutil
 import subprocess
 import sys
@@ -1978,14 +1979,89 @@ stats.sort_stats("tottime").print_stats(25)
 """
 
 
+JIT_SAMPLE_RUNNER = r"""
+import sys
+from benchmarks.workloads import jit_kernels
+
+load = jit_kernels._load
+ready = False
+
+def prepare(name):
+    global ready
+    result = load(name)
+    if not ready:
+        ready = True
+        print("READY", flush=True)
+        if sys.stdin.readline() != "GO\n":
+            raise RuntimeError("JIT sample coordinator disconnected")
+    return result
+
+jit_kernels._load = prepare
+print(repr(jit_kernels.run(sys.argv[1], int(sys.argv[2]))), flush=True)
+"""
+
+
+def _sample_jit_workload(python: str, workload: str, iterations: int, seconds: int,
+                         env: dict[str, str], report: Path) -> str:
+    command = [python, "-c", JIT_SAMPLE_RUNNER, workload, str(iterations)]
+    process = subprocess.Popen(command, cwd=REPO, env=env, stdin=subprocess.PIPE,
+                               stdout=subprocess.PIPE, text=True)
+    sampler = None
+    try:
+        assert process.stdout is not None and process.stdin is not None
+        readable, _, _ = select.select([process.stdout], [], [], 60)
+        if not readable or process.stdout.readline() != "READY\n":
+            raise LaneError("JIT workload did not become ready for sampling")
+        sampler = subprocess.Popen(["/usr/bin/sample", str(process.pid), str(seconds),
+                                    "-file", str(report)], stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True)
+        process.stdin.write("GO\n")
+        process.stdin.close()
+        process.stdin = None
+        _, sample_error = sampler.communicate(timeout=seconds + 30)
+        if sampler.returncode != 0:
+            raise LaneError(f"sample failed: {sample_error.strip()}")
+        output, _ = process.communicate(timeout=60)
+        if process.returncode != 0:
+            raise LaneError(f"profiled workload exited with status {process.returncode}")
+        return output.strip()
+    except subprocess.TimeoutExpired as error:
+        raise LaneError("JIT sampling timed out") from error
+    finally:
+        if sampler is not None and sampler.poll() is None:
+            with contextlib.suppress(ProcessLookupError):
+                sampler.kill()
+            sampler.wait()
+        if process.poll() is None:
+            with contextlib.suppress(ProcessLookupError):
+                process.kill()
+            process.wait()
+        if process.stdin is not None:
+            with contextlib.suppress(BrokenPipeError):
+                process.stdin.close()
+        if process.stdout is not None:
+            process.stdout.close()
+        if sampler is not None:
+            if sampler.stdout is not None:
+                sampler.stdout.close()
+            if sampler.stderr is not None:
+                sampler.stderr.close()
+
+
 def profile(*, ref: str, workload: str | None, module: str | None, tool: str, iterations: int | None,
-            seconds: int) -> int:
+            seconds: int, jit_map: bool = False) -> int:
     """Profile one workload or module kernel on one build: cProfile, `sample`, or importtime."""
     from benchmarks.harness.runner import workload_environment
     from benchmarks.workloads.registry import BY_NAME
 
     if (workload is None) == (module is None):
         raise LaneError("select exactly one of --workload or --module")
+    if jit_map:
+        from benchmarks.workloads.registry import JIT_SET
+        if tool != "sample" or module is not None or lb.IS_LINUX or workload not in JIT_SET:
+            raise LaneError("--jit-map requires a macOS sample profile of a JIT-set workload")
+        if seconds < 1 or (iterations is not None and iterations < 1):
+            raise LaneError("sample duration and iterations must be positive")
     if module is not None:
         if module not in module_routes():
             raise LaneError(f"unknown module route {module!r}; see `perf.py modules`")
@@ -2019,6 +2095,8 @@ def profile(*, ref: str, workload: str | None, module: str | None, tool: str, it
             site = prepared.site_packages
             subprocess.run([python, "-m", "compileall", "-q", str(site)], check=True, timeout=300)
         env = workload_environment(site)
+        if jit_map:
+            env["PYTHON_JIT_MAP"] = str(directory / "jit-map.tsv")
         target = ["-m", f"benchmarks.workloads.{spec.module}", workload,
                   "--iterations", str(iterations or spec.iterations)]
         report = directory / "report.txt"
@@ -2043,6 +2121,22 @@ def profile(*, ref: str, workload: str | None, module: str | None, tool: str, it
                 subprocess.run([python, "-c", PSTATS_REPORT, str(data)], cwd=REPO, env=env,
                                stdout=stream, check=True)
             print(report.read_text())
+        elif jit_map:
+            import ast
+            import jit_sample
+            output = _sample_jit_workload(python, workload, iterations or spec.iterations,
+                                          seconds, env, report)
+            payload = ast.literal_eval(output)
+            if not isinstance(payload, dict) or not payload.get("operation_count") or not payload.get("digest"):
+                raise LaneError("JIT sample workload did not report completed work")
+            (directory / "workload-result.txt").write_text(output + "\n")
+            mapping = directory / "jit-map.tsv"
+            attribution = jit_sample.attribute(report.read_text(), mapping.read_text())
+            summary = jit_sample.render(attribution)
+            (directory / "jit-attribution.txt").write_text(summary + "\n")
+            print(summary)
+            if not attribution.jit_samples or attribution.named_samples * 10 < attribution.jit_samples * 9:
+                raise LaneError("JIT sample attribution is below 90%")
         else:
             process = subprocess.Popen([python, *target], cwd=REPO, env=env,
                                        stdout=subprocess.DEVNULL)
@@ -2294,6 +2388,8 @@ def main(argv: list[str] | None = None) -> int:
                                      "importtime: import costs")
     profile_parser.add_argument("--iterations", type=int, help="workload iterations (default: registry value)")
     profile_parser.add_argument("--seconds", type=int, default=5, help="sample duration")
+    profile_parser.add_argument("--jit-map", action="store_true",
+                                help="attribute macOS JIT samples to traces and uops")
     clean_parser = commands.add_parser("clean", help="remove perf builds only")
     clean_parser.add_argument("--name", default=None, help="isolated build name; omit for all perf builds")
     args = parser.parse_args(argv)
@@ -2344,7 +2440,7 @@ def main(argv: list[str] | None = None) -> int:
             return jit_stats(ref=args.ref, workload=args.workload, jit_set=args.jit_set)
         if args.command == "profile":
             return profile(ref=args.ref, workload=args.workload, module=args.module, tool=args.tool,
-                           iterations=args.iterations, seconds=args.seconds)
+                           iterations=args.iterations, seconds=args.seconds, jit_map=args.jit_map)
         return clean(name=args.name)
     except (LaneError, lb.InputError, lb.BootstrapError, lb.SandboxError,
             OSError, ValueError) as error:

@@ -110,13 +110,23 @@ and `inputs.linux-cp316.lock.json`; the macOS harness uses the macOS lock.
 | `build --name N --upstream-compression` | Link CPython's stock `zlib`, `_bz2` and `binascii` against static `zlib-rs` and `libbz2-rs` archives of the locked crates, and omit the private `_zlib_rs`, `_bz2_rs` and `Lib/zlib.py` |
 | `test --name N --suite test_X ...` or `--all` | Complete CPython suites on a perf build |
 | `cargo --name N -- <cargo args>` | Sync changed overlay files as `build --incremental` does, then run the pinned cargo in build `N`'s assembled source with the build's environment; exits with cargo's status |
-| `profile --ref R (--module M \| --workload W) --tool sample\|cprofile\|importtime` | Native stacks, Python call costs, or import time |
+| `profile --ref R (--module M \| --workload W) --tool sample\|cprofile\|importtime [--jit-map]` | Native stacks, Python call costs, or import time; `--jit-map` attributes macOS JIT-set samples to uops |
 | `bench --baseline R --candidate R [--module M] [--workload W] [--gate] [--jit-set]` | Paired measurement with a coded verdict |
 | `jit-stats --ref R (--workload W \| --jit-set)` | JIT residency, warmup ratio, libpython text/data size, and `sys._jit` state; diagnostic only |
 | `calibrate --ref R --gate` | Self-comparison; identical interpreters must not read different |
 | `goals [--candidate R] [--module M ...]` | Module rows against the control |
 | `setup-worktree` | Share verified caches from the primary checkout into a worktree |
 | `status` | Lease holders and every perf build with commit, flags, and suite state |
+
+On macOS arm64, `profile --tool sample --jit-map --workload W` sets
+`PYTHON_JIT_MAP` to a file in the profile result directory. The instrumented
+lane build appends trace and uop ranges to that file. The profiler starts
+sampling after the workload loads its inputs and joins the complete sample
+call graph to those ranges. Reused addresses remain unresolved. The command
+fails if fewer than 90% of samples in recorded JIT ranges can be named. The
+map path follows parent symlinks but rejects a final symlink or non-regular
+file. `PYTHON_JIT_MAP` is diagnostic and is ignored when environment variables
+are disabled with `-E` or `-I`.
 
 `@control` is the primary checkout's `perf-upstream` and `@incumbent` its
 `perf-rust`; `@control-jit` and `@incumbent-jit` are their JIT builds. A bare

@@ -6,6 +6,11 @@
   `perf-jit-compact` two-run gate was INCONCLUSIVE on 2026-11-01.
   `perf-gate-ready` passed before and after. The candidate is reverted;
   ratios are in `rust-cpython/ENGINEERING.md`.
+- **Attribution J1 macOS:** `profile --ref perf-jit-map --tool sample
+  --jit-map` attributed every observed JIT-address sample for `nbody`,
+  `float`, `richards`, `spectral_norm`, and `scimark_lu`. Sampling begins
+  after the workload loads its inputs. The map records each trace and uop;
+  address reuse remains unresolved instead of being guessed.
 - **Attribution J1 Linux:** parked. The prescribed local image
   `rust-cpython-linux:20260401` is absent on this host. Retry on a host with
   that image; the execution boundary forbids pulling or building it here.
