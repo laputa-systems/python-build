@@ -135,22 +135,18 @@ do {                                                                      \
     !defined(Py_DEBUG) && !defined(Py_REF_DEBUG) && \
     !defined(Py_STACKREF_DEBUG) && !defined(Py_TRACE_REFS)
 typedef enum {
-    JIT_RELEASE_OBJECT,
     JIT_RELEASE_FLOAT,
     JIT_RELEASE_LONG,
 } JitReleaseKind;
 
 static inline void
-jit_stackref_close(PyThreadState *tstate, _PyStackRef ref, JitReleaseKind kind)
+jit_stackref_close_numeric(PyThreadState *tstate, _PyStackRef ref, JitReleaseKind kind)
 {
     if (PyStackRef_RefcountOnObject(ref)) {
         PyObject *obj = PyStackRef_AsPyObjectBorrow(ref);
         _Py_DECREF_STAT_INC();
         if (--obj->ob_refcnt == 0) {
             switch (kind) {
-                case JIT_RELEASE_OBJECT:
-                    _PyObject_DeallocWithThreadState(tstate, obj);
-                    break;
                 case JIT_RELEASE_FLOAT:
                     _PyFloat_ExactDeallocWithThreadState(tstate, obj);
                     break;
@@ -167,11 +163,11 @@ jit_stackref_close_specialized(PyThreadState *tstate, _PyStackRef ref, destructo
 {
     if (_PyRuntime.ref_tracer.tracer_func == NULL) {
         if (destruct == _PyFloat_ExactDealloc) {
-            jit_stackref_close(tstate, ref, JIT_RELEASE_FLOAT);
+            jit_stackref_close_numeric(tstate, ref, JIT_RELEASE_FLOAT);
             return;
         }
         if (destruct == _PyLong_ExactDealloc) {
-            jit_stackref_close(tstate, ref, JIT_RELEASE_LONG);
+            jit_stackref_close_numeric(tstate, ref, JIT_RELEASE_LONG);
             return;
         }
     }
@@ -182,8 +178,8 @@ jit_stackref_close_specialized(PyThreadState *tstate, _PyStackRef ref, destructo
 #define _PyCompactLong_Add(LEFT, RIGHT) _PyCompactLong_AddWithThreadState(tstate, (LEFT), (RIGHT))
 #define _PyCompactLong_Subtract(LEFT, RIGHT) _PyCompactLong_SubtractWithThreadState(tstate, (LEFT), (RIGHT))
 #define _PyCompactLong_Multiply(LEFT, RIGHT) _PyCompactLong_MultiplyWithThreadState(tstate, (LEFT), (RIGHT))
-#define PyStackRef_CLOSE(REF) jit_stackref_close(tstate, (REF), JIT_RELEASE_OBJECT)
-#define PyStackRef_XCLOSE(REF) jit_stackref_close(tstate, (REF), JIT_RELEASE_OBJECT)
+#define PyStackRef_CLOSE(REF) _PyStackRef_XCLOSEWithThreadState(tstate, (REF))
+#define PyStackRef_XCLOSE(REF) _PyStackRef_XCLOSEWithThreadState(tstate, (REF))
 #define PyStackRef_CLOSE_SPECIALIZED(REF, DESTRUCT) \
     jit_stackref_close_specialized(tstate, (REF), (DESTRUCT))
 #endif
