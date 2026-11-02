@@ -115,6 +115,32 @@
   build failing on the regen interpreter. Left as is: the pasted `campaign-jit.md` goal at the
   repo root, and the earlier non-conventional commits `87e9e07` and `24d4943`.
 
+## macOS five-run JIT comparisons
+
+On 2026-11-01, run `perf-gate-ready`, then `TMPDIR="$PWD/.work/tmp"
+python3 rust-cpython/perf.py bench --baseline @control --candidate
+perf-upstream-jit --jit-set --gate --runs 5`, then `perf-gate-ready -1`.
+Repeat with `--baseline @incumbent --candidate perf-rust-jit`. Both host
+checks exited 0 for each comparison. Each cell is the geometric mean of the
+16 candidate/baseline kernel ratios; a run uses each kernel's median paired
+CPU or wall ratio. The pooled row uses each kernel's median over all paired
+samples, then takes the geometric mean. The harness interleaves baseline and
+candidate timing samples within each run.
+
+| Run | Upstream CPU | Upstream wall | Overlay CPU | Overlay wall |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 0.8688 | 0.7494 | 0.8815 | 0.7462 |
+| 2 | 0.8688 | 0.7499 | 0.8815 | 0.7465 |
+| 3 | 0.8691 | 0.7501 | 0.8818 | 0.7476 |
+| 4 | 0.8690 | 0.7503 | 0.8809 | 0.7456 |
+| 5 | 0.8695 | 0.7489 | 0.8812 | 0.7468 |
+| Pooled | 0.8690 | 0.7494 | 0.8814 | 0.7465 |
+
+Both gates REJECT on replicated peak RSS regressions under the unchanged
+memory policy; neither reports a digest mismatch. Results are in
+`rust-cpython/results/perf-bench/20261102T031118Z-perf-upstream-vs-perf-upstream-jit/`
+and `rust-cpython/results/perf-bench/20261102T032140Z-perf-rust-vs-perf-rust-jit/`.
+
 ## Charter
 
 - Decide and keep going. Record a decision in **Decisions** only when a later
