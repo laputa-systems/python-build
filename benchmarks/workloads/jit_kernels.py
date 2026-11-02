@@ -65,6 +65,12 @@ def _verify_wheels() -> None:
     _verified_wheels.update((PYPERFORMANCE_WHEEL, PYPERF_WHEEL))
 
 
+def _wheel_data(module: str, name: str) -> bytes:
+    _verify_wheels()
+    with zipfile.ZipFile(PYPERFORMANCE_WHEEL) as archive:
+        return archive.read(f"pyperformance/data-files/benchmarks/bm_{module}/data/{name}")
+
+
 def _load(module: str) -> dict[str, Any]:
     """Execute one benchmark from the wheel under a private module namespace."""
     _verify_wheels()
@@ -375,6 +381,116 @@ def _scimark_monte_carlo(iterations: int) -> tuple[int, str, _Timing]:
     return iterations, _digest([estimate]), timing
 
 
+def _barnes_hut(iterations: int) -> tuple[int, str, _Timing]:
+    module = _load("barnes_hut")
+    width, height = 1000, 800
+    particles = module["create_deterministic_galaxy"](
+        module["DEFAULT_PARTICLES"], width / 2, height / 2)
+    parts = []
+    region = _TimedRegion()
+    for _ in range(iterations):
+        module["advance_system"](particles, module["DEFAULT_THETA"], module["TIME_STEP"],
+                                 width, height)
+        parts.append(module["calculate_system_energy"](particles))
+    timing = region.stop()
+    return iterations, _digest(parts), timing
+
+
+def _pidigits(iterations: int) -> tuple[int, str, _Timing]:
+    module = _load("pidigits")
+    parts = []
+    region = _TimedRegion()
+    for _ in range(iterations):
+        parts.append(module["calc_ndigits"](module["DEFAULT_DIGITS"]))
+    timing = region.stop()
+    return iterations, _digest(parts), timing
+
+
+def _pyflate(iterations: int) -> tuple[int, str, _Timing]:
+    module = _load("pyflate")
+    archive = _wheel_data("pyflate", "interpreter.tar.bz2")
+    parts = []
+    region = _TimedRegion()
+    for _ in range(iterations):
+        field = module["RBitfield"](io.BytesIO(archive))
+        if field.readbits(16) != 0x425A:
+            raise WorkloadError("pyflate input is not a bzip2 stream")
+        parts.append(module["bzip2_main"](field))
+    timing = region.stop()
+    if any(hashlib.md5(part).hexdigest() != "afa004a630fe072901b1d9628b960974" for part in parts):
+        raise WorkloadError("pyflate decoded different bytes")
+    return iterations, _digest(parts), timing
+
+
+def _coroutines(iterations: int) -> tuple[int, str, _Timing]:
+    module = _load("coroutines")
+    parts = []
+    region = _TimedRegion()
+    for _ in range(iterations):
+        coroutine = module["fibonacci"](25)
+        try:
+            while True:
+                coroutine.send(None)
+        except StopIteration as finished:
+            parts.append(finished.value)
+    timing = region.stop()
+    return iterations, _digest(parts), timing
+
+
+def _generators(iterations: int) -> tuple[int, str, _Timing]:
+    module = _load("generators")
+    tree = module["tree"](range(100_000))
+    parts = []
+    region = _TimedRegion()
+    for _ in range(iterations):
+        parts.append(sum(tree))
+    timing = region.stop()
+    return iterations, _digest(parts), timing
+
+
+def _comprehensions(iterations: int) -> tuple[int, str, _Timing]:
+    module = _load("comprehensions")
+    widgets = module["make_some_widgets"]()
+    parts = []
+    region = _TimedRegion()
+    for _ in range(iterations):
+        tray = module["WidgetTray"](1, widgets)
+        parts.append([widget.widget_id for widget in tray.sorted_widgets])
+    timing = region.stop()
+    return iterations, _digest(parts), timing
+
+
+def _richards_super(iterations: int) -> tuple[int, str, _Timing]:
+    module = _load("richards_super")
+    richards = module["Richards"]()
+    parts = []
+    region = _TimedRegion()
+    for _ in range(iterations):
+        if not richards.run(1):
+            raise WorkloadError("richards_super reported unexpected task counts")
+        parts.append((module["taskWorkArea"].holdCount, module["taskWorkArea"].qpktCount))
+    timing = region.stop()
+    return iterations, _digest(parts), timing
+
+
+def _meteor_contest(iterations: int) -> tuple[int, str, _Timing]:
+    module = _load("meteor_contest")
+    board, cti, pieces = module["get_puzzle"](module["WIDTH"], module["HEIGHT"])
+    footprints = module["get_footprints"](board, cti, pieces)
+    neighborhoods = module["get_senh"](board, cti)
+    parts = []
+    region = _TimedRegion()
+    for _ in range(iterations):
+        solutions: list[str] = []
+        module["solve"](module["SOLVE_ARG"], 0, frozenset(range(len(board))), [-1] * len(board),
+                        list(range(len(pieces))), solutions, footprints, neighborhoods)
+        parts.append(solutions)
+    timing = region.stop()
+    if any(solutions != module["SOLUTIONS"] for solutions in parts):
+        raise WorkloadError("meteor_contest found different solutions")
+    return iterations, _digest(parts), timing
+
+
 _KERNELS: dict[str, _Kernel] = {
     "nbody": _Kernel("nbody", "20,000-step n-body advance", _nbody),
     "spectral_norm": _Kernel("spectral_norm", "spectral-norm solve", _spectral_norm),
@@ -393,6 +509,14 @@ _KERNELS: dict[str, _Kernel] = {
     "scimark_fft": _Kernel("scimark", "forward and inverse transform", _scimark_fft),
     "scimark_lu": _Kernel("scimark", "LU factorization", _scimark_lu),
     "scimark_monte_carlo": _Kernel("scimark", "Monte Carlo sample", _scimark_monte_carlo),
+    "barnes_hut": _Kernel("barnes_hut", "200-particle quadtree step", _barnes_hut),
+    "pidigits": _Kernel("pidigits", "2,000-digit pi expansion", _pidigits),
+    "pyflate": _Kernel("pyflate", "bzip2 archive decode", _pyflate),
+    "coroutines": _Kernel("coroutines", "recursive fibonacci(25) coroutine", _coroutines),
+    "generators": _Kernel("generators", "100,000-node tree traversal", _generators),
+    "comprehensions": _Kernel("comprehensions", "widget tray build", _comprehensions),
+    "richards_super": _Kernel("richards_super", "scheduler run", _richards_super),
+    "meteor_contest": _Kernel("meteor_contest", "60-solution board solve", _meteor_contest),
 }
 
 

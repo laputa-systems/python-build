@@ -1404,10 +1404,10 @@ def _gate_checks(baseline: dict[str, Any], candidate: dict[str, Any]) -> None:
 
 
 def eligible_workloads() -> list[str]:
-    from benchmarks.workloads.registry import JIT_SET, WORKLOADS
+    from benchmarks.workloads.registry import JIT_KERNELS, WORKLOADS
 
     return [item.name for item in WORKLOADS
-            if item.name not in UNAVAILABLE_WORKLOADS and item.name not in JIT_SET]
+            if item.name not in UNAVAILABLE_WORKLOADS and item.name not in JIT_KERNELS]
 
 
 def module_routes() -> list[str]:
@@ -1417,11 +1417,13 @@ def module_routes() -> list[str]:
 
 
 def selection(*, workloads: list[str], modules: list[str], gate: bool, jit_set: bool = False,
-              all_workloads: bool = False, all_modules: bool = False) -> tuple[list[str], list[str], list[str]]:
+              jit_heldout: bool = False, all_workloads: bool = False,
+              all_modules: bool = False) -> tuple[list[str], list[str], list[str]]:
     """Return (targets, evaluated workloads, evaluated modules)."""
-    from benchmarks.workloads.registry import BY_NAME, JIT_SET
+    from benchmarks.workloads.registry import BY_NAME, JIT_HELDOUT, JIT_SET
 
-    workloads = [*workloads, *(JIT_SET if jit_set else ()), *(eligible_workloads() if all_workloads else ())]
+    workloads = [*workloads, *(JIT_SET if jit_set else ()), *(JIT_HELDOUT if jit_heldout else ()),
+                 *(eligible_workloads() if all_workloads else ())]
     modules = [*modules, *(module_routes() if all_modules else ())]
     for name in workloads:
         if name not in BY_NAME:
@@ -1555,13 +1557,14 @@ def _measure(*, baseline_ref: str, candidate_ref: str, workloads: list[str], mod
              gate: bool, runs: int, profile: str, timing_only: bool, min_idle: float,
              self_compare: bool, record_baselines: bool, slug_prefix: str = "",
              memory_only: bool = False, matched_prefix: bool = False,
-             matched_executable: bool = False, jit_set: bool = False) -> dict[str, Any]:
+             matched_executable: bool = False, jit_set: bool = False,
+             jit_heldout: bool = False) -> dict[str, Any]:
     if matched_prefix and not memory_only:
         raise LaneError("--matched-prefix requires --memory-only")
     if matched_executable and not matched_prefix:
         raise LaneError("--matched-executable requires --matched-prefix")
     targets, evaluated_workloads, evaluated_modules = selection(
-        workloads=workloads, modules=modules, gate=gate, jit_set=jit_set)
+        workloads=workloads, modules=modules, gate=gate, jit_set=jit_set, jit_heldout=jit_heldout)
     samples: list[dict[str, Any]] = []
     observations: dict[str, list[dict[str, Any]]] = {
         name: [] for name in [*evaluated_workloads, *evaluated_modules]}
@@ -1753,7 +1756,7 @@ def bench(*, baseline_ref: str, candidate_ref: str, workloads: list[str], gate: 
           modules: list[str] | None = None, all_workloads: bool = False, all_modules: bool = False,
           record_baselines: bool = False, self_compare: bool = False, memory_only: bool = False,
           matched_prefix: bool = False, matched_executable: bool = False,
-          jit_set: bool = False) -> int:
+          jit_set: bool = False, jit_heldout: bool = False) -> int:
     runs = runs if runs is not None else (2 if gate or memory_only else 1)
     if runs < 1:
         raise LaneError("runs must be positive")
@@ -1769,7 +1772,8 @@ def bench(*, baseline_ref: str, candidate_ref: str, workloads: list[str], gate: 
                       modules=modules, gate=gate, runs=runs, profile=profile, timing_only=timing_only,
                       min_idle=min_idle, self_compare=self_compare, record_baselines=record_baselines,
                       memory_only=memory_only, matched_prefix=matched_prefix,
-                      matched_executable=matched_executable, jit_set=jit_set)
+                      matched_executable=matched_executable, jit_set=jit_set,
+                      jit_heldout=jit_heldout)
     print(perf_verdict.render(record["entities"], record["decision"], record["goals"] or None))
     print(f"LOG   {record['directory']}/verdict.json")
     return 0
@@ -2056,6 +2060,9 @@ def profile(*, ref: str, workload: str | None, module: str | None, tool: str, it
 
     if (workload is None) == (module is None):
         raise LaneError("select exactly one of --workload or --module")
+    from benchmarks.workloads.registry import JIT_HELDOUT
+    if workload in JIT_HELDOUT:
+        raise LaneError(f"{workload} is a held-out JIT kernel; held-out kernels are never profiled")
     if jit_map:
         from benchmarks.workloads.registry import JIT_SET
         if tool != "sample" or module is not None or lb.IS_LINUX or workload not in JIT_SET:
@@ -2347,6 +2354,8 @@ def main(argv: list[str] | None = None) -> int:
                          help="acceptance mode: clean committed builds, gate workloads as guards, 2 runs")
         sub.add_argument("--jit-set", action="store_true",
                          help="evaluate the 16 predeclared JIT kernels")
+        sub.add_argument("--jit-heldout", action="store_true",
+                         help="evaluate the 8 held-out JIT kernels, which are never profiled")
         sub.add_argument("--runs", type=int, help="independent runs (default 2 with --gate, else 1)")
         sub.add_argument("--profile", choices=("quick", "standard", "rigorous"), default="standard")
         sub.add_argument("--memory-only", action="store_true",
@@ -2420,7 +2429,7 @@ def main(argv: list[str] | None = None) -> int:
                          all_workloads=args.all_workloads, all_modules=args.all_modules,
                          record_baselines=args.record_baselines, memory_only=args.memory_only,
                          matched_prefix=args.matched_prefix, matched_executable=args.matched_executable,
-                         jit_set=args.jit_set)
+                         jit_set=args.jit_set, jit_heldout=args.jit_heldout)
         if args.command == "calibrate":
             return bench(baseline_ref=args.ref, candidate_ref=args.ref, workloads=args.workload,
                          gate=args.gate, runs=args.runs, profile=args.profile,
@@ -2428,7 +2437,7 @@ def main(argv: list[str] | None = None) -> int:
                          all_workloads=args.all_workloads, all_modules=args.all_modules,
                          self_compare=True, memory_only=args.memory_only,
                          matched_prefix=args.matched_prefix, matched_executable=args.matched_executable,
-                         jit_set=args.jit_set)
+                         jit_set=args.jit_set, jit_heldout=args.jit_heldout)
         if args.command == "goals":
             return goals(candidate_ref=args.candidate, modules=args.module, runs=args.runs,
                          profile=args.profile, min_idle=args.min_idle, memory_only=args.memory_only,

@@ -2122,6 +2122,22 @@ class JitStatsTests(unittest.TestCase):
         self.assertEqual(targets, ["zlib_stream_4k", *JIT_SET])
         self.assertEqual(workloads, ["zlib_stream_4k", *JIT_SET, *perf.GATE_WORKLOADS])
 
+    def test_jit_heldout_selection_adds_the_held_out_kernels(self) -> None:
+        from benchmarks.workloads.registry import JIT_HELDOUT, JIT_SET
+        _, workloads, _ = perf.selection(workloads=[], modules=[], gate=False, jit_heldout=True)
+        self.assertEqual(workloads, list(JIT_HELDOUT))
+        _, workloads, _ = perf.selection(workloads=[], modules=[], gate=False, jit_set=True,
+                                         jit_heldout=True)
+        self.assertEqual(workloads, [*JIT_SET, *JIT_HELDOUT])
+        self.assertNotIn(JIT_HELDOUT[0], perf.eligible_workloads())
+
+    def test_held_out_kernels_are_never_profiled(self) -> None:
+        from benchmarks.workloads.registry import JIT_HELDOUT
+        for jit_map in (False, True):
+            with self.subTest(jit_map=jit_map), self.assertRaisesRegex(perf.LaneError, "never profiled"):
+                perf.profile(ref="candidate", workload=JIT_HELDOUT[0], module=None, tool="sample",
+                             iterations=None, seconds=5, jit_map=jit_map)
+
     def test_jit_stats_requires_one_selector_and_a_jit_kernel(self) -> None:
         with self.assertRaisesRegex(perf.LaneError, "exactly one"):
             perf.jit_stats(ref="@control-jit", workload=None, jit_set=False)

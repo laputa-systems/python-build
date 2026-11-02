@@ -50,21 +50,21 @@ BENCH = ROOT / "benchmarks"
 
 class WorkloadRegistryTests(unittest.TestCase):
     def test_jit_kernels_are_registered_but_never_in_product_suites(self):
-        from benchmarks.workloads.registry import BY_NAME, JIT_SET
+        from benchmarks.workloads.registry import BY_NAME, JIT_KERNELS
 
-        self.assertTrue(all(name in BY_NAME for name in JIT_SET))
+        self.assertTrue(all(name in BY_NAME for name in JIT_KERNELS))
         for suite in ("realworld", "full"):
             for profile in ("quick", "standard", "rigorous"):
                 names = {w.name for w in select_workloads(suite, profile, None, None)}
-                self.assertFalse(names & set(JIT_SET), (suite, profile))
+                self.assertFalse(names & set(JIT_KERNELS), (suite, profile))
         for suite in ("realworld", "full"):
             self.assertEqual(
                 [w.name for w in select_workloads(suite, "standard", "nbody", None)], ["nbody"])
 
     def test_realworld_suite_covers_required_application_paths(self):
-        from benchmarks.workloads.registry import JIT_SET
+        from benchmarks.workloads.registry import JIT_KERNELS
 
-        names = {workload.name for workload in WORKLOADS if workload.name not in JIT_SET}
+        names = {workload.name for workload in WORKLOADS if workload.name not in JIT_KERNELS}
         self.assertEqual(
             names,
             {
@@ -115,9 +115,9 @@ class WorkloadRegistryTests(unittest.TestCase):
 
     def test_suite_profile_and_category_select_the_expected_work(self):
         full = select_workloads("full", "standard", None, None)
-        from benchmarks.workloads.registry import JIT_SET
+        from benchmarks.workloads.registry import JIT_KERNELS
 
-        self.assertEqual(full, [w for w in WORKLOADS if w.name not in JIT_SET])
+        self.assertEqual(full, [w for w in WORKLOADS if w.name not in JIT_KERNELS])
 
         quick = select_workloads("realworld", "quick", None, None)
         self.assertGreater(len(full), len(quick))

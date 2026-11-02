@@ -7,21 +7,24 @@ import unittest
 from pathlib import Path
 
 from benchmarks.workloads import jit_kernels
-from benchmarks.workloads.registry import BY_NAME, JIT_SET
+from benchmarks.workloads.registry import BY_NAME, JIT_HELDOUT, JIT_KERNELS, JIT_SET
 
 
 class JitKernelTests(unittest.TestCase):
     def test_registry_freezes_the_jit_set_to_the_kernel_table(self) -> None:
         self.assertEqual(len(JIT_SET), 16)
-        self.assertEqual(tuple(jit_kernels._KERNELS), JIT_SET)
-        for name in JIT_SET:
+        self.assertEqual(len(JIT_HELDOUT), 8)
+        self.assertFalse(set(JIT_SET) & set(JIT_HELDOUT))
+        self.assertEqual(tuple(jit_kernels._KERNELS), JIT_KERNELS)
+        for name in JIT_KERNELS:
             with self.subTest(name=name):
                 workload = BY_NAME[name]
                 self.assertEqual(workload.category, "interpreter")
                 self.assertEqual(workload.module, "jit_kernels")
+                self.assertEqual(workload.cpu_boundary, "internal")
 
     def test_digests_are_stable_across_two_runs(self) -> None:
-        for name in JIT_SET:
+        for name in JIT_KERNELS:
             with self.subTest(name=name):
                 first = jit_kernels.run(name)
                 second = jit_kernels.run(name)

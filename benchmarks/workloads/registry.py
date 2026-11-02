@@ -75,6 +75,14 @@ WORKLOADS: tuple[Workload, ...] = (
     Workload("scimark_fft", "interpreter", "jit_kernels", "forward and inverse transform", 50, 1, cpu_boundary="internal"),
     Workload("scimark_lu", "interpreter", "jit_kernels", "LU factorization", 5, 1, cpu_boundary="internal"),
     Workload("scimark_monte_carlo", "interpreter", "jit_kernels", "Monte Carlo sample", 100_000, 1, cpu_boundary="internal"),
+    Workload("barnes_hut", "interpreter", "jit_kernels", "200-particle quadtree step", 20, 1, cpu_boundary="internal"),
+    Workload("pidigits", "interpreter", "jit_kernels", "2,000-digit pi expansion", 1, 1, cpu_boundary="internal"),
+    Workload("pyflate", "interpreter", "jit_kernels", "bzip2 archive decode", 1, 1, cpu_boundary="internal"),
+    Workload("coroutines", "interpreter", "jit_kernels", "recursive fibonacci(25) coroutine", 10, 1, cpu_boundary="internal"),
+    Workload("generators", "interpreter", "jit_kernels", "100,000-node tree traversal", 8, 1, cpu_boundary="internal"),
+    Workload("comprehensions", "interpreter", "jit_kernels", "widget tray build", 15_000, 1, cpu_boundary="internal"),
+    Workload("richards_super", "interpreter", "jit_kernels", "scheduler run", 5, 1, cpu_boundary="internal"),
+    Workload("meteor_contest", "interpreter", "jit_kernels", "60-solution board solve", 3, 1, cpu_boundary="internal"),
 )
 
 JIT_SET: tuple[str, ...] = (
@@ -96,6 +104,19 @@ JIT_SET: tuple[str, ...] = (
     "scimark_monte_carlo",
 )
 
+JIT_HELDOUT: tuple[str, ...] = (
+    "barnes_hut",
+    "pidigits",
+    "pyflate",
+    "coroutines",
+    "generators",
+    "comprehensions",
+    "richards_super",
+    "meteor_contest",
+)
+
+JIT_KERNELS: tuple[str, ...] = (*JIT_SET, *JIT_HELDOUT)
+
 BY_NAME = {workload.name: workload for workload in WORKLOADS}
 
 
@@ -113,7 +134,7 @@ def select_workloads(suite: str, profile: str, name: str | None, category: str |
             "multiprocess_pool",
         )]
     elif suite in {"realworld", "full"}:
-        selected = [w for w in WORKLOADS if name is not None or w.name not in JIT_SET]
+        selected = [w for w in WORKLOADS if name is not None or w.name not in JIT_KERNELS]
         if profile == "quick" and name is None and category is None:
             quick = {"django_wsgi_request", "django_orm_10k", "pycparser_source", "python_startup", "serialization_roundtrip"}
             selected = [w for w in selected if w.name in quick]
