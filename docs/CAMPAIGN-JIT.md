@@ -11,6 +11,10 @@
   `float`, `richards`, `spectral_norm`, and `scimark_lu`. Sampling begins
   after the workload loads its inputs. The map records each trace and uop;
   address reuse remains unresolved instead of being guessed.
+- **Attribution J2 macOS:** the sampled cost ranking and uop counts are in
+  **macOS attribution ranking**. `_tlv_get_addr` is the largest sampled
+  cost across the five kernels; float freelist callers dominate it in
+  `nbody`, and integer freelist callers contribute in `spectral_norm`.
 - **Attribution J1 Linux:** parked. The prescribed local image
   `rust-cpython-linux:20260401` is absent on this host. Retry on a host with
   that image; the execution boundary forbids pulling or building it here.
@@ -724,6 +728,42 @@ and section sizes as unavailable because its parsers are Linux-specific.
 
 A hardened-runtime or packaged JIT build needs an executable-memory entitlement.
 Packaging is outside this lane and production keeps the JIT disabled.
+
+## macOS attribution ranking
+
+On 2026-11-01, run `python3 rust-cpython/perf.py profile --ref perf-jit-map
+--workload W --tool sample --iterations N --seconds 5 --jit-map`. The pairs
+`W:N` were `nbody:250`, `float:350`, `richards:350`,
+`spectral_norm:250`, and `scimark_lu:100`. All observed samples in recorded
+JIT ranges mapped to a trace and uop. The table ranks exclusive sample shares
+by their sum across the five kernels. Values are percentages of all sampled
+stacks, including runtime calls. Sampling is diagnostic, not a gate or a
+hardware cycle counter. Runtime call rows exclude time in their callees;
+thread-local lookup is counted separately.
+
+| Cost | nbody | float | richards | spectral | LU | Pystats uop counts |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `_tlv_get_addr` | 26.8 | 15.9 | 2.1 | 24.0 | 14.5 | — |
+| `PyFloat_FromDouble` | 10.2 | 2.7 | 0.0 | 3.4 | 3.4 | — |
+| `_PyFrame_ClearExceptCode` | 0.0 | 2.4 | 10.1 | 2.5 | 3.1 | — |
+| `_POP_TOP` | 10.8 | 1.2 | 1.7 | 1.1 | 1.5 | 3,556,340 / 671,704 / 237,449 / 1,641,534 / 10,441,668 |
+| `subtype_traverse` | 0.0 | 14.2 | 0.0 | 0.0 | 0.0 | — |
+| `_CHECK_VALIDITY` | 2.3 | 0.9 | 3.6 | 1.7 | 3.0 | 7,312,678 / 2,015,065 / 878,023 / 4,664,685 / 20,372,992 |
+| `_PyEval_FrameClearAndPop` | 0.0 | 1.0 | 3.9 | 1.3 | 2.7 | — |
+| `float_dealloc` | 5.5 | 1.7 | 0.0 | 0.8 | 0.5 | — |
+| `_PyCompactLong_Add` | 0.0 | 0.0 | 0.6 | 7.6 | 0.0 | — |
+| `_CHECK_FUNCTION_VERSION` | 0.0 | 0.5 | 4.9 | 2.0 | 0.0 | 0 / 95,997 / 291,136 / 664,591 / 5,939 |
+
+Pystats counts are in the same kernel order. They come from one registry-size
+run per kernel on `perf-jit-map-stats`, built with `--jit --pystats`.
+The capture command was `python3 .work/tmp/capture_jit_stats.py nbody float
+richards spectral_norm scimark_lu`. It cleared stats after loading each
+kernel, ran `jit_kernels.run(W)`, then called `sys._stats_off()` and
+`sys._stats_dump()`. A temporary stats-only source override sent dumps to
+`.work/tmp/stats/` instead of `/tmp`. Total uops for those runs were
+75,142,752 / 20,343,033 / 13,987,893 / 66,962,891 / 248,552,712.
+The different profile iteration counts make counts context, not weights for
+comparing the sample percentages.
 
 ## Execution boundary and non-goals
 
