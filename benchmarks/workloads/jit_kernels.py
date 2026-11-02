@@ -13,12 +13,13 @@ import argparse
 import hashlib
 import io
 import json
+import resource
 import sys
 import tempfile
 import time
 import zipfile
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -97,12 +98,33 @@ def _digest(parts: list[Any]) -> str:
     return digest.hexdigest()
 
 
+@dataclass(frozen=True)
+class _Timing:
+    wall_seconds: float
+    cpu_user_seconds: float
+    cpu_system_seconds: float
+
+
+class _TimedRegion:
+    def __init__(self) -> None:
+        self._usage = resource.getrusage(resource.RUSAGE_SELF)
+        self._started = time.perf_counter()
+
+    def stop(self) -> _Timing:
+        wall = time.perf_counter() - self._started
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        return _Timing(wall, usage.ru_utime - self._usage.ru_utime,
+                       usage.ru_stime - self._usage.ru_stime)
+
+
 def _result(iterations: int, units_per_iteration: int, digest: str,
-            elapsed: float) -> dict[str, int | float | str]:
+            timing: _Timing) -> dict[str, int | float | str]:
     return {
         "operation_count": iterations * units_per_iteration,
         "digest": digest,
-        "elapsed_seconds": elapsed,
+        "elapsed_seconds": timing.wall_seconds,
+        "cpu_user_seconds": timing.cpu_user_seconds,
+        "cpu_system_seconds": timing.cpu_system_seconds,
     }
 
 
@@ -110,26 +132,26 @@ def _result(iterations: int, units_per_iteration: int, digest: str,
 class _Kernel:
     module: str
     operation: str
-    measure: Callable[[int], tuple[int, str, float]]
+    measure: Callable[[int], tuple[int, str, _Timing]]
 
 
-def _nbody(iterations: int) -> tuple[int, str, float]:
+def _nbody(iterations: int) -> tuple[int, str, _Timing]:
     module = _load("nbody")
     module["offset_momentum"](module["BODIES"]["sun"])
     parts = []
-    started = time.perf_counter()
+    region = _TimedRegion()
     for _ in range(iterations):
         module["report_energy"]()
         module["advance"](0.01, 20_000)
         parts.append(module["report_energy"]())
-    elapsed = time.perf_counter() - started
-    return iterations * 20_000, _digest(parts), elapsed
+    timing = region.stop()
+    return iterations * 20_000, _digest(parts), timing
 
 
-def _spectral_norm(iterations: int) -> tuple[int, str, float]:
+def _spectral_norm(iterations: int) -> tuple[int, str, _Timing]:
     module = _load("spectral_norm")
     parts = []
-    started = time.perf_counter()
+    region = _TimedRegion()
     for _ in range(iterations):
         u = [1] * module["DEFAULT_N"]
         for _ in range(10):
@@ -140,61 +162,63 @@ def _spectral_norm(iterations: int) -> tuple[int, str, float]:
             vBv += ue * ve
             vv += ve * ve
         parts.append((vBv, vv))
-    elapsed = time.perf_counter() - started
-    return iterations, _digest(parts), elapsed
+    timing = region.stop()
+    return iterations, _digest(parts), timing
 
 
-def _float(iterations: int) -> tuple[int, str, float]:
+def _float(iterations: int) -> tuple[int, str, _Timing]:
     module = _load("float")
     parts = []
-    started = time.perf_counter()
+    region = _TimedRegion()
     for _ in range(iterations):
         points = [module["Point"](index) for index in range(module["POINTS"])]
         parts.append(module["maximize"](points))
-    elapsed = time.perf_counter() - started
-    return iterations * module["POINTS"], _digest(parts), elapsed
+    timing = region.stop()
+    return iterations * module["POINTS"], _digest(parts), timing
 
 
-def _richards(iterations: int) -> tuple[int, str, float]:
+def _richards(iterations: int) -> tuple[int, str, _Timing]:
     module = _load("richards")
     richards = module["Richards"]()
     parts = []
-    started = time.perf_counter()
+    region = _TimedRegion()
     for _ in range(iterations):
         completed = richards.run(1)
         if not completed:
             raise WorkloadError("richards reported unexpected task counts")
         parts.append((completed, module["taskWorkArea"].holdCount,
                       module["taskWorkArea"].qpktCount))
-    elapsed = time.perf_counter() - started
-    return iterations, _digest(parts), elapsed
+    timing = region.stop()
+    return iterations, _digest(parts), timing
 
 
-def _raytrace(iterations: int) -> tuple[int, str, float]:
+def _raytrace(iterations: int) -> tuple[int, str, _Timing]:
     module = _load("raytrace")
     with tempfile.TemporaryDirectory(prefix="jit-raytrace-") as temporary:
         frame = Path(temporary) / "frame.ppm"
-        elapsed = module["bench_raytrace"](iterations, 100, 100, str(frame))
+        region = _TimedRegion()
+        wall = module["bench_raytrace"](iterations, 100, 100, str(frame))
+        timing = replace(region.stop(), wall_seconds=wall)
         rendered = frame.read_bytes()
     if not rendered.startswith(b"P6 100 100 255\n"):
         raise WorkloadError("raytrace did not render a 100x100 PPM image")
-    return iterations * 10_000, _digest([rendered]), elapsed
+    return iterations * 10_000, _digest([rendered]), timing
 
 
-def _fannkuch(iterations: int) -> tuple[int, str, float]:
+def _fannkuch(iterations: int) -> tuple[int, str, _Timing]:
     module = _load("fannkuch")
     parts = []
-    started = time.perf_counter()
+    region = _TimedRegion()
     for _ in range(iterations):
         parts.append(module["fannkuch"](9))
-    elapsed = time.perf_counter() - started
-    return iterations, _digest(parts), elapsed
+    timing = region.stop()
+    return iterations, _digest(parts), timing
 
 
-def _deltablue(iterations: int) -> tuple[int, str, float]:
+def _deltablue(iterations: int) -> tuple[int, str, _Timing]:
     module = _load("deltablue")
     parts = []
-    started = time.perf_counter()
+    region = _TimedRegion()
     for _ in range(iterations):
         output = io.StringIO()
         previous = sys.stdout
@@ -206,8 +230,8 @@ def _deltablue(iterations: int) -> tuple[int, str, float]:
         if output.getvalue():
             raise WorkloadError(f"deltablue reported a failed check: {output.getvalue()!r}")
         parts.append("ok")
-    elapsed = time.perf_counter() - started
-    return iterations, _digest(parts), elapsed
+    timing = region.stop()
+    return iterations, _digest(parts), timing
 
 
 class _CaptureRunner:
@@ -220,7 +244,7 @@ class _CaptureRunner:
         self.call = (name, function, args)
 
 
-def _chaos(iterations: int) -> tuple[int, str, float]:
+def _chaos(iterations: int) -> tuple[int, str, _Timing]:
     module = _load("chaos")
     runner = _CaptureRunner()
     module["main"](runner, argparse.Namespace(
@@ -233,43 +257,43 @@ def _chaos(iterations: int) -> tuple[int, str, float]:
     _, function, arguments = runner.call
     frames = []
     with tempfile.TemporaryDirectory(prefix="jit-chaos-") as temporary:
-        started = time.perf_counter()
+        region = _TimedRegion()
         for index in range(iterations):
             frame = Path(temporary) / f"frame-{index}.ppm"
             function(*arguments[:3], str(frame), arguments[4])
             frames.append(frame.read_bytes())
-        elapsed = time.perf_counter() - started
+        timing = region.stop()
     if any(not frame.startswith(b"P6\n") for frame in frames):
         raise WorkloadError("chaos did not render PPM images")
-    return iterations * module["DEFAULT_ITERATIONS"], _digest(frames), elapsed
+    return iterations * module["DEFAULT_ITERATIONS"], _digest(frames), timing
 
 
-def _go(iterations: int) -> tuple[int, str, float]:
+def _go(iterations: int) -> tuple[int, str, _Timing]:
     module = _load("go")
     parts = []
-    started = time.perf_counter()
+    region = _TimedRegion()
     for _ in range(iterations):
         parts.append(module["versus_cpu"]())
-    elapsed = time.perf_counter() - started
-    return iterations * module["GAMES"], _digest(parts), elapsed
+    timing = region.stop()
+    return iterations * module["GAMES"], _digest(parts), timing
 
 
-def _nqueens(iterations: int) -> tuple[int, str, float]:
+def _nqueens(iterations: int) -> tuple[int, str, _Timing]:
     module = _load("nqueens")
     parts = []
-    started = time.perf_counter()
+    region = _TimedRegion()
     for _ in range(iterations):
         parts.append(list(module["n_queens"](8)))
-    elapsed = time.perf_counter() - started
-    return iterations, _digest(parts), elapsed
+    timing = region.stop()
+    return iterations, _digest(parts), timing
 
 
-def _hexiom(iterations: int) -> tuple[int, str, float]:
+def _hexiom(iterations: int) -> tuple[int, str, _Timing]:
     module = _load("hexiom")
     board, solution = module["LEVELS"][30]
     expected = solution.rstrip()
     parts = []
-    started = time.perf_counter()
+    region = _TimedRegion()
     for _ in range(iterations):
         output = io.StringIO()
         module["solve_file"](board.strip(), module["Done"].FIRST_STRATEGY,
@@ -278,20 +302,20 @@ def _hexiom(iterations: int) -> tuple[int, str, float]:
         if rendered != expected:
             raise WorkloadError(f"hexiom solved a different board: {rendered!r}")
         parts.append(rendered)
-    elapsed = time.perf_counter() - started
-    return iterations, _digest(parts), elapsed
+    timing = region.stop()
+    return iterations, _digest(parts), timing
 
 
-def _scimark_sor(iterations: int) -> tuple[int, str, float]:
+def _scimark_sor(iterations: int) -> tuple[int, str, _Timing]:
     module = _load("scimark")
     grid = module["Random"](7).RandomMatrix(module["Array2D"](100, 100))
-    started = time.perf_counter()
+    region = _TimedRegion()
     module["SOR_execute"](1.25, grid, iterations, module["Array2D"])
-    elapsed = time.perf_counter() - started
-    return iterations, _digest([grid.data.tobytes()]), elapsed
+    timing = region.stop()
+    return iterations, _digest([grid.data.tobytes()]), timing
 
 
-def _scimark_sparse_mat_mult(iterations: int) -> tuple[int, str, float]:
+def _scimark_sparse_mat_mult(iterations: int) -> tuple[int, str, _Timing]:
     from array import array
 
     module = _load("scimark")
@@ -310,45 +334,45 @@ def _scimark_sparse_mat_mult(iterations: int) -> tuple[int, str, float]:
             columns[start + offset] = (offset * step) % size
     vector = module["Random"](7).RandomVector(size)
     product = array("d", [0.0]) * size
-    started = time.perf_counter()
+    region = _TimedRegion()
     module["SparseCompRow_matmult"](size, product, values, rows, columns, vector, iterations)
-    elapsed = time.perf_counter() - started
-    return iterations * size, _digest([product.tobytes()]), elapsed
+    timing = region.stop()
+    return iterations * size, _digest([product.tobytes()]), timing
 
 
-def _scimark_fft(iterations: int) -> tuple[int, str, float]:
+def _scimark_fft(iterations: int) -> tuple[int, str, _Timing]:
     module = _load("scimark")
     points = 2 * 1024
     initial = module["Random"](7).RandomVector(points)
     data = module["copy_vector"](initial)
-    started = time.perf_counter()
+    region = _TimedRegion()
     for _ in range(iterations):
         module["FFT_transform"](points, data)
         module["FFT_inverse"](points, data)
-    elapsed = time.perf_counter() - started
-    return iterations, _digest([data.tobytes()]), elapsed
+    timing = region.stop()
+    return iterations, _digest([data.tobytes()]), timing
 
 
-def _scimark_lu(iterations: int) -> tuple[int, str, float]:
+def _scimark_lu(iterations: int) -> tuple[int, str, _Timing]:
     from array import array
 
     module = _load("scimark")
     source = module["Random"](7).RandomMatrix(module["ArrayList"](100, 100))
     lu = module["ArrayList"](100, 100)
     pivot = array("i", [0]) * 100
-    started = time.perf_counter()
+    region = _TimedRegion()
     for _ in range(iterations):
         module["LU"](lu, source, pivot)
-    elapsed = time.perf_counter() - started
-    return iterations, _digest([row.tobytes() for row in lu.data]), elapsed
+    timing = region.stop()
+    return iterations, _digest([row.tobytes() for row in lu.data]), timing
 
 
-def _scimark_monte_carlo(iterations: int) -> tuple[int, str, float]:
+def _scimark_monte_carlo(iterations: int) -> tuple[int, str, _Timing]:
     module = _load("scimark")
-    started = time.perf_counter()
+    region = _TimedRegion()
     estimate = module["MonteCarlo"](iterations)
-    elapsed = time.perf_counter() - started
-    return iterations, _digest([estimate]), elapsed
+    timing = region.stop()
+    return iterations, _digest([estimate]), timing
 
 
 _KERNELS: dict[str, _Kernel] = {
@@ -381,11 +405,11 @@ def run(name: str, iterations: int | None = None) -> dict[str, int | float | str
         iterations = spec.iterations
     if iterations < 1:
         raise WorkloadError("iterations must be positive")
-    count, digest, elapsed = kernel.measure(iterations)
+    count, digest, timing = kernel.measure(iterations)
     units, remainder = divmod(count, iterations)
     if remainder:
         raise WorkloadError(f"{name} reported a partial operation across iterations")
-    return _result(iterations, units, digest, elapsed)
+    return _result(iterations, units, digest, timing)
 
 
 def main(argv: list[str] | None = None) -> int:

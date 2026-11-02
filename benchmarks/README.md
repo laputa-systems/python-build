@@ -431,6 +431,14 @@ inspect each round's `coverage` field. The
 memory pass also records CPU seconds for diagnosis, but its sampled execution
 does not replace the uninstrumented timing pass.
 
+A workload whose `cpu_boundary` is `internal` reports its own
+`cpu_user_seconds` and `cpu_system_seconds` from `getrusage(RUSAGE_SELF)`
+across the same loop its `elapsed_seconds` covers. Its CPU then excludes
+interpreter startup, imports, input loading, and shutdown, and its coverage is
+the kernel-region label. The process total stays in `process_total_seconds`.
+The JIT kernels use this boundary. A missing or invalid region value fails the
+round, and kernel-region rounds never compare against process rounds.
+
 The allocation pass uses Memray separately from timing and memory. It records
 total allocations, total allocated bytes, peak heap, allocator information,
 and native allocation origins. Counts and bytes are normalized by the

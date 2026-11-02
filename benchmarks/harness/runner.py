@@ -18,6 +18,7 @@ from typing import Any
 from benchmarks.harness.environment import interpreter_environment
 from benchmarks.harness.process import (
     CGROUP_TREE_CPU_COVERAGE,
+    KERNEL_REGION_CPU_COVERAGE,
     LINUX_ROOT_CPU_COVERAGE,
     MAC_REAPED_CPU_COVERAGE,
     run_command,
@@ -187,6 +188,34 @@ def _ensure_clean(result: Any, workload: Workload, side: str, pass_name: str) ->
         )
 
 
+def _workload_cpu(measured: Any, payload: dict[str, Any], workload: Workload) -> dict[str, Any]:
+    if workload.cpu_boundary == "process":
+        return _cpu_dict(measured, payload, workload.name)
+    if workload.cpu_boundary != "internal":
+        raise ValueError(f"{workload.name}: unknown CPU boundary {workload.cpu_boundary!r}")
+    region = {}
+    for key in ("cpu_user_seconds", "cpu_system_seconds"):
+        value = payload.get(key)
+        if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
+            raise RuntimeError(f"{workload.name}: missing or invalid kernel-region {key}")
+        region[key] = float(value)
+    user, system = region["cpu_user_seconds"], region["cpu_system_seconds"]
+    operation_count = payload["operation_count"]
+    process = _cpu_dict(measured, payload, workload.name)
+    return {
+        "user_seconds": user,
+        "system_seconds": system,
+        "total_seconds": user + system,
+        "user_seconds_per_operation": user / operation_count,
+        "system_seconds_per_operation": system / operation_count,
+        "total_seconds_per_operation": (user + system) / operation_count,
+        "operation_count": operation_count,
+        "coverage": KERNEL_REGION_CPU_COVERAGE,
+        "process_total_seconds": process["total_seconds"],
+        "process_coverage": process["coverage"],
+    }
+
+
 def _cpu_dict(measured: Any, payload: dict[str, Any], workload_name: str) -> dict[str, Any]:
     """Account for reported child CPU only when kernel totals exclude it."""
     operation_count = payload["operation_count"]
@@ -305,6 +334,7 @@ def run_workload(
             "noise_class": workload.noise_class,
             "packages": list(workload.packages),
             "timing_boundary": workload.timing_boundary,
+            "cpu_boundary": workload.cpu_boundary,
         },
         "baseline": {
             "timing": {"samples": [], "cpu_rounds": []},
@@ -368,7 +398,7 @@ def run_workload(
         operation_counts.add(payload["operation_count"])
         elapsed = _timing_elapsed(measured, payload, workload)
         result[side]["timing"]["samples"].append(elapsed)
-        cpu = _cpu_dict(measured, payload, workload.name)
+        cpu = _workload_cpu(measured, payload, workload)
         result[side]["timing"]["cpu_rounds"].append(cpu)
         (output_dir / f"timing-{index:02d}-{side}.json").write_text(
             json.dumps({"payload": payload, "elapsed_seconds_external": measured.duration_seconds,
@@ -389,7 +419,7 @@ def run_workload(
             operation_counts.add(payload["operation_count"])
             memory = _memory_dict(measured.memory)
             if not memory_only:
-                cpu = _cpu_dict(measured, payload, workload.name)
+                cpu = _workload_cpu(measured, payload, workload)
                 memory["cpu"] = cpu
             result[side]["memory"]["rounds"].append(memory)
             (output_dir / f"memory-{index:02d}-{side}.json").write_text(

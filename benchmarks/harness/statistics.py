@@ -14,6 +14,7 @@ import statistics as std_statistics
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from .process import KERNEL_REGION_CPU_COVERAGE
 from .models import (
     MEMORY_METRICS,
     RESULT_SCHEMA_VERSION,
@@ -433,11 +434,13 @@ def _compare_cpu(
             "baseline_samples": baseline,
             "candidate_samples": candidate,
         }
+    coverages = [item.get("coverage", "") for item in [*baseline_rounds, *candidate_rounds]
+                 if isinstance(item, Mapping)]
     if result["metrics"]:
         result["status"] = (
             "compared" if len(baseline_rounds) == len(candidate_rounds)
-            and all(item.get("coverage", "").startswith("wait4 root")
-                    for item in [*baseline_rounds, *candidate_rounds] if isinstance(item, Mapping))
+            and (all(coverage.startswith("wait4 root") for coverage in coverages)
+                 or all(coverage == KERNEL_REGION_CPU_COVERAGE for coverage in coverages))
             and all(len(metric["baseline_samples"]) == len(baseline_rounds)
                     and len(metric["candidate_samples"]) == len(candidate_rounds)
                     for metric in result["metrics"].values()) else "incomplete"

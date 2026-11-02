@@ -21,6 +21,7 @@ class Workload:
     packages: tuple[str, ...] = ()
     noise_class: str = "stable"
     timing_boundary: Literal["internal", "process"] = "internal"
+    cpu_boundary: Literal["internal", "process"] = "process"
 
 
 WORKLOADS: tuple[Workload, ...] = (
@@ -58,22 +59,22 @@ WORKLOADS: tuple[Workload, ...] = (
     Workload("catalog_toml_load", "serialization", "catalog_toml", "complete 512-record catalog load", 100, 2),
     Workload("serialization_roundtrip", "serialization", "extra", "roundtrip", 100, 20),
     Workload("multiprocess_pool", "multiprocess", "extra", "pool task", 20, 2, noise_class="noisy"),
-    Workload("nbody", "interpreter", "jit_kernels", "20,000-step n-body advance", 1, 1),
-    Workload("spectral_norm", "interpreter", "jit_kernels", "spectral-norm solve", 1, 1),
-    Workload("float", "interpreter", "jit_kernels", "100,000-point normalize and maximize", 1, 1),
-    Workload("richards", "interpreter", "jit_kernels", "scheduler run", 1, 1),
-    Workload("raytrace", "interpreter", "jit_kernels", "100x100 frame", 1, 1),
-    Workload("fannkuch", "interpreter", "jit_kernels", "9-element fannkuch solve", 1, 1),
-    Workload("deltablue", "interpreter", "jit_kernels", "constraint plan execution", 20, 1),
-    Workload("chaos", "interpreter", "jit_kernels", "5,000-point frame", 1, 1),
-    Workload("go", "interpreter", "jit_kernels", "200-game search", 1, 1),
-    Workload("nqueens", "interpreter", "jit_kernels", "8-queens solve", 1, 1),
-    Workload("hexiom", "interpreter", "jit_kernels", "level-30 solve", 1, 1),
-    Workload("scimark_sor", "interpreter", "jit_kernels", "successive over-relaxation sweep", 10, 1),
-    Workload("scimark_sparse_mat_mult", "interpreter", "jit_kernels", "sparse matrix row", 100, 1),
-    Workload("scimark_fft", "interpreter", "jit_kernels", "forward and inverse transform", 50, 1),
-    Workload("scimark_lu", "interpreter", "jit_kernels", "LU factorization", 5, 1),
-    Workload("scimark_monte_carlo", "interpreter", "jit_kernels", "Monte Carlo sample", 100_000, 1),
+    Workload("nbody", "interpreter", "jit_kernels", "20,000-step n-body advance", 1, 1, cpu_boundary="internal"),
+    Workload("spectral_norm", "interpreter", "jit_kernels", "spectral-norm solve", 1, 1, cpu_boundary="internal"),
+    Workload("float", "interpreter", "jit_kernels", "100,000-point normalize and maximize", 1, 1, cpu_boundary="internal"),
+    Workload("richards", "interpreter", "jit_kernels", "scheduler run", 1, 1, cpu_boundary="internal"),
+    Workload("raytrace", "interpreter", "jit_kernels", "100x100 frame", 1, 1, cpu_boundary="internal"),
+    Workload("fannkuch", "interpreter", "jit_kernels", "9-element fannkuch solve", 1, 1, cpu_boundary="internal"),
+    Workload("deltablue", "interpreter", "jit_kernels", "constraint plan execution", 20, 1, cpu_boundary="internal"),
+    Workload("chaos", "interpreter", "jit_kernels", "5,000-point frame", 1, 1, cpu_boundary="internal"),
+    Workload("go", "interpreter", "jit_kernels", "200-game search", 1, 1, cpu_boundary="internal"),
+    Workload("nqueens", "interpreter", "jit_kernels", "8-queens solve", 1, 1, cpu_boundary="internal"),
+    Workload("hexiom", "interpreter", "jit_kernels", "level-30 solve", 1, 1, cpu_boundary="internal"),
+    Workload("scimark_sor", "interpreter", "jit_kernels", "successive over-relaxation sweep", 10, 1, cpu_boundary="internal"),
+    Workload("scimark_sparse_mat_mult", "interpreter", "jit_kernels", "sparse matrix row", 100, 1, cpu_boundary="internal"),
+    Workload("scimark_fft", "interpreter", "jit_kernels", "forward and inverse transform", 50, 1, cpu_boundary="internal"),
+    Workload("scimark_lu", "interpreter", "jit_kernels", "LU factorization", 5, 1, cpu_boundary="internal"),
+    Workload("scimark_monte_carlo", "interpreter", "jit_kernels", "Monte Carlo sample", 100_000, 1, cpu_boundary="internal"),
 )
 
 JIT_SET: tuple[str, ...] = (

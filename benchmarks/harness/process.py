@@ -47,6 +47,7 @@ MAC_REAPED_CPU_COVERAGE = (
 )
 CGROUP_TREE_CPU_COVERAGE = "cgroup v2 workload process tree, including descendants"
 LINUX_ROOT_CPU_COVERAGE = "incomplete: wait4 root only; descendants excluded"
+KERNEL_REGION_CPU_COVERAGE = "kernel region: workload getrusage(RUSAGE_SELF) across its timed loop"
 
 
 @dataclass(frozen=True)

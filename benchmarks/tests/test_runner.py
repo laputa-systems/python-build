@@ -50,6 +50,33 @@ class TimingOnlyRunnerTests(unittest.TestCase):
         self.assertEqual(cpu["reaped_child_cpu"], payload["reaped_child_cpu"])
         self.assertIn("direct reaped children", cpu["coverage"])
 
+    def test_internal_cpu_boundary_uses_the_kernel_region_not_the_process(self) -> None:
+        kernel = Workload("nbody", "interpreter", "jit_kernels", "advance", 1, 1,
+                          cpu_boundary="internal")
+        measured = SimpleNamespace(cpu_user_seconds=0.15, cpu_system_seconds=0.02,
+                                   cpu_coverage=runner.MAC_REAPED_CPU_COVERAGE)
+        payload = {"operation_count": 4, "cpu_user_seconds": 0.04, "cpu_system_seconds": 0.004}
+        cpu = runner._workload_cpu(measured, payload, kernel)
+        self.assertAlmostEqual(cpu["total_seconds_per_operation"], 0.011)
+        self.assertEqual(cpu["coverage"], runner.KERNEL_REGION_CPU_COVERAGE)
+        self.assertAlmostEqual(cpu["process_total_seconds"], 0.17)
+        process = Workload("nbody", "interpreter", "jit_kernels", "advance", 1, 1)
+        self.assertAlmostEqual(
+            runner._workload_cpu(measured, payload, process)["total_seconds_per_operation"], 0.0425)
+
+    def test_internal_cpu_boundary_rejects_missing_or_invalid_region_cpu(self) -> None:
+        kernel = Workload("nbody", "interpreter", "jit_kernels", "advance", 1, 1,
+                          cpu_boundary="internal")
+        measured = SimpleNamespace(cpu_user_seconds=0.15, cpu_system_seconds=0.02,
+                                   cpu_coverage=runner.MAC_REAPED_CPU_COVERAGE)
+        for payload in ({"operation_count": 1},
+                        {"operation_count": 1, "cpu_user_seconds": 0.1},
+                        {"operation_count": 1, "cpu_user_seconds": -0.1, "cpu_system_seconds": 0.0},
+                        {"operation_count": 1, "cpu_user_seconds": math.nan, "cpu_system_seconds": 0.0},
+                        {"operation_count": 1, "cpu_user_seconds": True, "cpu_system_seconds": 0.0}):
+            with self.subTest(payload=payload), self.assertRaises(RuntimeError):
+                runner._workload_cpu(measured, payload, kernel)
+
     def test_cold_import_rejects_missing_or_invalid_child_cpu(self) -> None:
         measured = SimpleNamespace(cpu_user_seconds=0.2, cpu_system_seconds=0.1,
                                    cpu_coverage="wait4 root only; descendants excluded")

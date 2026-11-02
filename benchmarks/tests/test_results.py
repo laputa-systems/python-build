@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from benchmarks.harness.process import KERNEL_REGION_CPU_COVERAGE, MAC_REAPED_CPU_COVERAGE
 from benchmarks.harness.models import (
     ResultSchemaError,
     result_from_json,
@@ -105,6 +106,18 @@ class ResultSchemaTests(unittest.TestCase):
         self.assertEqual(cpu["status"], "compared")
         self.assertAlmostEqual(cpu["metrics"]["total_seconds_per_operation"]["change_percent"], 50)
         self.assertEqual(compared["comparison"]["timing"]["change_percent"], 0)
+
+    def test_kernel_region_cpu_compares_only_against_kernel_region_cpu(self):
+        def rounds(coverage):
+            return [{"user_seconds_per_operation": 0.001, "system_seconds_per_operation": 0.0,
+                     "total_seconds_per_operation": 0.001, "coverage": coverage}
+                    for _ in range(3)]
+        record = workload()
+        record["baseline"]["timing"]["cpu_rounds"] = rounds(KERNEL_REGION_CPU_COVERAGE)
+        record["candidate"]["timing"]["cpu_rounds"] = rounds(KERNEL_REGION_CPU_COVERAGE)
+        self.assertEqual(compare_workload(record)["comparison"]["timing"]["cpu"]["status"], "compared")
+        record["candidate"]["timing"]["cpu_rounds"] = rounds(MAC_REAPED_CPU_COVERAGE)
+        self.assertEqual(compare_workload(record)["comparison"]["timing"]["cpu"]["status"], "incomplete")
 
     def test_macos_rss_gate_keeps_pss_and_private_unavailable(self):
         record = workload()
