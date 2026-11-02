@@ -136,8 +136,76 @@ counts; the longer profile iteration counts also change warmup weighting
 relative to the gate. The thread-local cost appears in multiple runtime
 callers, including list slicing, float allocation, and frame operations. A
 single generic-pop special case does not cover enough of that cost and its
-extra checks regressed unrelated kernels. Further implementation needs a new
-owner decision after the one-optimization J3 experiment.
+extra checks regressed unrelated kernels. The later outlined pop and guarded
+boxed-float reuse experiments also failed acceptance, as recorded below.
+The 10% CPU target remains unmet. OD5 still excludes unboxing, escape
+analysis, and a new tier. Other mechanisms remain subject to J3's measured
+selection rule and J8's attempt limits.
+
+## macOS float reuse experiments
+
+On 2026-11-01, the second generic-pop attempt moved float cleanup into a
+shared helper. The pop stencil measured 60 bytes instead of the rejected
+156-byte inline version. Five interleaved exploratory runs covered `nbody`,
+`float`, `richards`, `spectral_norm`, `scimark_lu`, `hexiom`, and `deltablue`.
+The `nbody` CPU ratio was 0.9945 with a 95% interval of 0.9913–0.9965.
+The spectral-norm CPU ratio was 0.996, also below the required improvement.
+The verdict was INCONCLUSIVE. The experiment was discarded.
+
+A separate diagnostic counted owned float operands with reference count one
+at the allocating float arithmetic uops. Allocation behavior stayed unchanged.
+Each of the 16 registry-size kernels matched its JIT-off sibling's digest.
+Counters reported every 10,000 calls. At the last reported checkpoints,
+spectral norm had 310,000 eligible operands in 310,000 allocations, sparse
+matrix multiplication had 4,990,000 in 4,990,000, and LU had 1,657,391 in
+1,660,000. These are allocation counts, not CPU shares or complete totals.
+
+The resulting guarded boxed-float reuse experiment keeps normal allocation
+for borrowed operands, shared objects, and active reference tracing.
+An outlined helper ran five interleaved comparisons over all 16 kernels.
+The pooled geometric means were 0.9953 CPU and 0.9920 wall, with an
+INCONCLUSIVE verdict. The helper improved sparse matrix multiplication and
+FFT but added fallback cost in `nbody` and `raytrace`.
+
+The second attempt inlined the guards. Five interleaved comparisons checked
+the two regressing kernels, low-reuse `float`, FFT, and sparse matrix
+multiplication. The verdict was REJECT. Raytrace wall regressed in every run.
+The table gives pooled median candidate/baseline ratios and 95% intervals.
+
+| Kernel | CPU | Wall |
+| --- | ---: | ---: |
+| nbody | 1.002 [1.000, 1.003] | 1.005 [1.003, 1.006] |
+| raytrace | 1.009 [1.006, 1.011] | 1.015 [1.011, 1.019] |
+| float | 1.001 [1.000, 1.002] | 1.004 [1.002, 1.007] |
+| scimark_fft | 0.971 [0.970, 0.971] | 0.950 [0.950, 0.951] |
+| scimark_sparse_mat_mult | 0.954 [0.953, 0.954] | 0.932 [0.932, 0.933] |
+
+All three comparisons used `TMPDIR="$PWD/.work/tmp" python3
+rust-cpython/perf.py bench --baseline @incumbent-jit --candidate
+perf-jit-pop --runs 5`. The outlined float comparison added `--jit-set`.
+The other comparisons passed each listed kernel through `--workload`.
+Each comparison had `perf-gate-ready` exit 0 immediately before and
+`perf-gate-ready -1` exit 0 immediately after. None reported a digest
+mismatch. The candidates were incremental exploratory builds, so none is
+clean gate evidence. Raw verdict directories under
+`rust-cpython/results/perf-bench/` start with `20261102T034720Z`,
+`20261102T040342Z`, and `20261102T041624Z`, respectively.
+
+The inline float experiment and its differential probe are parked at
+`lane/jit-boxed-float-reuse` (`1a24eb1`). The campaign branch contains neither.
+The probe matches the no-JIT build across edge values, aliases, subclasses,
+finalizers, borrowed locals, nested frames, comprehensions, generator yields,
+`f_locals` replacement, tracing, monitoring, and thread execution.
+Both JIT builds produce executors for the borrowed-local and nested-frame
+loops. Reference-tracer creation and destruction counts remain 186,000 each
+on nbody. `test_float` and `jit_map_integration.py` pass. Independent source
+review found no demonstrated defect in the ownership guard.
+
+The multiply stencil grew from 88 to 156 bytes and division from 132 to
+200 bytes. Installed `libpython` text grew from 3,289,560 to 3,291,928 bytes
+against the mapping build, within the same 5,455,872-byte `__TEXT` segment.
+Peak RSS was measured by the exploratory comparisons. Full-suite, pydebug,
+sanitizer, and clean gate acceptance were not run for the rejected candidate.
 
 ## macOS five-run JIT comparisons
 

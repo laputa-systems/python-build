@@ -96,6 +96,15 @@ differently under calibration.
   The clean candidate's `libpython` `__text` was 3,289,304 bytes against
   3,288,216 for `-Os`. The candidate was uncommitted and is not gate evidence.
   The existing `-Os` setting stays.
+- macOS JIT boxed-float reuse (`lane/jit-boxed-float-reuse`): runtime
+  ownership checks found allocation opportunities that static uniqueness
+  analysis misses. Five quiet interleaved exploratory runs of the outlined
+  helper gave 0.9953 CPU and 0.9920 wall across the 16 kernels, INCONCLUSIVE.
+  Inlining improved sparse matrix CPU to 0.954 and FFT to 0.971, but raytrace
+  wall regressed in all five runs, REJECT. The guarded path and differential
+  probe remain parked. Neither candidate is clean gate evidence. Detailed
+  commands, intervals, correctness checks, and limits are in
+  [the campaign report](../docs/CAMPAIGN-JIT.md#macos-float-reuse-experiments).
 - `_bz2_rs` once gave a codec a `&mut [u8]` over uninitialized `bytes`
   storage; the shared writer wrapper replaced it.
 
