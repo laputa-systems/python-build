@@ -11,6 +11,51 @@ at the escalations listed in **Stop and escalate**.
 and the attribution tooling (`--jit-map`). This document supersedes its
 attribution J3 goal ("one optimization, 10% CPU") and its OD5.
 
+## Handoff (2026-11-02)
+
+P0 is partly done. The loop has not started.
+
+- **Done, P0.1 (`a7d0de5`):** kernel-region CPU. Training and held-out
+  kernels report `getrusage` deltas over their timed loop. Process CPU
+  stays recorded as `process_total_seconds`. On host 3.15, nbody's kernel
+  CPU is 0.070 s against 0.18 s for the whole process.
+- **Done, P0.2 (`7d62ac3`):** eight held-out kernels, `--jit-heldout`, and
+  the profile refusal.
+- **In progress, P0.3:** `rust-cpython/tests/jit_fuzz.py` (committed with
+  this handoff).
+  - Without the leak oracle, on `perf-rust-jit`, seeds 0-2 with 2,000
+    programs each gave 0 mismatches, 0 nondeterministic programs, and
+    97.3-97.8% JIT coverage. Each run takes about 20 s.
+  - The leak oracle (pymalloc block growth over the loop's second half,
+    `LEAK_BLOCKS`) is written but has not been run. Next, run it on
+    `perf-rust-jit`, seeds 0-1.
+  - The detection proof has not been done. In a worktree under `.work/wt/`,
+    add `rust-cpython/overlay/Tools/jit/template.c`, copied from the
+    upstream `Tools/jit/template.c`. Before `_JIT_ENTRY`, define a static
+    helper that calls the real `PyFloat_FromDouble` and then `Py_XINCREF`s
+    the result. Then `#define PyFloat_FromDouble` to that helper. This makes
+    the bug JIT-only. Build it with `perf.py build --jit --name
+    perf-fuzz-broken` (about 5 minutes clean). The fuzzer must report
+    mismatches on it. Discard the worktree afterwards.
+  - Lessons from building the oracle:
+    - LINE and trace event counts at `set_events` boundaries vary between
+      identical runs, even on pristine upstream with `PYTHON_JIT=0`. The
+      fuzzer compares line sets instead.
+    - Monitoring is process-wide, so lines from other threads (for
+      example a main thread blocked in `join`) are timing-dependent and
+      filtered out.
+    - JIT warmup takes about 4,000 iterations.
+    - A loop that raises on every iteration never gets a trace, so 80% of
+      divisor operands are wrapped as `(x or 1)`.
+  - No unit test for the fuzzer exists yet. Add one: the comparison must
+    flag differing records, and generated programs must run cleanly on the
+    host interpreter.
+- **Not started:** P0.4 `perf.py climb-step`, and P0.5 (`climb-ref`, the
+  clean incumbent, the A/A spread, and `S0`). P0.5 needs a quiet host and
+  about 40 minutes.
+- **No lane bug found.** Every incumbent mismatch traced back to fuzzer
+  nondeterminism, which the double JIT-off run now detects.
+
 ## Why the last campaign stalled
 
 - **Its metric hid most of the gain.** The gate's CPU number is `wait4`
@@ -52,8 +97,12 @@ Geometric mean: 0.7465. Peak RSS is +1.4% to +5.2% over no-JIT.
   sizes).
 - **Held-out set:** eight kernels from the same pinned pyperformance 1.14.0
   wheel that the climb never profiles or tunes against: `barnes_hut`,
-  `crypto_pyaes`, `pyflate`, `coroutines`, `generators`, `comprehensions`,
-  `richards_super`, `meteor_contest`. P0 adds them as `--jit-heldout`.
+  `pidigits`, `pyflate`, `coroutines`, `generators`, `comprehensions`,
+  `richards_super`, `meteor_contest`. Run them with `perf.py bench
+  --jit-heldout`; `perf.py profile` refuses them. `pidigits` replaced
+  `crypto_pyaes`, which needs the unlocked `pyaes` package. `pidigits` and
+  `pyflate` spend most of their time in C code, so they mainly catch
+  regressions.
 - **Guard set:** the non-kernel workloads the `--jit-set --gate` run already
   includes (`django_template_realistic`, `django_wsgi_request`,
   `import_django`, `python_startup`, `serialization_roundtrip`,
