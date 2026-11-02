@@ -60,11 +60,19 @@ P0 is partly done. The loop has not started.
     - JIT warmup takes about 4,000 iterations.
     - A loop that raises on every iteration never gets a trace, so 80% of
       divisor operands are wrapped as `(x or 1)`.
-- **Not started:** P0.4 `perf.py climb-step`, and P0.5 (`climb-ref`, the
-  clean incumbent, the A/A spread, and `S0`). P0.5 needs a quiet host and
-  about 40 minutes.
-- **No lane bug found.** Every incumbent mismatch traced back to fuzzer
-  nondeterminism, which the double JIT-off run now detects.
+- **Done, P0.4:** `perf.py climb-step --candidate <name>` runs steps 1-5 of
+  Per-step acceptance and prints one JSON verdict. `--screen` first runs one
+  training-set pass and gates only when its kernel-CPU point estimate is at
+  or below 0.99. The gate runs `perf-gate-ready` before and `-1` after, the
+  incumbent is `@incumbent-jit`, held-out digests come from a one-run
+  `--jit-heldout` pass, the fuzzer runs 2,000 programs, and the targeted
+  suites run with and without `PYTHON_JIT` and must fail the same tests. The
+  command refuses a candidate whose diff touches `benchmarks/`,
+  `perf_verdict.py`, or `tests/jit_fuzz.py`.
+- **Not started:** P0.5 (`climb-ref`, the clean incumbent, the A/A spread,
+  and `S0`). P0.5 needs a quiet host and about 40 minutes.
+- **No lane bug found.** The only incumbent mismatch was monitoring LINE
+  events, which `perf-upstream-jit` reproduces identically.
 
 ## Why the last campaign stalled
 

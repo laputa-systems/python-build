@@ -2183,6 +2183,114 @@ class JitStatsTests(unittest.TestCase):
         self.assertTrue(bench.call_args.kwargs["jit_set"])
 
 
+def climb_entity(ratio, *, mismatch=False):
+    return {"kind": "workload", "runs": 5, "mismatch": mismatch,
+            "improvable": ["wall", "cpu", "peak_rss"],
+            "metrics": {"cpu": {"verdict": "within budget",
+                                "per_run": ["within budget"] * 5,
+                                "pooled": {"median": ratio, "ci95": [ratio, ratio],
+                                           "samples": 5}}}}
+
+
+def climb_entities(ratio=1.0):
+    from benchmarks.workloads.registry import JIT_SET
+
+    return {name: climb_entity(ratio) for name in JIT_SET}
+
+
+def climb_side(ref, *, commit="a" * 40):
+    return {"ref": ref, "name": ref.lstrip("@").replace("@", "-"), "lane": Path("/lane"),
+            "stage": Path("/stage"), "python": Path("/stage/bin/python3.16"),
+            "report": {"status": "built", "jit": True, "git": {"commit": commit}}}
+
+
+class ClimbStepTests(unittest.TestCase):
+    def climb(self, candidate, *, screen=False, measure, fuzzer=None, suites=None):
+        candidate_side = climb_side(candidate)
+        incumbent_side = climb_side(perf.CLIMB_INCUMBENT, commit="b" * 40)
+        calls = []
+
+        def resolve(ref):
+            calls.append(ref)
+            return candidate_side if ref == candidate else incumbent_side
+
+        fuzzer = fuzzer or mock.Mock(
+            MIN_JIT_COVERAGE=0.9,
+            fuzz=mock.Mock(return_value=mock.Mock(
+                programs=2000, mismatches=[], nondeterministic=[], programs_jitted=1900)))
+        suites = suites or {"jit": [], "no_jit": []}
+        with tempfile.TemporaryDirectory() as temp, \
+                mock.patch.object(perf, "resolve", side_effect=resolve), \
+                mock.patch.object(perf, "_frozen_changes", return_value=[]), \
+                mock.patch.object(perf, "SCRATCH", Path(temp)), \
+                mock.patch.object(perf, "_measure", side_effect=measure), \
+                mock.patch.object(perf, "_perf_gate_ready", return_value={"exit": 0, "detail": ""}), \
+                mock.patch.object(perf, "_jit_fuzz_module", return_value=fuzzer), \
+                mock.patch.object(perf, "_climb_suites", return_value=["test_float"]), \
+                mock.patch.object(perf, "_climb_suite_failures",
+                                  side_effect=lambda side, names, *, jit, jobs: {
+                                      "log": "log", "returncode": 0,
+                                      "failed": suites["jit" if jit else "no_jit"]}):
+            output = io.StringIO()
+            with redirect_stdout(output):
+                code = perf.climb_step(candidate=candidate, screen=screen, runs=5, min_idle=0,
+                                       fuzz_programs=2000, fuzz_seed=0, jobs=1)
+        return code, json.loads(output.getvalue()), calls
+
+    def test_screen_above_the_ceiling_does_not_gate(self):
+        record = {"entities": climb_entities(1.01), "directory": "/screen"}
+        code, verdict, calls = self.climb("candidate", screen=True,
+                                          measure=[record])
+        self.assertEqual(code, 1)
+        self.assertEqual(verdict["decision"], "SCREEN-REJECTED")
+        self.assertEqual(calls, ["candidate", perf.CLIMB_INCUMBENT])
+
+    def test_pooled_kernel_regression_rejects_an_accepting_gate(self):
+        entities = climb_entities(0.97)
+        entities["nbody"] = climb_entity(1.03)
+        gate = {"entities": entities, "directory": "/gate",
+                "decision": {"decision": "ACCEPT", "quiet": True, "reasons": []}}
+        code, verdict, _ = self.climb("candidate", measure=[gate])
+        self.assertEqual(code, 1)
+        self.assertEqual(verdict["decision"], "REJECT")
+        self.assertEqual(verdict["kernel_regressions"],
+                         [{"kernel": "nbody", "ci95_low": 1.03}])
+
+    def test_extra_failure_with_the_jit_rejects(self):
+        gate = {"entities": climb_entities(0.97), "directory": "/gate",
+                "decision": {"decision": "ACCEPT", "quiet": True, "reasons": []}}
+        heldout = {"entities": climb_entities(1.0), "directory": "/heldout"}
+        code, verdict, _ = self.climb(
+            "candidate", measure=[gate, heldout],
+            suites={"jit": ["test_float"], "no_jit": []})
+        self.assertEqual(code, 1)
+        self.assertEqual(verdict["decision"], "REJECT")
+        self.assertEqual(verdict["suites"]["only_jit"], ["test_float"])
+
+    def test_clean_step_accepts_and_reports_every_check(self):
+        gate = {"entities": climb_entities(0.97), "directory": "/gate",
+                "decision": {"decision": "ACCEPT", "quiet": True, "reasons": []}}
+        heldout = {"entities": climb_entities(1.0), "directory": "/heldout"}
+        code, verdict, _ = self.climb("candidate", measure=[gate, heldout])
+        self.assertEqual(code, 0)
+        self.assertEqual(verdict["decision"], "ACCEPT")
+        self.assertEqual(verdict["gate"]["decision"], "ACCEPT")
+        self.assertEqual(verdict["fuzz"]["mismatches"], 0)
+        self.assertEqual(verdict["suites"]["only_jit"], [])
+
+    def test_failed_suite_summary_is_parsed_from_the_log_tail(self):
+        with tempfile.TemporaryDirectory() as temp:
+            log = Path(temp) / "suite.log"
+            log.write_text("1 test altered the execution environment (env changed):\n"
+                           "    test_capi.test_opt\n"
+                           "\n"
+                           "2 tests failed:\n"
+                           "    test_ssl test_support\n"
+                           "\n"
+                           "460 tests OK.\n")
+            self.assertEqual(perf._failed_suites(log), ["test_ssl", "test_support"])
+
+
 class SelectionTests(unittest.TestCase):
     def test_gate_adds_guards_and_rejects_unavailable_inputs(self):
         targets, workloads, modules = perf.selection(workloads=["zlib_stream_4k"], modules=["json"], gate=True)

@@ -30,6 +30,7 @@ import os
 import re
 import select
 import shutil
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -114,6 +115,24 @@ PROFILE_MODULE_ROUNDS = {"quick": 3, "standard": 5, "rigorous": 10}
 MODULE_TARGET_SECONDS = 0.25
 MODULE_MAX_ITERATIONS = 20_000
 QUIET_WAIT_SECONDS = 180
+CLIMB_INCUMBENT = "@incumbent-jit"
+CLIMB_SCREEN_CEILING = 0.99
+CLIMB_KERNEL_CEILING = 1.02
+CLIMB_FUZZ_PROGRAMS = 2000
+CLIMB_FUZZ_SEED = 0
+CLIMB_SUITES = (
+    "test_capi.test_opt",
+    "test_float",
+    "test_long",
+    "test_sys_settrace",
+    "test_monitoring",
+    "test_generators",
+    "test_frame",
+    "test_gc",
+    "test_weakref",
+)
+CLIMB_FROZEN_PREFIXES = ("benchmarks/",)
+CLIMB_FROZEN_FILES = ("rust-cpython/perf_verdict.py", "rust-cpython/tests/jit_fuzz.py")
 
 
 def _check_name(name: str) -> str:
@@ -1779,6 +1798,243 @@ def bench(*, baseline_ref: str, candidate_ref: str, workloads: list[str], gate: 
     return 0
 
 
+# ------------------------------------------------------------- climb step
+
+
+def _kernel_score(entities: dict[str, dict[str, Any]]) -> float | None:
+    from benchmarks.workloads.registry import JIT_SET
+
+    ratios = []
+    for name in JIT_SET:
+        verdict = entities.get(name)
+        if verdict is None or verdict["mismatch"]:
+            return None
+        median = verdict["metrics"].get("cpu", {}).get("pooled", {}).get("median")
+        if median is None:
+            return None
+        ratios.append(float(median))
+    return statistics.geometric_mean(ratios) if ratios else None
+
+
+def _kernel_regressions(entities: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    from benchmarks.workloads.registry import JIT_SET
+
+    found = []
+    for name in JIT_SET:
+        verdict = entities.get(name)
+        if verdict is None or verdict["mismatch"]:
+            continue
+        interval = verdict["metrics"].get("cpu", {}).get("pooled", {}).get("ci95")
+        if interval is not None and interval[0] > CLIMB_KERNEL_CEILING:
+            found.append({"kernel": name, "ci95_low": interval[0]})
+    return found
+
+
+def _frozen_changes(base: str, head: str) -> list[str]:
+    result = subprocess.run(["git", "diff", "--name-only", base, head],
+                            cwd=LANE, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise LaneError(f"cannot diff {base[:10]}..{head[:10]}: {result.stderr.strip()}")
+    return [path for path in result.stdout.splitlines()
+            if path in CLIMB_FROZEN_FILES or path.startswith(CLIMB_FROZEN_PREFIXES)]
+
+
+def _jit_fuzz_module():
+    spec = importlib.util.spec_from_file_location("jit_fuzz", LANE / "tests" / "jit_fuzz.py")
+    if spec is None or spec.loader is None:
+        raise LaneError("cannot load the differential JIT fuzzer")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["jit_fuzz"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_FAILED_TESTS = re.compile(r"^\d+ tests? failed:$")
+
+
+def _failed_suites(log: Path) -> list[str]:
+    lines = log.read_text(errors="replace").splitlines()
+    for index in range(len(lines) - 1, -1, -1):
+        if _FAILED_TESTS.match(lines[index]):
+            failed: list[str] = []
+            for line in lines[index + 1:]:
+                if not line.startswith("    "):
+                    break
+                failed.extend(line.split())
+            return sorted(failed)
+    return []
+
+
+def _climb_suites(python: Path) -> list[str]:
+    probe = ("import pathlib, test\n"
+             "print(' '.join(sorted(path.stem for path in "
+             "pathlib.Path(test.__file__).parent.glob('test_jit*.py'))))")
+    result = subprocess.run([str(python), "-I", "-c", probe],
+                            capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise LaneError(f"cannot list JIT test modules under {python}: "
+                        f"{result.stderr.strip()[-1000:]}")
+    return [*CLIMB_SUITES, *result.stdout.split()]
+
+
+def _climb_suite_failures(side: dict[str, Any], suites: list[str], *, jit: bool,
+                          jobs: int | None) -> dict[str, Any]:
+    toolchain, _target = lb._toolchain()
+    env = lb._test_environment(toolchain)
+    env["PYTHON_JIT"] = "1" if jit else "0"
+    paths = _paths(side["name"], side["lane"])
+    label = "jit" if jit else "no-jit"
+    log = lb.LOGS / f"climb-{side['name']}-{label}.log"
+    workers = jobs if jobs is not None else lb._test_jobs()
+    with host_lease("test", f"climb suites {side['name']} {label}"):
+        result = lb._run_python_test(
+            [str(side["python"]), "-m", "test", "-j", str(workers), "--timeout=900", *suites],
+            cwd=paths["build"], env=env, log=log)
+    return {"log": str(log), "returncode": result["returncode"], "failed": _failed_suites(log)}
+
+
+def _perf_gate_ready(*, post: bool) -> dict[str, Any]:
+    tool = shutil.which("perf-gate-ready")
+    if tool is None:
+        raise LaneError("perf-gate-ready is not on PATH; the climb's timing gate requires it")
+    result = subprocess.run([tool, *(["-1"] if post else [])],
+                            capture_output=True, text=True, check=False)
+    return {"exit": result.returncode,
+            "detail": (result.stderr or result.stdout).strip()[-2000:]}
+
+
+def climb_step(*, candidate: str, screen: bool, runs: int, min_idle: float,
+               fuzz_programs: int, fuzz_seed: int, jobs: int | None) -> int:
+    if runs < 2:
+        raise LaneError("a climb gate needs at least two independent runs")
+    if fuzz_programs < 1:
+        raise LaneError("the fuzzer needs at least one generated program")
+    side = resolve(candidate)
+    if not side["report"].get("jit"):
+        raise LaneError(f"{candidate} is not a JIT build; the climb gates JIT candidates")
+    incumbent = resolve(CLIMB_INCUMBENT)
+    frozen = _frozen_changes(incumbent["report"]["git"]["commit"],
+                             side["report"]["git"]["commit"])
+    if frozen:
+        raise LaneError("the candidate changes frozen climb harness files: " + ", ".join(frozen))
+    verdict: dict[str, Any] = {
+        "candidate": side["name"],
+        "candidate_commit": side["report"]["git"]["commit"],
+        "incumbent": incumbent["name"],
+        "incumbent_commit": incumbent["report"]["git"]["commit"],
+        "mode": "screen" if screen else "full",
+        "runs": runs,
+    }
+    reasons: list[str] = []
+
+    def finish(decision: str, code: int) -> int:
+        verdict["decision"] = decision
+        verdict["reasons"] = reasons
+        print(json.dumps(verdict, sort_keys=True))
+        return code
+
+    if screen:
+        with contextlib.redirect_stdout(sys.stderr):
+            record = _measure(baseline_ref=CLIMB_INCUMBENT, candidate_ref=candidate,
+                              workloads=[], modules=[], gate=False, runs=1,
+                              profile="standard", timing_only=True, min_idle=min_idle,
+                              self_compare=False, record_baselines=False, jit_set=True)
+        point = _kernel_score(record["entities"])
+        verdict["screen"] = {"point_estimate": point, "ceiling": CLIMB_SCREEN_CEILING,
+                             "directory": record["directory"]}
+        if point is None:
+            reasons.append("the screen produced no comparable kernel CPU for all 16 kernels")
+            return finish("REJECT", 1)
+        if point > CLIMB_SCREEN_CEILING:
+            reasons.append(f"screen point estimate {point:.4f} is above {CLIMB_SCREEN_CEILING}")
+            return finish("SCREEN-REJECTED", 1)
+
+    before = _perf_gate_ready(post=False)
+    verdict["gate_ready_before"] = before
+    if before["exit"] != 0:
+        reasons.append("the host was busy before the gate (perf-gate-ready)")
+        return finish("DEFERRED", 1)
+    with contextlib.redirect_stdout(sys.stderr):
+        gate = _measure(baseline_ref=CLIMB_INCUMBENT, candidate_ref=candidate,
+                        workloads=[], modules=[], gate=True, runs=runs,
+                        profile="standard", timing_only=False, min_idle=min_idle,
+                        self_compare=False, record_baselines=False, jit_set=True)
+    after = _perf_gate_ready(post=True)
+    verdict["gate_ready_after"] = after
+    verdict["gate"] = {"decision": gate["decision"]["decision"],
+                       "quiet": gate["decision"]["quiet"],
+                       "point_estimate": _kernel_score(gate["entities"]),
+                       "directory": gate["directory"],
+                       "reasons": gate["decision"]["reasons"]}
+    if after["exit"] != 0:
+        reasons.append("the host was busy after the gate (perf-gate-ready -1); discard the run")
+        return finish("DEFERRED", 1)
+    if gate["decision"]["decision"] != perf_verdict.ACCEPT:
+        reasons.append(f"gate: {gate['decision']['decision']}")
+        return finish("REJECT", 1)
+
+    regressions = _kernel_regressions(gate["entities"])
+    verdict["kernel_regressions"] = regressions
+    if regressions:
+        reasons.append("kernel CI95 lower bounds above "
+                       f"{CLIMB_KERNEL_CEILING}: "
+                       + ", ".join(f"{item['kernel']} {item['ci95_low']:.4f}"
+                                   for item in regressions))
+        return finish("REJECT", 1)
+
+    with contextlib.redirect_stdout(sys.stderr):
+        heldout = _measure(baseline_ref=CLIMB_INCUMBENT, candidate_ref=candidate,
+                           workloads=[], modules=[], gate=False, runs=1,
+                           profile="standard", timing_only=True, min_idle=min_idle,
+                           self_compare=False, record_baselines=False, jit_heldout=True)
+    mismatched = sorted(name for name, entity in heldout["entities"].items()
+                        if entity["mismatch"])
+    verdict["heldout_digests"] = {"mismatches": mismatched, "directory": heldout["directory"]}
+    if mismatched:
+        reasons.append("held-out outputs differ: " + ", ".join(mismatched))
+        return finish("REJECT", 1)
+
+    fuzzer = _jit_fuzz_module()
+    SCRATCH.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="climb-fuzz-", dir=SCRATCH) as temporary:
+        result = fuzzer.fuzz(side["python"], programs=fuzz_programs, seed=fuzz_seed,
+                             jobs=max(1, (os.cpu_count() or 2) - 1) if jobs is None else jobs,
+                             scratch=Path(temporary))
+    coverage = result.programs_jitted / result.programs
+    verdict["fuzz"] = {"programs": result.programs, "seed": fuzz_seed,
+                       "mismatches": len(result.mismatches),
+                       "nondeterministic": len(result.nondeterministic),
+                       "jit_coverage": round(coverage, 4)}
+    if result.mismatches:
+        reasons.append(f"{len(result.mismatches)} generated programs differ with the JIT")
+        return finish("REJECT", 1)
+    if result.nondeterministic:
+        reasons.append("the fuzzer generated nondeterministic programs; the run is not evidence")
+        return finish("INCONCLUSIVE", 1)
+    if coverage < fuzzer.MIN_JIT_COVERAGE:
+        reasons.append(f"JIT coverage {coverage:.1%} is below the fuzzer's floor")
+        return finish("INCONCLUSIVE", 1)
+
+    suites = _climb_suites(side["python"])
+    with contextlib.redirect_stdout(sys.stderr):
+        jit_run = _climb_suite_failures(side, suites, jit=True, jobs=jobs)
+        nojit_run = _climb_suite_failures(side, suites, jit=False, jobs=jobs)
+    only_jit = sorted(set(jit_run["failed"]) - set(nojit_run["failed"]))
+    only_nojit = sorted(set(nojit_run["failed"]) - set(jit_run["failed"]))
+    verdict["suites"] = {"suites": suites, "jit": jit_run["failed"],
+                         "no_jit": nojit_run["failed"],
+                         "only_jit": only_jit, "only_no_jit": only_nojit,
+                         "logs": {"jit": jit_run["log"], "no_jit": nojit_run["log"]}}
+    if only_jit or only_nojit:
+        reasons.append("the targeted suites do not have the same failed-test set with and "
+                       "without the JIT")
+        return finish("REJECT", 1)
+
+    reasons.append("gate ACCEPT, no kernel regression, digests equal, fuzz clean, "
+                   "targeted suites match")
+    return finish("ACCEPT", 0)
+
+
 def goals(*, candidate_ref: str, modules: list[str], runs: int, profile: str, min_idle: float,
           memory_only: bool = False, matched_prefix: bool = False,
           matched_executable: bool = False) -> int:
@@ -2367,6 +2623,16 @@ def main(argv: list[str] | None = None) -> int:
         sub.add_argument("--timing-only", action="store_true", help="skip the memory pass (exploration)")
         sub.add_argument("--min-idle", type=float, default=DEFAULT_MIN_IDLE,
                          help="percent CPU idle required around measurements")
+    climb_parser = commands.add_parser(
+        "climb-step", help="run the JIT climb's per-step acceptance and print one JSON verdict")
+    climb_parser.add_argument("--candidate", required=True, help="local JIT build name")
+    climb_parser.add_argument("--screen", action="store_true",
+                              help="pre-filter with one training-set run; gate only at or below 0.99")
+    climb_parser.add_argument("--runs", type=int, default=5, help="gate runs (at least 2)")
+    climb_parser.add_argument("--min-idle", type=float, default=DEFAULT_MIN_IDLE)
+    climb_parser.add_argument("--fuzz-programs", type=int, default=CLIMB_FUZZ_PROGRAMS)
+    climb_parser.add_argument("--fuzz-seed", type=int, default=CLIMB_FUZZ_SEED)
+    climb_parser.add_argument("--jobs", type=int, help="suite workers and fuzz batches")
     goals_parser = commands.add_parser("goals", help="per-module goal status against the control")
     goals_parser.add_argument("--candidate", default="@incumbent", help="@incumbent or a local build name")
     goals_parser.add_argument("--module", action="append", default=[], metavar="ROUTE",
@@ -2438,6 +2704,10 @@ def main(argv: list[str] | None = None) -> int:
                          self_compare=True, memory_only=args.memory_only,
                          matched_prefix=args.matched_prefix, matched_executable=args.matched_executable,
                          jit_set=args.jit_set, jit_heldout=args.jit_heldout)
+        if args.command == "climb-step":
+            return climb_step(candidate=args.candidate, screen=args.screen, runs=args.runs,
+                              min_idle=args.min_idle, fuzz_programs=args.fuzz_programs,
+                              fuzz_seed=args.fuzz_seed, jobs=args.jobs)
         if args.command == "goals":
             return goals(candidate_ref=args.candidate, modules=args.module, runs=args.runs,
                          profile=args.profile, min_idle=args.min_idle, memory_only=args.memory_only,
