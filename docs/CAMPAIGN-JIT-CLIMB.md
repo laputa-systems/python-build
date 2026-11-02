@@ -13,7 +13,7 @@ attribution J3 goal ("one optimization, 10% CPU") and its OD5.
 
 ## Handoff (2026-11-02)
 
-P0 is partly done. The loop has not started.
+P0 is done. The loop has not started.
 
 - **Done, P0.1 (`a7d0de5`):** kernel-region CPU. Training and held-out
   kernels report `getrusage` deltas over their timed loop. Process CPU
@@ -45,8 +45,8 @@ P0 is partly done. The loop has not started.
   - Detection proof: a worktree under `.work/wt/` with a
     `rust-cpython/overlay/Tools/jit/template.c` whose `PyFloat_FromDouble`
     macro calls a static helper that `Py_XINCREF`s the result reported
-    1,370 mismatches in seed 0, all leak excesses of 2,000-20,000 blocks.
-    The worktree was discarded.
+    1,370 mismatches in seed 0, all leak excesses above the 1,000-block
+    allowance (up to 20,000). The worktree was discarded.
   - Lessons from building the oracle:
     - `python -I` implies `-E`, which silently discards `PYTHON_JIT`. Any
       harness that selects the JIT through the environment must not pass
@@ -69,8 +69,23 @@ P0 is partly done. The loop has not started.
   suites run with and without `PYTHON_JIT` and must fail the same tests. The
   command refuses a candidate whose diff touches `benchmarks/`,
   `perf_verdict.py`, or `tests/jit_fuzz.py`.
-- **Not started:** P0.5 (`climb-ref`, the clean incumbent, the A/A spread,
-  and `S0`). P0.5 needs a quiet host and about 40 minutes.
+- **Done, P0.5:** `climb-ref` (no JIT), `perf-rust-jit`, and a second clean
+  JIT build `perf-rust-jit-aa` were rebuilt clean at `51f529f`.
+  - **A/A:** `perf-rust-jit` vs `perf-rust-jit-aa`, `--jit-set --gate
+    --runs 5`, INCONCLUSIVE with no kernel replicated as improved or
+    regressed. Kernel-CPU geomean 1.00025; worst kernel `richards` at
+    1.0019; widest pooled CI 1.04%. Some runs read a metric inconclusive
+    because a per-run CI upper bound crossed 1.01, so a single 5-run pass
+    cannot always bound every kernel inside the 1% floor. Identical builds
+    also read peak RSS +0.3% to +1.2%, so the memory floor is inside the
+    A/A spread.
+  - **`S0` = 0.7474** over the training set against `climb-ref`, range
+    `richards` 0.591 to `go` 0.864
+    (`results/perf-bench/20261102T174650Z-perf-climb-ref-vs-perf-rust-jit`).
+    The JIT build reads peak RSS +1.3% to +5.3% over `climb-ref`, matching
+    the pre-P0 attribution.
+  - `climb-step --candidate perf-rust-jit-aa --screen` on the A/A pair
+    returned SCREEN-REJECTED at 1.0005, as expected.
 - **No lane bug found.** The only incumbent mismatch was monitoring LINE
   events, which `perf-upstream-jit` reproduces identically.
 
@@ -94,7 +109,9 @@ P0 is partly done. The loop has not started.
 These are pooled five-run kernel wall ratios, `perf-rust-jit` over
 `perf-rust` (`rust-cpython/results/perf-bench/20261102T032140Z-perf-rust-vs-perf-rust-jit/`).
 Kernel wall equals kernel CPU within 0.1% on these single-threaded kernels
-(attribution J4 in `docs/CAMPAIGN-JIT.md`). P0 re-measures them as kernel CPU.
+(attribution J4 in `docs/CAMPAIGN-JIT.md`). P0 re-measured them as kernel CPU
+against `climb-ref` and got `S0` = 0.7474; the table agrees within 0.013 per
+kernel.
 
 | Kernel | JIT / no-JIT | Kernel | JIT / no-JIT |
 | --- | ---: | --- | ---: |
@@ -351,3 +368,4 @@ including the existing `PYTHON_JIT_MAP` output.
 
 | Date | Step | Mechanism | Ref | `S` before → after | Moved >1% | Verdict | Directory |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-11-02 | M0 | instrument | `perf-rust-jit` | — → 0.7474 | A/A max 0.19% | MEASURED | `rust-cpython/results/perf-bench/20261102T174650Z-perf-climb-ref-vs-perf-rust-jit` |
