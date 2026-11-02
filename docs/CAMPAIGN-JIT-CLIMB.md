@@ -13,7 +13,9 @@ attribution J3 goal ("one optimization, 10% CPU") and its OD5.
 
 ## Handoff (2026-11-02)
 
-P0 is done. T1 thread-state forwarding and T2 float fusion are in progress.
+P0 is done. The exact-float array setter is stackable; scalar array indexing
+is the next candidate. Thread-state forwarding remains unaccepted, and the
+bounded float fusion is parked after its screen showed no overall gain.
 No optimization has passed acceptance; the incumbent and `S0` are unchanged.
 
 - **Done, P0.1 (`a7d0de5`):** kernel-region CPU. Training and held-out
@@ -377,6 +379,9 @@ specific overlays above.
 | Date | Step | Mechanism | Ref | `S` before → after | Moved >1% | Verdict | Directory |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-11-02 | M0 | instrument | `perf-rust-jit` | — → 0.7474 | A/A max 0.19% | MEASURED | `rust-cpython/results/perf-bench/20261102T174650Z-perf-climb-ref-vs-perf-rust-jit` |
+| 2026-11-02 | T2 array setter | bypass exact-float parsing | `68ff2ba` | 0.7474 → unchanged | timing discarded | DEFERRED: host busy | `rust-cpython/results/perf-bench/20261102T225234Z-perf-rust-jit-vs-perf-arr-fast` |
+| 2026-11-02 | T2 array setter | bypass exact-float parsing | `68ff2ba` | 0.7474 → unchanged | timing discarded | DEFERRED: host busy | `rust-cpython/results/perf-bench/20261102T230458Z-perf-rust-jit-vs-perf-arr-fast` |
+| 2026-11-02 | T2 array setter | bypass exact-float parsing | `stack/jit-array-double-setter` | 0.7474 → unchanged | FFT −16.60%, LU −5.45%, Monte Carlo −6.40%, SOR −1.86% CPU | STACKABLE: gate INCONCLUSIVE | `rust-cpython/results/perf-bench/20261102T232903Z-perf-rust-jit-vs-perf-arr-fast` |
 
 ### T1 experiments (2026-11-02)
 
@@ -401,11 +406,58 @@ become an incumbent.
 - Inline state forwarding (`66b5194`) screens at 0.9841 but regresses
   several object kernels by 2–4%. Sharing the C operations (`8086ccf`)
   screens at 0.9794, with `deltablue` at 1.0138. These are one-run screens,
-  not acceptance evidence. Frame cleanup forwarding is the next bounded
-  variant; numeric reference-tracer counts match the incumbent with the
-  JIT both enabled and disabled.
+  not acceptance evidence. Frame cleanup forwarding (`01af754`) screens at
+  0.9795, with `deltablue` at 1.0180. No pooled kernel-CPU lower bound exceeds
+  1.02, but the exploratory verdict rejects `hexiom` wall time. Numeric
+  reference-tracer counts match the incumbent with JIT on and off. The
+  2,000-program differential check has zero mismatches and 97.45% JIT
+  coverage; all 11 targeted suites, including threading and interpreters,
+  pass in both modes. This candidate has not passed a clean five-run gate.
 
 Probe and screen reports remain in their isolated `.work/wt/jit-t1*`
-result directories while the experiments are active. T2 starts with a
-bounded multiply-add fusion that keeps boxed values at every side exit;
-it has not yet been measured.
+result directories while the experiments are active.
+
+### T2 experiments (2026-11-02)
+
+The three-input multiply/add and multiply/subtract fusion (`b2ac651`) keeps
+boxed inputs at every exit, requires a reusable accumulator and a nonempty
+float cache, and exits when reference tracing is active. Its first matcher
+missed analyzer NOP gaps; the corrected matcher skips only NOPs. All seven
+focused JIT tests pass, including a controlled empty-cache exit at the
+original multiply. Both JIT modes pass the targeted suites, and the
+2,000-program fuzzer reports zero mismatches and 97.45% JIT coverage.
+
+Its quiet one-run screen, with five interleaved timing pairs, has kernel-CPU
+geomean 0.9991. FFT is 0.9686 and nbody 0.9897, but there is no measured
+overall gain. Park this design rather than spending on a full gate. The
+report is under `.work/wt/jit-float-fusion/rust-cpython/results/perf-bench/20261102T232731Z-perf-rust-jit-vs-perf-float-fusion`.
+
+Profiles justify removing generic conversion from double-array assignment.
+The exact-float setter (`68ff2ba`, parity tests `bb67c13`) leaves the parser
+and post-conversion bounds check unchanged for every other value. Its clean
+five-run gate, with 25 timing pairs per kernel, has CPU geomean 0.98079 and
+no replicated regression or pooled kernel-CPU lower bound above 1.02.
+Pre/post readiness checks pass, and every internal host sample is quiet.
+The all-metrics verdict remains INCONCLUSIVE because guard and memory
+intervals are not bounded within budget in every run; it is not an accepted
+step. The shared library remains 7,991,712 bytes, and all 58 Rust extension
+binaries match the incumbent byte for byte.
+
+The setter satisfies stacking checks 3–6: training, guard and eight held-out
+digests match; 2,000 generated programs have zero mismatches or
+nondeterminism; targeted suites pass with JIT on and off; independent
+source review finds no demonstrated defect. All 1,039 `test_array` tests
+pass in each mode, as do bit-pattern, subclass and reentrant-conversion
+parity tests. No second clean rebuild has been claimed. Scalar array index
+conversion and unused module-state lookup (`3094ad3`) form the next bounded
+variant; its source review and focused syntax check pass.
+
+The two earlier full setter runs are discarded for internal host samples
+below 80% CPU idle despite successful pre/post readiness checks. A separate
+diagnostic caught macOS media-analysis, suggestions and inference bursts.
+A temporary user-active assertion did not resolve them. Temporarily pausing
+the five user-owned analysis agents kept all 64 diagnostic samples above
+80% idle and allowed the valid gate; every agent was restored afterward.
+The `rigorous` CLI attempt still used standard workload sampling: macOS
+does not support its allocation-profiling path. No harness, workload,
+fuzzer, statistical policy or threshold changed.
