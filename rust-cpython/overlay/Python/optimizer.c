@@ -1666,6 +1666,12 @@ stack_allocate(_PyUOpInstruction *buffer, _PyUOpInstruction *output, int length)
 }
 
 #if _Py_JIT_FLOAT_RAW
+enum {
+    RAW_FLOAT_ALLOCATE,
+    RAW_FLOAT_INPLACE_LEFT,
+    RAW_FLOAT_INPLACE_RIGHT,
+};
+
 static bool
 raw_replicated_opcode(int opcode, int base, int oparg)
 {
@@ -1693,6 +1699,23 @@ raw_float_opcode(int opcode)
 }
 
 static int
+raw_float_prepare_mode(int opcode)
+{
+    switch (opcode) {
+        case _BINARY_OP_ADD_FLOAT_INPLACE:
+        case _BINARY_OP_SUBTRACT_FLOAT_INPLACE:
+        case _BINARY_OP_MULTIPLY_FLOAT_INPLACE:
+            return RAW_FLOAT_INPLACE_LEFT;
+        case _BINARY_OP_ADD_FLOAT_INPLACE_RIGHT:
+        case _BINARY_OP_SUBTRACT_FLOAT_INPLACE_RIGHT:
+        case _BINARY_OP_MULTIPLY_FLOAT_INPLACE_RIGHT:
+            return RAW_FLOAT_INPLACE_RIGHT;
+        default:
+            return RAW_FLOAT_ALLOCATE;
+    }
+}
+
+static int
 lower_raw_float_trace(_PyUOpInstruction *input, int length, _PyUOpInstruction *output)
 {
     int used = 0;
@@ -1709,12 +1732,12 @@ lower_raw_float_trace(_PyUOpInstruction *input, int length, _PyUOpInstruction *o
         }
         int arithmetic = raw_float_opcode(op);
         if (arithmetic) {
-            _PyUOpInstruction activation = inst;
-            activation.opcode = _JIT_FLOAT_ACTIVATE;
-            activation.oparg = _Py_JIT_FLOAT_CAPACITY;
-            activation.operand0 = 0;
-            activation.operand1 = 0;
-            output[used++] = activation;
+            _PyUOpInstruction prepare = inst;
+            prepare.opcode = _JIT_FLOAT_PREPARE;
+            prepare.oparg = raw_float_prepare_mode(op);
+            prepare.operand0 = _Py_JIT_FLOAT_CAPACITY;
+            prepare.operand1 = 0;
+            output[used++] = prepare;
             inst.opcode = arithmetic;
             raw_possible = true;
             changed = true;
