@@ -795,8 +795,10 @@ dummy_func(
                 activated = _PyJitFloat_Activate(tstate, frame, ctx, capacity);
             }
             if (activated) {
-                bool available = oparg == 0 ? _PyJitFloat_CanAllocate(ctx) :
-                    _PyJitFloat_CanInplace(ctx, oparg == 1 ? left_ref : right_ref);
+                assert(oparg <= _Py_JIT_FLOAT_INPLACE_RIGHT);
+                bool available = oparg == _Py_JIT_FLOAT_ALLOCATE ? _PyJitFloat_CanAllocate(ctx) :
+                    _PyJitFloat_CanInplace(ctx,
+                        oparg == _Py_JIT_FLOAT_INPLACE_LEFT ? left_ref : right_ref);
                 if (!available) {
                     _PyStackRef *roots[] = {&left_ref, &right_ref};
                     _PyJitFloat_Materialize(tstate, frame, frame->stackpointer, ctx, roots, 2);
