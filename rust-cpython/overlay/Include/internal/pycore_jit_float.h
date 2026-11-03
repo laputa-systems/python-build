@@ -15,6 +15,8 @@
     SIZEOF_VOID_P == 8 && !defined(Py_GIL_DISABLED) && !defined(Py_DEBUG) && \
     !defined(Py_REF_DEBUG) && !defined(Py_TRACE_REFS) && \
     !defined(Py_STACKREF_DEBUG) && !defined(Py_STATS) && \
+    !defined(_Py_ADDRESS_SANITIZER) && !defined(_Py_THREAD_SANITIZER) && \
+    !defined(_Py_MEMORY_SANITIZER) && \
     !defined(_Py_JIT_FLOAT_SANITIZED) && !defined(__SANITIZE_ADDRESS__) && \
     !defined(__SANITIZE_THREAD__) && !defined(__SANITIZE_UNDEFINED__)
 #  define _Py_JIT_FLOAT_RAW 1
@@ -30,6 +32,7 @@ typedef struct _PyJitFloatContext _PyJitFloatContext;
 #define Py_INTERNAL_JIT_FLOAT_H
 
 #include "pycore_stackref.h"
+#include "pycore_freelist_state.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -58,9 +61,11 @@ typedef struct {
 struct _PyJitFloatContext {
     bool active;
     uint8_t capacity;
+    uint8_t used_count;
     uint8_t free_count;
     uint8_t free_slots[_Py_JIT_FLOAT_CAPACITY];
     _PyInterpreterFrame *frame;
+    struct _Py_freelist *freelist;
     _PyJitFloatCell cells[_Py_JIT_FLOAT_CAPACITY];
 };
 
@@ -97,7 +102,7 @@ static inline _PyJitFloatCell *
 _PyJitFloat_Cell(_PyJitFloatContext *ctx, _PyStackRef ref)
 {
     unsigned slot = _PyJitFloat_Slot(ref);
-    assert(ctx != NULL && ctx->active && slot < ctx->capacity);
+    assert(ctx != NULL && ctx->active && slot < ctx->used_count);
     assert(ctx->cells[slot].state != _Py_JIT_FLOAT_FREE);
     return &ctx->cells[slot];
 }
@@ -116,7 +121,9 @@ _PyJitFloat_Read(_PyJitFloatContext *ctx, _PyStackRef ref)
 static inline bool
 _PyJitFloat_CanAllocate(_PyJitFloatContext *ctx)
 {
-    return ctx != NULL && ctx->active && ctx->free_count != 0;
+    return ctx != NULL && ctx->active &&
+        (ctx->free_count != 0 ||
+         (ctx->used_count < ctx->capacity && ctx->freelist->size > 0));
 }
 
 PyAPI_FUNC(_PyJitFloatContext *) _PyJitFloat_GetContext(PyThreadState *tstate);
