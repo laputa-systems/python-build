@@ -14,8 +14,8 @@ attribution J3 goal ("one optimization, 10% CPU") and its OD5.
 ## Handoff (2026-11-02)
 
 P0 is done. The exact-float array setter and the combined scalar-access
-candidate are stackable. Refined thread-state forwarding awaits its primary
-gate, and the
+candidate are stackable. Refined thread-state forwarding is also stackable;
+their composition is the next candidate. The
 bounded float fusion is parked after its screen showed no overall gain.
 No optimization has passed acceptance; the incumbent and `S0` are unchanged.
 
@@ -384,6 +384,7 @@ specific overlays above.
 | 2026-11-02 | T2 array setter | bypass exact-float parsing | `68ff2ba` | 0.7474 → unchanged | timing discarded | DEFERRED: host busy | `rust-cpython/results/perf-bench/20261102T230458Z-perf-rust-jit-vs-perf-arr-fast` |
 | 2026-11-02 | T2 array setter | bypass exact-float parsing | `stack/jit-array-double-setter` | 0.7474 → unchanged | FFT −16.60%, LU −5.45%, Monte Carlo −6.40%, SOR −1.86% CPU | STACKABLE: gate INCONCLUSIVE | `rust-cpython/results/perf-bench/20261102T232903Z-perf-rust-jit-vs-perf-arr-fast` |
 | 2026-11-02 | T2 scalar arrays | direct compact indices and exact-float stores | `stack/jit-array-scalar-access` | 0.7474 → unchanged | FFT −31.68%, sparse −25.20%, LU −14.38%, Monte Carlo −14.13%, SOR −7.43% CPU | STACKABLE: gate INCONCLUSIVE | `rust-cpython/results/perf-bench/20261103T002022Z-perf-rust-jit-vs-perf-arr-fast` |
+| 2026-11-02 | T1 runtime | state forwarding and late tracer checks | `stack/jit-tstate-runtime` | 0.7474 → unchanged | spectral −9.47%, SOR −8.18%, FFT −7.94%, nbody −5.42%, sparse −4.46%, Monte Carlo −2.01%, LU −1.71%, raytrace −1.63%, float −1.59% CPU | STACKABLE: gate INCONCLUSIVE | `rust-cpython/results/perf-bench/20261103T010049Z-perf-rust-jit-vs-perf-tls-late` |
 
 ### T1 experiments (2026-11-02)
 
@@ -422,9 +423,14 @@ become an incumbent.
   screens at CPU geomean 0.9737, with DeltaBlue 1.0066, CI95
   [1.0030, 1.0095]. Numeric reference-tracer counts still match; the
   2,000-program fuzzer and all 11 targeted suites pass. Independent review
-  finds no demonstrated defect. A clean primary build named `tls-late`
-  is in progress; this is still an unaccepted refinement of the outlined
-  design.
+  finds no demonstrated defect. Its clean primary build, `tls-late`, gives
+  CPU geomean 0.97365 over five quiet independent runs, with no replicated
+  regression or pooled kernel-CPU lower bound above 1.02. The all-metrics
+  gate remains INCONCLUSIVE on guard and memory bounds. Eight held-out
+  digests match (`results/perf-bench/20261103T011634Z-perf-rust-jit-vs-perf-tls-late`).
+  This satisfies stacking checks 3–6; `stack/jit-tstate-runtime` preserves
+  it. The primary shared library is 7,993,184 bytes, 1,472 bytes above M0.
+  No second clean rebuild or accepted step is claimed.
 
 Probe and screen reports remain in their isolated `.work/wt/jit-t1*`
 result directories while the experiments are active.
