@@ -1666,12 +1666,6 @@ stack_allocate(_PyUOpInstruction *buffer, _PyUOpInstruction *output, int length)
 }
 
 #if _Py_JIT_FLOAT_RAW
-enum {
-    RAW_FLOAT_ALLOCATE,
-    RAW_FLOAT_INPLACE_LEFT,
-    RAW_FLOAT_INPLACE_RIGHT,
-};
-
 static bool
 raw_replicated_opcode(int opcode, int base, int oparg)
 {
@@ -1705,13 +1699,13 @@ raw_float_prepare_mode(int opcode)
         case _BINARY_OP_ADD_FLOAT_INPLACE:
         case _BINARY_OP_SUBTRACT_FLOAT_INPLACE:
         case _BINARY_OP_MULTIPLY_FLOAT_INPLACE:
-            return RAW_FLOAT_INPLACE_LEFT;
+            return _Py_JIT_FLOAT_INPLACE_LEFT;
         case _BINARY_OP_ADD_FLOAT_INPLACE_RIGHT:
         case _BINARY_OP_SUBTRACT_FLOAT_INPLACE_RIGHT:
         case _BINARY_OP_MULTIPLY_FLOAT_INPLACE_RIGHT:
-            return RAW_FLOAT_INPLACE_RIGHT;
+            return _Py_JIT_FLOAT_INPLACE_RIGHT;
         default:
-            return RAW_FLOAT_ALLOCATE;
+            return _Py_JIT_FLOAT_ALLOCATE;
     }
 }
 
