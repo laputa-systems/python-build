@@ -13,8 +13,9 @@ attribution J3 goal ("one optimization, 10% CPU") and its OD5.
 
 ## Handoff (2026-11-02)
 
-P0 is done. The exact-float array setter is stackable; scalar array indexing
-is the next candidate. Thread-state forwarding remains unaccepted, and the
+P0 is done. The exact-float array setter and the combined scalar-access
+candidate are stackable. Refined thread-state forwarding awaits its primary
+gate, and the
 bounded float fusion is parked after its screen showed no overall gain.
 No optimization has passed acceptance; the incumbent and `S0` are unchanged.
 
@@ -382,6 +383,7 @@ specific overlays above.
 | 2026-11-02 | T2 array setter | bypass exact-float parsing | `68ff2ba` | 0.7474 → unchanged | timing discarded | DEFERRED: host busy | `rust-cpython/results/perf-bench/20261102T225234Z-perf-rust-jit-vs-perf-arr-fast` |
 | 2026-11-02 | T2 array setter | bypass exact-float parsing | `68ff2ba` | 0.7474 → unchanged | timing discarded | DEFERRED: host busy | `rust-cpython/results/perf-bench/20261102T230458Z-perf-rust-jit-vs-perf-arr-fast` |
 | 2026-11-02 | T2 array setter | bypass exact-float parsing | `stack/jit-array-double-setter` | 0.7474 → unchanged | FFT −16.60%, LU −5.45%, Monte Carlo −6.40%, SOR −1.86% CPU | STACKABLE: gate INCONCLUSIVE | `rust-cpython/results/perf-bench/20261102T232903Z-perf-rust-jit-vs-perf-arr-fast` |
+| 2026-11-02 | T2 scalar arrays | direct compact indices and exact-float stores | `stack/jit-array-scalar-access` | 0.7474 → unchanged | FFT −31.68%, sparse −25.20%, LU −14.38%, Monte Carlo −14.13%, SOR −7.43% CPU | STACKABLE: gate INCONCLUSIVE | `rust-cpython/results/perf-bench/20261103T002022Z-perf-rust-jit-vs-perf-arr-fast` |
 
 ### T1 experiments (2026-11-02)
 
@@ -413,6 +415,16 @@ become an incumbent.
   2,000-program differential check has zero mismatches and 97.45% JIT
   coverage; all 11 targeted suites, including threading and interpreters,
   pass in both modes. This candidate has not passed a clean five-run gate.
+- A profile of the frame-complete candidate places 3.59% of DeltaBlue's
+  samples in `_POP_TOP_INT`. Its specialized close checked the tracer even
+  for borrowed references and decrements that did not destroy anything.
+  Moving that check after the owned reference reaches zero (`234f637`)
+  screens at CPU geomean 0.9737, with DeltaBlue 1.0066, CI95
+  [1.0030, 1.0095]. Numeric reference-tracer counts still match; the
+  2,000-program fuzzer and all 11 targeted suites pass. Independent review
+  finds no demonstrated defect. A clean primary build named `tls-late`
+  is in progress; this is still an unaccepted refinement of the outlined
+  design.
 
 Probe and screen reports remain in their isolated `.work/wt/jit-t1*`
 result directories while the experiments are active.
@@ -452,6 +464,21 @@ parity tests. No second clean rebuild has been claimed. Scalar array index
 conversion and unused module-state lookup (`3094ad3`) form the next bounded
 variant; its source review and focused syntax check pass.
 
+The combined setter/index candidate builds clean at `5e25790` and gives CPU
+geomean 0.93590 over five quiet independent runs, with no replicated
+regression and matching training/guard outputs. The same all-metrics gate
+remains INCONCLUSIVE on guard and memory bounds. A raytrace RSS regression
+in its incremental screen did not replicate in a separate two-run clean
+memory check; that check is also INCONCLUSIVE, not a memory pass.
+
+Both JIT modes pass all 1,039 array tests and the expanded scalar-index
+parity checks, including huge integers, bools, integer subclasses and
+callbacks that clear the array. The 2,000-program fuzzer has no mismatches
+or nondeterminism, targeted suites pass, and all eight held-out digests
+match (`results/perf-bench/20261103T005210Z-perf-rust-jit-vs-perf-arr-fast`).
+Independent source review passes. `stack/jit-array-scalar-access` retains
+this candidate; no second clean rebuild or accepted step is claimed.
+
 The two earlier full setter runs are discarded for internal host samples
 below 80% CPU idle despite successful pre/post readiness checks. A separate
 diagnostic caught macOS media-analysis, suggestions and inference bursts.
@@ -461,3 +488,18 @@ the five user-owned analysis agents kept all 64 diagnostic samples above
 The `rigorous` CLI attempt still used standard workload sampling: macOS
 does not support its allocation-profiling path. No harness, workload,
 fuzzer, statistical policy or threshold changed.
+
+### Ruled-out shortcuts
+
+Function-version guards cannot be replaced with executor Bloom validity
+alone: setting a vectorcall function or closure clears the function version
+without invalidating those dependencies, and compilation has a publication
+gap. Existing constant-bound-method optimization retains its version guard.
+
+Sub-page JIT packing would require a different publication/lifetime
+protocol. The allocator seals each executor's whole RW mapping as immutable
+RX before publication; the GIL does not make reopening a shared page safe
+across independent interpreter GILs. Existing JIT maps omit data, padding,
+unloads and residency, so page spacing is not an RSS ceiling. Sharing the
+two cold mappings could save at most one 16-KiB page per interpreter; no
+material memory win has been established for it or for alignment rounding.
