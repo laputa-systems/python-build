@@ -440,6 +440,13 @@ class RawFloatTests(unittest.TestCase):
         self.assertEqual((created, destroyed), (24, 21))
         self.assertEqual(sum_loop(4, 1.25, 2.0, 3.0, 4.0), 14.5)
 
+    def test_tracer_preserves_boxed_jit_inplace_allocations(self):
+        result, created, destroyed = self.probe.run_traced(
+            sum_loop, (8, 1.25, 2.0, 3.0, 4.0))
+        self.assertEqual(result, 14.5)
+        expected = (17, 16) if sys._jit.is_enabled() else (24, 23)
+        self.assertEqual((created, destroyed), expected)
+
     @unittest.skipUnless(hasattr(signal, 'setitimer'), 'requires interval signals')
     def test_pending_exit_exposes_boxed_frame_and_preserves_aliases(self):
         class Observed(Exception):
