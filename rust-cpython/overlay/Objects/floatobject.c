@@ -10,6 +10,8 @@
 #include "pycore_floatobject.h"   // _PyFloat_FormatAdvancedWriter()
 #include "pycore_freelist.h"      // _Py_FREELIST_FREE(), _Py_FREELIST_POP()
 #include "pycore_initconfig.h"    // _PyStatus_OK()
+#include "pycore_jit_float.h"
+#include "pycore_interpframe.h"
 #include "pycore_long.h"          // _PyLong_GetOne()
 #include "pycore_modsupport.h"    // _PyArg_NoKwnames()
 #include "pycore_object.h"        // _PyObject_Init(), _PyDebugAllocatorStats()
@@ -157,6 +159,299 @@ _PyFloat_ExactDeallocWithThreadState(PyThreadState *tstate, PyObject *obj)
     _PyFreeList_Free(&_Py_freelists_GetForThreadState(tstate)->floats,
                      obj, Py_floats_MAXFREELIST, PyObject_Free);
 }
+#endif
+
+#if _Py_JIT_FLOAT_RAW
+
+static struct _Py_freelist *
+jit_float_freelist(PyThreadState *tstate)
+{
+    return &_Py_freelists_GetForThreadState(tstate)->floats;
+}
+
+static Py_ssize_t
+jit_float_logical_cache(PyThreadState *tstate, _PyJitFloatContext *ctx)
+{
+    assert(ctx->active);
+    assert(ctx->freelist == jit_float_freelist(tstate));
+    Py_ssize_t count = ctx->freelist->size + ctx->free_count;
+    assert(count >= 0 && count <= Py_floats_MAXFREELIST);
+    return count;
+}
+
+bool
+_PyJitFloat_Activate(PyThreadState *tstate, _PyInterpreterFrame *frame,
+                     _PyJitFloatContext *ctx, unsigned capacity)
+{
+    assert(ctx != NULL);
+    assert(capacity > 0 && capacity <= _Py_JIT_FLOAT_CAPACITY);
+    if (ctx->active) {
+        assert(ctx->frame == frame);
+        return true;
+    }
+    struct _Py_freelist *freelist = jit_float_freelist(tstate);
+    if (_PyRuntime.ref_tracer.tracer_func != NULL ||
+        freelist->size < 0) {
+        return false;
+    }
+    ctx->capacity = (uint8_t)capacity;
+    ctx->used_count = 0;
+    ctx->free_count = 0;
+    ctx->frame = frame;
+    ctx->freelist = freelist;
+    ctx->active = true;
+    return true;
+}
+
+_PyStackRef
+_PyJitFloat_New(_PyJitFloatContext *ctx, double value)
+{
+    assert(_PyJitFloat_CanAllocate(ctx));
+    unsigned slot;
+    if (ctx->free_count != 0) {
+        slot = ctx->free_slots[--ctx->free_count];
+        assert(ctx->cells[slot].state == _Py_JIT_FLOAT_FREE);
+    }
+    else {
+        slot = ctx->used_count++;
+        ctx->cells[slot].backing =
+            (PyFloatObject *)_PyFreeList_PopNoStats(ctx->freelist);
+        assert(ctx->cells[slot].backing != NULL);
+    }
+    _PyJitFloatCell *cell = &ctx->cells[slot];
+    cell->value = value;
+    cell->owners = 1;
+    cell->borrowers = 0;
+    cell->state = _Py_JIT_FLOAT_LIVE_NEW;
+    return _PyJitFloat_Handle(slot, false);
+}
+
+bool
+_PyJitFloat_CanInplace(_PyJitFloatContext *ctx, _PyStackRef target)
+{
+    if (ctx == NULL || !ctx->active) {
+        return false;
+    }
+    if (_PyJitFloat_IsRaw(target)) {
+        _PyJitFloatCell *cell = _PyJitFloat_Cell(ctx, target);
+        return !_PyJitFloat_IsBorrowed(target) &&
+            cell->owners == 1 && cell->borrowers == 0;
+    }
+    if (PyStackRef_IsNull(target) || !PyStackRef_RefcountOnObject(target) ||
+        (ctx->free_count == 0 && ctx->used_count == ctx->capacity)) {
+        return false;
+    }
+    PyObject *obj = PyStackRef_AsPyObjectBorrow(target);
+    return PyFloat_CheckExact(obj) && _PyObject_IsUniquelyReferenced(obj);
+}
+
+_PyStackRef
+_PyJitFloat_Inplace(PyThreadState *tstate, _PyJitFloatContext *ctx,
+                    _PyStackRef target, double value)
+{
+    assert(_PyJitFloat_CanInplace(ctx, target));
+    if (_PyJitFloat_IsRaw(target)) {
+        _PyJitFloat_Cell(ctx, target)->value = value;
+        return target;
+    }
+    assert(ctx->freelist == jit_float_freelist(tstate));
+    unsigned slot;
+    if (ctx->free_count != 0) {
+        slot = ctx->free_slots[--ctx->free_count];
+        assert(ctx->cells[slot].state == _Py_JIT_FLOAT_FREE);
+        int pushed = _PyFreeList_Push(ctx->freelist, ctx->cells[slot].backing,
+                                      Py_floats_MAXFREELIST);
+        if (!pushed) {
+            Py_FatalError("raw float adoption overflowed the physical cache");
+        }
+    }
+    else {
+        slot = ctx->used_count++;
+    }
+    _PyJitFloatCell *cell = &ctx->cells[slot];
+    cell->backing = (PyFloatObject *)PyStackRef_AsPyObjectBorrow(target);
+    cell->value = value;
+    cell->owners = 1;
+    cell->borrowers = 0;
+    cell->state = _Py_JIT_FLOAT_LIVE_ADOPTED;
+    return _PyJitFloat_Handle(slot, false);
+}
+
+_PyStackRef
+_PyJitFloat_Dup(_PyJitFloatContext *ctx, _PyStackRef ref)
+{
+    if (!_PyJitFloat_IsRaw(ref)) {
+        return PyStackRef_DUP(ref);
+    }
+    _PyJitFloatCell *cell = _PyJitFloat_Cell(ctx, ref);
+    if (_PyJitFloat_IsBorrowed(ref)) {
+        cell->borrowers++;
+    }
+    else {
+        cell->owners++;
+    }
+    return ref;
+}
+
+_PyStackRef
+_PyJitFloat_Borrow(_PyJitFloatContext *ctx, _PyStackRef ref)
+{
+    if (!_PyJitFloat_IsRaw(ref)) {
+        return PyStackRef_Borrow(ref);
+    }
+    _PyJitFloat_Cell(ctx, ref)->borrowers++;
+    return _PyJitFloat_Handle(_PyJitFloat_Slot(ref), true);
+}
+
+_PyStackRef
+_PyJitFloat_MakeHeapSafe(_PyJitFloatContext *ctx, _PyStackRef ref)
+{
+    if (!_PyJitFloat_IsRaw(ref)) {
+        return PyStackRef_MakeHeapSafe(ref);
+    }
+    if (_PyJitFloat_IsBorrowed(ref)) {
+        _PyJitFloatCell *cell = _PyJitFloat_Cell(ctx, ref);
+        assert(cell->borrowers > 0);
+        cell->borrowers--;
+        cell->owners++;
+        return _PyJitFloat_Handle(_PyJitFloat_Slot(ref), false);
+    }
+    return ref;
+}
+
+static void
+jit_float_count_root(_PyJitFloatContext *ctx, _PyStackRef ref,
+                     Py_ssize_t *owners, Py_ssize_t *borrowers)
+{
+    if (!_PyJitFloat_IsRaw(ref)) {
+        return;
+    }
+    (void)_PyJitFloat_Cell(ctx, ref);
+    unsigned slot = _PyJitFloat_Slot(ref);
+    if (_PyJitFloat_IsBorrowed(ref)) {
+        borrowers[slot]++;
+    }
+    else {
+        owners[slot]++;
+    }
+}
+
+static void
+jit_float_materialize_root(_PyJitFloatContext *ctx, _PyStackRef *root)
+{
+    if (!_PyJitFloat_IsRaw(*root)) {
+        return;
+    }
+    PyObject *obj = (PyObject *)_PyJitFloat_Cell(ctx, *root)->backing;
+    uintptr_t borrowed = _PyJitFloat_IsBorrowed(*root) ? Py_TAG_REFCNT : 0;
+    *root = (_PyStackRef){.bits = (uintptr_t)obj | borrowed};
+}
+
+void
+_PyJitFloat_Materialize(PyThreadState *tstate, _PyInterpreterFrame *frame,
+                        _PyStackRef *stack_pointer, _PyJitFloatContext *ctx,
+                        _PyStackRef *const *extra_roots, unsigned extra_count)
+{
+    if (ctx == NULL || !ctx->active) {
+        return;
+    }
+    assert(ctx->frame == frame);
+    assert(_PyRuntime.ref_tracer.tracer_func == NULL);
+    assert(stack_pointer >= _PyFrame_Stackbase(frame));
+    assert(stack_pointer <= _PyFrame_Stackbase(frame) +
+           _PyFrame_GetCode(frame)->co_stacksize);
+    Py_ssize_t owners[_Py_JIT_FLOAT_CAPACITY] = {0};
+    Py_ssize_t borrowers[_Py_JIT_FLOAT_CAPACITY] = {0};
+    for (_PyStackRef *root = frame->localsplus; root < stack_pointer; root++) {
+        jit_float_count_root(ctx, *root, owners, borrowers);
+    }
+    for (unsigned i = 0; i < extra_count; i++) {
+        jit_float_count_root(ctx, *extra_roots[i], owners, borrowers);
+    }
+    for (unsigned i = 0; i < ctx->used_count; i++) {
+        _PyJitFloatCell *cell = &ctx->cells[i];
+        assert(owners[i] == cell->owners && borrowers[i] == cell->borrowers);
+        if (cell->state == _Py_JIT_FLOAT_FREE) {
+            assert(owners[i] == 0 && borrowers[i] == 0);
+            continue;
+        }
+        assert(owners[i] > 0);
+        PyObject *obj = (PyObject *)cell->backing;
+        obj->ob_refcnt_full = (uintptr_t)owners[i];
+        cell->backing->ob_fval = cell->value;
+    }
+    for (_PyStackRef *root = frame->localsplus; root < stack_pointer; root++) {
+        jit_float_materialize_root(ctx, root);
+    }
+    for (unsigned i = 0; i < extra_count; i++) {
+        jit_float_materialize_root(ctx, extra_roots[i]);
+    }
+    struct _Py_freelist *freelist = ctx->freelist;
+    assert(freelist == jit_float_freelist(tstate));
+    for (unsigned i = 0; i < ctx->free_count; i++) {
+        unsigned slot = ctx->free_slots[i];
+        assert(ctx->cells[slot].state == _Py_JIT_FLOAT_FREE);
+        int pushed = _PyFreeList_Push(freelist, ctx->cells[slot].backing,
+                                      Py_floats_MAXFREELIST);
+        if (!pushed) {
+            Py_FatalError("raw float materialization overflowed the physical cache");
+        }
+    }
+    ctx->active = false;
+}
+
+static void
+jit_float_materialize_closing(PyThreadState *tstate, _PyInterpreterFrame *frame,
+                              _PyJitFloatContext *ctx, _PyStackRef *closing)
+{
+    _PyStackRef *extra_roots[] = {closing};
+    _PyJitFloat_Materialize(tstate, frame, _PyFrame_GetStackPointer(frame),
+                           ctx, extra_roots, 1);
+}
+
+void
+_PyJitFloat_Close(PyThreadState *tstate, _PyInterpreterFrame *frame,
+                  _PyJitFloatContext *ctx, _PyStackRef *closing)
+{
+    if (_PyJitFloat_IsRaw(*closing)) {
+        _PyJitFloatCell *cell = _PyJitFloat_Cell(ctx, *closing);
+        if (_PyJitFloat_IsBorrowed(*closing)) {
+            assert(cell->borrowers > 0);
+            cell->borrowers--;
+        }
+        else if (cell->owners > 1) {
+            cell->owners--;
+        }
+        else {
+            assert(cell->owners == 1 && cell->borrowers == 0);
+            if (jit_float_logical_cache(tstate, ctx) == Py_floats_MAXFREELIST) {
+                jit_float_materialize_closing(tstate, frame, ctx, closing);
+                PyStackRef_CLOSE(*closing);
+                *closing = PyStackRef_NULL;
+                return;
+            }
+            unsigned slot = _PyJitFloat_Slot(*closing);
+            *(void **)cell->backing = NULL;
+            cell->owners = 0;
+            cell->state = _Py_JIT_FLOAT_FREE;
+            ctx->free_slots[ctx->free_count++] = (uint8_t)slot;
+        }
+        *closing = PyStackRef_NULL;
+        return;
+    }
+    if (ctx != NULL && ctx->active && !PyStackRef_IsNull(*closing) &&
+        PyStackRef_RefcountOnObject(*closing)) {
+        PyObject *obj = PyStackRef_AsPyObjectBorrow(*closing);
+        if (!PyFloat_CheckExact(obj) ||
+            (Py_REFCNT(obj) == 1 &&
+             jit_float_logical_cache(tstate, ctx) == Py_floats_MAXFREELIST)) {
+            jit_float_materialize_closing(tstate, frame, ctx, closing);
+        }
+    }
+    PyStackRef_XCLOSE(*closing);
+    *closing = PyStackRef_NULL;
+}
+
 #endif
 
 static PyObject *
