@@ -24,6 +24,7 @@
 #include "pycore_intrinsics.h"
 #include "pycore_lazyimportobject.h"
 #include "pycore_jit.h"
+#include "pycore_jit_float.h"
 #include "pycore_list.h"
 #include "pycore_long.h"
 #include "pycore_object.h"

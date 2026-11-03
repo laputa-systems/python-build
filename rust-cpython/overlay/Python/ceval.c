@@ -1,6 +1,7 @@
 /* Execute compiled code */
 
 #include "ceval.h"
+#include "pycore_jit_float.h"
 #include "pycore_long.h"
 
 int
