@@ -16,6 +16,7 @@
 #include "pycore_interpframe.h"
 #include "pycore_interpolation.h"
 #include "pycore_intrinsics.h"
+#include "pycore_jit_float.h"
 #include "pycore_jit_publish.h"
 #include "pycore_lazyimportobject.h"
 #include "pycore_list.h"
