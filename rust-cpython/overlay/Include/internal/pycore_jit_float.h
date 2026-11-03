@@ -1,13 +1,9 @@
-#ifndef Py_INTERNAL_JIT_FLOAT_H
-#define Py_INTERNAL_JIT_FLOAT_H
+#ifndef Py_INTERNAL_JIT_FLOAT_CAPABILITY_H
+#define Py_INTERNAL_JIT_FLOAT_CAPABILITY_H
 
 #ifndef Py_BUILD_CORE
 #  error "this header requires Py_BUILD_CORE define"
 #endif
-
-#include "pycore_stackref.h"
-#include <stdbool.h>
-#include <stdint.h>
 
 #if defined(__has_feature)
 #  if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer) || __has_feature(memory_sanitizer) || __has_feature(undefined_behavior_sanitizer)
@@ -26,11 +22,20 @@
 #  define _Py_JIT_FLOAT_RAW 0
 #endif
 
+typedef struct _PyJitFloatContext _PyJitFloatContext;
+
+#endif
+
+#if !defined(_Py_JIT_FLOAT_DECLARE_ONLY) && !defined(Py_INTERNAL_JIT_FLOAT_H)
+#define Py_INTERNAL_JIT_FLOAT_H
+
+#include "pycore_stackref.h"
+#include <stdbool.h>
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-typedef struct _PyJitFloatContext _PyJitFloatContext;
 
 #if _Py_JIT_FLOAT_RAW
 
