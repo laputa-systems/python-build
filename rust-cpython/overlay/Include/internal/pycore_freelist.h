@@ -12,6 +12,7 @@ extern "C" {
 #include "pycore_interp_structs.h"      // PyInterpreterState
 #include "pycore_pyatomic_ft_wrappers.h" // FT_ATOMIC_STORE_PTR_RELAXED()
 #include "pycore_pystate.h"             // _PyThreadState_GET
+#include "pycore_runtime.h"
 #include "pycore_stats.h"               // OBJECT_STAT_INC
 
 #ifndef Py_GIL_DISABLED
@@ -109,7 +110,16 @@ _PyFreeList_Pop(struct _Py_freelist *fl)
     PyObject *op = _PyFreeList_PopNoStats(fl);
     if (op != NULL) {
         OBJECT_STAT_INC(from_freelist);
+#if defined(_Py_JIT) && SIZEOF_VOID_P > 4 && !defined(Py_GIL_DISABLED) && !defined(Py_DEBUG) && !defined(Py_REF_DEBUG) && !defined(Py_TRACE_REFS) && !defined(Py_STACKREF_DEBUG)
+        if (_PyRuntime.ref_tracer.tracer_func == NULL) {
+            op->ob_refcnt_full = 1;
+        }
+        else {
+            _Py_NewReference(op);
+        }
+#else
         _Py_NewReference(op);
+#endif
     }
     return op;
 }
