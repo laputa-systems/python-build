@@ -134,44 +134,29 @@ do {                                                                      \
 #if defined(__APPLE__) && defined(__aarch64__) && !defined(Py_GIL_DISABLED) && \
     !defined(Py_DEBUG) && !defined(Py_REF_DEBUG) && \
     !defined(Py_STACKREF_DEBUG) && !defined(Py_TRACE_REFS)
-typedef enum {
-    JIT_RELEASE_FLOAT,
-    JIT_RELEASE_LONG,
-} JitReleaseKind;
-
 static inline void
-jit_stackref_close_numeric(PyThreadState *tstate, _PyStackRef ref, JitReleaseKind kind)
+jit_stackref_close_specialized(PyThreadState *tstate, _PyStackRef ref, destructor destruct)
 {
+    if (destruct != _PyFloat_ExactDealloc && destruct != _PyLong_ExactDealloc) {
+        PyStackRef_CLOSE_SPECIALIZED(ref, destruct);
+        return;
+    }
     if (PyStackRef_RefcountOnObject(ref)) {
         PyObject *obj = PyStackRef_AsPyObjectBorrow(ref);
         _Py_DECREF_STAT_INC();
         if (--obj->ob_refcnt == 0) {
-            switch (kind) {
-                case JIT_RELEASE_FLOAT:
-                    _PyFloat_ExactDeallocWithThreadState(tstate, obj);
-                    break;
-                case JIT_RELEASE_LONG:
-                    _PyLong_ExactDeallocWithThreadState(tstate, obj);
-                    break;
+            if (_PyRuntime.ref_tracer.tracer_func != NULL) {
+                _PyReftracerTrack(obj, PyRefTracer_DESTROY);
+                destruct(obj);
+            }
+            else if (destruct == _PyFloat_ExactDealloc) {
+                _PyFloat_ExactDeallocWithThreadState(tstate, obj);
+            }
+            else {
+                _PyLong_ExactDeallocWithThreadState(tstate, obj);
             }
         }
     }
-}
-
-static inline void
-jit_stackref_close_specialized(PyThreadState *tstate, _PyStackRef ref, destructor destruct)
-{
-    if (_PyRuntime.ref_tracer.tracer_func == NULL) {
-        if (destruct == _PyFloat_ExactDealloc) {
-            jit_stackref_close_numeric(tstate, ref, JIT_RELEASE_FLOAT);
-            return;
-        }
-        if (destruct == _PyLong_ExactDealloc) {
-            jit_stackref_close_numeric(tstate, ref, JIT_RELEASE_LONG);
-            return;
-        }
-    }
-    PyStackRef_CLOSE_SPECIALIZED(ref, destruct);
 }
 
 #define PyFloat_FromDouble(VALUE) _PyFloat_FromDoubleWithThreadState(tstate, (VALUE))
