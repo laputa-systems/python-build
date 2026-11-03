@@ -3,6 +3,7 @@
 #include "pycore_interp.h"
 #include "pycore_optimizer.h"
 #include "pycore_freelist_state.h"
+#include "pycore_uop_ids.h"
 #include <stdint.h>
 #include <string.h>
 
@@ -408,6 +409,46 @@ exit_state(PyObject *self, PyObject *args)
     return NULL;
 }
 
+static PyObject *
+executor_children(PyObject *self, PyObject *object)
+{
+    if (!Py_IS_TYPE(object, &_PyUOpExecutor_Type)) {
+        PyErr_SetString(PyExc_TypeError, "expected executor");
+        return NULL;
+    }
+    _PyExecutorObject *executor = (_PyExecutorObject *)object;
+    PyObject *result = PyList_New(0);
+    if (result == NULL) {
+        return NULL;
+    }
+    for (uint32_t i = 0; i < executor->exit_count; i++) {
+        _PyExitData *exit = &executor->exits[i];
+        _PyExecutorObject *child = exit->executor;
+        if (child == NULL || child->code_size == 0) {
+            Py_DECREF(result);
+            PyErr_SetString(PyExc_AssertionError, "executor has an empty exit destination");
+            return NULL;
+        }
+        if (child->trace[0].opcode != _START_EXECUTOR_r00) {
+            continue;
+        }
+        PyObject *item = Py_BuildValue("(KO)",
+            (unsigned long long)exit->target * 2,
+            child);
+        if (item == NULL) {
+            Py_DECREF(result);
+            return NULL;
+        }
+        int error = PyList_Append(result, item);
+        Py_DECREF(item);
+        if (error < 0) {
+            Py_DECREF(result);
+            return NULL;
+        }
+    }
+    return result;
+}
+
 static PyMethodDef methods[] = {
     {"cache_size", cache_size, METH_NOARGS, NULL},
     {"drain", drain, METH_NOARGS, NULL},
@@ -416,6 +457,7 @@ static PyMethodDef methods[] = {
     {"run_full", run_full, METH_VARARGS, NULL},
     {"run_traced", run_traced, METH_VARARGS, NULL},
     {"exit_state", exit_state, METH_VARARGS, NULL},
+    {"executor_children", executor_children, METH_O, NULL},
     {NULL, NULL, 0, NULL}
 };
 

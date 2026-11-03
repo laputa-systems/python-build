@@ -105,6 +105,14 @@ def empty_loop(n, a, b, c, drain):
     return result
 
 
+def progress_loop(n, a, b, c, d, drain):
+    result = 0.0
+    for _ in range(n):
+        drain()
+        result = a * b + c * d
+    return result
+
+
 def adopted_loop(n, a, c, d, drain):
     value = alias = result = None
     for _ in range(n):
@@ -199,6 +207,38 @@ def check_raw_chain(function, producer, consumer):
         raise AssertionError((function.__name__, producer, consumer,
                               [[item[0] for item in executor] for executor in executors(function)]))
     return matches
+
+
+def executor_start_offset(executor):
+    index = executor[0][2] & 0xffff
+    for _ in range(3):
+        name, _, target, _ = executor[index]
+        if name == '_DEOPT':
+            return target * 2
+        if name not in ('_SPILL_OR_RELOAD', '_JIT_FLOAT_MATERIALIZE'):
+            raise AssertionError(('unexpected executor entry exit', name))
+        index += 1
+    raise AssertionError('executor entry has no deopt destination')
+
+
+@contextlib.contextmanager
+def fallback_deadline():
+    previous = signal.getsignal(signal.SIGALRM)
+    previous_timer = signal.getitimer(signal.ITIMER_REAL)
+    if previous_timer != (0.0, 0.0):
+        raise AssertionError('a signal timer is already active')
+
+    def expired(signum, frame):
+        raise AssertionError('float executor fallback did not make progress')
+
+    signal.signal(signal.SIGALRM, expired)
+    try:
+        signal.setitimer(signal.ITIMER_REAL, 5.0)
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0.0)
+        signal.signal(signal.SIGALRM, previous)
+        signal.setitimer(signal.ITIMER_REAL, *previous_timer)
 
 
 @contextlib.contextmanager
@@ -446,6 +486,61 @@ class RawFloatTests(unittest.TestCase):
         self.assertEqual(result, 14.5)
         expected = (17, 16) if sys._jit.is_enabled() else (24, 23)
         self.assertEqual((created, destroyed), expected)
+
+    @unittest.skipUnless(sys._jit.is_enabled(), 'requires a float side executor')
+    def test_float_entry_fallback_preserves_progress_and_tracer_counts(self):
+        with fallback_deadline():
+            self.check_float_entry_fallback()
+
+    def check_float_entry_fallback(self):
+        progress_loop(20_000, 1, 2, 3, 4, self.probe.drain)
+        progress_loop(20_000, 1.25, 2.0, 3.0, 4.0, self.probe.drain)
+        instructions = {item.offset: item for item in dis.get_instructions(progress_loop)}
+        pending = executors(progress_loop)
+        seen = set()
+        entries = []
+        while pending:
+            parent = pending.pop()
+            if id(parent) in seen:
+                continue
+            seen.add(id(parent))
+            for target, child in self.probe.executor_children(parent):
+                if child[0][0] != '_START_EXECUTOR':
+                    continue
+                pending.append(child)
+                start = executor_start_offset(child)
+                instruction = instructions.get(start)
+                if instruction is None or (instruction.opname, instruction.argrepr) != ('BINARY_OP', '*'):
+                    continue
+                names = [item[0] for item in child]
+                producer = '_JIT_FLOAT_MULTIPLY' if REQUIRE_RAW else '_BINARY_OP_MULTIPLY_FLOAT'
+                if any(name.startswith(producer) for name in names):
+                    self.assertEqual(start, target)
+                    entries.append(child)
+        self.assertTrue(entries, 'no real float executor starts at multiplication')
+        if REQUIRE_RAW:
+            for child in entries:
+                names = [item[0] for item in child]
+                self.assertTrue(any(name.startswith('_JIT_FLOAT_ADD') for name in names))
+        arguments = (3, 1.25, 2.0, 3.0, 4.0, self.probe.drain)
+        self.assertEqual(self.probe.run_oom(progress_loop, arguments, False), 14.5)
+        try:
+            self.probe.run_oom(progress_loop, arguments, True)
+        except MemoryError as error:
+            traceback = error.__traceback__
+        else:
+            self.fail('float-entry fallback did not reach the original allocation')
+        while traceback is not None and traceback.tb_frame.f_code is not progress_loop.__code__:
+            traceback = traceback.tb_next
+        self.assertIsNotNone(traceback)
+        instruction = instructions[traceback.tb_lasti]
+        self.assertEqual((instruction.opname, instruction.argrepr), ('BINARY_OP', '*'))
+        self.assertEqual(traceback.tb_frame.f_locals['result'], 14.5)
+        self.assertEqual(self.probe.counts()[1:3], (1, 2))
+        result, created, destroyed = self.probe.run_traced(
+            progress_loop, (8, 1.25, 2.0, 3.0, 4.0, self.probe.drain))
+        self.assertEqual(result, 14.5)
+        self.assertEqual((created, destroyed), (17, 16))
 
     @unittest.skipUnless(hasattr(signal, 'setitimer'), 'requires interval signals')
     def test_pending_exit_exposes_boxed_frame_and_preserves_aliases(self):
