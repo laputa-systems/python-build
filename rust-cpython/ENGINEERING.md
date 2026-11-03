@@ -33,6 +33,12 @@ route suites are in [ROUTES.md](ROUTES.md); remaining work is in
    license in the route's `THIRD_PARTY_LICENSES.md`. No OpenSSL, no production
    dependency, no handwritten assembly or SIMD.
 
+The experimental raw-float context follows the tracer state in the private
+thread-state layout. Both fields must have identical offsets in the runtime
+and the JIT shim, whose compiler defines `_Py_JIT` without `_Py_TIER2`.
+The float side-executor regression in `tests/parity_jit_raw_float.py` checks
+tracing during a JIT invocation as well as allocation fallback progress.
+
 ## Verdicts
 
 Each metric is improved (95% interval below 0.99), regressed (above 1.01),

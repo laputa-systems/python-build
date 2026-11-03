@@ -8,6 +8,10 @@
 #include "jit.h"
 
 #if _Py_JIT_FLOAT_RAW
+_Static_assert(offsetof(_PyThreadStateImpl, jit_float_context) >
+               offsetof(_PyThreadStateImpl, jit_tracer_state),
+               "raw float context must follow JIT tracer state");
+
 _PyJitFloatContext *
 _PyJitFloat_GetContext(PyThreadState *tstate)
 {
