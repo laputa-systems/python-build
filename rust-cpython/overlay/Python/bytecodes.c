@@ -783,17 +783,28 @@ dummy_func(
             EXIT_IF(!PyFloat_CheckExact(value_o));
         }
 
-        tier2 op(_JIT_FLOAT_ACTIVATE, (--)) {
+        tier2 op(_JIT_FLOAT_PREPARE, (capacity/2, left, right -- prepared_left, prepared_right)) {
+            _PyStackRef left_ref = left;
+            _PyStackRef right_ref = right;
+            DEAD(left);
+            DEAD(right);
 #if _Py_JIT_FLOAT_RAW
             _PyJitFloatContext *ctx = _PyJitFloat_GetContext(tstate);
             bool activated = false;
             if (ctx != NULL) {
-                activated = _PyJitFloat_Activate(tstate, frame, ctx, oparg);
+                activated = _PyJitFloat_Activate(tstate, frame, ctx, capacity);
             }
-            DEOPT_IF(!activated);
-#else
-            DEOPT_IF(tstate != NULL);
+            if (activated) {
+                bool available = oparg == 0 ? _PyJitFloat_CanAllocate(ctx) :
+                    _PyJitFloat_CanInplace(ctx, oparg == 1 ? left_ref : right_ref);
+                if (!available) {
+                    _PyStackRef *roots[] = {&left_ref, &right_ref};
+                    _PyJitFloat_Materialize(tstate, frame, frame->stackpointer, ctx, roots, 2);
+                }
+            }
 #endif
+            prepared_left = left_ref;
+            prepared_right = right_ref;
         }
 
         tier2 op(_JIT_FLOAT_CHECK_PERIODIC, (--)) {
@@ -808,7 +819,7 @@ dummy_func(
             EXIT_IF(!_PyJitFloat_IsRaw(value) &&
                     !PyFloat_CheckExact(PyStackRef_AsPyObjectBorrow(value)));
 #else
-            EXIT_IF(tstate != NULL);
+            EXIT_IF(!PyFloat_CheckExact(PyStackRef_AsPyObjectBorrow(value)));
 #endif
         }
 
@@ -817,7 +828,7 @@ dummy_func(
             EXIT_IF(!_PyJitFloat_IsRaw(left) &&
                     !PyFloat_CheckExact(PyStackRef_AsPyObjectBorrow(left)));
 #else
-            EXIT_IF(tstate != NULL);
+            EXIT_IF(!PyFloat_CheckExact(PyStackRef_AsPyObjectBorrow(left)));
 #endif
         }
 
@@ -829,8 +840,10 @@ dummy_func(
             int sign_ish = COMPARISON_BIT(a, b);
             res = (sign_ish & oparg) ? PyStackRef_True : PyStackRef_False;
 #else
-            DEOPT_IF(tstate != NULL);
-            res = PyStackRef_False;
+            double a = PyFloat_AS_DOUBLE(PyStackRef_AsPyObjectBorrow(left));
+            double b = PyFloat_AS_DOUBLE(PyStackRef_AsPyObjectBorrow(right));
+            int sign_ish = COMPARISON_BIT(a, b);
+            res = (sign_ish & oparg) ? PyStackRef_True : PyStackRef_False;
 #endif
             l = left;
             r = right;
@@ -841,8 +854,7 @@ dummy_func(
 #if _Py_JIT_FLOAT_RAW
             value = _PyJitFloat_Dup(_PyJitFloat_GetContext(tstate), GETLOCAL(oparg));
 #else
-            DEOPT_IF(tstate != NULL);
-            value = PyStackRef_NULL;
+            value = PyStackRef_DUP(GETLOCAL(oparg));
 #endif
         }
 
@@ -850,8 +862,7 @@ dummy_func(
 #if _Py_JIT_FLOAT_RAW
             value = _PyJitFloat_Borrow(_PyJitFloat_GetContext(tstate), GETLOCAL(oparg));
 #else
-            DEOPT_IF(tstate != NULL);
-            value = PyStackRef_NULL;
+            value = PyStackRef_Borrow(GETLOCAL(oparg));
 #endif
         }
 
@@ -866,8 +877,7 @@ dummy_func(
 #if _Py_JIT_FLOAT_RAW
             top = _PyJitFloat_Dup(_PyJitFloat_GetContext(tstate), bottom);
 #else
-            DEOPT_IF(tstate != NULL);
-            top = PyStackRef_NULL;
+            top = PyStackRef_DUP(bottom);
 #endif
         }
 
@@ -875,7 +885,7 @@ dummy_func(
 #if _Py_JIT_FLOAT_RAW
             value = _PyJitFloat_MakeHeapSafe(_PyJitFloat_GetContext(tstate), value);
 #else
-            DEOPT_IF(tstate != NULL);
+            value = PyStackRef_MakeHeapSafe(value);
 #endif
         }
 
@@ -897,183 +907,255 @@ dummy_func(
         }
 
         tier2 op(_JIT_FLOAT_ADD, (left, right -- res, l, r)) {
+            bool use_raw = false;
 #if _Py_JIT_FLOAT_RAW
             _PyJitFloatContext *ctx = _PyJitFloat_GetContext(tstate);
-            DEOPT_IF(!_PyJitFloat_CanAllocate(ctx));
-            double a = _PyJitFloat_Read(ctx, left);
-            double b = _PyJitFloat_Read(ctx, right);
-            double result = a + b;
-            res = _PyJitFloat_New(ctx, result);
-            l = left;
-            r = right;
-            INPUTS_DEAD();
-#else
-            DEOPT_IF(tstate != NULL);
-            res = left;
-            l = left;
-            r = right;
-            INPUTS_DEAD();
+            use_raw = ctx != NULL && ctx->active;
 #endif
+            if (use_raw) {
+#if _Py_JIT_FLOAT_RAW
+                double a = _PyJitFloat_Read(ctx, left);
+                double b = _PyJitFloat_Read(ctx, right);
+                double result = a + b;
+                res = _PyJitFloat_New(ctx, result);
+#else
+                Py_UNREACHABLE();
+#endif
+            }
+            else {
+                PyObject *left_o = PyStackRef_AsPyObjectBorrow(left);
+                PyObject *right_o = PyStackRef_AsPyObjectBorrow(right);
+                assert(PyFloat_CheckExact(left_o) && PyFloat_CheckExact(right_o));
+                STAT_INC(BINARY_OP, hit);
+                double result = ((PyFloatObject *)left_o)->ob_fval +
+                                ((PyFloatObject *)right_o)->ob_fval;
+                PyObject *boxed = PyFloat_FromDouble(result);
+                if (boxed == NULL) {
+                    ERROR_NO_POP();
+                }
+                res = PyStackRef_FromPyObjectSteal(boxed);
+            }
+            l = left;
+            r = right;
+            INPUTS_DEAD();
         }
 
         tier2 op(_JIT_FLOAT_ADD_INPLACE, (left, right -- res, l, r)) {
+            bool use_raw = false;
 #if _Py_JIT_FLOAT_RAW
             _PyJitFloatContext *ctx = _PyJitFloat_GetContext(tstate);
-            DEOPT_IF(!_PyJitFloat_CanInplace(ctx, left));
-            double a = _PyJitFloat_Read(ctx, left);
-            double b = _PyJitFloat_Read(ctx, right);
-            double result = a + b;
-            res = _PyJitFloat_Inplace(tstate, ctx, left, result);
+            use_raw = ctx != NULL && ctx->active;
+#endif
+            if (use_raw) {
+#if _Py_JIT_FLOAT_RAW
+                double a = _PyJitFloat_Read(ctx, left);
+                double b = _PyJitFloat_Read(ctx, right);
+                double result = a + b;
+                res = _PyJitFloat_Inplace(tstate, ctx, left, result);
+#else
+                Py_UNREACHABLE();
+#endif
+            }
+            else {
+                FLOAT_INPLACE_OP(left, right, left, +);
+                res = left;
+            }
             l = PyStackRef_NULL;
             r = right;
             INPUTS_DEAD();
-#else
-            DEOPT_IF(tstate != NULL);
-            res = left;
-            l = left;
-            r = right;
-            INPUTS_DEAD();
-#endif
         }
 
         tier2 op(_JIT_FLOAT_ADD_INPLACE_RIGHT, (left, right -- res, l, r)) {
+            bool use_raw = false;
 #if _Py_JIT_FLOAT_RAW
             _PyJitFloatContext *ctx = _PyJitFloat_GetContext(tstate);
-            DEOPT_IF(!_PyJitFloat_CanInplace(ctx, right));
-            double a = _PyJitFloat_Read(ctx, left);
-            double b = _PyJitFloat_Read(ctx, right);
-            double result = a + b;
-            res = _PyJitFloat_Inplace(tstate, ctx, right, result);
+            use_raw = ctx != NULL && ctx->active;
+#endif
+            if (use_raw) {
+#if _Py_JIT_FLOAT_RAW
+                double a = _PyJitFloat_Read(ctx, left);
+                double b = _PyJitFloat_Read(ctx, right);
+                double result = a + b;
+                res = _PyJitFloat_Inplace(tstate, ctx, right, result);
+#else
+                Py_UNREACHABLE();
+#endif
+            }
+            else {
+                FLOAT_INPLACE_OP(left, right, right, +);
+                res = right;
+            }
             l = left;
             r = PyStackRef_NULL;
             INPUTS_DEAD();
-#else
-            DEOPT_IF(tstate != NULL);
-            res = left;
-            l = left;
-            r = right;
-            INPUTS_DEAD();
-#endif
         }
 
         tier2 op(_JIT_FLOAT_SUBTRACT, (left, right -- res, l, r)) {
+            bool use_raw = false;
 #if _Py_JIT_FLOAT_RAW
             _PyJitFloatContext *ctx = _PyJitFloat_GetContext(tstate);
-            DEOPT_IF(!_PyJitFloat_CanAllocate(ctx));
-            double a = _PyJitFloat_Read(ctx, left);
-            double b = _PyJitFloat_Read(ctx, right);
-            double result = a - b;
-            res = _PyJitFloat_New(ctx, result);
-            l = left;
-            r = right;
-            INPUTS_DEAD();
-#else
-            DEOPT_IF(tstate != NULL);
-            res = left;
-            l = left;
-            r = right;
-            INPUTS_DEAD();
+            use_raw = ctx != NULL && ctx->active;
 #endif
+            if (use_raw) {
+#if _Py_JIT_FLOAT_RAW
+                double a = _PyJitFloat_Read(ctx, left);
+                double b = _PyJitFloat_Read(ctx, right);
+                double result = a - b;
+                res = _PyJitFloat_New(ctx, result);
+#else
+                Py_UNREACHABLE();
+#endif
+            }
+            else {
+                PyObject *left_o = PyStackRef_AsPyObjectBorrow(left);
+                PyObject *right_o = PyStackRef_AsPyObjectBorrow(right);
+                assert(PyFloat_CheckExact(left_o) && PyFloat_CheckExact(right_o));
+                STAT_INC(BINARY_OP, hit);
+                double result = ((PyFloatObject *)left_o)->ob_fval -
+                                ((PyFloatObject *)right_o)->ob_fval;
+                PyObject *boxed = PyFloat_FromDouble(result);
+                if (boxed == NULL) {
+                    ERROR_NO_POP();
+                }
+                res = PyStackRef_FromPyObjectSteal(boxed);
+            }
+            l = left;
+            r = right;
+            INPUTS_DEAD();
         }
 
         tier2 op(_JIT_FLOAT_SUBTRACT_INPLACE, (left, right -- res, l, r)) {
+            bool use_raw = false;
 #if _Py_JIT_FLOAT_RAW
             _PyJitFloatContext *ctx = _PyJitFloat_GetContext(tstate);
-            DEOPT_IF(!_PyJitFloat_CanInplace(ctx, left));
-            double a = _PyJitFloat_Read(ctx, left);
-            double b = _PyJitFloat_Read(ctx, right);
-            double result = a - b;
-            res = _PyJitFloat_Inplace(tstate, ctx, left, result);
+            use_raw = ctx != NULL && ctx->active;
+#endif
+            if (use_raw) {
+#if _Py_JIT_FLOAT_RAW
+                double a = _PyJitFloat_Read(ctx, left);
+                double b = _PyJitFloat_Read(ctx, right);
+                double result = a - b;
+                res = _PyJitFloat_Inplace(tstate, ctx, left, result);
+#else
+                Py_UNREACHABLE();
+#endif
+            }
+            else {
+                FLOAT_INPLACE_OP(left, right, left, -);
+                res = left;
+            }
             l = PyStackRef_NULL;
             r = right;
             INPUTS_DEAD();
-#else
-            DEOPT_IF(tstate != NULL);
-            res = left;
-            l = left;
-            r = right;
-            INPUTS_DEAD();
-#endif
         }
 
         tier2 op(_JIT_FLOAT_SUBTRACT_INPLACE_RIGHT, (left, right -- res, l, r)) {
+            bool use_raw = false;
 #if _Py_JIT_FLOAT_RAW
             _PyJitFloatContext *ctx = _PyJitFloat_GetContext(tstate);
-            DEOPT_IF(!_PyJitFloat_CanInplace(ctx, right));
-            double a = _PyJitFloat_Read(ctx, left);
-            double b = _PyJitFloat_Read(ctx, right);
-            double result = a - b;
-            res = _PyJitFloat_Inplace(tstate, ctx, right, result);
+            use_raw = ctx != NULL && ctx->active;
+#endif
+            if (use_raw) {
+#if _Py_JIT_FLOAT_RAW
+                double a = _PyJitFloat_Read(ctx, left);
+                double b = _PyJitFloat_Read(ctx, right);
+                double result = a - b;
+                res = _PyJitFloat_Inplace(tstate, ctx, right, result);
+#else
+                Py_UNREACHABLE();
+#endif
+            }
+            else {
+                FLOAT_INPLACE_OP(left, right, right, -);
+                res = right;
+            }
             l = left;
             r = PyStackRef_NULL;
             INPUTS_DEAD();
-#else
-            DEOPT_IF(tstate != NULL);
-            res = left;
-            l = left;
-            r = right;
-            INPUTS_DEAD();
-#endif
         }
 
         tier2 op(_JIT_FLOAT_MULTIPLY, (left, right -- res, l, r)) {
+            bool use_raw = false;
 #if _Py_JIT_FLOAT_RAW
             _PyJitFloatContext *ctx = _PyJitFloat_GetContext(tstate);
-            DEOPT_IF(!_PyJitFloat_CanAllocate(ctx));
-            double a = _PyJitFloat_Read(ctx, left);
-            double b = _PyJitFloat_Read(ctx, right);
-            double result = a * b;
-            res = _PyJitFloat_New(ctx, result);
-            l = left;
-            r = right;
-            INPUTS_DEAD();
-#else
-            DEOPT_IF(tstate != NULL);
-            res = left;
-            l = left;
-            r = right;
-            INPUTS_DEAD();
+            use_raw = ctx != NULL && ctx->active;
 #endif
+            if (use_raw) {
+#if _Py_JIT_FLOAT_RAW
+                double a = _PyJitFloat_Read(ctx, left);
+                double b = _PyJitFloat_Read(ctx, right);
+                double result = a * b;
+                res = _PyJitFloat_New(ctx, result);
+#else
+                Py_UNREACHABLE();
+#endif
+            }
+            else {
+                PyObject *left_o = PyStackRef_AsPyObjectBorrow(left);
+                PyObject *right_o = PyStackRef_AsPyObjectBorrow(right);
+                assert(PyFloat_CheckExact(left_o) && PyFloat_CheckExact(right_o));
+                STAT_INC(BINARY_OP, hit);
+                double result = ((PyFloatObject *)left_o)->ob_fval *
+                                ((PyFloatObject *)right_o)->ob_fval;
+                PyObject *boxed = PyFloat_FromDouble(result);
+                if (boxed == NULL) {
+                    ERROR_NO_POP();
+                }
+                res = PyStackRef_FromPyObjectSteal(boxed);
+            }
+            l = left;
+            r = right;
+            INPUTS_DEAD();
         }
 
         tier2 op(_JIT_FLOAT_MULTIPLY_INPLACE, (left, right -- res, l, r)) {
+            bool use_raw = false;
 #if _Py_JIT_FLOAT_RAW
             _PyJitFloatContext *ctx = _PyJitFloat_GetContext(tstate);
-            DEOPT_IF(!_PyJitFloat_CanInplace(ctx, left));
-            double a = _PyJitFloat_Read(ctx, left);
-            double b = _PyJitFloat_Read(ctx, right);
-            double result = a * b;
-            res = _PyJitFloat_Inplace(tstate, ctx, left, result);
+            use_raw = ctx != NULL && ctx->active;
+#endif
+            if (use_raw) {
+#if _Py_JIT_FLOAT_RAW
+                double a = _PyJitFloat_Read(ctx, left);
+                double b = _PyJitFloat_Read(ctx, right);
+                double result = a * b;
+                res = _PyJitFloat_Inplace(tstate, ctx, left, result);
+#else
+                Py_UNREACHABLE();
+#endif
+            }
+            else {
+                FLOAT_INPLACE_OP(left, right, left, *);
+                res = left;
+            }
             l = PyStackRef_NULL;
             r = right;
             INPUTS_DEAD();
-#else
-            DEOPT_IF(tstate != NULL);
-            res = left;
-            l = left;
-            r = right;
-            INPUTS_DEAD();
-#endif
         }
 
         tier2 op(_JIT_FLOAT_MULTIPLY_INPLACE_RIGHT, (left, right -- res, l, r)) {
+            bool use_raw = false;
 #if _Py_JIT_FLOAT_RAW
             _PyJitFloatContext *ctx = _PyJitFloat_GetContext(tstate);
-            DEOPT_IF(!_PyJitFloat_CanInplace(ctx, right));
-            double a = _PyJitFloat_Read(ctx, left);
-            double b = _PyJitFloat_Read(ctx, right);
-            double result = a * b;
-            res = _PyJitFloat_Inplace(tstate, ctx, right, result);
+            use_raw = ctx != NULL && ctx->active;
+#endif
+            if (use_raw) {
+#if _Py_JIT_FLOAT_RAW
+                double a = _PyJitFloat_Read(ctx, left);
+                double b = _PyJitFloat_Read(ctx, right);
+                double result = a * b;
+                res = _PyJitFloat_Inplace(tstate, ctx, right, result);
+#else
+                Py_UNREACHABLE();
+#endif
+            }
+            else {
+                FLOAT_INPLACE_OP(left, right, right, *);
+                res = right;
+            }
             l = left;
             r = PyStackRef_NULL;
             INPUTS_DEAD();
-#else
-            DEOPT_IF(tstate != NULL);
-            res = left;
-            l = left;
-            r = right;
-            INPUTS_DEAD();
-#endif
         }
 
         pure op(_BINARY_OP_MULTIPLY_FLOAT, (left, right -- res, l, r)) {
