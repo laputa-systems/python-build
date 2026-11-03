@@ -45,6 +45,12 @@ extern "C" {
 #define _Py_JIT_FLOAT_CAPACITY 16
 
 typedef enum {
+    _Py_JIT_FLOAT_ALLOCATE = 0,
+    _Py_JIT_FLOAT_INPLACE_LEFT = 1,
+    _Py_JIT_FLOAT_INPLACE_RIGHT = 2,
+} _PyJitFloatPrepareMode;
+
+typedef enum {
     _Py_JIT_FLOAT_FREE,
     _Py_JIT_FLOAT_LIVE_NEW,
     _Py_JIT_FLOAT_LIVE_ADOPTED,
