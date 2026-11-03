@@ -18,6 +18,7 @@
 #include "pycore_unicodeobject.h" // _PyUnicode_FromASCII
 #include "pycore_uop_ids.h"
 #include "pycore_jit.h"
+#include "pycore_jit_float.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -1332,7 +1333,7 @@ static void make_exit(_PyUOpInstruction *inst, int opcode, int target, bool is_c
 /* Convert implicit exits, errors and deopts
  * into explicit ones. */
 static int
-prepare_for_execution(_PyUOpInstruction *buffer, int length)
+prepare_for_execution(_PyUOpInstruction *buffer, int length, bool raw_float_trace)
 {
     int32_t current_jump = -1;
     int32_t current_jump_target = -1;
@@ -1340,6 +1341,7 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length)
     int32_t current_error_target = -1;
     int32_t current_popped = -1;
     int32_t current_exit_op = -1;
+    int32_t current_exit_depth = -1;
     /* Leaving in NOPs slows down the interpreter and messes up the stats */
     _PyUOpInstruction *copy_to = &buffer[0];
     for (int i = 0; i < length; i++) {
@@ -1375,11 +1377,29 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length)
             assert(_PyUop_Caching[base_exit_op].entries[exit_depth].opcode > 0);
             int16_t exit_op = _PyUop_Caching[base_exit_op].entries[exit_depth].opcode;
             bool is_control_flow = (base_opcode == _GUARD_IS_FALSE_POP || base_opcode == _GUARD_IS_TRUE_POP || is_for_iter_test[base_opcode]);
-            if (jump_target != current_jump_target || current_exit_op != exit_op) {
-                make_exit(&buffer[next_spare], exit_op, jump_target, is_control_flow);
+            if (jump_target != current_jump_target || current_exit_op != exit_op ||
+                current_exit_depth != exit_depth) {
                 current_exit_op = exit_op;
+                current_exit_depth = exit_depth;
                 current_jump_target = jump_target;
                 current_jump = next_spare;
+#if _Py_JIT_FLOAT_RAW
+                if (raw_float_trace) {
+                    if (exit_depth != 0) {
+                        int spill = _PyUop_SpillsAndReloads[exit_depth][0];
+                        assert(spill != 0);
+                        make_exit(&buffer[next_spare++], spill, 0, false);
+                    }
+                    int materialize = _PyUop_Caching[_JIT_FLOAT_MATERIALIZE].entries[0].opcode;
+                    assert(materialize != 0);
+                    make_exit(&buffer[next_spare++], materialize, 0, false);
+                    exit_op = _PyUop_Caching[base_exit_op].entries[0].opcode;
+                    assert(exit_op != 0);
+                }
+#else
+                (void)raw_float_trace;
+#endif
+                make_exit(&buffer[next_spare], exit_op, jump_target, is_control_flow);
                 next_spare++;
             }
             buffer[i].jump_target = current_jump;
@@ -1645,6 +1665,126 @@ stack_allocate(_PyUOpInstruction *buffer, _PyUOpInstruction *output, int length)
     return (int)(write - output);
 }
 
+#if _Py_JIT_FLOAT_RAW
+static bool
+raw_replicated_opcode(int opcode, int base, int oparg)
+{
+    return opcode == base ||
+        (oparg >= _PyUop_Replication[base].start &&
+         oparg < _PyUop_Replication[base].stop &&
+         opcode == base + oparg + 1 - _PyUop_Replication[base].start);
+}
+
+static int
+raw_float_opcode(int opcode)
+{
+    switch (opcode) {
+        case _BINARY_OP_ADD_FLOAT: return _JIT_FLOAT_ADD;
+        case _BINARY_OP_ADD_FLOAT_INPLACE: return _JIT_FLOAT_ADD_INPLACE;
+        case _BINARY_OP_ADD_FLOAT_INPLACE_RIGHT: return _JIT_FLOAT_ADD_INPLACE_RIGHT;
+        case _BINARY_OP_SUBTRACT_FLOAT: return _JIT_FLOAT_SUBTRACT;
+        case _BINARY_OP_SUBTRACT_FLOAT_INPLACE: return _JIT_FLOAT_SUBTRACT_INPLACE;
+        case _BINARY_OP_SUBTRACT_FLOAT_INPLACE_RIGHT: return _JIT_FLOAT_SUBTRACT_INPLACE_RIGHT;
+        case _BINARY_OP_MULTIPLY_FLOAT: return _JIT_FLOAT_MULTIPLY;
+        case _BINARY_OP_MULTIPLY_FLOAT_INPLACE: return _JIT_FLOAT_MULTIPLY_INPLACE;
+        case _BINARY_OP_MULTIPLY_FLOAT_INPLACE_RIGHT: return _JIT_FLOAT_MULTIPLY_INPLACE_RIGHT;
+        default: return 0;
+    }
+}
+
+static int
+lower_raw_float_trace(_PyUOpInstruction *input, int length, _PyUOpInstruction *output)
+{
+    int used = 0;
+    bool raw_possible = false;
+    bool changed = false;
+    for (int i = 0; i < length; i++) {
+        _PyUOpInstruction inst = input[i];
+        int op = inst.opcode;
+        if (op == _NOP) {
+            continue;
+        }
+        if (used + 2 >= UOP_MAX_TRACE_LENGTH) {
+            return 0;
+        }
+        int arithmetic = raw_float_opcode(op);
+        if (arithmetic) {
+            _PyUOpInstruction activation = inst;
+            activation.opcode = _JIT_FLOAT_ACTIVATE;
+            activation.oparg = _Py_JIT_FLOAT_CAPACITY;
+            activation.operand0 = 0;
+            activation.operand1 = 0;
+            output[used++] = activation;
+            inst.opcode = arithmetic;
+            raw_possible = true;
+            changed = true;
+        }
+        else if (raw_possible) {
+            if (raw_replicated_opcode(op, _LOAD_FAST, inst.oparg)) {
+                inst.opcode = _JIT_FLOAT_LOAD_FAST;
+            }
+            else if (raw_replicated_opcode(op, _LOAD_FAST_BORROW, inst.oparg)) {
+                inst.opcode = _JIT_FLOAT_LOAD_FAST_BORROW;
+            }
+            else if (raw_replicated_opcode(op, _SWAP_FAST, inst.oparg)) {
+                inst.opcode = _JIT_FLOAT_SWAP_FAST;
+            }
+            else if (raw_replicated_opcode(op, _COPY, inst.oparg)) {
+                inst.opcode = _JIT_FLOAT_COPY;
+            }
+            else if (op == _MAKE_HEAP_SAFE) {
+                inst.opcode = _JIT_FLOAT_MAKE_HEAP_SAFE;
+            }
+            else if (op == _POP_TOP || op == _POP_TOP_FLOAT || op == _POP_TOP_NOP) {
+                inst.opcode = _JIT_FLOAT_CLOSE;
+            }
+            else if (op == _GUARD_TOS_FLOAT) {
+                inst.opcode = _JIT_FLOAT_GUARD_TOS;
+            }
+            else if (op == _GUARD_NOS_FLOAT) {
+                inst.opcode = _JIT_FLOAT_GUARD_NOS;
+            }
+            else if (op == _COMPARE_OP_FLOAT) {
+                inst.opcode = _JIT_FLOAT_COMPARE;
+            }
+            else if (op == _CHECK_PERIODIC) {
+                inst.opcode = _JIT_FLOAT_CHECK_PERIODIC;
+            }
+            else if (op != _SET_IP && op != _CHECK_VALIDITY &&
+                     op != _TIER2_RESUME_CHECK && op != _LOAD_CONST_INLINE &&
+                     op != _LOAD_CONST_INLINE_BORROW && op != _PUSH_NULL &&
+                     !raw_replicated_opcode(op, _SWAP, inst.oparg)) {
+                _PyUOpInstruction barrier = inst;
+                barrier.opcode = _JIT_FLOAT_MATERIALIZE;
+                barrier.oparg = 0;
+                barrier.operand0 = 0;
+                barrier.operand1 = 0;
+                output[used++] = barrier;
+                raw_possible = false;
+            }
+        }
+        output[used++] = inst;
+    }
+    if (!changed) {
+        return 0;
+    }
+    int exit_budget = 0;
+    for (int i = 0; i < used; i++) {
+        unsigned flags = _PyUop_Flags[output[i].opcode];
+        if (flags & (HAS_EXIT_FLAG | HAS_DEOPT_FLAG | HAS_PERIODIC_FLAG)) {
+            exit_budget += 3;
+        }
+        if (flags & HAS_ERROR_FLAG) {
+            exit_budget++;
+        }
+    }
+    if (used * 2 + exit_budget >= UOP_MAX_TRACE_LENGTH) {
+        return 0;
+    }
+    return used;
+}
+#endif
+
 static int
 uop_optimize(
     _PyInterpreterFrame *frame,
@@ -1703,11 +1843,23 @@ uop_optimize(
     _PyJitUopBuffer *code_buffer = &_tstate->jit_tracer_state->code_buffer;
     code_buffer->next = code_buffer->start;
 
+    bool raw_float_trace = false;
+#if _Py_JIT_FLOAT_RAW
+    if (!is_noopt) {
+        _PyUOpInstruction *lowered = &_tstate->jit_tracer_state->uop_array[0];
+        int lowered_length = lower_raw_float_trace(buffer, length, lowered);
+        if (lowered_length != 0) {
+            memcpy(buffer, lowered, lowered_length * sizeof(*buffer));
+            length = lowered_length;
+            raw_float_trace = true;
+        }
+    }
+#endif
     OPT_HIST(effective_trace_length(buffer, length), optimized_trace_length_hist);
     _PyUOpInstruction *output = &_tstate->jit_tracer_state->uop_array[0];
     length = stack_allocate(buffer, output, length);
     buffer = output;
-    length = prepare_for_execution(buffer, length);
+    length = prepare_for_execution(buffer, length, raw_float_trace);
     assert(length <= UOP_MAX_TRACE_LENGTH);
     _PyExecutorObject *executor = make_executor_from_uops(
         _tstate, buffer, length, &dependencies);
@@ -2202,6 +2354,16 @@ executor_to_gv(_PyExecutorObject *executor, FILE *out)
             assert(inst->format == UOP_FORMAT_JUMP);
             _PyUOpInstruction const *exit_inst = &executor->trace[inst->jump_target];
             uint16_t base_exit_opcode = _PyUop_Uncached[exit_inst->opcode];
+#if _Py_JIT_FLOAT_RAW
+            if (base_exit_opcode == _SPILL_OR_RELOAD) {
+                exit_inst++;
+                base_exit_opcode = _PyUop_Uncached[exit_inst->opcode];
+            }
+            if (base_exit_opcode == _JIT_FLOAT_MATERIALIZE) {
+                exit_inst++;
+                base_exit_opcode = _PyUop_Uncached[exit_inst->opcode];
+            }
+#endif
             (void)base_exit_opcode;
             assert(base_exit_opcode == _EXIT_TRACE || base_exit_opcode == _DYNAMIC_EXIT);
             exit = (_PyExitData *)exit_inst->operand0;
