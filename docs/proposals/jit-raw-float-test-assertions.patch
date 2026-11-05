@@ -1,0 +1,231 @@
+--- a/Lib/test/test_capi/test_opt.py
++++ b/Lib/test/test_capi/test_opt.py
+@@ -857,13 +857,19 @@
+         self.assertAlmostEqual(res, TIER2_THRESHOLD + 1)
+         self.assertIsNotNone(ex)
+         uops = get_opnames(ex)
+-        guard_tos_float_count = [opname for opname in iter_opnames(ex) if opname == "_GUARD_TOS_FLOAT"]
+-        guard_nos_float_count = [opname for opname in iter_opnames(ex) if opname == "_GUARD_NOS_FLOAT"]
++        raw_float = "_JIT_FLOAT_PREPARE" in uops
++        guard_tos_float_count = [opname for opname in iter_opnames(ex) if opname in ("_GUARD_TOS_FLOAT", "_JIT_FLOAT_GUARD_TOS")]
++        guard_nos_float_count = [opname for opname in iter_opnames(ex) if opname in ("_GUARD_NOS_FLOAT", "_JIT_FLOAT_GUARD_NOS")]
+         self.assertLessEqual(len(guard_tos_float_count), 1)
+         self.assertLessEqual(len(guard_nos_float_count), 1)
+         # TODO gh-115506: this assertion may change after propagating constants.
+         # We'll also need to verify that propagation actually occurs.
+-        self.assertIn("_POP_TOP_NOP", uops)
++        if raw_float:
++            self.assertIn("_JIT_FLOAT_CLOSE", uops)
++            self.assertIn("_JIT_FLOAT_MATERIALIZE", uops)
++            self.assertNotIn("_POP_TOP_FLOAT", uops)
++        else:
++            self.assertIn("_POP_TOP_NOP", uops)
+ 
+     def test_float_subtract_constant_propagation(self):
+         def testfunc(n):
+@@ -879,13 +885,19 @@
+         self.assertAlmostEqual(res, -TIER2_THRESHOLD + 1)
+         self.assertIsNotNone(ex)
+         uops = get_opnames(ex)
+-        guard_tos_float_count = [opname for opname in iter_opnames(ex) if opname == "_GUARD_TOS_FLOAT"]
+-        guard_nos_float_count = [opname for opname in iter_opnames(ex) if opname == "_GUARD_NOS_FLOAT"]
++        raw_float = "_JIT_FLOAT_PREPARE" in uops
++        guard_tos_float_count = [opname for opname in iter_opnames(ex) if opname in ("_GUARD_TOS_FLOAT", "_JIT_FLOAT_GUARD_TOS")]
++        guard_nos_float_count = [opname for opname in iter_opnames(ex) if opname in ("_GUARD_NOS_FLOAT", "_JIT_FLOAT_GUARD_NOS")]
+         self.assertLessEqual(len(guard_tos_float_count), 1)
+         self.assertLessEqual(len(guard_nos_float_count), 1)
+         # TODO gh-115506: this assertion may change after propagating constants.
+         # We'll also need to verify that propagation actually occurs.
+-        self.assertIn("_POP_TOP_NOP", uops)
++        if raw_float:
++            self.assertIn("_JIT_FLOAT_CLOSE", uops)
++            self.assertIn("_JIT_FLOAT_MATERIALIZE", uops)
++            self.assertNotIn("_POP_TOP_FLOAT", uops)
++        else:
++            self.assertIn("_POP_TOP_NOP", uops)
+ 
+     def test_float_multiply_constant_propagation(self):
+         def testfunc(n):
+@@ -901,13 +913,19 @@
+         self.assertAlmostEqual(res, 1.0)
+         self.assertIsNotNone(ex)
+         uops = get_opnames(ex)
+-        guard_tos_float_count = [opname for opname in iter_opnames(ex) if opname == "_GUARD_TOS_FLOAT"]
+-        guard_nos_float_count = [opname for opname in iter_opnames(ex) if opname == "_GUARD_NOS_FLOAT"]
++        raw_float = "_JIT_FLOAT_PREPARE" in uops
++        guard_tos_float_count = [opname for opname in iter_opnames(ex) if opname in ("_GUARD_TOS_FLOAT", "_JIT_FLOAT_GUARD_TOS")]
++        guard_nos_float_count = [opname for opname in iter_opnames(ex) if opname in ("_GUARD_NOS_FLOAT", "_JIT_FLOAT_GUARD_NOS")]
+         self.assertLessEqual(len(guard_tos_float_count), 1)
+         self.assertLessEqual(len(guard_nos_float_count), 1)
+         # TODO gh-115506: this assertion may change after propagating constants.
+         # We'll also need to verify that propagation actually occurs.
+-        self.assertIn("_POP_TOP_NOP", uops)
++        if raw_float:
++            self.assertIn("_JIT_FLOAT_CLOSE", uops)
++            self.assertIn("_JIT_FLOAT_MATERIALIZE", uops)
++            self.assertNotIn("_POP_TOP_FLOAT", uops)
++        else:
++            self.assertIn("_POP_TOP_NOP", uops)
+ 
+     def test_add_unicode_propagation(self):
+         def testfunc(n):
+@@ -4060,7 +4078,13 @@
+         self.assertAlmostEqual(res, TIER2_THRESHOLD * (0.1 + 0.1))
+         self.assertIsNotNone(ex)
+         uops = get_opnames(ex)
+-        self.assertIn("_POP_TOP_NOP", uops)
++        raw_float = "_JIT_FLOAT_PREPARE" in uops
++        if raw_float:
++            self.assertIn("_JIT_FLOAT_CLOSE", uops)
++            self.assertIn("_JIT_FLOAT_MATERIALIZE", uops)
++            self.assertNotIn("_POP_TOP_FLOAT", uops)
++        else:
++            self.assertIn("_POP_TOP_NOP", uops)
+ 
+     def test_float_add_inplace_unique_lhs(self):
+         # a * b produces a unique float; adding c reuses it in place
+@@ -4075,7 +4099,8 @@
+         self.assertAlmostEqual(res, TIER2_THRESHOLD * 10.0)
+         self.assertIsNotNone(ex)
+         uops = get_opnames(ex)
+-        self.assertIn("_BINARY_OP_ADD_FLOAT_INPLACE", uops)
++        raw_float = "_JIT_FLOAT_PREPARE" in uops
++        self.assertIn("_JIT_FLOAT_ADD_INPLACE" if raw_float else "_BINARY_OP_ADD_FLOAT_INPLACE", uops)
+ 
+     def test_float_add_inplace_unique_rhs(self):
+         # a * b produces a unique float on the right side of +
+@@ -4090,7 +4115,8 @@
+         self.assertAlmostEqual(res, TIER2_THRESHOLD * 10.0)
+         self.assertIsNotNone(ex)
+         uops = get_opnames(ex)
+-        self.assertIn("_BINARY_OP_ADD_FLOAT_INPLACE_RIGHT", uops)
++        raw_float = "_JIT_FLOAT_PREPARE" in uops
++        self.assertIn("_JIT_FLOAT_ADD_INPLACE_RIGHT" if raw_float else "_BINARY_OP_ADD_FLOAT_INPLACE_RIGHT", uops)
+ 
+     def test_float_add_no_inplace_non_unique(self):
+         # Both operands of a + b are locals — neither is unique,
+@@ -4107,12 +4133,13 @@
+         self.assertAlmostEqual(res, TIER2_THRESHOLD * 5.0)
+         self.assertIsNotNone(ex)
+         uops = get_opnames(ex)
++        raw_float = "_JIT_FLOAT_PREPARE" in uops
+         # a + b: both are locals, no inplace
+-        self.assertIn("_BINARY_OP_ADD_FLOAT", uops)
++        self.assertIn("_JIT_FLOAT_ADD" if raw_float else "_BINARY_OP_ADD_FLOAT", uops)
+         # total += result: result is unique RHS
+-        self.assertIn("_BINARY_OP_ADD_FLOAT_INPLACE_RIGHT", uops)
++        self.assertIn("_JIT_FLOAT_ADD_INPLACE_RIGHT" if raw_float else "_BINARY_OP_ADD_FLOAT_INPLACE_RIGHT", uops)
+         # No LHS inplace variant for the first add
+-        self.assertNotIn("_BINARY_OP_ADD_FLOAT_INPLACE", uops)
++        self.assertNotIn("_JIT_FLOAT_ADD_INPLACE" if raw_float else "_BINARY_OP_ADD_FLOAT_INPLACE", uops)
+ 
+     def test_float_subtract_inplace_unique_lhs(self):
+         # a * b produces a unique float; subtracting c reuses it
+@@ -4127,7 +4154,8 @@
+         self.assertAlmostEqual(res, TIER2_THRESHOLD * 5.0)
+         self.assertIsNotNone(ex)
+         uops = get_opnames(ex)
+-        self.assertIn("_BINARY_OP_SUBTRACT_FLOAT_INPLACE", uops)
++        raw_float = "_JIT_FLOAT_PREPARE" in uops
++        self.assertIn("_JIT_FLOAT_SUBTRACT_INPLACE" if raw_float else "_BINARY_OP_SUBTRACT_FLOAT_INPLACE", uops)
+ 
+     def test_float_subtract_inplace_unique_rhs(self):
+         # a * b produces a unique float on the right of -;
+@@ -4143,7 +4171,8 @@
+         self.assertAlmostEqual(res, TIER2_THRESHOLD * -5.0)
+         self.assertIsNotNone(ex)
+         uops = get_opnames(ex)
+-        self.assertIn("_BINARY_OP_SUBTRACT_FLOAT_INPLACE_RIGHT", uops)
++        raw_float = "_JIT_FLOAT_PREPARE" in uops
++        self.assertIn("_JIT_FLOAT_SUBTRACT_INPLACE_RIGHT" if raw_float else "_BINARY_OP_SUBTRACT_FLOAT_INPLACE_RIGHT", uops)
+ 
+     def test_float_multiply_inplace_unique_lhs(self):
+         # (a + b) produces a unique float; multiplying by c reuses it
+@@ -4158,7 +4187,8 @@
+         self.assertAlmostEqual(res, TIER2_THRESHOLD * 20.0)
+         self.assertIsNotNone(ex)
+         uops = get_opnames(ex)
+-        self.assertIn("_BINARY_OP_MULTIPLY_FLOAT_INPLACE", uops)
++        raw_float = "_JIT_FLOAT_PREPARE" in uops
++        self.assertIn("_JIT_FLOAT_MULTIPLY_INPLACE" if raw_float else "_BINARY_OP_MULTIPLY_FLOAT_INPLACE", uops)
+ 
+     def test_float_multiply_inplace_unique_rhs(self):
+         # (a + b) produces a unique float on the right side of *
+@@ -4173,7 +4203,8 @@
+         self.assertAlmostEqual(res, TIER2_THRESHOLD * 20.0)
+         self.assertIsNotNone(ex)
+         uops = get_opnames(ex)
+-        self.assertIn("_BINARY_OP_MULTIPLY_FLOAT_INPLACE_RIGHT", uops)
++        raw_float = "_JIT_FLOAT_PREPARE" in uops
++        self.assertIn("_JIT_FLOAT_MULTIPLY_INPLACE_RIGHT" if raw_float else "_BINARY_OP_MULTIPLY_FLOAT_INPLACE_RIGHT", uops)
+ 
+     def test_float_inplace_chain_propagation(self):
+         # a * b + c * d: both products are unique, the + reuses one;
+@@ -4189,10 +4220,11 @@
+         self.assertAlmostEqual(res, TIER2_THRESHOLD * 26.0)
+         self.assertIsNotNone(ex)
+         uops = get_opnames(ex)
++        raw_float = "_JIT_FLOAT_PREPARE" in uops
+         # The + between the two products should use an inplace variant
+         inplace_add = (
+-            "_BINARY_OP_ADD_FLOAT_INPLACE" in uops
+-            or "_BINARY_OP_ADD_FLOAT_INPLACE_RIGHT" in uops
++            ("_JIT_FLOAT_ADD_INPLACE" if raw_float else "_BINARY_OP_ADD_FLOAT_INPLACE") in uops
++            or ("_JIT_FLOAT_ADD_INPLACE_RIGHT" if raw_float else "_BINARY_OP_ADD_FLOAT_INPLACE_RIGHT") in uops
+         )
+         self.assertTrue(inplace_add,
+             "Expected an inplace add for unique intermediate results")
+@@ -4298,9 +4330,10 @@
+         self.assertAlmostEqual(res, TIER2_THRESHOLD * (10.0 % 3.0) * 2.0)
+         self.assertIsNotNone(ex)
+         uops = get_opnames(ex)
++        raw_float = "_JIT_FLOAT_PREPARE" in uops
+         self.assertIn("_GUARD_TOS_FLOAT", uops)
+         self.assertIn("_GUARD_NOS_FLOAT", uops)
+-        self.assertIn("_BINARY_OP_MULTIPLY_FLOAT_INPLACE", uops)
++        self.assertIn("_JIT_FLOAT_MULTIPLY_INPLACE" if raw_float else "_BINARY_OP_MULTIPLY_FLOAT_INPLACE", uops)
+ 
+     def test_float_truediv_type_propagation(self):
+         # Test the _BINARY_OP_TRUEDIV_FLOAT propagates type information
+@@ -4318,8 +4351,9 @@
+         self.assertAlmostEqual(res, expected)
+         self.assertIsNotNone(ex)
+         uops = get_opnames(ex)
++        raw_float = "_JIT_FLOAT_PREPARE" in uops
+         self.assertIn("_BINARY_OP_TRUEDIV_FLOAT", uops)
+-        self.assertIn("_BINARY_OP_SUBTRACT_FLOAT_INPLACE", uops)
++        self.assertIn("_JIT_FLOAT_SUBTRACT_INPLACE" if raw_float else "_BINARY_OP_SUBTRACT_FLOAT_INPLACE", uops)
+ 
+     def test_float_truediv_unique_result_enables_inplace(self):
+         # (a+b) / (c+d) / (e+f): chained divisions where each result
+@@ -4353,10 +4387,11 @@
+         self.assertAlmostEqual(res, TIER2_THRESHOLD * 10.0)
+         self.assertIsNotNone(ex)
+         uops = get_opnames(ex)
++        raw_float = "_JIT_FLOAT_PREPARE" in uops
+         # The outer + should use inplace (at least one operand is unique)
+         inplace = (
+-            "_BINARY_OP_ADD_FLOAT_INPLACE" in uops
+-            or "_BINARY_OP_ADD_FLOAT_INPLACE_RIGHT" in uops
++            ("_JIT_FLOAT_ADD_INPLACE" if raw_float else "_BINARY_OP_ADD_FLOAT_INPLACE") in uops
++            or ("_JIT_FLOAT_ADD_INPLACE_RIGHT" if raw_float else "_BINARY_OP_ADD_FLOAT_INPLACE_RIGHT") in uops
+         )
+         self.assertTrue(inplace, "Expected inplace add for unique sub-results")
+ 
+@@ -4838,12 +4873,14 @@
+         self.assertEqual(res, 11.0)
+         self.assertIsNotNone(ex)
+         uops = get_opnames(ex)
++        raw_float = "_JIT_FLOAT_PREPARE" in uops
+         self.assertIn("_BINARY_OP_EXTEND", uops)
+-        self.assertIn("_BINARY_OP_MULTIPLY_FLOAT_INPLACE", uops)
+-        self.assertNotIn("_BINARY_OP_MULTIPLY_FLOAT", uops)
++        self.assertIn("_JIT_FLOAT_MULTIPLY_INPLACE" if raw_float else "_BINARY_OP_MULTIPLY_FLOAT_INPLACE", uops)
++        self.assertNotIn("_JIT_FLOAT_MULTIPLY" if raw_float else "_BINARY_OP_MULTIPLY_FLOAT", uops)
+         # NOS guard on the multiply is eliminated because _BINARY_OP_EXTEND
+         # propagates PyFloat_Type.
+         self.assertNotIn("_GUARD_NOS_FLOAT", uops)
++        self.assertNotIn("_JIT_FLOAT_GUARD_NOS", uops)
+ 
+     def test_binary_op_extend_list_concat_type_propagation(self):
+         # list + list is specialized via BINARY_OP_EXTEND. The tier 2 optimizer
