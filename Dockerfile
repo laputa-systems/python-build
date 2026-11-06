@@ -40,14 +40,6 @@ assert installed == expected, {'missing': sorted(expected - installed), 'extra':
     && mkdir -p /work/.work/tmp \
     && chown -R builder:builder /work
 
-RUN python3 -c "\
-import json, pathlib, platform, shutil; \
-root = pathlib.Path('/opt/bootstrap'); \
-arch = platform.machine(); \
-packages = [item for item in json.loads((root / 'bootstrap.lock.json').read_text())['linux_toolchain']['apk_closure'][arch] if item['name'] == 'libgcc']; \
-assert len(packages) == 1; \
-shutil.copyfile(root / 'apk' / (packages[0]['sha256'] + '.apk'), root / 'libgcc.apk')"
-
 COPY buildsys/targets.py /opt/bootstrap/targets.py
 
 ENV PATH="/usr/lib/llvm23/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
@@ -109,10 +101,8 @@ RUN --network=none python3 build/package.py \
 FROM alpine-${TARGETARCH} AS runtime
 ARG TARGETARCH
 COPY --from=packaged /work/qualification/ /qualification/
-COPY --from=toolchain /opt/bootstrap/libgcc.apk /opt/bootstrap/libgcc.apk
 RUN set -eu \
- && apk --no-network --repositories-file /dev/null add /opt/bootstrap/libgcc.apk \
- && rm /opt/bootstrap/libgcc.apk \
+ && test -z "$(find / -xdev -name 'libgcc_s.so*' -print)" \
  && set -- /qualification/*.tar.gz \
  && [ -f "$1" ] \
  && [ "$#" -eq 1 ] \

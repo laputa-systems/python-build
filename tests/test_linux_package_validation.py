@@ -24,7 +24,7 @@ sys.modules[SPEC.name] = DRIVER
 SPEC.loader.exec_module(DRIVER)
 
 
-class LinuxPackageHardeningTests(unittest.TestCase):
+class LinuxPackageValidationCase(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory(dir=SCRATCH)
         self.addCleanup(self.temporary.cleanup)
@@ -40,6 +40,7 @@ class LinuxPackageHardeningTests(unittest.TestCase):
         self.static_executable.write_bytes(b"static executable")
         self.static_executable.chmod(0o755)
         self.extra_elfs = []
+        self.dynamic_by_path: dict[str, str] = {}
         self.header_type = "DYN"
         self.dynamic = (
             " 0x0000000000000001 (NEEDED) Shared library: "
@@ -70,7 +71,7 @@ class LinuxPackageHardeningTests(unittest.TestCase):
             output = (
                 "There is no dynamic section in this file.\n"
                 if command[-1] == str(self.static_executable)
-                else self.dynamic
+                else self.dynamic_by_path.get(command[-1], self.dynamic)
             )
         elif command[1] == "-lW":
             output = self.program_headers
@@ -115,6 +116,8 @@ class LinuxPackageHardeningTests(unittest.TestCase):
         ):
             return DRIVER._linux_validation(self.install)
 
+
+class LinuxPackageHardeningTests(LinuxPackageValidationCase):
     def test_final_elf_images_pass_pie_relro_and_relocation_gates(self) -> None:
         report = self._validate()
 
@@ -156,6 +159,90 @@ class LinuxPackageHardeningTests(unittest.TestCase):
         self.assertFalse(checks["elf_relro"]["ok"])
         self.assertFalse(checks["elf_writable_executable"]["ok"])
         self.assertFalse(checks["elf_text_relocations"]["ok"])
+
+
+class LinuxRuntimeDependencyTests(LinuxPackageValidationCase):
+    def _extension(self, name: str, dynamic: str) -> Path:
+        extension = self.install / "lib" / "python3.15" / "lib-dynload" / name
+        extension.parent.mkdir(parents=True, exist_ok=True)
+        extension.write_bytes(b"extension")
+        self.extra_elfs.append(extension)
+        self.dynamic_by_path[str(extension)] = dynamic
+        return extension
+
+    def test_musl_is_the_only_platform_library(self) -> None:
+        self._extension("_ok.so", self.dynamic)
+
+        report = self._validate()
+
+        self.assertTrue(report["ok"], report["failed"])
+        self.assertEqual(
+            report["checks"]["elf_linkage"]["platform_libraries"],
+            ["libc.musl-x86_64.so.1"],
+        )
+
+    def test_libgcc_s_dependency_is_rejected(self) -> None:
+        extension = self._extension(
+            "_rustls.abi3.so",
+            " 0x0000000000000001 (NEEDED) Shared library: [libgcc_s.so.1]\n"
+            + self.dynamic,
+        )
+
+        report = self._validate()
+        linkage = report["checks"]["elf_linkage"]
+
+        self.assertFalse(report["ok"])
+        self.assertIn("elf_linkage", report["failed"])
+        self.assertEqual(
+            linkage["forbidden_libraries"],
+            {str(extension.relative_to(self.install)): ["libgcc_s.so.1"]},
+        )
+        self.assertNotIn("libgcc_s.so.1", linkage["platform_libraries"])
+
+    def test_bundled_libgcc_s_is_rejected_even_when_resolvable(self) -> None:
+        bundled = self.install / "lib" / "libgcc_s.so.1"
+        bundled.write_bytes(b"libgcc_s")
+        self.extra_elfs.append(bundled)
+        self.dynamic_by_path[str(bundled)] = (
+            " 0x000000000000000e (SONAME) Library soname: [libgcc_s.so.1]\n"
+            + self.dynamic
+        )
+        consumer = self._extension(
+            "_decimal.so",
+            " 0x0000000000000001 (NEEDED) Shared library: [libgcc_s.so.1]\n"
+            " 0x000000000000001d (RUNPATH) Library runpath: [$ORIGIN/../..]\n"
+            + self.dynamic,
+        )
+
+        report = self._validate()
+        linkage = report["checks"]["elf_linkage"]
+
+        self.assertFalse(report["ok"])
+        self.assertEqual(linkage["unresolved"], [])
+        self.assertEqual(sorted(linkage["forbidden_libraries"]), sorted([
+            str(bundled.relative_to(self.install)),
+            str(consumer.relative_to(self.install)),
+        ]))
+
+    def test_unlisted_platform_libraries_are_rejected(self) -> None:
+        for library in ("libatomic.so.1", "libstdc++.so.6", "libz.so.1"):
+            with self.subTest(library=library):
+                self.extra_elfs.clear()
+                self.dynamic_by_path.clear()
+                extension = self._extension(
+                    "_module.so",
+                    f" 0x0000000000000001 (NEEDED) Shared library: [{library}]\n"
+                    + self.dynamic,
+                )
+
+                report = self._validate()
+                linkage = report["checks"]["elf_linkage"]
+
+                self.assertFalse(report["ok"])
+                self.assertEqual(
+                    linkage["unresolved"],
+                    [str(extension.relative_to(self.install))],
+                )
 
 
 if __name__ == "__main__":

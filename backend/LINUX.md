@@ -65,7 +65,7 @@ Inspect the resulting evidence under the run directory:
 - `qualification/archive/experimental-no-openssl-candidate.tar.gz` contains the
   experimental distribution.
 - `docker-runtime.json` records execution of those archive bytes in a separate
-  locked Alpine image with libgcc and no build toolchain.
+  locked Alpine image with no libgcc and no build toolchain.
 
 The minimal runtime executes SHA-256, HMAC, PBKDF2, scrypt, and a TLS ClientHello.
 Certificate, trust-source, HTTP, asyncio, native-extension, and relocation

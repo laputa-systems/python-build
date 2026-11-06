@@ -71,18 +71,15 @@ WORKDIR /work
 
 FROM ${RUNTIME_BASE_IMAGE} AS archive-runtime
 ARG LOCKED_IMAGE_DIGEST
-ARG LIBGCC_SHA256
 ARG ARCHIVE_SHA256
 LABEL org.python-build.rtls.locked-image-digest=${LOCKED_IMAGE_DIGEST} \
       org.python-build.rtls.archive-sha256=${ARCHIVE_SHA256}
 
-COPY .cache/bootstrap/apk/libgcc.apk /opt/bootstrap/libgcc.apk
 COPY qualification/candidate.tar.gz /qualification/candidate.tar.gz
 
 RUN --network=none set -eu \
-    && printf '%s  %s\n' "$LIBGCC_SHA256" /opt/bootstrap/libgcc.apk | sha256sum -c - \
     && printf '%s  %s\n' "$ARCHIVE_SHA256" /qualification/candidate.tar.gz | sha256sum -c - \
-    && apk --no-network --repositories-file /dev/null add /opt/bootstrap/libgcc.apk \
+    && test -z "$(find / -xdev -name 'libgcc_s.so*' -print)" \
     && mkdir -p /opt \
     && tar -xzf /qualification/candidate.tar.gz -C /opt \
     && test -x /opt/python/bin/python3.15

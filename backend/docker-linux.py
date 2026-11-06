@@ -789,17 +789,8 @@ def networked_fetch(
 
 
 def build_runtime_image(
-    run_dir: Path, locked_digest: str, candidate_archive: Path, bootstrap: dict
+    run_dir: Path, locked_digest: str, candidate_archive: Path
 ) -> tuple[str, dict, str]:
-    libgcc = next(
-        item for item in bootstrap["linux_toolchain"]["apk_closure"][MACHINE]
-        if item["name"] == "libgcc"
-    )
-    common = common_root()
-    libgcc_path = common / ".cache" / "bootstrap" / "apk" / DOCKER_ARCH / f"{libgcc['sha256']}.apk"
-    require_no_symlink_below(common, libgcc_path.parent)
-    if not verify_file(libgcc_path, libgcc["sha256"], libgcc["size"]):
-        raise DockerBuildError("locked libgcc APK is missing or invalid for the runtime image")
     if candidate_archive.is_symlink() or not candidate_archive.is_file():
         raise DockerBuildError("qualified candidate archive must be a regular file")
     archive_hash = sha256_file(candidate_archive)
@@ -807,7 +798,6 @@ def build_runtime_image(
         {
             "dockerfile": sha256_file(DOCKERFILE),
             "locked_digest": locked_digest,
-            "libgcc_sha256": libgcc["sha256"],
             "archive_sha256": archive_hash,
         }
     )
@@ -822,9 +812,6 @@ def build_runtime_image(
             lock_destination = context / "backend" / "linux-bootstrap.lock.json"
             lock_destination.parent.mkdir(parents=True)
             shutil.copy2(LOCK_PATH, lock_destination)
-            apk = context / ".cache" / "bootstrap" / "apk" / "libgcc.apk"
-            apk.parent.mkdir(parents=True)
-            shutil.copy2(libgcc_path, apk)
             archive = context / "qualification" / "candidate.tar.gz"
             archive.parent.mkdir()
             shutil.copy2(candidate_archive, archive)
@@ -836,7 +823,6 @@ def build_runtime_image(
                     "--build-arg", f"TOOLCHAIN_IMAGE=alpine@{locked_digest}",
                     "--build-arg", f"RUNTIME_BASE_IMAGE=alpine@{locked_digest}",
                     "--build-arg", f"LOCKED_IMAGE_DIGEST={locked_digest}",
-                    "--build-arg", f"LIBGCC_SHA256={libgcc['sha256']}",
                     "--build-arg", f"ARCHIVE_SHA256={archive_hash}",
                     "--tag", tag, "-f", str(context / "Dockerfile.linux"), str(context),
                 ],
@@ -1390,7 +1376,7 @@ def run_build_and_qualification(
             archive_name, manifest_name,
         )
         runtime_tag, runtime_image, archive_hash = build_runtime_image(
-            run_dir, locked_digest, archive, bootstrap
+            run_dir, locked_digest, archive
         )
         run_runtime_probe(
             run_dir, runtime_tag, runtime_image, archive_hash, revision, dirty, daemon, locked_digest,

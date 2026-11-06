@@ -27,6 +27,7 @@ class LinkageReportTests(unittest.TestCase):
         )
         self.assertEqual(dynamic_tags(dynamic), {
             "needed": ["libpython3.15.so.1.0"],
+            "soname": [],
             "rpath": [],
             "runpath": ["$ORIGIN/../lib"],
         })

@@ -133,9 +133,7 @@ class ManifestTests(unittest.TestCase):
             "checks": {
                 "validation.version_and_abi": {"gil_enabled": True},
                 "validation.elf_linkage": {
-                    "platform_libraries": [
-                        "libc.musl-aarch64.so.1", "libgcc_s.so.1",
-                    ],
+                    "platform_libraries": ["libc.musl-aarch64.so.1"],
                 },
             },
         }
@@ -180,11 +178,6 @@ class ManifestTests(unittest.TestCase):
             },
             {
                 "name": "libc.musl-aarch64.so.1",
-                "linkage": "dynamic",
-                "source": "Alpine runtime",
-            },
-            {
-                "name": "libgcc_s.so.1",
                 "linkage": "dynamic",
                 "source": "Alpine runtime",
             },
