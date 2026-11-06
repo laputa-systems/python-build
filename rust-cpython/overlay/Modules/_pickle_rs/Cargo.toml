@@ -7,8 +7,8 @@ license = "PSF-2.0"
 
 [dependencies]
 cpython-sys = { path = "../cpython-sys" }
-serde = "1.0"
-serde-pickle = "1.2.0"
+deser = { version = "0.10.2", default-features = false, features = ["std"] }
+deser-pickle = { version = "0.10.2", default-features = false, features = ["std"] }
 
 [build-dependencies]
 cpython-build-helper = { path = "../cpython-build-helper" }

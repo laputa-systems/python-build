@@ -1,3 +1,5 @@
+mod value;
+
 use std::cell::UnsafeCell;
 use std::collections::HashSet;
 use std::ffi::{c_char, c_int, c_void};
@@ -17,10 +19,8 @@ use cpython_sys::{
     PyDict_Type, PyFloat_Type, PyList_Type, PyLong_Type, PyUnicode_Type, Py_ssize_t,
     _Py_NoneStruct,
 };
-use serde::de::{MapAccess, SeqAccess, Visitor};
-use serde::ser::{Serialize, SerializeMap, SerializeSeq, Serializer};
-use serde::{Deserialize, Deserializer};
-use serde_pickle::{DeOptions, SerOptions, Value};
+
+use value::PickleValue;
 
 const MAX_DEPTH: usize = 128;
 // Keep compact graphs on the Rust path. CPython's Pickler memoizes larger
@@ -47,121 +47,6 @@ impl EncodeBudget {
         };
         self.value_bytes = total;
         total <= MAX_VALUE_BYTES
-    }
-}
-
-/// A deliberately narrow value tree for common acyclic builtin containers.
-/// `serde-pickle` owns opcode generation and parsing; objects outside this
-/// tree stay with CPython's complete Pickler and Unpickler implementations.
-enum PickleValue {
-    None,
-    Bool(bool),
-    Int(i64),
-    Float(f64),
-    Bytes(Vec<u8>),
-    String(String),
-    List(Vec<PickleValue>),
-    Dict(Vec<(PickleValue, PickleValue)>),
-}
-
-impl Serialize for PickleValue {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match self {
-            Self::None => serializer.serialize_unit(),
-            Self::Bool(value) => serializer.serialize_bool(*value),
-            Self::Int(value) => serializer.serialize_i64(*value),
-            Self::Float(value) => serializer.serialize_f64(*value),
-            Self::Bytes(value) => serializer.serialize_bytes(value),
-            Self::String(value) => serializer.serialize_str(value),
-            Self::List(values) => {
-                let mut sequence = serializer.serialize_seq(Some(values.len()))?;
-                for value in values {
-                    sequence.serialize_element(value)?;
-                }
-                sequence.end()
-            }
-            Self::Dict(entries) => {
-                let mut map = serializer.serialize_map(Some(entries.len()))?;
-                for (key, value) in entries {
-                    map.serialize_entry(key, value)?;
-                }
-                map.end()
-            }
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for PickleValue {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct PickleValueVisitor;
-
-        impl<'de> Visitor<'de> for PickleValueVisitor {
-            type Value = PickleValue;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("a supported builtin pickle value")
-            }
-
-            fn visit_unit<E>(self) -> Result<Self::Value, E> {
-                Ok(PickleValue::None)
-            }
-
-            fn visit_none<E>(self) -> Result<Self::Value, E> {
-                Ok(PickleValue::None)
-            }
-
-            fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E> {
-                Ok(PickleValue::Bool(value))
-            }
-
-            fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E> {
-                Ok(PickleValue::Int(value))
-            }
-
-            fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<Self::Value, E> {
-                i64::try_from(value)
-                    .map(PickleValue::Int)
-                    .map_err(serde::de::Error::custom)
-            }
-
-            fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E> {
-                Ok(PickleValue::Float(value))
-            }
-
-            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E> {
-                Ok(PickleValue::String(value.to_owned()))
-            }
-
-            fn visit_string<E>(self, value: String) -> Result<Self::Value, E> {
-                Ok(PickleValue::String(value))
-            }
-
-            fn visit_bytes<E>(self, value: &[u8]) -> Result<Self::Value, E> {
-                Ok(PickleValue::Bytes(value.to_vec()))
-            }
-
-            fn visit_byte_buf<E>(self, value: Vec<u8>) -> Result<Self::Value, E> {
-                Ok(PickleValue::Bytes(value))
-            }
-
-            fn visit_seq<A: SeqAccess<'de>>(self, mut sequence: A) -> Result<Self::Value, A::Error> {
-                let mut values = Vec::new();
-                while let Some(value) = sequence.next_element()? {
-                    values.push(value);
-                }
-                Ok(PickleValue::List(values))
-            }
-
-            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
-                let mut entries = Vec::new();
-                while let Some((key, value)) = map.next_entry()? {
-                    entries.push((key, value));
-                }
-                Ok(PickleValue::Dict(entries))
-            }
-        }
-
-        deserializer.deserialize_any(PickleValueVisitor)
     }
 }
 
@@ -316,14 +201,7 @@ unsafe fn encode_value(
             let Some(key) = (unsafe { encode_value(key, depth + 1, seen, budget) })? else {
                 return Ok(None);
             };
-            if !matches!(
-                key,
-                PickleValue::None
-                    | PickleValue::Bool(_)
-                    | PickleValue::Int(_)
-                    | PickleValue::Bytes(_)
-                    | PickleValue::String(_)
-            ) {
+            if !key.is_dict_key() {
                 return Ok(None);
             }
             let Some(value) = (unsafe { encode_value(value, depth + 1, seen, budget) })? else {
@@ -366,12 +244,17 @@ fn supported_pickle_length(input: &[u8]) -> Option<usize> {
         return None;
     }
     let mut cursor = 2;
+    let mut open_containers = [0u8; MAX_DEPTH];
+    let mut stack_items = [0usize; MAX_DEPTH + 1];
     let mut depth = 0usize;
     while cursor < input.len() {
         let opcode = input[cursor];
         cursor += 1;
+        if !matches!(opcode, b'e' | b'u' | b'.') {
+            stack_items[depth] += 1;
+        }
         match opcode {
-            b'N' | 0x88 | 0x89 | b'(' => {}
+            b'N' | 0x88 | 0x89 => {}
             b'J' => {
                 if !stream_string(input, &mut cursor, 4) {
                     return None;
@@ -415,47 +298,35 @@ fn supported_pickle_length(input: &[u8]) -> Option<usize> {
             }
             b']' | b'}' => {
                 if input.get(cursor) == Some(&b'(') {
-                    depth += 1;
-                    if depth > MAX_DEPTH {
+                    if depth == MAX_DEPTH {
                         return None;
                     }
+                    open_containers[depth] = opcode;
+                    depth += 1;
+                    stack_items[depth] = 0;
+                    cursor += 1;
                 }
             }
             b'e' | b'u' => {
-                if depth == 0 {
+                let container = if opcode == b'e' { b']' } else { b'}' };
+                if depth == 0
+                    || open_containers[depth - 1] != container
+                    || (opcode == b'u' && stack_items[depth] % 2 != 0)
+                {
                     return None;
                 }
-                if input.get(cursor) != Some(&b'(') {
+                if input.get(cursor) == Some(&b'(') {
+                    cursor += 1;
+                    stack_items[depth] = 0;
+                } else {
                     depth -= 1;
                 }
             }
-            b'.' if depth == 0 => return Some(cursor),
+            b'.' if depth == 0 && stack_items[0] == 1 => return Some(cursor),
             _ => return None,
         }
     }
     None
-}
-
-fn supported_decoded_value(value: &Value, depth: usize) -> bool {
-    if depth > MAX_DEPTH {
-        return false;
-    }
-    match value {
-        Value::None | Value::Bool(_) | Value::I64(_) | Value::F64(_)
-        | Value::Bytes(_) | Value::String(_) => true,
-        Value::List(values) => values.iter().all(|value| supported_decoded_value(value, depth + 1)),
-        Value::Dict(values) => values.iter().all(|(key, value)| {
-            matches!(
-                key,
-                serde_pickle::HashableValue::None
-                    | serde_pickle::HashableValue::Bool(_)
-                    | serde_pickle::HashableValue::I64(_)
-                    | serde_pickle::HashableValue::Bytes(_)
-                    | serde_pickle::HashableValue::String(_)
-            ) && supported_decoded_value(value, depth + 1)
-        }),
-        Value::Int(_) | Value::Tuple(_) | Value::Set(_) | Value::FrozenSet(_) => false,
-    }
 }
 
 unsafe fn new_none() -> *mut PyObject {
@@ -657,7 +528,7 @@ unsafe extern "C" fn dumps(
             _ => return unsupported_dumps(),
         }
     };
-    let mut encoded = match serde_pickle::to_vec(&value, SerOptions::new()) {
+    let mut encoded = match value::encode(&value) {
         Ok(encoded) => encoded,
         Err(_) => return unsupported_dumps(),
     };
@@ -703,12 +574,7 @@ unsafe extern "C" fn loads(
         return unsupported_status();
     };
     let input = &input[..consumed];
-    let parsed = match serde_pickle::value_from_slice(input, DeOptions::new()) {
-        Ok(parsed) if supported_decoded_value(&parsed, 0) => parsed,
-        _ => return unsupported_status(),
-    };
-    drop(parsed);
-    let value = match serde_pickle::from_slice::<PickleValue>(input, DeOptions::new()) {
+    let value = match value::decode(input) {
         Ok(value) => value,
         Err(_) => return unsupported_status(),
     };
