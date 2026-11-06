@@ -904,20 +904,44 @@ def require_fetched_rust_inputs(
     return checkout, hashing_build
 
 
-def rust_flags(target, *, rtls: bool) -> list[str]:
+def rust_static_unwinder_directory(run_dir: Path, target) -> Path:
+    return run_dir / "rust-static-unwinder" / target.triple
+
+
+def rust_static_unwinder(rustc: Path, target, run_dir: Path) -> Path:
+    sysroot = subprocess.run(
+        [str(rustc), "--print", "sysroot"],
+        capture_output=True, text=True, timeout=60, check=True,
+    ).stdout.strip()
+    archive = (
+        Path(sysroot) / "lib" / "rustlib" / target.triple / "lib"
+        / "self-contained" / "libunwind.a"
+    )
+    if not archive.is_file():
+        raise BuildError(f"locked Rust toolchain has no LLVM libunwind for {target.triple}: {archive}")
+    directory = rust_static_unwinder_directory(run_dir, target)
+    directory.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(archive, directory / "libunwind.a")
+    return directory
+
+
+def rust_flags(target, *, rtls: bool, static_unwinder: Path | None = None) -> list[str]:
     # Rust extensions are cdylib/proc-macro artifacts, and on a musl host
     # those crate types REQUIRE the dynamic CRT: rustc refuses to emit them
     # with a static CRT ("does not support these crate types", reproduced
-    # locally). So `-crt-static` is mandatory here, not a regression to
-    # dynamic linking. The product policy is musl-only with no glibc, which
-    # the ELF linkage audits enforce: the only platform libraries are musl
-    # itself and libgcc.
-    if target.triple == LINUX_X86_64_TRIPLE:
-        return ["-C", "target-cpu=broadwell", "-C", "target-feature=-crt-static",
-                "-C", "link-arg=-fuse-ld=lld", "-C", "link-arg=-Wl,-z,noexecstack",
-                "-C", "link-arg=-Wl,-z,relro", "-C", "link-arg=-Wl,-z,now"]
-    if target.triple == LINUX_AARCH64_TRIPLE:
-        return ["-C", "target-cpu=generic", "-C", "target-feature=-crt-static,+aes,+sha2,+neon",
+    # locally). With `-crt-static`, libstd's `unwind` crate requests
+    # `-lgcc_s`, which minimal musl systems do not provide. The toolchain's
+    # LLVM libunwind is linked statically as a local native library, ahead of
+    # that request, so `--as-needed` drops libgcc_s from DT_NEEDED.
+    if target.triple in (LINUX_X86_64_TRIPLE, LINUX_AARCH64_TRIPLE):
+        if static_unwinder is None:
+            raise BuildError(f"{target.triple} Rust extensions require the static LLVM unwinder")
+        if target.triple == LINUX_X86_64_TRIPLE:
+            cpu = ["-C", "target-cpu=broadwell", "-C", "target-feature=-crt-static"]
+        else:
+            cpu = ["-C", "target-cpu=generic", "-C", "target-feature=-crt-static,+aes,+sha2,+neon"]
+        return [*cpu,
+                "-L", f"native={static_unwinder}", "-l", "static=unwind",
                 "-C", "link-arg=-fuse-ld=lld", "-C", "link-arg=-Wl,-z,noexecstack",
                 "-C", "link-arg=-Wl,-z,relro", "-C", "link-arg=-Wl,-z,now"]
     cpu_flag = target.cpu_baseline_cflag
@@ -949,7 +973,11 @@ def build_rust_extension(
     from buildsys.recipes import BuildError as RecipeBuildError
     from buildsys.recipes import run
 
-    rustflags = rust_flags(target, rtls=rtls)
+    rustflags = rust_flags(
+        target,
+        rtls=rtls,
+        static_unwinder=None if target.is_macos else rust_static_unwinder(rustc, target, run_dir),
+    )
     environment = os.environ.copy()
     linker_environment_key = (
         f"CARGO_TARGET_{target.triple.upper().replace('-', '_')}_LINKER"
@@ -1470,7 +1498,10 @@ def write_linux_receipt(run_dir: Path, target, toolchain, isolation: dict, comma
             "dependency_ldflags": toolchain.ldflags(run_dir / "private"),
             "cpython_cflags": configure_env["CFLAGS"],
             "cpython_ldflags": configure_env["LDFLAGS"] + " -flto=thin",
-            "rust": rust_flags(target, rtls=True),
+            "rust": rust_flags(
+                target, rtls=True,
+                static_unwinder=rust_static_unwinder_directory(run_dir, target),
+            ),
         },
     }
     (run_dir / "linux-build.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")

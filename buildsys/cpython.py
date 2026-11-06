@@ -125,6 +125,7 @@ def _interpreter_flags(prefix: Path, target: Target) -> tuple[str, str]:
         cflags.extend(("-fstack-protector-strong", "-D_FORTIFY_SOURCE=2"))
         ldflags.extend((
             "-fuse-ld=lld",
+            "-static-libgcc",
             "-Wl,-z,noexecstack",
             "-Wl,-z,relro",
             "-Wl,-z,now",

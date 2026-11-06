@@ -34,6 +34,13 @@ pinned nightly Rust toolchain. Rust extensions use the musl dynamic CRT
 with a static CRT); no glibc symbols may appear in any payload. Do not claim a
 build-time gain without a clean before-and-after measurement.
 
+Linux artifacts need only musl at run time: the loader and
+`libc.musl-<arch>.so.1`. They do not need Alpine's `libgcc` package. C code
+links GCC's compiler builtins statically through `-static-libgcc`, which
+`sysconfig` passes on to third-party extension builds. Rust extensions
+statically link the LLVM libunwind shipped in the pinned Rust toolchain, so
+`libgcc_s.so.1` never enters `DT_NEEDED`.
+
 `backend/` keeps the vendored RTLS source, the RTLS provider patch, the
 hashing backend, and the replay procedures behind the official build. Keep its
 Rust dependencies out of the production locks and bootstrap. Keep its vendored

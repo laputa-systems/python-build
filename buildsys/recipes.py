@@ -129,10 +129,9 @@ class Toolchain:
         if self.is_macos:
             parts.append(f"-mmacosx-version-min={self.deployment_target}")
         else:
-            # macOS has no equivalent of these; they are ELF loader
-            # hardening and ELF build-id, not portable flags.
             parts += [
                 "-fuse-ld=lld",
+                "-static-libgcc",
                 "-Wl,-z,noexecstack",
                 "-Wl,-z,relro",
                 "-Wl,-z,now",

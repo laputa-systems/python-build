@@ -1752,6 +1752,8 @@ def build_experimental_manifest(
             "-C codegen-units=1",
             f"-C target-cpu={rust_target_cpu}",
         )
+        if not target.is_macos:
+            required_flags += ("-l static=unwind",)
         for required_flag in required_flags:
             if required_flag not in extension_command:
                 raise QualificationDriverError(f"{name} extension command omits {required_flag}")
