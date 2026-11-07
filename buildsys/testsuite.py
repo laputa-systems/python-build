@@ -90,6 +90,30 @@ CASE_EXCLUSIONS = (
         ),
         targets=("x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"),
     ),
+    Exclusion(
+        test="test_ctypes:test_find_library_with_gcc",
+        reason=(
+            "find_library('c') asks the host gcc where libc lives; the Linux "
+            "runtime is GCC-free"
+        ),
+        consequence=(
+            "find_library returns None on the shipped musl runtime; ctypes "
+            "loading is qualified separately"
+        ),
+        targets=("x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"),
+    ),
+    Exclusion(
+        test="test_ctypes:test_find_library_with_ld",
+        reason=(
+            "find_library('c') asks the host linker where libc lives; the "
+            "Linux runtime carries no binutils"
+        ),
+        consequence=(
+            "find_library returns None on the shipped musl runtime; ctypes "
+            "loading is qualified separately"
+        ),
+        targets=("x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"),
+    ),
 )
 
 

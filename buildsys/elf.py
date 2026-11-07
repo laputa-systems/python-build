@@ -61,6 +61,20 @@ def dynamic_tags(dynamic: str) -> dict[str, list[str]]:
     return result
 
 
+ELF_READER = "llvm-readelf"
+_COMMENT_ENTRY = re.compile(r"^\s*\[\s*[0-9a-f]+\]\s+(.*?)\s*$")
+
+
+def compiler_comment_report(comment_dump: str) -> dict[str, object]:
+    entries = [
+        match.group(1)
+        for line in comment_dump.splitlines()
+        if (match := _COMMENT_ENTRY.match(line)) is not None
+    ]
+    gcc_objects = [entry for entry in entries if entry.startswith("GCC:")]
+    return {"ok": not gcc_objects, "compilers": entries, "gcc_objects": gcc_objects}
+
+
 def forbidden_runtime_libraries(names: list[str]) -> list[str]:
     return [
         name

@@ -62,9 +62,13 @@ assert next(item['version'].split('-r', 1)[0] for item in lock['apk_closure'] if
 assert next(item['version'].split('-r', 1)[0] for item in lock['apk_closure'] if item['name'] == 'openssl') in subprocess.check_output(['/usr/bin/openssl', 'version'], text=True)" \
     && /usr/bin/git --version \
     && /usr/bin/openssl version \
-    && /opt/rust/bin/rustc --version --verbose
+    && /opt/rust/bin/rustc --version --verbose \
+    && test -d /opt/rust/lib/rustlib/src/rust/library/std \
+    && test -f /opt/rust/lib/rustlib/src/rust/library/Cargo.lock \
+    && test -e /usr/lib/libgcc_s.so.1 \
+    && ln -s libgcc_s.so.1 /usr/lib/libgcc_s.so
 
-ENV PATH="/opt/rust/bin:/usr/lib/llvm23/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin" \
+ENV PATH="/opt/rust/bin:/opt/llvm/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin" \
     PYTHON_BUILD_RUST_PREFIX=/opt/rust
 USER builder
 WORKDIR /work

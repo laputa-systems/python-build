@@ -90,39 +90,50 @@ def main(argv: list[str] | None = None) -> int:
                 )
             package_cache = Cache(REPO / ".cache" / "bootstrap")
             view = REPO / ".cache" / "bootstrap" / "apk" / docker_arch
-            view.mkdir(parents=True, exist_ok=True)
-            packages = locked.apk_closure[target.alpine_arch]
-            expected_files = {
-                f"{package.sha256}.apk" for package in packages
-            }
-            for old in view.glob("*.apk"):
-                if old.name not in expected_files:
-                    old.unlink()
-            for package in packages:
-                entry = package.input(target.triple)
-                try:
-                    path = package_cache.require(entry)
-                    print(f"cached  {entry.name}")
-                except InputError:
-                    print(f"fetch   {entry.name} ...", flush=True)
-                    path = package_cache.fetch(entry)
-                    print(f"ok      {entry.name} -> {path}")
-                destination = view / f"{entry.sha256}.apk"
-                with tempfile.NamedTemporaryFile(
-                    dir=view, suffix=".part", delete=False
-                ) as handle:
-                    staged = Path(handle.name)
-                try:
-                    shutil.copyfile(path, staged)
-                    os.chmod(staged, 0o444)
-                    os.replace(staged, destination)
-                finally:
-                    staged.unlink(missing_ok=True)
+            _publish_view(
+                package_cache,
+                view,
+                [(package.input(target.triple), f"{package.sha256}.apk")
+                 for package in locked.apk_closure[target.alpine_arch]],
+            )
+            toolchain_view = REPO / ".cache" / "bootstrap" / "toolchain" / docker_arch
+            _publish_view(
+                package_cache,
+                toolchain_view,
+                [(archive.input(target.triple), archive.filename)
+                 for archive in (locked.llvm.archives[target.alpine_arch], locked.musl_crt_source)],
+            )
+            print(f"ready   offline LLVM and musl crt sources -> {toolchain_view}")
             print(f"ready   offline Alpine APK closure -> {view}")
     except (BootstrapError, InputError, OSError, ValueError) as error:
         print(f"FAIL: {error}", file=sys.stderr)
         return 1
     return 0
+
+
+def _publish_view(cache: Cache, view: Path, entries: list) -> None:
+    view.mkdir(parents=True, exist_ok=True)
+    expected_files = {filename for _, filename in entries}
+    for old in view.iterdir():
+        if old.name not in expected_files:
+            old.unlink()
+    for entry, filename in entries:
+        try:
+            path = cache.require(entry)
+            print(f"cached  {entry.name}")
+        except InputError:
+            print(f"fetch   {entry.name} ...", flush=True)
+            path = cache.fetch(entry)
+            print(f"ok      {entry.name} -> {path}")
+        destination = view / filename
+        with tempfile.NamedTemporaryFile(dir=view, suffix=".part", delete=False) as handle:
+            staged = Path(handle.name)
+        try:
+            shutil.copyfile(path, staged)
+            os.chmod(staged, 0o444)
+            os.replace(staged, destination)
+        finally:
+            staged.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

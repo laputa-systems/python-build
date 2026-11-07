@@ -41,6 +41,12 @@ class LinuxPackageValidationCase(unittest.TestCase):
         self.static_executable.chmod(0o755)
         self.extra_elfs = []
         self.dynamic_by_path: dict[str, str] = {}
+        self.comment = (
+            "String dump of section '.comment':\n"
+            "[     0] clang version 23.1.0-rc2\n"
+            "[    1a] Linker: LLD 23.1.0\n"
+        )
+        self.comment_by_path: dict[str, str] = {}
         self.header_type = "DYN"
         self.dynamic = (
             " 0x0000000000000001 (NEEDED) Shared library: "
@@ -81,6 +87,8 @@ class LinuxPackageValidationCase(unittest.TestCase):
                     if not line.lstrip().startswith("INTERP")
                     and "Requesting program interpreter" not in line
                 )
+        elif command[1:3] == ["-p", ".comment"]:
+            output = self.comment_by_path.get(command[-1], self.comment)
         elif command[1] == "--dyn-syms":
             output = "__stack_chk_fail\n" if command[-1] == str(self.libpython) else ""
         else:
@@ -223,6 +231,22 @@ class LinuxRuntimeDependencyTests(LinuxPackageValidationCase):
             str(bundled.relative_to(self.install)),
             str(consumer.relative_to(self.install)),
         ]))
+
+    def test_gcc_built_objects_are_rejected(self) -> None:
+        extension = self._extension("_decimal.so", self.dynamic)
+        self.comment_by_path[str(extension)] = (
+            self.comment + "[    34] GCC: (Alpine 15.2.0) 15.2.0\n"
+        )
+
+        report = self._validate()
+        check = report["checks"]["elf_compiler_runtime"]
+
+        self.assertFalse(report["ok"])
+        self.assertIn("elf_compiler_runtime", report["failed"])
+        self.assertEqual(
+            check["violations"],
+            {str(extension.relative_to(self.install)): ["GCC: (Alpine 15.2.0) 15.2.0"]},
+        )
 
     def test_unlisted_platform_libraries_are_rejected(self) -> None:
         for library in ("libatomic.so.1", "libstdc++.so.6", "libz.so.1"):

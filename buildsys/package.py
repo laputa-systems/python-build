@@ -693,14 +693,9 @@ def validate_build_record(
         if toolchain.get("llvm_version") != expected_llvm:
             raise PackageError("CPython staged build record has a stale LLVM version")
     else:
-        pinned_llvm = [
-            package.get("version", "").split("-r", 1)[0]
-            for package in bootstrap.get("linux_toolchain", {}).get("direct_packages", [])
-            if isinstance(package, dict) and package.get("name") == "clang23"
-        ]
         commands = toolchain.get("commands")
         compiler = commands.get("cc") if isinstance(commands, dict) else None
-        expected_llvm = pinned_llvm[0] if len(pinned_llvm) == 1 else None
+        expected_llvm = bootstrap.get("linux_toolchain", {}).get("llvm", {}).get("version")
         if (
             expected_llvm is None
             or not isinstance(compiler, dict)

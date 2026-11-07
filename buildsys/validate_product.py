@@ -25,6 +25,7 @@ import textwrap
 from pathlib import Path
 
 from . import macho
+from .elf import ELF_READER
 from .bootstrap import load_macos_toolchain
 from .package import copy_product_tree
 from .product import PRODUCT
@@ -553,7 +554,7 @@ def mimalloc_allocator_checks(
         linked = []
         for image in images:
             dynamic = subprocess.run(
-                ["readelf", "-dW", str(image)],
+                [ELF_READER, "-dW", str(image)],
                 capture_output=True, text=True, check=True,
             ).stdout
             linked.extend(

@@ -24,10 +24,29 @@ and cannot change an accepted package.
 `sources.lock.json` pins build, trust, and comparison inputs with URL, version,
 SHA-256, size, role, license, and purpose. Reference-only entries are never
 build inputs. `bootstrap.lock.json` pins the macOS compiler archive and
-attestation, host requirements, the Linux image, and the complete APK
-closure. `buildsys/inputs.py` verifies cached bytes and safe extraction;
-invalid objects are replaced only after the downloaded bytes pass
-verification.
+attestation, host requirements, the Linux image, the Linux LLVM archive, the
+musl source for the rebuilt crt objects, and the complete APK closure.
+`buildsys/inputs.py` verifies cached bytes and safe extraction; invalid
+objects are replaced only after the downloaded bytes pass verification.
+
+Every pinned object is also stored as an asset named by its SHA-256 in the
+`bootstrap-inputs` release of this repository. Fetches try that mirror first
+and the recorded upstream URL second. Only transport failures fall back;
+bytes that do not match the lock fail the fetch from either source. Alpine
+edge drops superseded APKs, so the mirror is what keeps an existing pin
+buildable.
+
+```text
+python3 build/relock_linux.py     # re-resolve both APK closures
+python3 build/mirror_inputs.py    # upload every pin the mirror lacks
+python3 build/mirror_inputs.py --check
+```
+
+`build/relock_linux.py` exports each locked base image without running it
+and installs each layer's direct packages into that root with x86_64 `apk`
+and scripts disabled. Both architectures therefore resolve on one host. The
+recorded closure is the change in the installed database, which is what the
+image builds assert. Run `mirror_inputs.py` before committing a new lock.
 
 ## Build records
 

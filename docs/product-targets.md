@@ -7,8 +7,8 @@ target descriptions and target branching.
 | Triple | Platform/compiler | Baseline and deployment |
 | --- | --- | --- |
 | `aarch64-apple-darwin` | Apple Silicon macOS 27 host; official LLVM 23.1.4 and Xcode 27 SDK | `-mcpu=apple-m1`; artifact minimum macOS 27.0 |
-| `x86_64-unknown-linux-musl` | Alpine native-musl LLVM 23.1.3-r0 | `-march=broadwell` (AES, PCLMULQDQ, AVX/AVX2, BMI1/BMI2, FMA, MOVBE); loader `/lib/ld-musl-x86_64.so.1` |
-| `aarch64-unknown-linux-musl` | Alpine native-musl LLVM 23.1.3-r0 | `-march=armv8-a+crypto` (AES, PMULL, SHA2, ASIMD); loader `/lib/ld-musl-aarch64.so.1` |
+| `x86_64-unknown-linux-musl` | Alpine base; laputa `llvm-prebuilt-musl` LLVM 23.1.0-rc2 | `-march=broadwell` (AES, PCLMULQDQ, AVX/AVX2, BMI1/BMI2, FMA, MOVBE); loader `/lib/ld-musl-x86_64.so.1` |
+| `aarch64-unknown-linux-musl` | Alpine base; laputa `llvm-prebuilt-musl` LLVM 23.1.0-rc2 | `-march=armv8-a+crypto` (AES, PMULL, SHA2, ASIMD); loader `/lib/ld-musl-aarch64.so.1` |
 
 macOS 27 is the only supported macOS release: the host floor and the artifact
 minimum are both 27.0, and macOS 26 and older are unsupported. Linux qualification
@@ -35,11 +35,34 @@ with a static CRT); no glibc symbols may appear in any payload. Do not claim a
 build-time gain without a clean before-and-after measurement.
 
 Linux artifacts need only musl at run time: the loader and
-`libc.musl-<arch>.so.1`. They do not need Alpine's `libgcc` package. C code
-links GCC's compiler builtins statically through `-static-libgcc`, which
-`sysconfig` passes on to third-party extension builds. Rust extensions
-statically link the LLVM libunwind shipped in the pinned Rust toolchain, so
-`libgcc_s.so.1` never enters `DT_NEEDED`.
+`libc.musl-<arch>.so.1`. They do not need Alpine's `libgcc` package, and no
+GCC-compiled object is linked into them. The Linux build image installs no
+GCC toolchain package: no `gcc`, `g++`, `libgcc-static`, `libstdc++-dev`,
+`binutils`, or Alpine LLVM. Alpine's `libgcc` and `libstdc++` stay installed
+only as run-time libraries of the build host's `python3`, `patchelf`, and the
+Rust host tools.
+
+- The compiler is the pinned laputa `llvm-prebuilt-musl` LLVM. A target clang
+  configuration file in the image selects compiler-rt builtins, no unwinder
+  library, the LLVM directory holding the static `libc++`, and the
+  `fortify-headers` include path for every clang invocation. The `clang++`
+  configuration adds the release's static `libc++abi` and `libunwind`, which
+  the C++ driver does not request itself. LLVM's `strip` is exposed as `strip`
+  for install rules that hardcode the command.
+  The release leaves `PT_GNU_STACK` at zero, so musl gives every extra thread
+  128 KiB and multithreaded `ld.lld` overflows on large ThinLTO links; the
+  image sets that segment to 8 MiB in every shipped tool before any build.
+- musl's `crt1.o` and `Scrt1.o` are rebuilt with that clang from the pinned
+  musl source, because Alpine compiles them with GCC. The `crtbegin`/`crtend`
+  objects are empty: musl needs neither.
+- Rust extensions rebuild `std` with `-Zbuild-std` and the `llvm-libunwind`
+  feature, linking the LLVM prebuilt's static `libunwind.a`. The prebuilt
+  `std` would request `-lgcc_s` and carries GCC-compiled compiler-rt and
+  libunwind objects.
+- `ctypes` loads shared objects through the musl loader.
+  `ctypes.util.find_library` returns `None` because it probes the host `gcc`,
+  `ld`, and `ldconfig`, none of which exist on a minimal musl runtime; callers
+  must name the soname.
 
 `backend/` keeps the vendored RTLS source, the RTLS provider patch, the
 hashing backend, and the replay procedures behind the official build. Keep its

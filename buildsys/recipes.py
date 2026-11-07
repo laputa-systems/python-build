@@ -70,6 +70,8 @@ class Toolchain:
             {
                 "CC": self.cc,
                 "CXX": self.cxx,
+                "CC_FOR_BUILD": self.cc,
+                "CXX_FOR_BUILD": self.cxx,
                 "AR": self.ar,
                 "RANLIB": self.ranlib,
                 "NM": self.nm,
@@ -131,7 +133,6 @@ class Toolchain:
         else:
             parts += [
                 "-fuse-ld=lld",
-                "-static-libgcc",
                 "-Wl,-z,noexecstack",
                 "-Wl,-z,relro",
                 "-Wl,-z,now",

@@ -498,7 +498,7 @@ def verify_base_prefix(prefix: Path, run_dir: Path) -> None:
         linked = {
             image: output
             for image in images
-            if (output := subprocess.run(["readelf", "-dW", str(image)], capture_output=True, text=True, check=True).stdout)
+            if (output := subprocess.run(["llvm-readelf", "-dW", str(image)], capture_output=True, text=True, check=True).stdout)
             and any(is_openssl_dependency(line.split("[")[-1].rstrip("]")) for line in output.splitlines() if "(NEEDED)" in line)
         }
     else:
@@ -822,6 +822,8 @@ def fetch_rust_inputs(
     run_dir: Path,
     hashing_source: Path,
     cargo: Path,
+    *,
+    build_std_target: str | None,
 ) -> None:
     rtls_source, hashing_source = validate_adapter_sources(hashing_source)
     checkout = stage_rtls_source(rtls_source, run_dir)
@@ -860,8 +862,13 @@ def fetch_rust_inputs(
         ("hashing", hashing_build / "Cargo.toml"),
     )
     for name, manifest in manifests:
+        build_std = (
+            ()
+            if build_std_target is None
+            else ("--target", build_std_target, LINUX_RUST_BUILD_STD[0])
+        )
         result = subprocess.run(
-            [str(cargo), "fetch", "--locked", "--manifest-path", str(manifest)],
+            [str(cargo), "fetch", "--locked", "--manifest-path", str(manifest), *build_std],
             cwd=manifest.parent,
             env=environment,
             capture_output=True,
@@ -904,21 +911,24 @@ def require_fetched_rust_inputs(
     return checkout, hashing_build
 
 
+LINUX_RUST_BUILD_STD = (
+    "-Zbuild-std=std,panic_unwind",
+    "-Zbuild-std-features=panic-unwind,backtrace,llvm-libunwind",
+)
+
+
 def rust_static_unwinder_directory(run_dir: Path, target) -> Path:
     return run_dir / "rust-static-unwinder" / target.triple
 
 
-def rust_static_unwinder(rustc: Path, target, run_dir: Path) -> Path:
-    sysroot = subprocess.run(
-        [str(rustc), "--print", "sysroot"],
+def rust_static_unwinder(clang: str, target, run_dir: Path) -> Path:
+    resource_directory = subprocess.run(
+        [clang, "-print-resource-dir"],
         capture_output=True, text=True, timeout=60, check=True,
     ).stdout.strip()
-    archive = (
-        Path(sysroot) / "lib" / "rustlib" / target.triple / "lib"
-        / "self-contained" / "libunwind.a"
-    )
+    archive = Path(resource_directory).parents[1] / "libunwind.a"
     if not archive.is_file():
-        raise BuildError(f"locked Rust toolchain has no LLVM libunwind for {target.triple}: {archive}")
+        raise BuildError(f"locked LLVM toolchain has no static libunwind: {archive}")
     directory = rust_static_unwinder_directory(run_dir, target)
     directory.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(archive, directory / "libunwind.a")
@@ -929,10 +939,10 @@ def rust_flags(target, *, rtls: bool, static_unwinder: Path | None = None) -> li
     # Rust extensions are cdylib/proc-macro artifacts, and on a musl host
     # those crate types REQUIRE the dynamic CRT: rustc refuses to emit them
     # with a static CRT ("does not support these crate types", reproduced
-    # locally). With `-crt-static`, libstd's `unwind` crate requests
-    # `-lgcc_s`, which minimal musl systems do not provide. The toolchain's
-    # LLVM libunwind is linked statically as a local native library, ahead of
-    # that request, so `--as-needed` drops libgcc_s from DT_NEEDED.
+    # locally). The prebuilt libstd then requests `-lgcc_s` and carries
+    # GCC-compiled compiler-rt and libunwind objects, so Linux extensions
+    # rebuild std with `llvm-libunwind` (LINUX_RUST_BUILD_STD), which links
+    # the locked LLVM's static libunwind from `static_unwinder` instead.
     if target.triple in (LINUX_X86_64_TRIPLE, LINUX_AARCH64_TRIPLE):
         if static_unwinder is None:
             raise BuildError(f"{target.triple} Rust extensions require the static LLVM unwinder")
@@ -941,7 +951,7 @@ def rust_flags(target, *, rtls: bool, static_unwinder: Path | None = None) -> li
         else:
             cpu = ["-C", "target-cpu=generic", "-C", "target-feature=-crt-static,+aes,+sha2,+neon"]
         return [*cpu,
-                "-L", f"native={static_unwinder}", "-l", "static=unwind",
+                "-L", f"native={static_unwinder}",
                 "-C", "link-arg=-fuse-ld=lld", "-C", "link-arg=-Wl,-z,noexecstack",
                 "-C", "link-arg=-Wl,-z,relro", "-C", "link-arg=-Wl,-z,now"]
     cpu_flag = target.cpu_baseline_cflag
@@ -976,7 +986,7 @@ def build_rust_extension(
     rustflags = rust_flags(
         target,
         rtls=rtls,
-        static_unwinder=None if target.is_macos else rust_static_unwinder(rustc, target, run_dir),
+        static_unwinder=None if target.is_macos else rust_static_unwinder(toolchain.cc, target, run_dir),
     )
     environment = os.environ.copy()
     linker_environment_key = (
@@ -1039,6 +1049,8 @@ def build_rust_extension(
             str(manifest),
         )
     )
+    if not target.is_macos:
+        command.extend(("--target", target.triple, *LINUX_RUST_BUILD_STD))
     try:
         run(
             command,
@@ -1051,7 +1063,11 @@ def build_rust_extension(
     suffix = "dylib" if target.is_macos else "so"
     extension_name = f"lib_rustls.{suffix}" if rtls else f"lib_hashlib_graviola.{suffix}"
     profile_directory = "release" if release else "debug"
-    extension = target_dir / profile_directory / extension_name
+    extension = (
+        target_dir / profile_directory / extension_name
+        if target.is_macos
+        else target_dir / target.triple / profile_directory / extension_name
+    )
     if not extension.is_file():
         raise BuildError(f"Rust {name} extension is missing: {extension}")
     return extension
@@ -1419,8 +1435,8 @@ def verify_linux_overlay(prefix: Path, run_dir: Path, target) -> None:
         if any((stdlib / "lib-dynload").glob(f"{name}.cpython-*.so")):
             raise BuildError(f"candidate contains the disabled native {name}")
     for image in find_elfs(prefix):
-        header = subprocess.run(["readelf", "-hW", str(image)], capture_output=True, text=True, check=True).stdout
-        dynamic = subprocess.run(["readelf", "-dW", str(image)], capture_output=True, text=True, check=True).stdout
+        header = subprocess.run(["llvm-readelf", "-hW", str(image)], capture_output=True, text=True, check=True).stdout
+        dynamic = subprocess.run(["llvm-readelf", "-dW", str(image)], capture_output=True, text=True, check=True).stdout
         tags = dynamic_tags(dynamic)
         if not machine_report(header, target.machine)["ok"]:
             raise BuildError(f"candidate has a non-{target.machine} ELF image: {image}")
@@ -1451,7 +1467,7 @@ def write_linux_receipt(run_dir: Path, target, toolchain, isolation: dict, comma
 
     compiler = {}
     for name in ("cc", "cxx", "ar", "ranlib", "ld", "nm", "strip"):
-        path = Path(shutil.which(getattr(toolchain, name)) or getattr(toolchain, name)).resolve()
+        path = Path(shutil.which(getattr(toolchain, name)) or getattr(toolchain, name))
         result = subprocess.run([str(path), "--version"], capture_output=True, text=True, check=True)
         compiler[name] = {"path": str(path), "version": result.stdout.strip()}
     logs = {}
@@ -1521,7 +1537,7 @@ def run_linux(args, target, toolchain) -> int:
         if args.prefix is not None:
             raise BuildError("fetch does not accept --prefix")
         cargo, _, _ = rust_toolchain()
-        fetch_rust_inputs(run_dir, args.hashing_source, cargo)
+        fetch_rust_inputs(run_dir, args.hashing_source, cargo, build_std_target=target.triple)
         return 0
     isolation = linux_isolation()
     linux_cpu_features(target)
@@ -1712,7 +1728,7 @@ def main(argv: list[str] | None = None) -> int:
             run_dir.mkdir(parents=True, exist_ok=True)
             _, hashing_source = validate_adapter_sources(args.hashing_source)
             cargo, _, _ = rust_toolchain()
-            fetch_rust_inputs(run_dir, hashing_source, cargo)
+            fetch_rust_inputs(run_dir, hashing_source, cargo, build_std_target=None)
             print(f"FETCHED no-OpenSSL Rust inputs -> {run_dir}")
             return 0
 

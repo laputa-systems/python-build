@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
 import urllib.request
 import uuid
 from contextlib import contextmanager
@@ -16,8 +17,10 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(REPO))
 
 from artifact_layout import ARCHIVE_NAME, MANIFEST_NAME, REPORT_NAME
+from buildsys.inputs import input_sources
 
 ARCH_CONFIGS = {
     "aarch64-unknown-linux-musl": {
@@ -262,17 +265,25 @@ def download_asset(item: dict, path: Path) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.part")
-    digest = hashlib.sha256()
-    size = 0
+    failures = []
     try:
-        with urllib.request.urlopen(item["url"], timeout=60) as response, temporary.open("wb") as output:
-            while chunk := response.read(CHUNK_SIZE):
-                output.write(chunk)
-                digest.update(chunk)
-                size += len(chunk)
-        if digest.hexdigest() != expected_hash or (expected_size is not None and size != expected_size):
-            raise DockerBuildError(f"downloaded bytes do not match the lock: {item['url']}")
-        os.replace(temporary, path)
+        for url in input_sources(expected_hash, item["url"]):
+            digest = hashlib.sha256()
+            size = 0
+            try:
+                with urllib.request.urlopen(url, timeout=60) as response, temporary.open("wb") as output:
+                    while chunk := response.read(CHUNK_SIZE):
+                        output.write(chunk)
+                        digest.update(chunk)
+                        size += len(chunk)
+            except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
+                failures.append(f"{url}: {error}")
+                continue
+            if digest.hexdigest() != expected_hash or (expected_size is not None and size != expected_size):
+                raise DockerBuildError(f"downloaded bytes do not match the lock: {url}")
+            os.replace(temporary, path)
+            return
+        raise DockerBuildError("no source served the locked bytes: " + "; ".join(failures))
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -328,6 +339,26 @@ def base_package_paths(common: Path, bootstrap: dict) -> list[tuple[dict, Path]]
     return result
 
 
+def toolchain_input_paths(common: Path, bootstrap: dict) -> list[tuple[str, Path]]:
+    section = bootstrap["linux_toolchain"]
+    entries = (
+        (section["llvm"]["archives"][MACHINE], ".tar.xz"),
+        (section["musl_crt_source"], ".tar.gz"),
+    )
+    cache = common / ".cache" / "bootstrap" / "toolchain" / DOCKER_ARCH
+    require_no_symlink_below(common, cache)
+    result = []
+    for entry, suffix in entries:
+        name = f"{entry['sha256']}{suffix}"
+        path = cache / name
+        if not verify_file(path, entry["sha256"], entry["size"]):
+            raise DockerBuildError(
+                f"locked toolchain input is missing or invalid at {path}; run build.py fetch --target {TARGET}"
+            )
+        result.append((name, path))
+    return result
+
+
 def image_info(image: str) -> dict:
     output = checked_run(["docker", "image", "inspect", image, "--format", "{{json .}}"])
     try:
@@ -344,11 +375,14 @@ def prepare_toolchain_image(
 ) -> tuple[str, dict, dict]:
     common = common_root()
     package_paths = base_package_paths(common, bootstrap)
+    toolchain_paths = toolchain_input_paths(common, bootstrap)
     base_material = {
         "dockerfile": sha256_file(REPO / "Dockerfile"),
         "bootstrap_lock": sha256_file(REPO / "bootstrap.lock.json"),
         "targets": sha256_file(REPO / "buildsys" / "targets.py"),
+        "stack_patch": sha256_file(REPO / "build" / "patch_llvm_stack.py"),
         "apk_closure": sorted(item[0]["sha256"] for item in package_paths),
+        "toolchain_inputs": sorted(name for name, _ in toolchain_paths),
     }
     base_hash = canonical_digest(base_material)
     base_tag = f"python-build-rtls-{DOCKER_ARCH}-base:{base_hash[:16]}"
@@ -361,10 +395,16 @@ def prepare_toolchain_image(
             shutil.copy2(REPO / "bootstrap.lock.json", context / "bootstrap.lock.json")
             (context / "buildsys").mkdir()
             shutil.copy2(REPO / "buildsys" / "targets.py", context / "buildsys" / "targets.py")
+            (context / "build").mkdir()
+            shutil.copy2(REPO / "build" / "patch_llvm_stack.py", context / "build" / "patch_llvm_stack.py")
             apk_dir = context / ".cache" / "bootstrap" / "apk" / APK_ARCH
             apk_dir.mkdir(parents=True)
             for entry, path in package_paths:
                 shutil.copy2(path, apk_dir / f"{entry['sha256']}.apk")
+            toolchain_dir = context / ".cache" / "bootstrap" / "toolchain" / APK_ARCH
+            toolchain_dir.mkdir(parents=True)
+            for name, path in toolchain_paths:
+                shutil.copy2(path, toolchain_dir / name)
             (context / ".dockerignore").write_text("")
             subprocess.run(
                 ["docker", "pull", "--platform", DOCKER_PLATFORM, f"alpine@{locked_digest}"],

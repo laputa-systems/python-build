@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from buildsys.elf import (
+    compiler_comment_report,
     dynamic_relocation_report,
     dynamic_tags,
     full_relro_report,
@@ -212,6 +213,32 @@ class HardeningReportTests(unittest.TestCase):
 
         self.assertFalse(missing_fortify["ok"])
         self.assertFalse(missing_guard["ok"])
+
+
+class CompilerCommentTests(unittest.TestCase):
+    def test_llvm_only_objects_pass(self) -> None:
+        report = compiler_comment_report(
+            "String dump of section '.comment':\n"
+            "[     0] rustc version 1.100.0-nightly (574ff7d98 2026-09-14)\n"
+            "[    36] clang version 23.1.0-rc2\n"
+            "[    4f] Linker: LLD 23.1.0\n"
+        )
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["gcc_objects"], [])
+
+    def test_gcc_stamped_objects_fail(self) -> None:
+        for stamp in ("GCC: (Alpine 15.2.0) 15.2.0", "GCC: (GNU) 9.4.0"):
+            with self.subTest(stamp=stamp):
+                report = compiler_comment_report(
+                    "String dump of section '.comment':\n"
+                    "[     0] clang version 23.1.0-rc2\n"
+                    f"[    1d] {stamp}\n"
+                )
+                self.assertFalse(report["ok"])
+                self.assertEqual(report["gcc_objects"], [stamp])
+
+    def test_missing_comment_section_has_no_gcc_evidence(self) -> None:
+        self.assertTrue(compiler_comment_report("")["ok"])
 
 
 if __name__ == "__main__":
