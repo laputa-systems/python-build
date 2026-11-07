@@ -90,9 +90,9 @@ def ensure_release() -> None:
     subprocess.run(
         ["gh", "release", "create", INPUT_MIRROR_RELEASE, "--repo", INPUT_MIRROR_REPOSITORY,
          "--prerelease", "--title", "Pinned build inputs",
-         "--notes", "Content-addressed copies of every pinned build input. "
-                    "Each asset is named by the SHA-256 recorded in the repository locks; "
-                    "builds verify the bytes against the lock before use."],
+         "--notes", ("Content-addressed copies of every pinned build input. "
+                     "Each asset is named by the SHA-256 recorded in the repository locks; "
+                     "builds verify the bytes against the lock before use.")],
         check=True,
     )
 

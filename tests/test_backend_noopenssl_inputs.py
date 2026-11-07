@@ -103,9 +103,10 @@ class RustLinkHardeningTests(unittest.TestCase):
             "x86_64-unknown-linux-musl",
             "aarch64-unknown-linux-musl",
         ):
-            with self.subTest(triple=triple):
-                with self.assertRaisesRegex(DRIVER.BuildError, "static LLVM unwinder"):
-                    DRIVER.rust_flags(TARGETS[triple], rtls=False)
+            with self.subTest(triple=triple), self.assertRaisesRegex(
+                DRIVER.BuildError, "static LLVM unwinder"
+            ):
+                DRIVER.rust_flags(TARGETS[triple], rtls=False)
 
 
 if __name__ == "__main__":

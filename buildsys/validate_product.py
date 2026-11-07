@@ -25,8 +25,8 @@ import textwrap
 from pathlib import Path
 
 from . import macho
-from .elf import ELF_READER
 from .bootstrap import load_macos_toolchain
+from .elf import ELF_READER
 from .package import copy_product_tree
 from .product import PRODUCT
 from .product_process import product_environment, run_product_process
