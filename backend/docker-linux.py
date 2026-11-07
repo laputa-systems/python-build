@@ -523,6 +523,7 @@ def create_container(
         raise DockerBuildError(f"invalid container uid:gid: {execution_user}")
     argv.extend(("--user", execution_user))
     argv.extend(("--cap-drop", "ALL"))
+    argv.extend(("--security-opt", f"seccomp={REPO / '.work' / 'tmp' / 'seccomp-rds.json'}"))
     if any(re.fullmatch(r"[A-Z][A-Z0-9_]*", capability) is None for capability in capabilities):
         raise DockerBuildError(f"invalid container capability set: {capabilities!r}")
     for capability in capabilities:
