@@ -190,7 +190,11 @@ def audit_openssl_symbols(prefix: Path, target) -> dict:
     from buildsys import macho
     from buildsys.relocate import find_elfs
 
-    nm = "/usr/bin/nm" if target.is_macos else shutil.which("nm")
+    nm = (
+        "/usr/bin/nm"
+        if target.is_macos
+        else (shutil.which("llvm-nm") or shutil.which("nm"))
+    )
     if nm is None:
         return check_result(False, error="native nm symbol tool is missing")
     if target.is_macos:
