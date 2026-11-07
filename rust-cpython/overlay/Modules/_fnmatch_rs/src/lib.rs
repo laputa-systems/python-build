@@ -2,7 +2,7 @@
 
 extern crate alloc;
 
-use alloc::collections::{BTreeMap, VecDeque};
+use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -19,12 +19,13 @@ use cpython_binding::ffi::{
 };
 use cpython_binding::module::PER_INTERPRETER_GIL;
 use cpython_binding::{Module, fastcall, method_table_end};
+use hashbrown::HashMap;
 
 mod heap;
 
 const CACHE_LIMIT: usize = 32_768;
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 enum PatternKey {
     Text(Vec<u32>),
     Bytes(Vec<u8>),
@@ -57,14 +58,14 @@ struct Pattern {
 }
 
 struct PatternCache {
-    entries: BTreeMap<PatternKey, Arc<Pattern>>,
+    entries: HashMap<PatternKey, Arc<Pattern>>,
     insertion_order: VecDeque<PatternKey>,
 }
 
 impl PatternCache {
     fn new() -> Self {
         Self {
-            entries: BTreeMap::new(),
+            entries: HashMap::new(),
             insertion_order: VecDeque::new(),
         }
     }

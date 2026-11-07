@@ -6,6 +6,7 @@ rust-version.workspace = true
 
 [dependencies]
 cpython-binding = { path = "../cpython-binding", features = ["abort-on-panic"] }
+hashbrown = { version = "=0.17.1", default-features = false, features = ["default-hasher"] }
 
 [build-dependencies]
 cpython-build-helper = { path = "../cpython-build-helper" }
