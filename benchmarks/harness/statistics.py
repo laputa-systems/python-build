@@ -14,12 +14,12 @@ import statistics as std_statistics
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from .process import KERNEL_REGION_CPU_COVERAGE
 from .models import (
     MEMORY_METRICS,
     RESULT_SCHEMA_VERSION,
     validate_workload_result,
 )
+from .process import KERNEL_REGION_CPU_COVERAGE
 
 PAGE_SIZE_FLOOR_BYTES = 4096
 TIMING_RESOLUTION_FLOOR_SECONDS = 0.001

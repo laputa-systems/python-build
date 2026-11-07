@@ -199,9 +199,9 @@ class JitConfigurationTests(unittest.TestCase):
             llvm_version="23.1.2", llvm_archive_root="LLVM-root",
             llvm_input=lambda: SimpleNamespace(sha256="b" * 64))
         with mock.patch.object(perf.lb, "CACHE_ROOT", root), \
-                mock.patch.object(perf.lb, "WORK", root / "work"):
-            with self.assertRaisesRegex(perf.lb.LaneError, "archive is missing"):
-                perf.lb._jit_llvm_tools(toolchain)
+                mock.patch.object(perf.lb, "WORK", root / "work"), \
+                self.assertRaisesRegex(perf.lb.LaneError, "archive is missing"):
+            perf.lb._jit_llvm_tools(toolchain)
 
     def test_a_complete_jit_build_and_a_complete_no_jit_build_verify(self) -> None:
         self.verify(True, '{"available": true, "enabled": true, "active": true}')

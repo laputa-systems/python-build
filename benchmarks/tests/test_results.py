@@ -7,12 +7,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from benchmarks.harness.process import KERNEL_REGION_CPU_COVERAGE, MAC_REAPED_CPU_COVERAGE
 from benchmarks.harness.models import (
     ResultSchemaError,
     result_from_json,
     result_to_json,
     summary_from_json,
+)
+from benchmarks.harness.process import (
+    KERNEL_REGION_CPU_COVERAGE,
+    MAC_REAPED_CPU_COVERAGE,
 )
 from benchmarks.harness.report import build_summary, render_summary, save_summary
 from benchmarks.harness.statistics import (

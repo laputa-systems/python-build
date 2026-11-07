@@ -26,7 +26,6 @@ import json
 import os
 import random
 import subprocess
-import sys
 import tempfile
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -183,7 +182,7 @@ def _statement(rng: random.Random, writer: _Writer, index: int, features: set[st
         _clamp(writer, target)
     elif kind == "compare":
         writer.line(f"if {left} {rng.choice(COMPARE)} {right}:")
-        writer.line(f"    hits += 1")
+        writer.line("    hits += 1")
     elif kind == "cond":
         writer.line(f"if k % {rng.randint(2, 7)} == {rng.randint(0, 1)}:")
         writer.depth += 1
@@ -365,7 +364,7 @@ def batch_command(python: Path, source: Path, jit: bool) -> tuple[list[str], dic
 
 def _run_batch(python: Path, source: Path, jit: bool) -> str:
     argv, env = batch_command(python, source, jit)
-    completed = subprocess.run(argv, env=env, capture_output=True,
+    completed = subprocess.run(argv, env=env, capture_output=True, check=False,
                                text=True, timeout=BATCH_TIMEOUT_SECONDS)
     if completed.returncode != 0:
         raise RuntimeError(f"{source.name} exited {completed.returncode} with "

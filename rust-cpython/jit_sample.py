@@ -147,9 +147,12 @@ def render(result: Attribution) -> str:
     for (_, _, _, _, name), count in result.uops.items():
         uop_totals[re.sub(r'_r[0-3][0-3]$', '', name)] += count
     coverage = 100 * result.named_samples / result.jit_samples if result.jit_samples else 0
-    lines = [f'SAMPLES total={result.total_samples} jit={result.jit_samples} '
-             f'named={result.named_samples} unresolved={result.unresolved_samples} '
-             f'unknown={result.unknown_samples} coverage={coverage:.1f}%', 'UOPS']
+    lines = [
+        (f'SAMPLES total={result.total_samples} jit={result.jit_samples} '
+         f'named={result.named_samples} unresolved={result.unresolved_samples} '
+         f'unknown={result.unknown_samples} coverage={coverage:.1f}%'),
+        'UOPS',
+    ]
     for name, count in uop_totals.most_common():
         lines.append(f'{count:7d} {100 * count / result.total_samples:6.2f}% {name}')
     lines.append('RUNTIME')

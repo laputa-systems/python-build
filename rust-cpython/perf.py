@@ -2386,6 +2386,7 @@ def profile(*, ref: str, workload: str | None, module: str | None, tool: str, it
             print(report.read_text())
         elif jit_map:
             import ast
+
             import jit_sample
             output = _sample_jit_workload(python, workload, iterations or spec.iterations,
                                           seconds, env, report)
