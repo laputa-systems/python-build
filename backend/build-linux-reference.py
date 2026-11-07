@@ -191,15 +191,16 @@ def reference_toolchain(target: Target, jobs: int) -> LinuxReferenceToolchain:
         toolchain.ranlib,
         toolchain.make,
         "ld.lld",
-        "readelf",
+        "llvm-readelf",
     ):
         if shutil.which(command) is None:
             raise ReferenceBuildError(f"locked Linux build tool is missing: {command}")
     clang = subprocess.run(
         [toolchain.cc, "--version"], capture_output=True, text=True, check=True
     ).stdout
-    if not re.search(r"clang version 23\.1\.3(?:\s|\()", clang):
-        raise ReferenceBuildError(f"expected locked LLVM 23.1.3 clang, found {clang.splitlines()[0]!r}")
+    llvm_version = json.loads((REPO / "bootstrap.lock.json").read_text())["linux_toolchain"]["llvm"]["version"]
+    if not re.search(rf"clang version {re.escape(llvm_version)}(?:\s|\()", clang):
+        raise ReferenceBuildError(f"expected locked LLVM {llvm_version} clang, found {clang.splitlines()[0]!r}")
     linker = subprocess.run(
         ["ld.lld", "--version"], capture_output=True, text=True, check=True
     ).stdout.strip().splitlines()[0]
@@ -270,7 +271,7 @@ def verify_thin_lto(toolchain: LinuxReferenceToolchain, target: Target, run_dir:
             f"ThinLTO smoke binary failed: rc={result.returncode} output={result.stdout!r}"
         )
     header = subprocess.run(
-        ["readelf", "-h", str(binary)], capture_output=True, text=True, check=True
+        ["llvm-readelf", "-h", str(binary)], capture_output=True, text=True, check=True
     ).stdout
     machine = machine_report(header, target.machine)
     if not machine["ok"]:
@@ -589,7 +590,7 @@ def verify_reference_runtime(prefix: Path, run_dir: Path) -> None:
     for name in ("_ssl", "_hashlib"):
         extension = Path(report["ssl_extension"] if name == "_ssl" else report["hashlib_extension"])
         dynamic = subprocess.run(
-            ["readelf", "-d", str(extension)], capture_output=True, text=True, check=True
+            ["llvm-readelf", "-d", str(extension)], capture_output=True, text=True, check=True
         ).stdout
         tags = dynamic_tags(dynamic)
         if any("libssl.so" in library or "libcrypto.so" in library for library in tags["needed"]):

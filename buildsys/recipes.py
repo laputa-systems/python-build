@@ -70,6 +70,8 @@ class Toolchain:
             {
                 "CC": self.cc,
                 "CXX": self.cxx,
+                "CC_FOR_BUILD": self.cc,
+                "CXX_FOR_BUILD": self.cxx,
                 "AR": self.ar,
                 "RANLIB": self.ranlib,
                 "NM": self.nm,
@@ -129,8 +131,6 @@ class Toolchain:
         if self.is_macos:
             parts.append(f"-mmacosx-version-min={self.deployment_target}")
         else:
-            # macOS has no equivalent of these; they are ELF loader
-            # hardening and ELF build-id, not portable flags.
             parts += [
                 "-fuse-ld=lld",
                 "-Wl,-z,noexecstack",

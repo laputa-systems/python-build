@@ -14,8 +14,12 @@ relocation, extension and ABI3 loading, shared-library embedding, TLS,
 SQLite, compression, dbm, multiprocessing, ctypes, launchers, and removal of
 builder paths. Linux ELF validation requires ET_DYN interpreters, a read-only
 `PT_GNU_RELRO` segment with eager binding, non-executable stacks, no writable
-executable load segments, and no text relocations. It also verifies stack
-protector and fortify evidence. macOS executable Mach-O images must carry
+executable load segments, and no text relocations. Every ELF `DT_NEEDED`
+entry must be musl (`libc.musl-<arch>.so.1`) or a library resolved inside the
+product through `$ORIGIN`; `libgcc_s` and glibc are rejected whether requested
+or bundled. No ELF `.comment` may record a `GCC:` compiler, which rejects any
+GCC-compiled object, such as Alpine's crt files or libgcc members, linked into
+the product. It also verifies stack protector and fortify evidence. macOS executable Mach-O images must carry
 `MH_PIE`. Broad regression tests run on disposable pre-prune copies for all
 three targets.
 

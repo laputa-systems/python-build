@@ -252,6 +252,47 @@ class APKPackage:
 
 
 @dataclass(frozen=True)
+class PinnedArchive:
+    name: str
+    version: str
+    url: str
+    sha256: str
+    size: int
+    archive_root: str
+    suffix: str
+
+    def input(self, target: str) -> Input:
+        return Input(
+            name=self.name,
+            version=self.version,
+            url=self.url,
+            sha256=self.sha256,
+            size=self.size,
+            role="build-source",
+            target=target,
+            purpose="pinned offline Linux build toolchain",
+        )
+
+    @property
+    def filename(self) -> str:
+        return f"{self.sha256}{self.suffix}"
+
+
+@dataclass(frozen=True)
+class LinuxLLVM:
+    version: str
+    release: str
+    license: str
+    archives: dict[str, PinnedArchive]
+
+
+GCC_TOOLCHAIN_PACKAGE = re.compile(
+    r"gcc|g\+\+|gcc-.+|libgcc-static|libstdc\+\+-dev|binutils(-.+)?|build-base"
+    r"|compiler-rt|clang\d*(-.+)?|llvm\d*(-.+)?|lld\d*(-.+)?"
+)
+
+
+@dataclass(frozen=True)
 class LinuxBootstrap:
     release: str
     image_index_digest: str
@@ -260,6 +301,24 @@ class LinuxBootstrap:
     direct_packages: tuple[tuple[str, str], ...]
     base_packages: tuple[str, ...]
     apk_closure: dict[str, tuple[APKPackage, ...]]
+    llvm: LinuxLLVM
+
+
+def _pinned_archive(item: dict, where: str, *, name: str, version: str, suffix: str) -> PinnedArchive:
+    archive = PinnedArchive(
+        name=name,
+        version=version,
+        url=_require(item, "url", where),
+        sha256=_require(item, "sha256", where),
+        size=_require(item, "size", where),
+        archive_root=_require(item, "archive_root", where),
+        suffix=suffix,
+    )
+    if not re.fullmatch(r"[0-9a-f]{64}", archive.sha256) or not isinstance(archive.size, int):
+        raise BootstrapError(f"{where}: invalid digest or size")
+    if not archive.url.startswith("https://") or not archive.url.endswith(suffix):
+        raise BootstrapError(f"{where}: URL must be an https {suffix} archive")
+    return archive
 
 
 def _require(document: dict, key: str, where: str):
@@ -369,10 +428,30 @@ def load_linux_bootstrap(path: Path) -> LinuxBootstrap:
                     f"{alpine_arch}: direct package {name} must be {version}"
                 )
         closures[alpine_arch] = packages
-    direct_versions = dict(direct)
-    for name in ("clang23", "lld23", "llvm23"):
-        if direct_versions.get(name) != "23.1.3-r0":
-            raise BootstrapError(f"direct package {name} must be 23.1.3-r0")
+    for alpine_arch, packages in closures.items():
+        forbidden = sorted(
+            package.name for package in packages if GCC_TOOLCHAIN_PACKAGE.fullmatch(package.name)
+        )
+        if forbidden:
+            raise BootstrapError(f"{alpine_arch}: APK closure contains GCC or Alpine LLVM toolchain packages: {forbidden}")
+    llvm_data = _require(section, "llvm", "linux_toolchain")
+    llvm_version = _require(llvm_data, "version", "linux_toolchain.llvm")
+    archives_data = _require(llvm_data, "archives", "linux_toolchain.llvm")
+    llvm = LinuxLLVM(
+        version=llvm_version,
+        release=_require(llvm_data, "release", "linux_toolchain.llvm"),
+        license=_require(llvm_data, "license", "linux_toolchain.llvm"),
+        archives={
+            alpine_arch: _pinned_archive(
+                _require(archives_data, alpine_arch, "linux_toolchain.llvm.archives"),
+                f"linux_toolchain.llvm.archives.{alpine_arch}",
+                name=f"llvm-musl-{alpine_arch}", version=llvm_version, suffix=".tar.xz",
+            )
+            for alpine_arch in ("x86_64", "aarch64")
+        },
+    )
+    if not re.fullmatch(r"23\.\d+\.\d+(-rc\d+)?", llvm.version):
+        raise BootstrapError(f"linux_toolchain.llvm must be LLVM 23, found {llvm.version}")
     base_packages = tuple(_require(section, "base_packages", "linux_toolchain"))
     if any(not re.fullmatch(r"[A-Za-z0-9+_.-]+=[A-Za-z0-9+_.-]+", entry) for entry in base_packages):
         raise BootstrapError("linux_toolchain.base_packages is malformed")
@@ -387,6 +466,7 @@ def load_linux_bootstrap(path: Path) -> LinuxBootstrap:
         direct_packages=direct,
         base_packages=base_packages,
         apk_closure=closures,
+        llvm=llvm,
     )
 
 

@@ -13,12 +13,26 @@ import os
 import shutil
 import tarfile
 import tempfile
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
 ROLES = ("source", "build-source", "reference", "test")
 _CHUNK = 1 << 20
+INPUT_MIRROR_REPOSITORY = "laputa-systems/python-build"
+INPUT_MIRROR_RELEASE = "bootstrap-inputs"
+
+
+def mirror_url(sha256: str) -> str:
+    return (
+        f"https://github.com/{INPUT_MIRROR_REPOSITORY}/releases/download/"
+        f"{INPUT_MIRROR_RELEASE}/{sha256}"
+    )
+
+
+def input_sources(sha256: str, upstream: str) -> tuple[str, str]:
+    return mirror_url(sha256), upstream
 
 
 class InputError(Exception):
@@ -181,11 +195,18 @@ class Cache:
             dir=self.root, suffix=".download", delete=False
         ) as handle:
             staged = Path(handle.name)
+        failures = []
         try:
-            request = urllib.request.Request(input_.url, headers={"User-Agent": "python-build-m1/1.0"})
-            with urllib.request.urlopen(request, timeout=timeout) as response, staged.open("wb") as out:
-                shutil.copyfileobj(response, out, _CHUNK)
-            return self.store(staged, input_)
+            for url in input_sources(input_.sha256, input_.url):
+                request = urllib.request.Request(url, headers={"User-Agent": "python-build-m1/1.0"})
+                try:
+                    with urllib.request.urlopen(request, timeout=timeout) as response, staged.open("wb") as out:
+                        shutil.copyfileobj(response, out, _CHUNK)
+                except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
+                    failures.append(f"{url}: {error}")
+                    continue
+                return self.store(staged, input_)
+            raise InputError(f"{input_.name}: no source served the pinned bytes: " + "; ".join(failures))
         finally:
             staged.unlink(missing_ok=True)
 

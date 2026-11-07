@@ -415,14 +415,7 @@ def _validate_linux_build_receipt(
         located_path = shutil.which(Path(tool["path"]).name)
         if located_path is None or Path(located_path).resolve() != resolved_path:
             raise QualificationDriverError(f"Linux build receipt {name} path is not the active tool in PATH")
-    pinned_clang = next(
-        (
-            package["version"].split("-r", 1)[0]
-            for package in bootstrap.get("linux_toolchain", {}).get("direct_packages", [])
-            if isinstance(package, dict) and package.get("name") == "clang23"
-        ),
-        None,
-    )
+    pinned_clang = bootstrap.get("linux_toolchain", {}).get("llvm", {}).get("version")
     if pinned_clang is None or pinned_clang not in compiler["cc"]["version"]:
         raise QualificationDriverError("Linux build receipt compiler differs from locked LLVM")
     isolation = receipt.get("isolation")
@@ -1643,15 +1636,7 @@ def build_experimental_manifest(
         pgo_summary = "CPython Linux PGO is disabled by product policy."
         pgo_receipt = {"verified": False, "enabled": False, "policy": "Linux PGO is disabled"}
         locked_clang = Path(linux_evidence["compiler"]["cc"]["path"]).resolve()
-        linux_packages = linux_evidence["bootstrap"]["linux_toolchain"]["direct_packages"]
-        llvm_versions = [
-            package["version"].split("-r", 1)[0]
-            for package in linux_packages
-            if package.get("name") == "clang23"
-        ]
-        if len(llvm_versions) != 1:
-            raise QualificationDriverError("Linux bootstrap lock has no unique clang23 version")
-        llvm_version = llvm_versions[0]
+        llvm_version = linux_evidence["bootstrap"]["linux_toolchain"]["llvm"]["version"]
         bootstrap_identity = linux_evidence["bootstrap_identity"]
         source_revision = linux_evidence["source_revision"]
         arch = linux_arch(target)
@@ -1755,6 +1740,11 @@ def build_experimental_manifest(
         for required_flag in required_flags:
             if required_flag not in extension_command:
                 raise QualificationDriverError(f"{name} extension command omits {required_flag}")
+        if not target.is_macos and not re.search(
+            rf"(?:^|\s)-L native=\S*/rust-static-unwinder/{re.escape(target.triple)}(?:\s|$)",
+            extension_command,
+        ):
+            raise QualificationDriverError(f"{name} extension command omits the static LLVM unwinder")
         if name == "rtls" and target.is_macos and "-C link-arg=dynamic_lookup" not in extension_command:
             raise QualificationDriverError("RTLS extension command omits its dynamic lookup link policy")
         rust_logs[name] = {
@@ -1827,8 +1817,10 @@ def build_experimental_manifest(
                 len(argv) < 2
                 or Path(argv[0]).resolve() != cargo.resolve()
                 or argv[1] != "build"
-                or not {"--release", "--verbose", "--offline", "--locked"}.issubset(argv)
-                or any(value == "--target" or value.startswith("--target=") for value in argv)
+                or not {"--release", "--verbose", "--offline", "--locked",
+                        *research_driver.LINUX_RUST_BUILD_STD}.issubset(argv)
+                or [argv[index + 1:index + 2] for index, value in enumerate(argv) if value == "--target"]
+                != [[target.triple]]
                 or manifest_index < 0
                 or manifest_index + 1 >= len(argv)
                 or Path(argv[manifest_index + 1]).resolve() != manifest.resolve()
@@ -1837,7 +1829,7 @@ def build_experimental_manifest(
             extension_command = rust_logs[name]["extension_command"]
             if (
                 str(rustc) not in extension_command
-                or re.search(r"(?:^|\s)--target(?:=|\s|$)", extension_command)
+                or not re.search(rf"(?:^|\s)--target[= ]{re.escape(target.triple)}(?:\s|$)", extension_command)
                 or (kache is not None and str(kache) not in extension_command)
             ):
                 raise QualificationDriverError(f"{name} compile log does not prove a native locked rustc build")

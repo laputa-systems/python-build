@@ -450,7 +450,8 @@ jobs:
             --env UV_PYTHON_CACHE_DIR \
             --env EXPECTED_PLATFORM=linux \
             "${{ matrix.runtime_image }}" sh -ec '
-              apk add --no-cache ca-certificates curl tar libgcc
+              apk add --no-cache ca-certificates curl tar
+              test -z "$(find / -xdev -name libgcc_s.so\* -print)"
               archive="uv-$UV_TARGET.tar.gz"
               curl --fail --location --output "/work/.work/uv-smoke/$archive" \
                 "https://releases.astral.sh/github/uv/releases/download/$UV_VERSION/$archive"
@@ -502,8 +503,8 @@ jobs:
           These archives are fully OpenSSL-free: TLS and hashing run on the
           RTLS/rustls-graviola backend with the modern TLS 1.2/1.3-only policy.
           No OpenSSL source enters the build, and no OpenSSL or glibc symbols
-          remain in the payload. Linux extensions link musl statically; the
-          only platform libraries are musl and libgcc.
+          remain in the payload. Linux artifacts need only musl at run time;
+          they do not require Alpine's libgcc package.
 
           CPU floors: Apple M1 (macOS 27 deployment minimum), x86-64 Broadwell,
           and ARMv8-A with crypto extensions (AES, PMULL, SHA2, ASIMD). The

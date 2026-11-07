@@ -5,20 +5,22 @@ ARG TARGETARCH
 FROM alpine-${TARGETARCH} AS toolchain
 ARG TARGETARCH
 COPY .cache/bootstrap/apk/${TARGETARCH}/ /opt/bootstrap/apk/
+COPY .cache/bootstrap/toolchain/${TARGETARCH}/ /opt/bootstrap/toolchain/
+COPY build/patch_llvm_stack.py /opt/bootstrap/patch_llvm_stack.py
 COPY bootstrap.lock.json /opt/bootstrap/bootstrap.lock.json
 
 RUN set -eu \
     && mkdir -p /opt/bootstrap \
     && cp /etc/alpine-release /opt/bootstrap/alpine-release \
     && apk info -v | sort > /opt/bootstrap/base-packages.txt \
-    && set -- /opt/bootstrap/apk/*.apk \
+    && set -- /opt/bootstrap/apk/*.apk /opt/bootstrap/toolchain/* \
     && [ -f "$1" ] \
-    && for apk in "$@"; do \
-        name="${apk##*/}"; \
-        expected="${name%.apk}"; \
-        actual="$(sha256sum "$apk")"; \
+    && for input in "$@"; do \
+        name="${input##*/}"; \
+        expected="${name%%.*}"; \
+        actual="$(sha256sum "$input")"; \
         actual="${actual%% *}"; \
-        [ "$actual" = "$expected" ] || { echo "APK digest mismatch: $name" >&2; exit 1; }; \
+        [ "$actual" = "$expected" ] || { echo "input digest mismatch: $name" >&2; exit 1; }; \
     done \
     && apk --no-network --repositories-file /dev/null add /opt/bootstrap/apk/*.apk \
     && apk info -v | sort > /opt/bootstrap/packages.txt \
@@ -33,26 +35,40 @@ assert set((root / 'base-packages.txt').read_text().splitlines()) == {name + '-'
 installed = set((root / 'packages.txt').read_text().splitlines()); \
 closure = {item['name']: item['version'] for item in lock['apk_closure'][arch]}; \
 expected = {name + '-' + version for name, version in (base | closure).items()}; \
-assert installed == expected, {'missing': sorted(expected - installed), 'extra': sorted(installed - expected)}" \
+assert installed == expected, {'missing': sorted(expected - installed), 'extra': sorted(installed - expected)}; \
+llvm = lock['llvm']['archives'][arch]; \
+assert {path.name for path in (root / 'toolchain').iterdir()} == {llvm['sha256'] + '.tar.xz'}; \
+(root / 'llvm-archive').write_text(llvm['sha256'] + '.tar.xz\n' + llvm['archive_root'] + '\n')" \
+    && for forbidden in gcc g++ cc c++ cpp as ld ld.bfd ld.gold; do \
+        ! command -v "$forbidden" >/dev/null || { echo "GCC toolchain command present: $forbidden" >&2; exit 1; }; \
+    done \
+    && [ ! -e /usr/lib/gcc ] \
+    && { read -r archive; read -r archive_root; } < /opt/bootstrap/llvm-archive \
+    && mkdir -p /opt/llvm /work/.work/tmp/llvm \
+    && tar -xJf "/opt/bootstrap/toolchain/$archive" -C /work/.work/tmp/llvm \
+    && [ "$(ls /work/.work/tmp/llvm)" = "$archive_root" ] \
+    && cp -a "/work/.work/tmp/llvm/$archive_root/." /opt/llvm/ \
+    && rm -rf /work/.work/tmp/llvm \
+    && triple="$(uname -m)-unknown-linux-musl" \
+    && [ "$(/opt/llvm/bin/clang -print-target-triple)" = "$triple" ] \
+    && python3 /opt/bootstrap/patch_llvm_stack.py /opt/llvm/bin \
+    && /opt/llvm/bin/llvm-readelf -lW /opt/llvm/bin/lld | grep -q 'GNU_STACK.*0x800000' \
+    && /opt/llvm/bin/llvm-readelf -lW /opt/llvm/bin/clang | grep -q 'GNU_STACK.*0x800000' \
+    && printf '%s\n' --rtlib=compiler-rt --unwindlib=none -L/opt/llvm/lib '-isystem /usr/include/fortify' \
+        > "/opt/llvm/bin/$triple.cfg" \
+    && printf '%s\n' -lc++abi -lunwind >> /opt/llvm/bin/clang++.cfg \
+    && ln -s llvm-strip /opt/llvm/bin/strip \
     && addgroup -g 1000 builder \
     && adduser -D -u 1000 -G builder builder \
     && mkdir -p /work/.cache \
     && mkdir -p /work/.work/tmp \
     && chown -R builder:builder /work
 
-RUN python3 -c "\
-import json, pathlib, platform, shutil; \
-root = pathlib.Path('/opt/bootstrap'); \
-arch = platform.machine(); \
-packages = [item for item in json.loads((root / 'bootstrap.lock.json').read_text())['linux_toolchain']['apk_closure'][arch] if item['name'] == 'libgcc']; \
-assert len(packages) == 1; \
-shutil.copyfile(root / 'apk' / (packages[0]['sha256'] + '.apk'), root / 'libgcc.apk')"
-
 COPY buildsys/targets.py /opt/bootstrap/targets.py
 
-ENV PATH="/usr/lib/llvm23/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+ENV PATH="/opt/llvm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
     CC=clang CXX=clang++ AR=llvm-ar RANLIB=llvm-ranlib \
-    LD=ld.lld NM=llvm-nm STRIP=llvm-strip \
+    LD=ld.lld NM=llvm-nm STRIP=llvm-strip READELF=llvm-readelf OBJCOPY=llvm-objcopy \
     HOME=/home/builder LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC \
     TMPDIR=/work/.work/tmp \
     PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 \
@@ -68,7 +84,9 @@ RUN MARCH="$(PYTHONPATH=/opt/bootstrap python3 -c 'from targets import native_ta
     && llvm-ar cr "$TMPDIR/liblto.a" "$TMPDIR/lto-library.o" \
     && clang -O3 $MARCH -flto=thin -fuse-ld=lld -Wl,-z,noexecstack "$TMPDIR/lto-main.c" "$TMPDIR/liblto.a" -o "$TMPDIR/lto-smoke" \
     && "$TMPDIR/lto-smoke" \
-    && readelf -l "$TMPDIR/lto-smoke" | grep "/lib/ld-musl-$(uname -m).so.1" \
+    && llvm-readelf -l "$TMPDIR/lto-smoke" | grep "/lib/ld-musl-$(uname -m).so.1" \
+    && [ "$(llvm-readelf -d "$TMPDIR/lto-smoke" | grep -c NEEDED)" = 1 ] \
+    && ! llvm-readelf -p .comment "$TMPDIR/lto-smoke" | grep -F 'GCC:' \
     && clang --version \
     && clang -print-resource-dir \
     && ld.lld --version \
@@ -109,10 +127,8 @@ RUN --network=none python3 build/package.py \
 FROM alpine-${TARGETARCH} AS runtime
 ARG TARGETARCH
 COPY --from=packaged /work/qualification/ /qualification/
-COPY --from=toolchain /opt/bootstrap/libgcc.apk /opt/bootstrap/libgcc.apk
 RUN set -eu \
- && apk --no-network --repositories-file /dev/null add /opt/bootstrap/libgcc.apk \
- && rm /opt/bootstrap/libgcc.apk \
+ && test -z "$(find / -xdev -name 'libgcc_s.so*' -print)" \
  && set -- /qualification/*.tar.gz \
  && [ -f "$1" ] \
  && [ "$#" -eq 1 ] \

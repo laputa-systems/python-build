@@ -12,7 +12,7 @@ _LOAD_TYPES = frozenset({"LOAD", "PT_LOAD"})
 _PROGRAM_FLAGS = re.compile(r"[RWE]+")
 _ELF_TYPE = re.compile(r"^\s*Type:\s+([A-Z]+)(?:\s+\([^)]*\))?\s*$", re.MULTILINE)
 _STACK_PROTECTOR_SYMBOL = re.compile(r"__stack_chk_fail(?:_local)?(?:@[^\s]+)?")
-_DYNAMIC_TAG = re.compile(r"\((NEEDED|RPATH|RUNPATH)\).*?\[([^\]]*)\]")
+_DYNAMIC_TAG = re.compile(r"\((NEEDED|SONAME|RPATH|RUNPATH)\).*?\[([^\]]*)\]")
 _DYNAMIC_RECORD = re.compile(r"^\s*0x[0-9a-fA-F]+\s+\(([^)]+)\)\s*(.*?)\s*$")
 
 
@@ -51,14 +51,36 @@ def pie_report(header: str) -> dict[str, object]:
 
 
 def dynamic_tags(dynamic: str) -> dict[str, list[str]]:
-    result = {"needed": [], "rpath": [], "runpath": []}
+    result = {"needed": [], "soname": [], "rpath": [], "runpath": []}
     for line in dynamic.splitlines():
         match = _DYNAMIC_TAG.search(line)
         if match is None:
             continue
         tag, value = match.groups()
-        result[{"NEEDED": "needed", "RPATH": "rpath", "RUNPATH": "runpath"}[tag]].append(value)
+        result[tag.lower()].append(value)
     return result
+
+
+ELF_READER = "llvm-readelf"
+_COMMENT_ENTRY = re.compile(r"^\s*\[\s*[0-9a-f]+\]\s+(.*?)\s*$")
+
+
+def compiler_comment_report(comment_dump: str) -> dict[str, object]:
+    entries = [
+        match.group(1)
+        for line in comment_dump.splitlines()
+        if (match := _COMMENT_ENTRY.match(line)) is not None
+    ]
+    gcc_objects = [entry for entry in entries if entry.startswith("GCC:")]
+    return {"ok": not gcc_objects, "compilers": entries, "gcc_objects": gcc_objects}
+
+
+def forbidden_runtime_libraries(names: list[str]) -> list[str]:
+    return [
+        name
+        for name in names
+        if name.startswith(("libc.so.6", "libgcc_s.so")) or "GLIBC" in name
+    ]
 
 
 def _program_header_records(

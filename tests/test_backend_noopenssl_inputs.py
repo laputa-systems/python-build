@@ -89,10 +89,23 @@ class RustLinkHardeningTests(unittest.TestCase):
             "aarch64-unknown-linux-musl",
         ):
             with self.subTest(triple=triple):
-                flags = DRIVER.rust_flags(TARGETS[triple], rtls=False)
+                flags = DRIVER.rust_flags(
+                    TARGETS[triple], rtls=False, static_unwinder=Path("/unwinder")
+                )
                 self.assertIn("-C", flags)
                 self.assertIn("link-arg=-Wl,-z,relro", flags)
                 self.assertIn("link-arg=-Wl,-z,now", flags)
+
+    def test_linux_extensions_cannot_fall_back_to_libgcc_s_unwinding(self):
+        from buildsys.targets import TARGETS
+
+        for triple in (
+            "x86_64-unknown-linux-musl",
+            "aarch64-unknown-linux-musl",
+        ):
+            with self.subTest(triple=triple):
+                with self.assertRaisesRegex(DRIVER.BuildError, "static LLVM unwinder"):
+                    DRIVER.rust_flags(TARGETS[triple], rtls=False)
 
 
 if __name__ == "__main__":

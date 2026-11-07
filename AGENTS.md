@@ -21,6 +21,8 @@ python3 build.py controller-test
 python3 build.py compare-reference --target <triple>
 python3 build.py reproduce --target aarch64-apple-darwin [--pgo-jobs N]
 python3 build/uvmirror.py --tag <tag> --repo <owner/repo>
+python3 build/relock_linux.py
+python3 build/mirror_inputs.py [--check]
 ```
 
 ## Invariants
@@ -29,7 +31,9 @@ python3 build/uvmirror.py --tag <tag> --repo <owner/repo>
   declared dependency closure.
 - Do not add platforms, production dependencies, product versions, or change
   public package/API contracts without an explicit scope decision.
-- Keep the payload OpenSSL-free and glibc-free.
+- Keep the payload OpenSSL-free, glibc-free, and GCC-free: no libgcc_s
+  dependency and no GCC-compiled object. The Linux build image carries no GCC
+  toolchain package.
 - A sealed build must identify the enforced network boundary; macOS
   `sandbox-exec` containment is weaker than a Linux container and is reported
   as such.

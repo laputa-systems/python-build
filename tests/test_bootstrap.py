@@ -15,6 +15,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from buildsys.bootstrap import (
+    GCC_TOOLCHAIN_PACKAGE,
     BootstrapError,
     XcodeFacts,
     _resolve_host_tool,
@@ -304,15 +305,14 @@ class LinuxBootstrapLockTests(unittest.TestCase):
     def test_repository_lock_has_complete_exact_architecture_closures(self) -> None:
         locked = load_linux_bootstrap(LOCK)
         self.assertEqual(locked.release, "3.25.0_alpha20260805")
-        self.assertEqual(len(locked.apk_closure["x86_64"]), 63)
-        self.assertEqual(len(locked.apk_closure["aarch64"]), 63)
         self.assertEqual(locked.images["amd64"].platform, "linux/amd64")
         self.assertEqual(locked.images["arm64"].platform, "linux/arm64")
+        self.assertEqual(locked.llvm.version, "23.1.5")
+        self.assertEqual(set(locked.llvm.archives), {"x86_64", "aarch64"})
         for packages in locked.apk_closure.values():
-            versions = {package.name: package.version for package in packages}
-            self.assertEqual(versions["clang23"], "23.1.3-r0")
-            self.assertEqual(versions["lld23"], "23.1.3-r0")
-            self.assertEqual(versions["llvm23"], "23.1.3-r0")
+            self.assertFalse(
+                [package.name for package in packages if GCC_TOOLCHAIN_PACKAGE.fullmatch(package.name)]
+            )
             for package in packages:
                 self.assertEqual(len(package.sha256), 64)
                 self.assertGreater(package.size, 0)
@@ -350,6 +350,34 @@ class LinuxBootstrapLockTests(unittest.TestCase):
             path = Path(temporary) / "lock.json"
             path.write_text(json.dumps(lock))
             with self.assertRaises(BootstrapError):
+                load_linux_bootstrap(path)
+
+    def test_gcc_or_alpine_llvm_toolchain_packages_are_rejected(self) -> None:
+        for name in ("gcc", "g++", "libgcc-static", "libstdc++-dev", "binutils", "build-base",
+                     "clang23", "llvm23-libs", "lld23", "compiler-rt"):
+            with self.subTest(name=name):
+                lock = json.loads(LOCK.read_text())
+                package = dict(lock["linux_toolchain"]["apk_closure"]["x86_64"][0])
+                package["name"] = name
+                package["url"] = package["url"].rsplit("/", 1)[0] + f"/{name}-{package['version']}.apk"
+                lock["linux_toolchain"]["apk_closure"]["x86_64"].append(package)
+                with tempfile.TemporaryDirectory() as temporary:
+                    path = Path(temporary) / "lock.json"
+                    path.write_text(json.dumps(lock))
+                    with self.assertRaisesRegex(BootstrapError, "GCC or Alpine LLVM"):
+                        load_linux_bootstrap(path)
+
+    def test_gcc_runtime_libraries_needed_by_host_tools_are_allowed(self) -> None:
+        for name in ("libgcc", "libstdc++"):
+            self.assertIsNone(GCC_TOOLCHAIN_PACKAGE.fullmatch(name))
+
+    def test_linux_llvm_must_be_llvm_23(self) -> None:
+        lock = json.loads(LOCK.read_text())
+        lock["linux_toolchain"]["llvm"]["version"] = "22.1.8"
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "lock.json"
+            path.write_text(json.dumps(lock))
+            with self.assertRaisesRegex(BootstrapError, "LLVM 23"):
                 load_linux_bootstrap(path)
 
 

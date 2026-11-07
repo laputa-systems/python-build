@@ -27,8 +27,9 @@ TRIPLES = {
     for triple, target in TARGETS.items()
 }
 CANONICAL_PREFIX = "https://github.com/astral-sh/python-build-standalone/releases/download"
+_BOOTSTRAP_LOCK = json.loads((Path(__file__).resolve().parents[1] / "bootstrap.lock.json").read_text())
 LLVM_VERSIONS = {
-    triple: "23.1.4" if target.is_macos else "23.1.3"
+    triple: _BOOTSTRAP_LOCK["macos_toolchain" if target.is_macos else "linux_toolchain"]["llvm"]["version"]
     for triple, target in TARGETS.items()
 }
 RELEASE_BUDGETS = Path(__file__).resolve().parents[1] / "release-budgets.json"

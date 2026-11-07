@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
 import urllib.request
 import uuid
 from contextlib import contextmanager
@@ -16,8 +17,10 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(REPO))
 
 from artifact_layout import ARCHIVE_NAME, MANIFEST_NAME, REPORT_NAME
+from buildsys.inputs import input_sources
 
 ARCH_CONFIGS = {
     "aarch64-unknown-linux-musl": {
@@ -262,17 +265,25 @@ def download_asset(item: dict, path: Path) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.part")
-    digest = hashlib.sha256()
-    size = 0
+    failures = []
     try:
-        with urllib.request.urlopen(item["url"], timeout=60) as response, temporary.open("wb") as output:
-            while chunk := response.read(CHUNK_SIZE):
-                output.write(chunk)
-                digest.update(chunk)
-                size += len(chunk)
-        if digest.hexdigest() != expected_hash or (expected_size is not None and size != expected_size):
-            raise DockerBuildError(f"downloaded bytes do not match the lock: {item['url']}")
-        os.replace(temporary, path)
+        for url in input_sources(expected_hash, item["url"]):
+            digest = hashlib.sha256()
+            size = 0
+            try:
+                with urllib.request.urlopen(url, timeout=60) as response, temporary.open("wb") as output:
+                    while chunk := response.read(CHUNK_SIZE):
+                        output.write(chunk)
+                        digest.update(chunk)
+                        size += len(chunk)
+            except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
+                failures.append(f"{url}: {error}")
+                continue
+            if digest.hexdigest() != expected_hash or (expected_size is not None and size != expected_size):
+                raise DockerBuildError(f"downloaded bytes do not match the lock: {url}")
+            os.replace(temporary, path)
+            return
+        raise DockerBuildError("no source served the locked bytes: " + "; ".join(failures))
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -328,6 +339,23 @@ def base_package_paths(common: Path, bootstrap: dict) -> list[tuple[dict, Path]]
     return result
 
 
+def toolchain_input_paths(common: Path, bootstrap: dict) -> list[tuple[str, Path]]:
+    section = bootstrap["linux_toolchain"]
+    entries = ((section["llvm"]["archives"][MACHINE], ".tar.xz"),)
+    cache = common / ".cache" / "bootstrap" / "toolchain" / DOCKER_ARCH
+    require_no_symlink_below(common, cache)
+    result = []
+    for entry, suffix in entries:
+        name = f"{entry['sha256']}{suffix}"
+        path = cache / name
+        if not verify_file(path, entry["sha256"], entry["size"]):
+            raise DockerBuildError(
+                f"locked toolchain input is missing or invalid at {path}; run build.py fetch --target {TARGET}"
+            )
+        result.append((name, path))
+    return result
+
+
 def image_info(image: str) -> dict:
     output = checked_run(["docker", "image", "inspect", image, "--format", "{{json .}}"])
     try:
@@ -344,11 +372,14 @@ def prepare_toolchain_image(
 ) -> tuple[str, dict, dict]:
     common = common_root()
     package_paths = base_package_paths(common, bootstrap)
+    toolchain_paths = toolchain_input_paths(common, bootstrap)
     base_material = {
         "dockerfile": sha256_file(REPO / "Dockerfile"),
         "bootstrap_lock": sha256_file(REPO / "bootstrap.lock.json"),
         "targets": sha256_file(REPO / "buildsys" / "targets.py"),
+        "stack_patch": sha256_file(REPO / "build" / "patch_llvm_stack.py"),
         "apk_closure": sorted(item[0]["sha256"] for item in package_paths),
+        "toolchain_inputs": sorted(name for name, _ in toolchain_paths),
     }
     base_hash = canonical_digest(base_material)
     base_tag = f"python-build-rtls-{DOCKER_ARCH}-base:{base_hash[:16]}"
@@ -361,10 +392,16 @@ def prepare_toolchain_image(
             shutil.copy2(REPO / "bootstrap.lock.json", context / "bootstrap.lock.json")
             (context / "buildsys").mkdir()
             shutil.copy2(REPO / "buildsys" / "targets.py", context / "buildsys" / "targets.py")
+            (context / "build").mkdir()
+            shutil.copy2(REPO / "build" / "patch_llvm_stack.py", context / "build" / "patch_llvm_stack.py")
             apk_dir = context / ".cache" / "bootstrap" / "apk" / APK_ARCH
             apk_dir.mkdir(parents=True)
             for entry, path in package_paths:
                 shutil.copy2(path, apk_dir / f"{entry['sha256']}.apk")
+            toolchain_dir = context / ".cache" / "bootstrap" / "toolchain" / APK_ARCH
+            toolchain_dir.mkdir(parents=True)
+            for name, path in toolchain_paths:
+                shutil.copy2(path, toolchain_dir / name)
             (context / ".dockerignore").write_text("")
             subprocess.run(
                 ["docker", "pull", "--platform", DOCKER_PLATFORM, f"alpine@{locked_digest}"],
@@ -486,6 +523,7 @@ def create_container(
         raise DockerBuildError(f"invalid container uid:gid: {execution_user}")
     argv.extend(("--user", execution_user))
     argv.extend(("--cap-drop", "ALL"))
+    argv.extend(("--security-opt", f"seccomp={REPO / '.work' / 'tmp' / 'seccomp-rds.json'}"))
     if any(re.fullmatch(r"[A-Z][A-Z0-9_]*", capability) is None for capability in capabilities):
         raise DockerBuildError(f"invalid container capability set: {capabilities!r}")
     for capability in capabilities:
@@ -789,17 +827,8 @@ def networked_fetch(
 
 
 def build_runtime_image(
-    run_dir: Path, locked_digest: str, candidate_archive: Path, bootstrap: dict
+    run_dir: Path, locked_digest: str, candidate_archive: Path
 ) -> tuple[str, dict, str]:
-    libgcc = next(
-        item for item in bootstrap["linux_toolchain"]["apk_closure"][MACHINE]
-        if item["name"] == "libgcc"
-    )
-    common = common_root()
-    libgcc_path = common / ".cache" / "bootstrap" / "apk" / DOCKER_ARCH / f"{libgcc['sha256']}.apk"
-    require_no_symlink_below(common, libgcc_path.parent)
-    if not verify_file(libgcc_path, libgcc["sha256"], libgcc["size"]):
-        raise DockerBuildError("locked libgcc APK is missing or invalid for the runtime image")
     if candidate_archive.is_symlink() or not candidate_archive.is_file():
         raise DockerBuildError("qualified candidate archive must be a regular file")
     archive_hash = sha256_file(candidate_archive)
@@ -807,7 +836,6 @@ def build_runtime_image(
         {
             "dockerfile": sha256_file(DOCKERFILE),
             "locked_digest": locked_digest,
-            "libgcc_sha256": libgcc["sha256"],
             "archive_sha256": archive_hash,
         }
     )
@@ -822,9 +850,6 @@ def build_runtime_image(
             lock_destination = context / "backend" / "linux-bootstrap.lock.json"
             lock_destination.parent.mkdir(parents=True)
             shutil.copy2(LOCK_PATH, lock_destination)
-            apk = context / ".cache" / "bootstrap" / "apk" / "libgcc.apk"
-            apk.parent.mkdir(parents=True)
-            shutil.copy2(libgcc_path, apk)
             archive = context / "qualification" / "candidate.tar.gz"
             archive.parent.mkdir()
             shutil.copy2(candidate_archive, archive)
@@ -836,7 +861,6 @@ def build_runtime_image(
                     "--build-arg", f"TOOLCHAIN_IMAGE=alpine@{locked_digest}",
                     "--build-arg", f"RUNTIME_BASE_IMAGE=alpine@{locked_digest}",
                     "--build-arg", f"LOCKED_IMAGE_DIGEST={locked_digest}",
-                    "--build-arg", f"LIBGCC_SHA256={libgcc['sha256']}",
                     "--build-arg", f"ARCHIVE_SHA256={archive_hash}",
                     "--tag", tag, "-f", str(context / "Dockerfile.linux"), str(context),
                 ],
@@ -1390,7 +1414,7 @@ def run_build_and_qualification(
             archive_name, manifest_name,
         )
         runtime_tag, runtime_image, archive_hash = build_runtime_image(
-            run_dir, locked_digest, archive, bootstrap
+            run_dir, locked_digest, archive
         )
         run_runtime_probe(
             run_dir, runtime_tag, runtime_image, archive_hash, revision, dirty, daemon, locked_digest,

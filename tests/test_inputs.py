@@ -4,6 +4,7 @@ import json
 import tarfile
 import tempfile
 import unittest
+import urllib.error
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
@@ -14,6 +15,7 @@ from buildsys.inputs import (
     InputError,
     identity,
     load_lock,
+    mirror_url,
     safe_extract,
 )
 
@@ -237,6 +239,68 @@ class CacheTests(unittest.TestCase):
             self.assertEqual(stored.read_bytes(), b"corrupt")
             with self.assertRaises(InputError):
                 cache.require(make_input())
+
+    def test_fetch_prefers_the_content_addressed_mirror(self):
+        requested = []
+
+        def urlopen(request, timeout):
+            requested.append(request.full_url)
+            return io.BytesIO(b"payload")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            cache = Cache(Path(temporary))
+            with patch("buildsys.inputs.urllib.request.urlopen", side_effect=urlopen):
+                fetched = cache.fetch(make_input())
+
+        self.assertEqual(requested, [mirror_url(make_input().sha256)])
+        self.assertEqual(fetched.name, f"{make_input().sha256}.blob")
+
+    def test_fetch_falls_back_to_upstream_when_the_mirror_lacks_the_object(self):
+        requested = []
+
+        def urlopen(request, timeout):
+            requested.append(request.full_url)
+            if request.full_url == mirror_url(make_input().sha256):
+                raise urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, None)
+            return io.BytesIO(b"payload")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            cache = Cache(Path(temporary))
+            with patch("buildsys.inputs.urllib.request.urlopen", side_effect=urlopen):
+                fetched = cache.fetch(make_input())
+            self.assertEqual(fetched.read_bytes(), b"payload")
+
+        self.assertEqual(requested, [mirror_url(make_input().sha256), make_input().url])
+
+    def test_fetch_rejects_wrong_mirror_bytes_without_falling_back(self):
+        requested = []
+
+        def urlopen(request, timeout):
+            requested.append(request.full_url)
+            return io.BytesIO(b"tampered mirror object")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            cache = Cache(Path(temporary))
+            with patch(
+                "buildsys.inputs.urllib.request.urlopen", side_effect=urlopen
+            ), self.assertRaisesRegex(InputError, "digest"):
+                cache.fetch(make_input())
+
+        self.assertEqual(requested, [mirror_url(make_input().sha256)])
+
+    def test_fetch_reports_every_unreachable_source(self):
+        def urlopen(request, timeout):
+            raise urllib.error.URLError("unreachable")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            cache = Cache(Path(temporary))
+            with patch(
+                "buildsys.inputs.urllib.request.urlopen", side_effect=urlopen
+            ), self.assertRaises(InputError) as raised:
+                cache.fetch(make_input())
+
+        self.assertIn(mirror_url(make_input().sha256), str(raised.exception))
+        self.assertIn(make_input().url, str(raised.exception))
 
     def test_size_mismatch_detected(self):
         with tempfile.TemporaryDirectory() as temporary:

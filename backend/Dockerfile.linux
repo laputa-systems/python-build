@@ -62,27 +62,28 @@ assert next(item['version'].split('-r', 1)[0] for item in lock['apk_closure'] if
 assert next(item['version'].split('-r', 1)[0] for item in lock['apk_closure'] if item['name'] == 'openssl') in subprocess.check_output(['/usr/bin/openssl', 'version'], text=True)" \
     && /usr/bin/git --version \
     && /usr/bin/openssl version \
-    && /opt/rust/bin/rustc --version --verbose
+    && /opt/rust/bin/rustc --version --verbose \
+    && test -d /opt/rust/lib/rustlib/src/rust/library/std \
+    && test -f /opt/rust/lib/rustlib/src/rust/library/Cargo.lock \
+    && test -e /usr/lib/libgcc_s.so.1 \
+    && ln -s libgcc_s.so.1 /usr/lib/libgcc_s.so
 
-ENV PATH="/opt/rust/bin:/usr/lib/llvm23/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin" \
+ENV PATH="/opt/rust/bin:/opt/llvm/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin" \
     PYTHON_BUILD_RUST_PREFIX=/opt/rust
 USER builder
 WORKDIR /work
 
 FROM ${RUNTIME_BASE_IMAGE} AS archive-runtime
 ARG LOCKED_IMAGE_DIGEST
-ARG LIBGCC_SHA256
 ARG ARCHIVE_SHA256
 LABEL org.python-build.rtls.locked-image-digest=${LOCKED_IMAGE_DIGEST} \
       org.python-build.rtls.archive-sha256=${ARCHIVE_SHA256}
 
-COPY .cache/bootstrap/apk/libgcc.apk /opt/bootstrap/libgcc.apk
 COPY qualification/candidate.tar.gz /qualification/candidate.tar.gz
 
 RUN --network=none set -eu \
-    && printf '%s  %s\n' "$LIBGCC_SHA256" /opt/bootstrap/libgcc.apk | sha256sum -c - \
     && printf '%s  %s\n' "$ARCHIVE_SHA256" /qualification/candidate.tar.gz | sha256sum -c - \
-    && apk --no-network --repositories-file /dev/null add /opt/bootstrap/libgcc.apk \
+    && test -z "$(find / -xdev -name 'libgcc_s.so*' -print)" \
     && mkdir -p /opt \
     && tar -xzf /qualification/candidate.tar.gz -C /opt \
     && test -x /opt/python/bin/python3.15

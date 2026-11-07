@@ -79,9 +79,7 @@ class AssembleTests(unittest.TestCase):
                     },
                     "validation.elf_linkage": {
                         "status": "passed",
-                        "platform_libraries": [
-                            "libc.musl-aarch64.so.1", "libgcc_s.so.1",
-                        ],
+                        "platform_libraries": ["libc.musl-aarch64.so.1"],
                     },
                     "runtime_container": {
                         "status": "passed",

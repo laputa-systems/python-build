@@ -19,8 +19,11 @@ from buildsys import macho
 from buildsys.bootstrap import load_macos_toolchain
 from buildsys.ca_bundle import CABundleError, install_fallback_ca_bundle
 from buildsys.elf import (
+    ELF_READER,
+    compiler_comment_report,
     dynamic_relocation_report,
     dynamic_tags,
+    forbidden_runtime_libraries,
     full_relro_report,
     gnu_stack_report,
     hardening_report,
@@ -176,7 +179,8 @@ def _linux_validation(install: Path) -> dict:
     elfs = find_elfs(install)
     if not elfs:
         raise PackagingError("packaged tree contains no ELF files")
-    forbidden = []
+    forbidden = {}
+    gcc_object_violations = {}
     stack_violations = []
     pie_violations = []
     relro_violations = {}
@@ -188,24 +192,23 @@ def _linux_validation(install: Path) -> dict:
     linkage_violations = []
     loader_violations = []
     interpreter_paths = {}
-    system_libraries = {
-        f"libc.musl-{TARGET_DESCRIPTION.machine}.so.1",
-        "libgcc_s.so.1",
-        "libatomic.so.1",
-    }
+    system_libraries = {f"libc.musl-{TARGET_DESCRIPTION.machine}.so.1"}
     interpreter = PRODUCT.interpreter(install)
     interpreter_relative = str(interpreter.relative_to(install))
     for elf in elfs:
         relative = str(elf.relative_to(install))
-        header = _run(["readelf", "-hW", str(elf)]).stdout
+        header = _run([ELF_READER, "-hW", str(elf)]).stdout
         machine = machine_report(header, TARGET_DESCRIPTION.machine)
         if not machine["ok"]:
             machine_violations.append(relative)
-        dynamic = _run(["readelf", "-dW", str(elf)]).stdout
+        dynamic = _run([ELF_READER, "-dW", str(elf)]).stdout
         tags = dynamic_tags(dynamic)
         needed = tags["needed"]
-        if any(name.startswith("libc.so.6") or "GLIBC" in name for name in needed):
-            forbidden.append(relative)
+        if rejected := forbidden_runtime_libraries([*needed, *tags["soname"]]):
+            forbidden[relative] = rejected
+        compiler = compiler_comment_report(_run([ELF_READER, "-p", ".comment", str(elf)]).stdout)
+        if not compiler["ok"]:
+            gcc_object_violations[relative] = compiler["gcc_objects"]
         search_paths = [
             item
             for encoded in (*tags["rpath"], *tags["runpath"])
@@ -217,7 +220,7 @@ def _linux_validation(install: Path) -> dict:
         )
         if not linkage["ok"]:
             linkage_violations.append(relative)
-        program_headers = _run(["readelf", "-lW", str(elf)]).stdout
+        program_headers = _run([ELF_READER, "-lW", str(elf)]).stdout
         stack = gnu_stack_report(program_headers)
         if not stack["ok"]:
             stack_violations.append(relative)
@@ -258,6 +261,7 @@ def _linux_validation(install: Path) -> dict:
             "full_relro": relro,
             "writable_executable_loads": load_permissions,
             "dynamic_relocations": dynamic_relocations,
+            "compilers": compiler["compilers"],
         })
     platform_libraries = sorted({
         library
@@ -267,10 +271,14 @@ def _linux_validation(install: Path) -> dict:
     })
     checks["elf_linkage"] = {
         "ok": not forbidden and not linkage_violations,
-        "forbidden_needed": forbidden,
+        "forbidden_libraries": forbidden,
         "unresolved": linkage_violations,
         "platform_libraries": platform_libraries,
         "elf_report": elf_report,
+    }
+    checks["elf_compiler_runtime"] = {
+        "ok": not gcc_object_violations,
+        "violations": gcc_object_violations,
     }
     checks["elf_machine"] = {
         "ok": not machine_violations,
@@ -348,8 +356,8 @@ def _linux_validation(install: Path) -> dict:
         "shared_library": str(libpython.relative_to(install)),
     }
     symbols = {
-        "interpreter": _run(["readelf", "--dyn-syms", "-W", str(interpreter)]).stdout,
-        "libpython": _run(["readelf", "--dyn-syms", "-W", str(libpython)]).stdout,
+        "interpreter": _run([ELF_READER, "--dyn-syms", "-W", str(interpreter)]).stdout,
+        "libpython": _run([ELF_READER, "--dyn-syms", "-W", str(libpython)]).stdout,
     }
     hardening = hardening_report(
         " ".join(value for value in flag_values.values() if isinstance(value, str)),
