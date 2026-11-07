@@ -307,7 +307,7 @@ class LinuxBootstrapLockTests(unittest.TestCase):
         self.assertEqual(locked.release, "3.25.0_alpha20260805")
         self.assertEqual(locked.images["amd64"].platform, "linux/amd64")
         self.assertEqual(locked.images["arm64"].platform, "linux/arm64")
-        self.assertEqual(locked.llvm.version, "23.1.0-rc2")
+        self.assertEqual(locked.llvm.version, "23.1.5")
         self.assertEqual(set(locked.llvm.archives), {"x86_64", "aarch64"})
         for packages in locked.apk_closure.values():
             self.assertFalse(

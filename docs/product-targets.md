@@ -7,8 +7,8 @@ target descriptions and target branching.
 | Triple | Platform/compiler | Baseline and deployment |
 | --- | --- | --- |
 | `aarch64-apple-darwin` | Apple Silicon macOS 27 host; official LLVM 23.1.4 and Xcode 27 SDK | `-mcpu=apple-m1`; artifact minimum macOS 27.0 |
-| `x86_64-unknown-linux-musl` | Alpine base; laputa `llvm-prebuilt-musl` LLVM 23.1.0-rc2 | `-march=broadwell` (AES, PCLMULQDQ, AVX/AVX2, BMI1/BMI2, FMA, MOVBE); loader `/lib/ld-musl-x86_64.so.1` |
-| `aarch64-unknown-linux-musl` | Alpine base; laputa `llvm-prebuilt-musl` LLVM 23.1.0-rc2 | `-march=armv8-a+crypto` (AES, PMULL, SHA2, ASIMD); loader `/lib/ld-musl-aarch64.so.1` |
+| `x86_64-unknown-linux-musl` | Alpine base; laputa `llvm-prebuilt-musl` LLVM 23.1.5 | `-march=broadwell` (AES, PCLMULQDQ, AVX/AVX2, BMI1/BMI2, FMA, MOVBE); loader `/lib/ld-musl-x86_64.so.1` |
+| `aarch64-unknown-linux-musl` | Alpine base; laputa `llvm-prebuilt-musl` LLVM 23.1.5 | `-march=armv8-a+crypto` (AES, PMULL, SHA2, ASIMD); loader `/lib/ld-musl-aarch64.so.1` |
 
 macOS 27 is the only supported macOS release: the host floor and the artifact
 minimum are both 27.0, and macOS 26 and older are unsupported. Linux qualification

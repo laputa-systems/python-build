@@ -39,7 +39,7 @@ BUILD_RECORD = {
     "optimization": {"lto": "thin", "pgo": False},
     "toolchain_observed": {
         "commands": {
-            "cc": {"path": "/usr/bin/clang", "version": "clang version 23.1.0-rc2"},
+            "cc": {"path": "/usr/bin/clang", "version": "clang version 23.1.5"},
         },
     },
     "effective_flags": {"CFLAGS": "-O3"},
@@ -144,7 +144,7 @@ class ManifestTests(unittest.TestCase):
             "source_revision": "f" * 40,
             "recipe_identity": "c" * 64,
             "bootstrap_identity": "d" * 64,
-            "llvm_version": "23.1.0-rc2",
+            "llvm_version": "23.1.5",
             "archive_filename": archive_path_for(
                 target, Product((3, 15, 1)), "r2"
             ),
@@ -211,7 +211,7 @@ class ManifestTests(unittest.TestCase):
             "source_revision": "f" * 40,
             "recipe_identity": "c" * 64,
             "bootstrap_identity": "d" * 64,
-            "llvm_version": "23.1.0-rc2",
+            "llvm_version": "23.1.5",
             "archive_filename": "artifact.tar.gz",
             "archive": ArchiveFacts("a" * 64, 1, "b" * 64, 2),
             "lock_path": SOURCE_LOCK,
@@ -247,7 +247,7 @@ class ManifestTests(unittest.TestCase):
         toolchain = {
             "family": target.family,
             "cpu_baseline": target.cpu_baseline_cflag,
-            "commands": {"cc": {"version": "clang version 23.1.0-rc2"}},
+            "commands": {"cc": {"version": "clang version 23.1.5"}},
         }
         optimization = {
             "configure_args": ["--enable-shared"], "lto": "thin", "pgo": False,
@@ -292,7 +292,7 @@ class ManifestTests(unittest.TestCase):
             "toolchain": toolchain,
             "toolchain_observed": {
                 "commands": {
-                    "cc": {"path": "/usr/bin/clang", "version": "clang version 23.1.0-rc2"},
+                    "cc": {"path": "/usr/bin/clang", "version": "clang version 23.1.5"},
                 },
             },
             "optimization": optimization,

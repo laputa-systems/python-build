@@ -161,21 +161,21 @@
       }
     ],
     "llvm": {
-      "version": "23.1.0-rc2",
-      "release": "llvm-musl-23.1.0-rc2-6eb5fb9",
+      "version": "23.1.5",
+      "release": "llvm-musl-23.1.5-4c2254e",
       "license": "Apache-2.0 WITH LLVM-exception",
       "archives": {
         "x86_64": {
-          "url": "https://github.com/laputa-systems/llvm-prebuilt-musl/releases/download/llvm-musl-23.1.0-rc2-6eb5fb9/clang+llvm-23.1.0-rc2-x86_64-linux-musl.tar.xz",
-          "sha256": "36647cca0bf57d206a6ce757d07a9d8489ef6ccf283a2cc7f740d1cba99a088b",
-          "size": 99139524,
-          "archive_root": "clang+llvm-23.1.0-rc2-x86_64-linux-musl"
+          "url": "https://github.com/laputa-systems/llvm-prebuilt-musl/releases/download/llvm-musl-23.1.5-4c2254e/clang+llvm-23.1.5-x86_64-linux-musl.tar.xz",
+          "sha256": "9f599abd0caf81df64fdf70442ef2c39cb701d346030643193b39a743ad43ce0",
+          "size": 101880104,
+          "archive_root": "clang+llvm-23.1.5-x86_64-linux-musl"
         },
         "aarch64": {
-          "url": "https://github.com/laputa-systems/llvm-prebuilt-musl/releases/download/llvm-musl-23.1.0-rc2-6eb5fb9/clang+llvm-23.1.0-rc2-aarch64-linux-musl.tar.xz",
-          "sha256": "0c9bd6f0fefa26dbdb7d6ed568f3799b558428b1ce1264656aa328fc6fd9e32d",
-          "size": 91229132,
-          "archive_root": "clang+llvm-23.1.0-rc2-aarch64-linux-musl"
+          "url": "https://github.com/laputa-systems/llvm-prebuilt-musl/releases/download/llvm-musl-23.1.5-4c2254e/clang+llvm-23.1.5-aarch64-linux-musl.tar.xz",
+          "sha256": "187e71574399adaedd6077ffb5e4b20900aa29f32c3f131db2f4440273b75444",
+          "size": 95116544,
+          "archive_root": "clang+llvm-23.1.5-aarch64-linux-musl"
         }
       }
     },
