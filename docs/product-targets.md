@@ -52,9 +52,9 @@ Rust host tools.
   The release leaves `PT_GNU_STACK` at zero, so musl gives every extra thread
   128 KiB and multithreaded `ld.lld` overflows on large ThinLTO links; the
   image sets that segment to 8 MiB in every shipped tool before any build.
-- musl's `crt1.o` and `Scrt1.o` are rebuilt with that clang from the pinned
-  musl source, because Alpine compiles them with GCC. The `crtbegin`/`crtend`
-  objects are empty: musl needs neither.
+- The archive ships a clang-built musl sysroot in `lib/musl`: its `crt1.o`,
+  `Scrt1.o`, `crti.o`, `crtn.o`, `libc.a`, and `libc.so` replace Alpine's
+  GCC-built crt objects. `--rtlib=compiler-rt` supplies `crtbegin`/`crtend`.
 - Rust extensions rebuild `std` with `-Zbuild-std` and the `llvm-libunwind`
   feature, linking the LLVM prebuilt's static `libunwind.a`. The prebuilt
   `std` would request `-lgcc_s` and carries GCC-compiled compiler-rt and

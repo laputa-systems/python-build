@@ -179,14 +179,6 @@
         }
       }
     },
-    "musl_crt_source": {
-      "version": "1.2.6",
-      "url": "https://musl.libc.org/releases/musl-1.2.6.tar.gz",
-      "sha256": "d585fd3b613c66151fc3249e8ed44f77020cb5e6c1e635a616d3f9f82460512a",
-      "size": 1082499,
-      "archive_root": "musl-1.2.6",
-      "license": "MIT"
-    },
     "base_packages": [
       "alpine-baselayout=3.7.2-r1",
       "alpine-baselayout-data=3.7.2-r1",

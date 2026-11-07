@@ -24,8 +24,8 @@ and cannot change an accepted package.
 `sources.lock.json` pins build, trust, and comparison inputs with URL, version,
 SHA-256, size, role, license, and purpose. Reference-only entries are never
 build inputs. `bootstrap.lock.json` pins the macOS compiler archive and
-attestation, host requirements, the Linux image, the Linux LLVM archive, the
-musl source for the rebuilt crt objects, and the complete APK closure.
+attestation, host requirements, the Linux image, the Linux LLVM archive, and
+the complete APK closure.
 `buildsys/inputs.py` verifies cached bytes and safe extraction; invalid
 objects are replaced only after the downloaded bytes pass verification.
 

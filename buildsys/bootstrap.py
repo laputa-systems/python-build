@@ -302,7 +302,6 @@ class LinuxBootstrap:
     base_packages: tuple[str, ...]
     apk_closure: dict[str, tuple[APKPackage, ...]]
     llvm: LinuxLLVM
-    musl_crt_source: PinnedArchive
 
 
 def _pinned_archive(item: dict, where: str, *, name: str, version: str, suffix: str) -> PinnedArchive:
@@ -453,12 +452,6 @@ def load_linux_bootstrap(path: Path) -> LinuxBootstrap:
     )
     if not re.fullmatch(r"23\.\d+\.\d+(-rc\d+)?", llvm.version):
         raise BootstrapError(f"linux_toolchain.llvm must be LLVM 23, found {llvm.version}")
-    musl_data = _require(section, "musl_crt_source", "linux_toolchain")
-    musl_crt_source = _pinned_archive(
-        musl_data, "linux_toolchain.musl_crt_source",
-        name="musl-crt-source", version=_require(musl_data, "version", "linux_toolchain.musl_crt_source"),
-        suffix=".tar.gz",
-    )
     base_packages = tuple(_require(section, "base_packages", "linux_toolchain"))
     if any(not re.fullmatch(r"[A-Za-z0-9+_.-]+=[A-Za-z0-9+_.-]+", entry) for entry in base_packages):
         raise BootstrapError("linux_toolchain.base_packages is malformed")
@@ -474,7 +467,6 @@ def load_linux_bootstrap(path: Path) -> LinuxBootstrap:
         base_packages=base_packages,
         apk_closure=closures,
         llvm=llvm,
-        musl_crt_source=musl_crt_source,
     )
 
 

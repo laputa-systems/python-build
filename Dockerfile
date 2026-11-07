@@ -36,10 +36,9 @@ installed = set((root / 'packages.txt').read_text().splitlines()); \
 closure = {item['name']: item['version'] for item in lock['apk_closure'][arch]}; \
 expected = {name + '-' + version for name, version in (base | closure).items()}; \
 assert installed == expected, {'missing': sorted(expected - installed), 'extra': sorted(installed - expected)}; \
-llvm = lock['llvm']['archives'][arch]; musl = lock['musl_crt_source']; \
-assert {path.name for path in (root / 'toolchain').iterdir()} == {llvm['sha256'] + '.tar.xz', musl['sha256'] + '.tar.gz'}; \
-(root / 'llvm-archive').write_text(llvm['sha256'] + '.tar.xz\n' + llvm['archive_root'] + '\n'); \
-(root / 'musl-archive').write_text(musl['sha256'] + '.tar.gz\n' + musl['archive_root'] + '\n')" \
+llvm = lock['llvm']['archives'][arch]; \
+assert {path.name for path in (root / 'toolchain').iterdir()} == {llvm['sha256'] + '.tar.xz'}; \
+(root / 'llvm-archive').write_text(llvm['sha256'] + '.tar.xz\n' + llvm['archive_root'] + '\n')" \
     && for forbidden in gcc g++ cc c++ cpp as ld ld.bfd ld.gold; do \
         ! command -v "$forbidden" >/dev/null || { echo "GCC toolchain command present: $forbidden" >&2; exit 1; }; \
     done \
@@ -52,22 +51,10 @@ assert {path.name for path in (root / 'toolchain').iterdir()} == {llvm['sha256']
     && rm -rf /work/.work/tmp/llvm \
     && triple="$(uname -m)-unknown-linux-musl" \
     && [ "$(/opt/llvm/bin/clang -print-target-triple)" = "$triple" ] \
-    && { read -r archive; read -r archive_root; } < /opt/bootstrap/musl-archive \
-    && mkdir -p /opt/musl-crt /work/.work/tmp/musl \
-    && tar -xzf "/opt/bootstrap/toolchain/$archive" -C /work/.work/tmp/musl \
-    && cd "/work/.work/tmp/musl/$archive_root" \
-    && crt_flags="-std=c99 -nostdinc -ffreestanding -fno-stack-protector -Os -Iarch/$(uname -m) -Iarch/generic -Isrc/include -Isrc/internal -Iinclude -isystem /usr/include" \
-    && /opt/llvm/bin/clang $crt_flags -c crt/crt1.c -o /opt/musl-crt/crt1.o \
-    && /opt/llvm/bin/clang $crt_flags -fPIC -c crt/Scrt1.c -o /opt/musl-crt/Scrt1.o \
-    && : > /work/.work/tmp/musl/empty.c \
-    && for object in crtbegin.o crtbeginS.o crtbeginT.o crtend.o crtendS.o; do \
-        /opt/llvm/bin/clang -c /work/.work/tmp/musl/empty.c -o "/opt/musl-crt/$object"; \
-    done \
-    && cd / && rm -rf /work/.work/tmp/musl \
     && python3 /opt/bootstrap/patch_llvm_stack.py /opt/llvm/bin \
     && /opt/llvm/bin/llvm-readelf -lW /opt/llvm/bin/lld | grep -q 'GNU_STACK.*0x800000' \
     && /opt/llvm/bin/llvm-readelf -lW /opt/llvm/bin/clang | grep -q 'GNU_STACK.*0x800000' \
-    && printf '%s\n' -B/opt/musl-crt --rtlib=compiler-rt --unwindlib=none -L/opt/llvm/lib '-isystem /usr/include/fortify' \
+    && printf '%s\n' --rtlib=compiler-rt --unwindlib=none -L/opt/llvm/lib '-isystem /usr/include/fortify' \
         > "/opt/llvm/bin/$triple.cfg" \
     && printf '%s\n' -lc++abi -lunwind >> /opt/llvm/bin/clang++.cfg \
     && ln -s llvm-strip /opt/llvm/bin/strip \

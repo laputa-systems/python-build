@@ -341,10 +341,7 @@ def base_package_paths(common: Path, bootstrap: dict) -> list[tuple[dict, Path]]
 
 def toolchain_input_paths(common: Path, bootstrap: dict) -> list[tuple[str, Path]]:
     section = bootstrap["linux_toolchain"]
-    entries = (
-        (section["llvm"]["archives"][MACHINE], ".tar.xz"),
-        (section["musl_crt_source"], ".tar.gz"),
-    )
+    entries = ((section["llvm"]["archives"][MACHINE], ".tar.xz"),)
     cache = common / ".cache" / "bootstrap" / "toolchain" / DOCKER_ARCH
     require_no_symlink_below(common, cache)
     result = []

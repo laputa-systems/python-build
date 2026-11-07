@@ -100,10 +100,10 @@ def main(argv: list[str] | None = None) -> int:
             _publish_view(
                 package_cache,
                 toolchain_view,
-                [(archive.input(target.triple), archive.filename)
-                 for archive in (locked.llvm.archives[target.alpine_arch], locked.musl_crt_source)],
+                [(locked.llvm.archives[target.alpine_arch].input(target.triple),
+                  locked.llvm.archives[target.alpine_arch].filename)],
             )
-            print(f"ready   offline LLVM and musl crt sources -> {toolchain_view}")
+            print(f"ready   offline LLVM toolchain -> {toolchain_view}")
             print(f"ready   offline Alpine APK closure -> {view}")
     except (BootstrapError, InputError, OSError, ValueError) as error:
         print(f"FAIL: {error}", file=sys.stderr)
