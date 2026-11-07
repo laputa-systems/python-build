@@ -80,7 +80,7 @@ with tempfile.TemporaryDirectory(prefix='jit-map-test-') as temporary:
     link.symlink_to(target)
     refused = subprocess.run([sys.executable, '-c', PROGRAM],
                              env=dict(os.environ, PYTHON_JIT_MAP=str(link)),
-                             capture_output=True, text=True)
+                             capture_output=True, text=True, check=False)
     assert refused.returncode != 0
     assert 'OSError' in refused.stderr
     assert target.read_text() == 'unchanged'

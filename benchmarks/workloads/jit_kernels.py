@@ -21,7 +21,7 @@ import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from benchmarks.workloads.registry import BY_NAME
 
@@ -83,7 +83,7 @@ def _load(module: str) -> dict[str, Any]:
     }
     sys.path.insert(0, str(PYPERF_WHEEL))
     try:
-        exec(compile(source, entry, "exec"), namespace)
+        exec(compile(source, entry, "exec"), namespace)  # noqa: S102
     finally:
         sys.path.remove(str(PYPERF_WHEEL))
     return namespace
@@ -241,7 +241,7 @@ def _deltablue(iterations: int) -> tuple[int, str, _Timing]:
 
 
 class _CaptureRunner:
-    metadata: dict[str, Any] = {}
+    metadata: ClassVar[dict[str, Any]] = {}
 
     def __init__(self) -> None:
         self.call: tuple[str, Callable[..., None], tuple[Any, ...]] | None = None

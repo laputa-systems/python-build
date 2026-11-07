@@ -2019,9 +2019,9 @@ class JitSelectionTests(unittest.TestCase):
 
 
     def test_pystats_requires_jit(self):
-        with mock.patch.object(perf.lb, "doctor_report", return_value={"ok": True}):
-            with self.assertRaisesRegex(perf.LaneError, "requires --jit"):
-                perf.build(name="fixture", empty_overlay=False, pystats=True)
+        with mock.patch.object(perf.lb, "doctor_report", return_value={"ok": True}), \
+                self.assertRaisesRegex(perf.LaneError, "requires --jit"):
+            perf.build(name="fixture", empty_overlay=False, pystats=True)
 
     def test_incremental_refuses_a_pystats_flag_change(self):
         for previous, requested in ((False, True), (True, False)):

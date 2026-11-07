@@ -80,7 +80,7 @@ class GeneratedProgramTests(unittest.TestCase):
             for _ in range(2):
                 completed = subprocess.run(
                     [sys.executable, "-I", str(path)], capture_output=True, text=True,
-                    env=dict(os.environ, PYTHON_JIT="0"), timeout=60)
+                    check=False, env=dict(os.environ, PYTHON_JIT="0"), timeout=60)
                 self.assertEqual(completed.returncode, 0, completed.stderr)
                 self.assertEqual(completed.stderr, "")
                 outputs.append(jit_fuzz.parse_reports(completed.stdout))
