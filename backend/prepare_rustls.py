@@ -10,8 +10,8 @@ import tempfile
 import urllib.request
 from pathlib import Path, PurePosixPath
 
-RUSTLS_VERSION = "0.23.45"
-RUSTLS_ARCHIVE_SHA256 = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
+RUSTLS_VERSION = "0.23.46"
+RUSTLS_ARCHIVE_SHA256 = "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
 RUSTLS_ARCHIVE_URL = f"https://static.crates.io/crates/rustls/rustls-{RUSTLS_VERSION}.crate"
 
 

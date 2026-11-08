@@ -25,8 +25,8 @@ dependency sources include the applicable license texts.
 | `libc` | 0.2.191 | MIT OR Apache-2.0 |
 | `md-5` | 0.11.0 | MIT OR Apache-2.0 |
 | `pbkdf2` | 0.13.0 | MIT OR Apache-2.0 |
-| `pyo3-build-config` | 0.27.2 | MIT OR Apache-2.0 |
-| `pyo3-ffi` | 0.27.2 | MIT OR Apache-2.0 |
+| `pyo3-build-config` | 0.30.1 | MIT OR Apache-2.0 |
+| `pyo3-ffi` | 0.30.1 | MIT OR Apache-2.0 |
 | `ripemd` | 0.2.0 | MIT OR Apache-2.0 |
 | `salsa20` | 0.11.0 | MIT OR Apache-2.0 |
 | `scrypt` | 0.12.0 | MIT OR Apache-2.0 |

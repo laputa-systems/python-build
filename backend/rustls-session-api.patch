@@ -1,7 +1,8 @@
+diff -ruN rustls-0.23.46-clean/src/client/client_conn.rs rustls-0.23.46-final/src/client/client_conn.rs
 diff --git a/src/client/client_conn.rs b/src/client/client_conn.rs
---- a/src/client/client_conn.rs
-+++ b/src/client/client_conn.rs
-@@ -737,11 +737,34 @@
+--- a/src/client/client_conn.rs	2006-07-23 18:21:28
++++ b/src/client/client_conn.rs	2026-11-08 07:43:14
+@@ -737,18 +737,42 @@
              Self::new_with_alpn(config.clone(), name, config.alpn_protocols.clone())
          }
  
@@ -24,7 +25,7 @@ diff --git a/src/client/client_conn.rs b/src/client/client_conn.rs
              config: Arc<ClientConfig>,
              name: ServerName<'static>,
              alpn_protocols: Vec<Vec<u8>>,
-+        ) -> Result<Self, Error> {
+         ) -> Result<Self, Error> {
 +            Self::new_with_alpn_and_message_callback(config, name, alpn_protocols, false)
 +        }
 +
@@ -33,10 +34,10 @@ diff --git a/src/client/client_conn.rs b/src/client/client_conn.rs
 +            name: ServerName<'static>,
 +            alpn_protocols: Vec<Vec<u8>>,
 +            enabled: bool,
-         ) -> Result<Self, Error> {
++        ) -> Result<Self, Error> {
              Ok(Self {
                  inner: ConnectionCommon::from(ConnectionCore::for_client(
-@@ -749,6 +772,7 @@
+                     config,
                      name,
                      ClientExtensionsInput::from_alpn(alpn_protocols),
                      Protocol::Tcp,
@@ -71,9 +72,10 @@ diff --git a/src/client/client_conn.rs b/src/client/client_conn.rs
              )?),
          })
      }
+diff -ruN rustls-0.23.46-clean/src/client/hs.rs rustls-0.23.46-final/src/client/hs.rs
 diff --git a/src/client/hs.rs b/src/client/hs.rs
---- a/src/client/hs.rs
-+++ b/src/client/hs.rs
+--- a/src/client/hs.rs	2006-07-23 18:21:28
++++ b/src/client/hs.rs	2026-11-08 07:43:31
 @@ -94,10 +94,11 @@
                          // If we have a ticket, we use the sessionid as a signal that
                          // we're  doing an abbreviated handshake.  See section 3.4 in
@@ -89,9 +91,10 @@ diff --git a/src/client/hs.rs b/src/client/hs.rs
                      }
                      _ => None,
                  }
+diff -ruN rustls-0.23.46-clean/src/client/tls12.rs rustls-0.23.46-final/src/client/tls12.rs
 diff --git a/src/client/tls12.rs b/src/client/tls12.rs
---- a/src/client/tls12.rs
-+++ b/src/client/tls12.rs
+--- a/src/client/tls12.rs	2006-07-23 18:21:28
++++ b/src/client/tls12.rs	2026-11-08 07:43:14
 @@ -92,6 +92,7 @@
              let ClientHelloInput {
                  config,
@@ -159,10 +162,11 @@ diff --git a/src/client/tls12.rs b/src/client/tls12.rs
  
          // Hash this message too.
          st.transcript.add_message(&m);
+diff -ruN rustls-0.23.46-clean/src/client/tls13.rs rustls-0.23.46-final/src/client/tls13.rs
 diff --git a/src/client/tls13.rs b/src/client/tls13.rs
---- a/src/client/tls13.rs
-+++ b/src/client/tls13.rs
-@@ -1198,6 +1198,7 @@
+--- a/src/client/tls13.rs	2006-07-23 18:21:28
++++ b/src/client/tls13.rs	2026-11-08 07:43:32
+@@ -1216,6 +1216,7 @@
                      .send_cert_verify_error_alert(err)
              })?;
  
@@ -170,7 +174,7 @@ diff --git a/src/client/tls13.rs b/src/client/tls13.rs
          cx.common.peer_certificates = Some(self.server_cert.cert_chain.into_owned());
          self.transcript.add_message(&m);
  
-@@ -1271,11 +1272,13 @@
+@@ -1291,11 +1292,13 @@
  fn emit_certverify_tls13(
      flight: &mut HandshakeFlightTls13<'_>,
      signer: &dyn Signer,
@@ -184,7 +188,7 @@ diff --git a/src/client/tls13.rs b/src/client/tls13.rs
      let dss = DigitallySignedStruct::new(scheme, sig);
  
      flight.add(HandshakeMessagePayload(
-@@ -1398,7 +1401,7 @@
+@@ -1419,7 +1422,7 @@
                      } else {
                          emit_certificate_tls13(&mut flight, Some(&certkey), auth_context);
                      }
@@ -193,17 +197,18 @@ diff --git a/src/client/tls13.rs b/src/client/tls13.rs
                  }
              }
          }
-@@ -1414,6 +1417,7 @@
+@@ -1435,6 +1438,7 @@
  
          emit_finished_tls13(&mut flight, &verify_data);
          flight.finish(cx.common);
 +        cx.common.set_tls_unique_if_none(verify_data.as_ref());
  
-         /* We're now sure this server supports TLS1.3.  But if we run out of TLS1.3 tickets
-          * when connecting to it again, we definitely don't want to attempt a TLS1.2 resumption. */
+         // Remember what KX group the server liked for next time.
+         st.config
+diff -ruN rustls-0.23.46-clean/src/common_state.rs rustls-0.23.46-final/src/common_state.rs
 diff --git a/src/common_state.rs b/src/common_state.rs
---- a/src/common_state.rs
-+++ b/src/common_state.rs
+--- a/src/common_state.rs	2006-07-23 18:21:28
++++ b/src/common_state.rs	2026-11-08 07:44:14
 @@ -5,7 +5,7 @@
  
  use crate::conn::kernel::KernelState;
@@ -222,15 +227,15 @@ diff --git a/src/common_state.rs b/src/common_state.rs
      message_fragmenter: MessageFragmenter,
      pub(crate) received_plaintext: ChunkVecBuffer,
      pub(crate) sendable_tls: ChunkVecBuffer,
-@@ -61,6 +63,67 @@
+@@ -61,8 +63,69 @@
      pub(crate) refresh_traffic_keys_pending: bool,
      pub(crate) fips: bool,
      pub(crate) tls13_tickets_received: u32,
 +    tls_unique: Option<Vec<u8>>,
 +    message_callback_version: Option<ProtocolVersion>,
 +    message_callback_events: Option<MessageCallbackEvents>,
-+}
-+
+ }
+ 
 +const MESSAGE_CALLBACK_MAX_EVENTS: usize = 4096;
 +const MESSAGE_CALLBACK_MAX_BYTES: usize = 1_048_576;
 +
@@ -287,9 +292,11 @@ diff --git a/src/common_state.rs b/src/common_state.rs
 +        self.bytes = 0;
 +        Some(core::mem::take(&mut self.events))
 +    }
- }
- 
++}
++
  impl CommonState {
+     pub(crate) fn new(side: Side) -> Self {
+         Self {
 @@ -83,6 +146,8 @@
              #[cfg(feature = "std")]
              has_seen_eof: false,
@@ -299,17 +306,16 @@ diff --git a/src/common_state.rs b/src/common_state.rs
              message_fragmenter: MessageFragmenter::default(),
              received_plaintext: ChunkVecBuffer::new(Some(DEFAULT_RECEIVED_PLAINTEXT_LIMIT)),
              sendable_tls: ChunkVecBuffer::new(Some(DEFAULT_BUFFER_LIMIT)),
-@@ -94,7 +159,149 @@
+@@ -94,9 +159,151 @@
              refresh_traffic_keys_pending: false,
              fips: false,
              tls13_tickets_received: 0,
--        }
 +            tls_unique: None,
 +            message_callback_version: None,
 +            message_callback_events: None,
-+        }
-+    }
-+
+         }
+     }
+ 
 +    pub(crate) fn set_message_callback_enabled(&mut self, enabled: bool) {
 +        if enabled {
 +            self.message_callback_events
@@ -447,15 +453,15 @@ diff --git a/src/common_state.rs b/src/common_state.rs
 +            i32::from(content_type_byte),
 +            data,
 +        );
-     }
- 
-     /// Returns true if the caller should call [`Connection::write_tls`] as soon as possible.
-@@ -113,6 +320,17 @@
-     /// [`Connection::process_new_packets()`]: crate::Connection::process_new_packets
-     pub fn is_handshaking(&self) -> bool {
-         !(self.may_send_application_data && self.may_receive_application_data)
 +    }
 +
+     /// Returns true if the caller should call [`Connection::write_tls`] as soon as possible.
+     ///
+     /// [`Connection::write_tls`]: crate::Connection::write_tls
+@@ -115,6 +322,17 @@
+         !(self.may_send_application_data && self.may_receive_application_data)
+     }
+ 
 +    /// Returns the captured tls-unique channel binding data, if available.
 +    pub fn tls_unique(&self) -> Option<&[u8]> {
 +        self.tls_unique.as_deref()
@@ -465,15 +471,15 @@ diff --git a/src/common_state.rs b/src/common_state.rs
 +        if self.tls_unique.is_none() {
 +            self.tls_unique = Some(finished.to_vec());
 +        }
-     }
- 
-     /// Retrieves the certificate chain or the raw public key used by the peer to authenticate.
-@@ -138,6 +356,24 @@
-     /// This choice simplifies the API and ensures backwards compatibility.
-     pub fn peer_certificates(&self) -> Option<&[CertificateDer<'static>]> {
-         self.peer_certificates.as_deref()
 +    }
 +
+     /// Retrieves the certificate chain or the raw public key used by the peer to authenticate.
+     ///
+     /// The order of the certificate chain is as it appears in the TLS
+@@ -140,6 +358,24 @@
+         self.peer_certificates.as_deref()
+     }
+ 
 +    /// Returns the signature scheme used by this endpoint to sign the TLS handshake, if any.
 +    pub fn local_signature_scheme(&self) -> Option<SignatureScheme> {
 +        self.local_signature_scheme
@@ -490,10 +496,12 @@ diff --git a/src/common_state.rs b/src/common_state.rs
 +
 +    pub(crate) fn set_peer_signature_scheme(&mut self, scheme: SignatureScheme) {
 +        self.peer_signature_scheme = Some(scheme);
-     }
- 
++    }
++
      /// Retrieves the protocol agreed with the peer via ALPN.
-@@ -347,8 +583,9 @@
+     ///
+     /// A return value of `None` after handshake completion
+@@ -407,8 +643,9 @@
      fn send_single_fragment(&mut self, m: OutboundPlainMessage<'_>) {
          if m.typ == ContentType::Alert {
              // Alerts are always sendable -- never quashed by a PreEncryptAction.
@@ -504,16 +512,21 @@ diff --git a/src/common_state.rs b/src/common_state.rs
              return;
          }
  
-@@ -383,8 +620,18 @@
-             }
-         };
+@@ -416,8 +653,9 @@
+             return;
+         }
  
 +        let inner_type = self.outbound_message_callback_inner_type(m.typ);
          let em = self.record_layer.encrypt_outgoing(m);
 -        self.queue_tls_message(em);
 +        self.queue_tls_message(em, inner_type);
-+    }
-+
+     }
+ 
+     /// Take the remedial action needed before encrypting the record `add` records after the next.
+@@ -453,6 +691,15 @@
+         }
+     }
+ 
 +    fn outbound_message_callback_inner_type(
 +        &self,
 +        content_type: ContentType,
@@ -521,10 +534,12 @@ diff --git a/src/common_state.rs b/src/common_state.rs
 +        (self.negotiated_version == Some(ProtocolVersion::TLSv1_3)
 +            && self.record_layer.is_encrypting())
 +        .then(|| (content_type, Vec::new()))
-     }
- 
-     fn send_plain_non_buffering(&mut self, payload: OutboundChunks<'_>, limit: Limit) -> usize {
-@@ -433,9 +680,20 @@
++    }
++
+     fn send_plain_non_buffering(
+         &mut self,
+         payload: OutboundChunks<'_>,
+@@ -504,9 +751,20 @@
      }
  
      // Put m into sendable_tls for writing.
@@ -547,7 +562,7 @@ diff --git a/src/common_state.rs b/src/common_state.rs
      }
  
      pub(crate) fn perhaps_write_key_update(&mut self) {
-@@ -467,16 +725,30 @@
+@@ -538,17 +796,31 @@
                  return;
              }
          }
@@ -573,13 +588,14 @@ diff --git a/src/common_state.rs b/src/common_state.rs
              }
          } else {
              self.send_msg_encrypt(m.into());
-+        }
+         }
 +        if let Some((version, content_type, data)) = callback_message {
 +            self.capture_message_callback_payload(true, version, content_type, &data);
-         }
++        }
      }
  
-@@ -564,7 +836,13 @@
+     pub(crate) fn take_received_plaintext(&mut self, bytes: Payload<'_>) {
+@@ -635,7 +907,13 @@
          desc: AlertDescription,
          err: impl Into<Error>,
      ) -> Error {
@@ -594,10 +610,10 @@ diff --git a/src/common_state.rs b/src/common_state.rs
          let m = Message::build_alert(AlertLevel::Fatal, desc);
          self.send_msg(m, self.record_layer.is_encrypting());
          self.sent_fatal_alert = true;
- 
+diff -ruN rustls-0.23.46-clean/src/conn.rs rustls-0.23.46-final/src/conn.rs
 diff --git a/src/conn.rs b/src/conn.rs
---- a/src/conn.rs
-+++ b/src/conn.rs
+--- a/src/conn.rs	2006-07-23 18:21:28
++++ b/src/conn.rs	2026-11-08 07:43:32
 @@ -1,4 +1,5 @@
  use alloc::boxed::Box;
 +use alloc::vec::Vec;
@@ -632,7 +648,7 @@ diff --git a/src/conn.rs b/src/conn.rs
          /// Read TLS content from `rd`.
          ///
          /// See [`ConnectionCommon::read_tls()`] for more information.
-@@ -415,6 +437,18 @@
+@@ -439,6 +461,18 @@
  }
  
  impl<Data> ConnectionCommon<Data> {
@@ -651,7 +667,7 @@ diff --git a/src/conn.rs b/src/conn.rs
      /// Processes any new packets read by a previous call to
      /// [`Connection::read_tls`].
      ///
-@@ -971,6 +1005,14 @@
+@@ -995,6 +1029,14 @@
                  message
              });
          self.common_state.aligned_handshake = self.hs_deframer.is_aligned();
@@ -666,7 +682,7 @@ diff --git a/src/conn.rs b/src/conn.rs
          message
      }
  
-@@ -996,6 +1038,8 @@
+@@ -1020,6 +1062,8 @@
                      Ok(None) => return Ok(None),
                      Err(err) => return Err(self.handle_deframe_error(err, state)),
                  };
@@ -675,7 +691,7 @@ diff --git a/src/conn.rs b/src/conn.rs
  
                  let allowed_plaintext = match message.typ {
                      // CCS messages are always plaintext.
-@@ -1054,8 +1098,26 @@
+@@ -1078,8 +1122,26 @@
                      self.common_state.send_close_notify();
                  }
  
@@ -702,19 +718,19 @@ diff --git a/src/conn.rs b/src/conn.rs
  
              if !self.hs_deframer.is_aligned() && message.typ != ContentType::Handshake {
                  // "Handshake messages MUST NOT be interleaved with other record
+diff -ruN rustls-0.23.46-clean/src/msgs/deframer/mod.rs rustls-0.23.46-final/src/msgs/deframer/mod.rs
 diff --git a/src/msgs/deframer/mod.rs b/src/msgs/deframer/mod.rs
---- a/src/msgs/deframer/mod.rs
-+++ b/src/msgs/deframer/mod.rs
+--- a/src/msgs/deframer/mod.rs	2006-07-23 18:21:28
++++ b/src/msgs/deframer/mod.rs	2026-11-08 07:43:14
 @@ -73,10 +73,14 @@
          let (consumed, remainder) = mem::take(&mut self.buf).split_at_mut(end);
          self.buf = remainder;
          self.consumed += end;
--
--        Some(Ok(InboundOpaqueMessage::new(
 +        let header = consumed[..HEADER_SIZE]
 +            .try_into()
 +            .expect("TLS record header has fixed size");
-+
+ 
+-        Some(Ok(InboundOpaqueMessage::new(
 +        Some(Ok(InboundOpaqueMessage::new_with_header(
              typ,
              version,
@@ -722,9 +738,10 @@ diff --git a/src/msgs/deframer/mod.rs b/src/msgs/deframer/mod.rs
              &mut consumed[HEADER_SIZE..],
          )))
      }
+diff -ruN rustls-0.23.46-clean/src/msgs/message/inbound.rs rustls-0.23.46-final/src/msgs/message/inbound.rs
 diff --git a/src/msgs/message/inbound.rs b/src/msgs/message/inbound.rs
---- a/src/msgs/message/inbound.rs
-+++ b/src/msgs/message/inbound.rs
+--- a/src/msgs/message/inbound.rs	2006-07-23 18:21:28
++++ b/src/msgs/message/inbound.rs	2026-11-08 07:43:32
 @@ -11,6 +11,7 @@
  pub struct InboundOpaqueMessage<'a> {
      pub typ: ContentType,
@@ -758,10 +775,11 @@ diff --git a/src/msgs/message/inbound.rs b/src/msgs/message/inbound.rs
              payload: BorrowedPayload(payload),
          }
      }
+diff -ruN rustls-0.23.46-clean/src/msgs/persist.rs rustls-0.23.46-final/src/msgs/persist.rs
 diff --git a/src/msgs/persist.rs b/src/msgs/persist.rs
---- a/src/msgs/persist.rs
-+++ b/src/msgs/persist.rs
-@@ -199,6 +199,11 @@
+--- a/src/msgs/persist.rs	2006-07-23 18:21:28
++++ b/src/msgs/persist.rs	2026-11-08 07:43:32
+@@ -218,6 +218,11 @@
          self.extended_ms
      }
  
@@ -773,7 +791,7 @@ diff --git a/src/msgs/persist.rs b/src/msgs/persist.rs
      pub(crate) fn suite(&self) -> &'static Tls12CipherSuite {
          self.suite
      }
-@@ -249,6 +254,26 @@
+@@ -268,6 +273,26 @@
              server_cert_verifier: Arc::downgrade(server_cert_verifier),
              client_creds: Arc::downgrade(client_creds),
          }
@@ -800,9 +818,10 @@ diff --git a/src/msgs/persist.rs b/src/msgs/persist.rs
      }
  
      pub(crate) fn compatible_config(
+diff -ruN rustls-0.23.46-clean/src/quic.rs rustls-0.23.46-final/src/quic.rs
 diff --git a/src/quic.rs b/src/quic.rs
---- a/src/quic.rs
-+++ b/src/quic.rs
+--- a/src/quic.rs	2006-07-23 18:21:28
++++ b/src/quic.rs	2026-11-08 07:43:14
 @@ -204,7 +204,7 @@
                  ..ClientExtensionsInput::from_alpn(alpn_protocols)
              };
@@ -821,9 +840,10 @@ diff --git a/src/quic.rs b/src/quic.rs
              core.common_state.protocol = Protocol::Quic;
              core.common_state.quic.version = quic_version;
              Ok(Self { inner: core.into() })
+diff -ruN rustls-0.23.46-clean/src/server/server_conn.rs rustls-0.23.46-final/src/server/server_conn.rs
 diff --git a/src/server/server_conn.rs b/src/server/server_conn.rs
---- a/src/server/server_conn.rs
-+++ b/src/server/server_conn.rs
+--- a/src/server/server_conn.rs	2006-07-23 18:21:28
++++ b/src/server/server_conn.rs	2026-11-08 07:43:14
 @@ -598,6 +598,7 @@
  #[cfg(feature = "std")]
  mod connection {
@@ -887,9 +907,8 @@ diff --git a/src/server/server_conn.rs b/src/server/server_conn.rs
              }
          }
 -    }
--
+ 
 -    impl Acceptor {
-+
 +        /// Enables or disables bounded capture of TLS message callback events.
 +        pub fn set_message_callback_enabled(&mut self, enabled: bool) {
 +            if let Some(connection) = self.inner.as_mut() {
@@ -1003,9 +1022,10 @@ diff --git a/src/server/server_conn.rs b/src/server/server_conn.rs
          common.set_max_fragment_size(config.max_fragment_size)?;
          common.enable_secret_extraction = config.enable_secret_extraction;
          common.fips = config.fips();
+diff -ruN rustls-0.23.46-clean/src/server/tls12.rs rustls-0.23.46-final/src/server/tls12.rs
 diff --git a/src/server/tls12.rs b/src/server/tls12.rs
---- a/src/server/tls12.rs
-+++ b/src/server/tls12.rs
+--- a/src/server/tls12.rs	2006-07-23 18:21:28
++++ b/src/server/tls12.rs	2026-11-08 07:43:14
 @@ -209,6 +209,7 @@
                  selected_kxg,
                  server_key.get_key(),
@@ -1083,10 +1103,11 @@ diff --git a/src/server/tls12.rs b/src/server/tls12.rs
  
          // Save connection, perhaps
          if !self.resuming && !self.session_id.is_empty() {
+diff -ruN rustls-0.23.46-clean/src/server/tls13.rs rustls-0.23.46-final/src/server/tls13.rs
 diff --git a/src/server/tls13.rs b/src/server/tls13.rs
---- a/src/server/tls13.rs
-+++ b/src/server/tls13.rs
-@@ -832,6 +832,7 @@
+--- a/src/server/tls13.rs	2006-07-23 18:21:28
++++ b/src/server/tls13.rs	2026-11-08 07:43:32
+@@ -843,6 +843,7 @@
  
          let scheme = signer.scheme();
          let sig = signer.sign(message.as_ref())?;
@@ -1094,7 +1115,7 @@ diff --git a/src/server/tls13.rs b/src/server/tls13.rs
  
          let cv = DigitallySignedStruct::new(scheme, sig);
  
-@@ -1166,20 +1167,24 @@
+@@ -1188,20 +1189,24 @@
      where
          Self: 'm,
      {
@@ -1123,7 +1144,7 @@ diff --git a/src/server/tls13.rs b/src/server/tls13.rs
          };
  
          if let Err(e) = rc {
-@@ -1189,6 +1194,7 @@
+@@ -1211,6 +1216,7 @@
          }
  
          trace!("client CertificateVerify OK");
@@ -1131,7 +1152,7 @@ diff --git a/src/server/tls13.rs b/src/server/tls13.rs
          cx.common.peer_certificates = Some(self.client_cert);
  
          self.transcript.add_message(&m);
-@@ -1384,6 +1390,8 @@
+@@ -1406,6 +1412,8 @@
                      .send_fatal_alert(AlertDescription::DecryptError, Error::DecryptError));
              }
          };

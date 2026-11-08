@@ -65,7 +65,7 @@ Linux PGO, pip, ensurepip, and venv remain disabled. Build containers have no
 network interface except loopback and no default route.
 
 The inputs pin nightly Rust 2026-09-15, LLVM 23.1.3, RTLS commit
-`302423b49e494863d07630d50b15a9488ec85ef7`, rustls 0.23.45,
+`302423b49e494863d07630d50b15a9488ec85ef7`, rustls 0.23.46,
 rustls-webpki 0.103.15, rustls-graviola 0.4.0, and Graviola 0.4.1.
 The recorded Rust closure contains 109 packages and 215 installed license
 files. The separate reference uses CPython 3.15.1 and OpenSSL 3.5.7.
