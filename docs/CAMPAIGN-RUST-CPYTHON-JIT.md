@@ -384,12 +384,65 @@ exit stubs). Peak RSS is +0.3% to +2.0% over the incumbent and at most +6.1%
 for the incumbent. `libpython` `__text` grows by 27,328 bytes.
 
 The independent review found nothing above low severity. Its low findings are
-T2's next items: the FFI wrapper's `from_raw_parts_mut` over an uninitialized
-`PyMem_RawMalloc` buffer; the unboxed stackref helpers missing under
-`Py_STACKREF_DEBUG`, and `PYTHON_LLTRACE>=4` reading unboxed slots as objects
-in `Py_DEBUG` tier-2 builds; the integration test measuring only borrowed
-operands' refcounts; and the verifier's `Py_FatalError` where a rejected plan
-could instead skip the rewrite.
+fixed in `b5599d2` and `c34ce10`: the FFI wrapper writes the planned steps
+through `MaybeUninit` instead of a `&mut` slice over the uninitialized
+`PyMem_RawMalloc` buffer; a rejected plan leaves the trace boxed instead of
+calling `Py_FatalError` (crate tests show no step is written); the unboxed
+stackref helpers compile under `Py_STACKREF_DEBUG`; the `Py_DEBUG` uop
+interpreter's `PYTHON_LLTRACE>=4` dump replays the executor's stack shapes and
+prints unboxed slots by kind (overlay copies of `Python/ceval.c` and
+`Python/ceval.h`); and the integration test feeds owned list items and
+attributes into unboxed chains, so a throwaway build whose `_UNBOX_FLOAT_TOS`
+skips its close fails it (the old test passed). The dump and a
+`-DPy_STACKREF_DEBUG=1` compile of `Python/ceval.c` were checked on a throwaway
+`--enable-experimental-jit=interpreter --with-pydebug` build, which the lane
+does not otherwise build.
+
+**Int unboxing (CORRECT, 2026-11-10, branch `campaign/t2-int` at
+`407096c`).** Ranked first by sampled share on the float incumbent: the
+specialized int uops and the runtime they call are 29.6% of samples on
+spectral_norm, 17.9% on sor, 9.9% on fft and 7.2% on monte_carlo (8.2% mean
+over the eight numeric kernels), while float results stored to locals plus the
+frees of the values they replace are 9.8% on nbody and 2.7% mean, and most of
+nbody's stores sit across escaping uops where an unboxed local would be boxed
+anyway. The planner now has two value domains with the float rules unchanged:
+an int node (`_BINARY_OP_{ADD,SUBTRACT,MULTIPLY}_INT*`, `_COMPARE_OP_INT`)
+links only to int nodes. An unboxed int is a raw `Py_ssize_t` that is always
+compact: `_UNBOX_INT_TOS/NOS` read operands the trace already guarantees
+compact, and each unboxed add, subtract or multiply side-exits like upstream
+when its result leaves the one-digit range, with both raw operands boxed by the
+exit stub. The verifier records float and int slots separately; the stubs are
+now `_BOX_UNBOXED_SLOTS` (boxes each slot by kind; on MemoryError clears every
+remaining unboxed slot) and `_CLEAR_UNBOXED_SLOTS`. `_BOX_INT` allocates
+through the new `_PyLong_FromCompactTstate` on the executor's tstate.
+
+Sampled shares, float incumbent → candidate, same iteration counts and
+digests: spectral_norm's int uops and their runtime calls drop from 29.6% to
+27.0% of samples (calls into the int runtime 17.0% → 12.0%), with
+`(i + j) * (i + j + 1)` in `eval_A` fully unboxed and boxed once. sor, fft and
+monte_carlo stay at 17.9% → 18.0%, 9.9% → 10.6% and 7.2% → 6.8%: their chains
+are a non-inplace op feeding an inplace one, whose boxed form already allocates
+once, so the cost model leaves them boxed (a tie); nbody, float, lu and sparse
+have no int chains. Float-op chain shares are unchanged within noise.
+
+`climb-step --correctness` against the float incumbent `perf-jit-unbox`
+(`aadaf25`-equivalent overlay) with a clean `perf-jit-int-unbox` at `407096c`:
+training and held-out digests match, 2,000 fuzz programs give 0 mismatches at
+97.5% JIT coverage, and the targeted suites differ only by the four float tests
+above and `test_int_inplace_chain_propagation`, which asserts an inplace int
+add in a chain the rewrite unboxes after its result check passes; it is listed
+in `perf.CLIMB_SUPERSEDED_UOP_ASSERTIONS`, and the verdict is CORRECT
+(advisory point estimate 0.9939). `jit_unbox_integration.py` adds int chains,
+an overflow exit, int type exits, owned int list items and attributes, an exit
+that boxes a float and an int slot together, and int chains in the trace,
+monitoring, gc, generator and thread kernels; its 10 kernels match on the
+candidate and on a debug uop-interpreter build of it. JIT code bytes are at
+most 1.24x M0 (raytrace, +5.8% over the float incumbent; spectral_norm +19.1%).
+Peak RSS is within 0.995-1.005x the float incumbent and +1.1% to +5.7% (go)
+over the no-JIT sibling `perf-rust`. `libpython` `__text` grows by 9,664
+bytes. The independent review (J acceptance step 6) has not run; the candidate
+does not land on `main` before it approves the reference-ownership and deopt
+changes.
 
 ### T3: inlining and allocation removal, toward M3
 
@@ -784,7 +837,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | T2 int unboxing and loop-carried locals, after the float review's low findings (frame push/pop, `_CHECK_VALIDITY`/`_SET_IP` and guard stripping stay in T1's backlog) | T2 float unboxing landed CORRECT with 4 named superseded uop assertions; timing deferred to Close (OD14) |
+| J | active | T2 unboxed loop-carried locals; int unboxing awaits its independent review (J acceptance step 6) before it lands (frame push/pop, `_CHECK_VALIDITY`/`_SET_IP` and guard stripping stay in T1's backlog) | T2 float review's low findings fixed; T2 int unboxing CORRECT on `campaign/t2-int` with 5 named superseded uop assertions; timing deferred to Close (OD14) |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | active | C2 in-process `exec` | C0, marshal parity and C1 landed: census 9,102 / 9,135 exact, 0 mismatches on e891 |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -826,6 +879,19 @@ the generated `_PyUop_StackShape` table from an overlaid
 `_COMPARE_OP_FLOAT_UNBOXED`, `_BOX_FLOAT`, `_BOX_FLOAT_STACK`,
 `_CLEAR_FLOAT_STACK`); `PyStackRef_FromUnboxedFloat`/`AsUnboxedFloat`; and the
 overlay `Cargo.lock` digest in `rust-cpython/sources.lock.json`.
+
+**Owner queue:** T2 int unboxing contract (CORRECT, review pending). The crate
+entry point is now `_PyJitOpt_PlanUnboxing` and `JitOptStep` carries
+`exit_floats`, `exit_ints` and `error_unboxed` (16 bytes);
+`_BOX_FLOAT_STACK`/`_CLEAR_FLOAT_STACK` become
+`_BOX_UNBOXED_SLOTS`/`_CLEAR_UNBOXED_SLOTS`; seven tier-2 uops are new
+(`_UNBOX_INT_TOS/NOS`, `_BINARY_OP_{ADD,SUBTRACT,MULTIPLY}_INT_UNBOXED`,
+`_COMPARE_OP_INT_UNBOXED`, `_BOX_INT`); `libpython` exports
+`_PyLong_FromCompactTstate`; `PyStackRef_FromUnboxedInt`/`AsUnboxedInt` join
+the float helpers; the overlay now carries `Python/ceval.c` and
+`Python/ceval.h` for the debug uop-interpreter dump; and
+`test_int_inplace_chain_propagation` joins
+`perf.CLIMB_SUPERSEDED_UOP_ASSERTIONS` (its result check passes first).
 
 **Epoch e891** (`main` `e891a911`, pinned 2026-11-10) opened at R0 on macOS
 arm64:
@@ -974,3 +1040,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-10 | 3.15.1 | R1 | R1 | CinderX steady JIT vs off | `cinderx-e48f370d` | — → 0.7960 (held-out 1.0621) | — | MEASURED | `.work/r1` |
 | 2026-11-10 | e891 | J | T1 | thread-state: executor tstate to float/int freelists (`_tlv_get_addr` 4.61% of samples, targeted chains 1.36% → 0%) | `perf-rust-jit` | timing deferred (OD14) | — | CORRECT | `campaign/t1-tstate` |
 | 2026-11-10 | e891 | J | T2 | float unboxing across binary ops and compares (float boxing 8.9-38.6% of samples; float-op chains nbody 27.5% → 26.3%, fft 11.4% → 9.5%) | `perf-rust-jit` | timing deferred (OD14); advisory 0.9962 | — | CORRECT (4 named superseded `test_capi.test_opt` uop assertions, owner ruling) | `aadaf25` |
+| 2026-11-10 | e891 | J | T2 | compact-int unboxing across binary ops and compares (int uops 29.6% of samples on spectral_norm, 8.2% mean; spectral_norm 29.6% → 27.0%, int runtime calls 17.0% → 12.0%) | `perf-jit-unbox` | timing deferred (OD14); advisory 0.9939 | — | CORRECT (5 named superseded `test_capi.test_opt` uop assertions); independent review pending | `407096c` |
