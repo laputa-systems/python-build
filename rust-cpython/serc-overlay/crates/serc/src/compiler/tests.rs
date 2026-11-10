@@ -3970,3 +3970,142 @@ def generated(xs):
         }
     }
 }
+
+
+fn assert_python316_marshal(source: &str, expected_hex: &str) {
+    let module = crate::compile_with_options(
+        source,
+        "t.py",
+        &crate::CompileOptions {
+            python_version: crate::PythonVersion::Py316,
+            ..crate::CompileOptions::default()
+        },
+    )
+    .unwrap();
+    let actual = module
+        .marshal()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    assert_eq!(actual, expected_hex.trim());
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_folding() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/folding.py"),
+        include_str!("../../tests/fixtures/python316_parity/folding.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_frozenset() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/frozenset.py"),
+        include_str!("../../tests/fixtures/python316_parity/frozenset.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_nested_comprehension() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/nested_comprehension.py"),
+        include_str!("../../tests/fixtures/python316_parity/nested_comprehension.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_format_parameter() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/format_parameter.py"),
+        include_str!("../../tests/fixtures/python316_parity/format_parameter.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_match_class() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/match_class.py"),
+        include_str!("../../tests/fixtures/python316_parity/match_class.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_keyword_call() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/keyword_call.py"),
+        include_str!("../../tests/fixtures/python316_parity/keyword_call.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_empty_tuple() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/empty_tuple.py"),
+        include_str!("../../tests/fixtures/python316_parity/empty_tuple.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_annotate() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/annotate.py"),
+        include_str!("../../tests/fixtures/python316_parity/annotate.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_exit_copy() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/exit_copy.py"),
+        include_str!("../../tests/fixtures/python316_parity/exit_copy.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_interpolation_text() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/interpolation_text.py"),
+        include_str!("../../tests/fixtures/python316_parity/interpolation_text.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_unary_plus_pattern() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/unary_plus_pattern.py"),
+        include_str!("../../tests/fixtures/python316_parity/unary_plus_pattern.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_module_comprehension_import() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/module_comprehension_import.py"),
+        include_str!("../../tests/fixtures/python316_parity/module_comprehension_import.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_comprehension_cell() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/comprehension_cell.py"),
+        include_str!("../../tests/fixtures/python316_parity/comprehension_cell.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_empty_starred() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/empty_starred.py"),
+        include_str!("../../tests/fixtures/python316_parity/empty_starred.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_class_qualname() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/class_qualname.py"),
+        include_str!("../../tests/fixtures/python316_parity/class_qualname.marshal.hex"),
+    );
+}

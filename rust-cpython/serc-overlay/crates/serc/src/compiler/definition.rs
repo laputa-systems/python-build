@@ -1250,14 +1250,28 @@ impl Compiler<'_> {
                     .iter()
                     .any(|keyword| keyword.arg.is_none())
         });
-        let has_starred_arguments =
-            arguments.is_some_and(|arguments| arguments.args.iter().any(Expr::is_starred_expr));
+        let bases: Vec<&Expr> = arguments.map_or_else(Vec::new, |arguments| {
+            arguments
+                .args
+                .iter()
+                .filter(|argument| {
+                    self.context.python_version < PythonVersion::Py316
+                        || !super::expression::is_empty_starred_literal(argument)
+                })
+                .collect()
+        });
+        let has_starred_arguments = bases.iter().any(|argument| argument.is_starred_expr());
         let large_call = arguments.is_some_and(|arguments| {
-            arguments.args.len() + arguments.keywords.len() * 2 > CPYTHON_STACK_USE_GUIDELINE
+            let keyword_count = arguments.keywords.len();
+            let stack_use = if self.context.python_version >= PythonVersion::Py316 {
+                arguments.args.len() + keyword_count + usize::from(keyword_count != 0)
+            } else {
+                arguments.args.len() + keyword_count * 2
+            };
+            stack_use > CPYTHON_STACK_USE_GUIDELINE
         });
         let large_positional_tuple =
-            arguments.map_or(0, |arguments| arguments.args.len()) + 2 + usize::from(is_generic)
-                > CPYTHON_STACK_USE_GUIDELINE;
+            bases.len() + 2 + usize::from(is_generic) > CPYTHON_STACK_USE_GUIDELINE;
         let argument_count = arguments.map_or(0, |arguments| {
             arguments.args.len() + arguments.keywords.len()
         }) + usize::from(is_generic);
@@ -1267,8 +1281,8 @@ impl Compiler<'_> {
             if large_positional_tuple {
                 self.assembler.set_location(definition_location);
                 self.emit_build(BUILD_LIST, 2)?;
-                if let Some(arguments) = arguments {
-                    for argument in &arguments.args {
+                {
+                    for &argument in &bases {
                         let (argument, opcode) = if let Expr::Starred(starred) = argument {
                             (starred.value.as_ref(), LIST_EXTEND)
                         } else {
@@ -1286,25 +1300,15 @@ impl Compiler<'_> {
                 }
                 self.emit_unary_intrinsic(UnaryIntrinsic::LIST_TO_TUPLE)?;
             } else if has_starred_arguments {
-                let leading_count = arguments.map_or(0, |arguments| {
-                    arguments
-                        .args
-                        .iter()
-                        .take_while(|argument| !argument.is_starred_expr())
-                        .count()
-                });
-                if let Some(arguments) = arguments {
-                    for argument in arguments.args.iter().take(leading_count) {
-                        self.compile_expression(argument)?;
-                    }
+                let leading_count = bases
+                    .iter()
+                    .take_while(|argument| !argument.is_starred_expr())
+                    .count();
+                for &argument in bases.iter().take(leading_count) {
+                    self.compile_expression(argument)?;
                 }
                 self.emit_build(BUILD_LIST, leading_count + 2)?;
-                for argument in arguments
-                    .expect("starred class arguments require an argument list")
-                    .args
-                    .iter()
-                    .skip(leading_count)
-                {
+                for &argument in bases.iter().skip(leading_count) {
                     if let Expr::Starred(starred) = argument {
                         self.compile_expression(&starred.value)?;
                         self.emit(LIST_EXTEND, 1, -1)?;
@@ -1319,16 +1323,13 @@ impl Compiler<'_> {
                 }
                 self.emit_unary_intrinsic(UnaryIntrinsic::LIST_TO_TUPLE)?;
             } else {
-                if let Some(arguments) = arguments {
-                    for argument in &arguments.args {
-                        self.compile_expression(argument)?;
-                    }
+                for &argument in &bases {
+                    self.compile_expression(argument)?;
                 }
                 if is_generic {
                     self.load_name(".generic_base")?;
                 }
-                let positional_count =
-                    arguments.map_or(0, |arguments| arguments.args.len()) + usize::from(is_generic);
+                let positional_count = bases.len() + usize::from(is_generic);
                 self.emit_build(BUILD_TUPLE, positional_count + 2)?;
             }
             if let Some(arguments) = arguments.filter(|arguments| !arguments.keywords.is_empty()) {
@@ -1721,6 +1722,7 @@ impl Compiler<'_> {
             (if nested { CO_NESTED } else { 0 }) | (self.unit.flags & SUPPORTED_FUTURE_FLAGS),
         )?;
         child.inherit_lexical_context(self);
+        child.unit.renames_format_parameter = self.context.python_version >= PythonVersion::Py316;
         if generic_class_header {
             child.unit.header_symbol_names_are_final = true;
             child.unit.free_names_are_final = true;
@@ -1942,7 +1944,7 @@ impl Compiler<'_> {
         } else {
             0
         }) | (self.unit.flags & SUPPORTED_FUTURE_FLAGS);
-        let annotation_qualified_name = if self.context.python_version == PythonVersion::Py315 {
+        let annotation_qualified_name = if self.context.python_version >= PythonVersion::Py315 {
             if self.unit.generic_target_qualified_name.is_some() {
                 // A generic wrapper is an annotation scope. CPython skips it,
                 // including an early return when its parent is the module.
@@ -1963,11 +1965,6 @@ impl Compiler<'_> {
                 || "__annotate__".to_string(),
                 |(parent, _)| format!("{parent}.__annotate__"),
             )
-        } else if self.context.python_version == PythonVersion::Py316 {
-            format!(
-                "{}.__annotate__",
-                self.annotation_child_qualified_name(definition.name.as_str())
-            )
         } else {
             self.child_qualified_name("__annotate__")
         };
@@ -1983,7 +1980,7 @@ impl Compiler<'_> {
             0,
             parameter_flags,
         )?;
-        if self.context.python_version == PythonVersion::Py315
+        if self.context.python_version >= PythonVersion::Py315
             || self.unit.generic_target_qualified_name.is_some()
         {
             // Lambdas and generators inside annotations are qualified against
@@ -2000,6 +1997,7 @@ impl Compiler<'_> {
         }
         child.inherit_lexical_context(self);
         child.unit.annotation_thunk = true;
+        child.unit.renames_format_parameter = true;
         if can_see_class_scope {
             child.unit.annotation_classdict_index = Some(child.closure_index("__classdict__")?);
         }
@@ -2118,6 +2116,7 @@ impl Compiler<'_> {
         )?;
         child.inherit_lexical_context(self);
         child.unit.annotation_thunk = true;
+        child.unit.renames_format_parameter = true;
         child.unit.annotation_classdict_index = Some(child.closure_index("__classdict__")?);
         child.emit_function_prologue()?;
         let line = i32::try_from(self.unit.first_line_number).unwrap_or(i32::MAX);
@@ -2222,6 +2221,7 @@ impl Compiler<'_> {
         )?;
         child.inherit_lexical_context(self);
         child.unit.annotation_thunk = true;
+        child.unit.renames_format_parameter = true;
         child.emit_function_prologue()?;
         let setup_location =
             self.physical_source_location(body.first().map_or(first.range, Ranged::range));
@@ -2267,7 +2267,7 @@ fn function_annotations(
 ) -> Vec<(&str, &Expr)> {
     let parameters = &definition.parameters;
     let mut annotations = Vec::new();
-    let positional_groups = if python_version == PythonVersion::Py315 {
+    let positional_groups = if python_version >= PythonVersion::Py315 {
         [&parameters.posonlyargs, &parameters.args]
     } else {
         [&parameters.args, &parameters.posonlyargs]

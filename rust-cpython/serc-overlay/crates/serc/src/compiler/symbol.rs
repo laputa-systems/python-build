@@ -1238,6 +1238,7 @@ impl Compiler<'_> {
                                     &specification.elements,
                                     is_raw,
                                     self.source,
+                                    self.python_version,
                                 ));
                             }
                         }
@@ -1784,7 +1785,11 @@ impl Compiler<'_> {
                     self.folded_expressions.push(expression);
                 }
                 if let Expr::FString(fstring) = expression {
-                    self.visit_interpolated_components(fstring_components(fstring, self.source));
+                    self.visit_interpolated_components(fstring_components(
+                        fstring,
+                        self.source,
+                        self.python_version,
+                    ));
                     return;
                 }
                 if self.record_string_origins
@@ -2218,10 +2223,10 @@ impl Compiler<'_> {
         &mut self,
         expression: &Expr,
     ) -> Result<(), CompileError> {
-        #[derive(Default)]
         struct Collector<'source> {
             constants: Vec<Constant>,
             legacy_fstring_source: Option<&'source str>,
+            python_version: PythonVersion,
         }
 
         impl Collector<'_> {
@@ -2242,7 +2247,12 @@ impl Compiler<'_> {
                             self.visit_expr(&interpolation.expression);
                             if let Some(specification) = &interpolation.format_spec {
                                 self.visit_interpolated_components(
-                                    format_spec_components(&specification.elements, is_raw, source),
+                                    format_spec_components(
+                                        &specification.elements,
+                                        is_raw,
+                                        source,
+                                        self.python_version,
+                                    ),
                                     source,
                                 );
                             }
@@ -2263,7 +2273,10 @@ impl Compiler<'_> {
                 {
                     // Ruff represents literal fragments outside Expr; the generic
                     // visitor would miss constants reused after this message is removed.
-                    self.visit_interpolated_components(fstring_components(fstring, source), source);
+                    self.visit_interpolated_components(
+                        fstring_components(fstring, source, self.python_version),
+                        source,
+                    );
                 } else if let Some(constant) = literal_constant(expression) {
                     self.constants.push(constant);
                 } else {
@@ -2273,9 +2286,10 @@ impl Compiler<'_> {
         }
 
         let mut collector = Collector {
+            constants: Vec::new(),
             legacy_fstring_source: (self.context.python_version <= PythonVersion::Py313)
                 .then_some(self.context.source),
-            ..Collector::default()
+            python_version: self.context.python_version,
         };
         collector.visit_expr(expression);
         for constant in collector.constants {

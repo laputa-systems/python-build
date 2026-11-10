@@ -1253,7 +1253,7 @@ impl OptimizationPipeline {
             original_owners.retain_pipeline(&self);
         }
         if let Some(constants) = constants {
-            let sequence_depth = if self.python_version == crate::PythonVersion::Py315 {
+            let sequence_depth = if self.python_version >= crate::PythonVersion::Py315 {
                 self.fold_constant_sequences(constants)?
             } else {
                 None
@@ -1280,6 +1280,11 @@ impl OptimizationPipeline {
                 crate::PythonVersion::Py315 | crate::PythonVersion::Py316
             ) {
                 self.lower_common_constants(constants);
+                original_owners.retain_pipeline(&self);
+            }
+            if self.python_version >= crate::PythonVersion::Py316
+                && self.fold_empty_iterated_lists(constants)?
+            {
                 original_owners.retain_pipeline(&self);
             }
         }

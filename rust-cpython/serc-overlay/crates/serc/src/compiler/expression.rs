@@ -188,8 +188,12 @@ fn flush_interpolated_literal(
 fn interpolation_not_equal_truncation(
     interpolation: &ruff_python_ast::InterpolatedElement,
     source: &str,
+    python_version: PythonVersion,
 ) -> Option<ruff_text_size::TextSize> {
-    if interpolation.format_spec.is_none() || interpolation.conversion != ConversionFlag::None {
+    if python_version >= PythonVersion::Py316
+        || interpolation.format_spec.is_none()
+        || interpolation.conversion != ConversionFlag::None
+    {
         return None;
     }
     let start = interpolation.start() + ruff_text_size::TextSize::new(1);
@@ -225,9 +229,10 @@ fn interpolation_not_equal_truncation(
 fn interpolation_debug_text(
     interpolation: &ruff_python_ast::InterpolatedElement,
     source: &str,
+    python_version: PythonVersion,
 ) -> Option<String> {
     let debug = interpolation.debug_text.as_ref()?;
-    let text = interpolation_not_equal_truncation(interpolation, source).map_or_else(
+    let text = interpolation_not_equal_truncation(interpolation, source, python_version).map_or_else(
         || debug.as_str(),
         |operator| &source[usize::from(interpolation.start()) + 1..usize::from(operator)],
     );
@@ -238,6 +243,7 @@ fn append_interpolated_elements<'ast>(
     elements: &'ast ruff_python_ast::InterpolatedStringElements,
     is_raw: bool,
     source: &str,
+    python_version: PythonVersion,
     pending: &mut Option<PendingInterpolatedLiteral>,
     components: &mut Vec<InterpolatedStringComponent<'ast>>,
     discard_empty: bool,
@@ -259,7 +265,7 @@ fn append_interpolated_elements<'ast>(
                 );
             }
             InterpolatedStringElement::Interpolation(interpolation) => {
-                if let Some(debug) = interpolation_debug_text(interpolation, source) {
+                if let Some(debug) = interpolation_debug_text(interpolation, source, python_version) {
                     PendingInterpolatedLiteral::append(
                         pending,
                         source,
@@ -283,6 +289,7 @@ fn append_interpolated_elements<'ast>(
 pub(super) fn fstring_components<'ast>(
     fstring: &'ast ruff_python_ast::ExprFString,
     source: &str,
+    python_version: PythonVersion,
 ) -> Vec<InterpolatedStringComponent<'ast>> {
     let mut components = Vec::new();
     let mut pending = None;
@@ -300,6 +307,7 @@ pub(super) fn fstring_components<'ast>(
                 &fstring.elements,
                 fstring.flags.prefix().is_raw(),
                 source,
+                python_version,
                 &mut pending,
                 &mut components,
                 true,
@@ -315,6 +323,7 @@ pub(super) fn format_spec_components<'ast>(
     elements: &'ast ruff_python_ast::InterpolatedStringElements,
     is_raw: bool,
     source: &str,
+    python_version: PythonVersion,
 ) -> Vec<InterpolatedStringComponent<'ast>> {
     let mut components = Vec::new();
     let mut pending = None;
@@ -322,6 +331,7 @@ pub(super) fn format_spec_components<'ast>(
         elements,
         is_raw,
         source,
+        python_version,
         &mut pending,
         &mut components,
         false,
@@ -2055,10 +2065,11 @@ impl Compiler<'_> {
         match pattern {
             Pattern::MatchValue(pattern) => {
                 if let Some(constant) = self.context.fold_constant(&pattern.value) {
-                    // CPython omits unary plus from literal patterns' expression AST,
-                    // so the constant load uses the numeric operand's location.
+                    // CPython before 3.16 omits unary plus from literal patterns' expression
+                    // AST, so the constant load uses the numeric operand's location.
                     if let Expr::UnaryOp(unary) = pattern.value.as_ref()
                         && unary.op == UnaryOp::UAdd
+                        && self.context.python_version < PythonVersion::Py316
                     {
                         self.assembler
                             .set_location(self.source_location(unary.operand.range()));
@@ -2613,6 +2624,19 @@ impl Compiler<'_> {
         context: &mut MatchContext,
     ) -> Result<(), CompileError> {
         self.compile_expression(&pattern.cls)?;
+        if self.context.python_version >= PythonVersion::Py316
+            && pattern.arguments.patterns.is_empty()
+            && pattern.arguments.keywords.is_empty()
+        {
+            self.assembler
+                .set_location(self.source_location(pattern.range));
+            self.emit(
+                crate::target::opcodes::CALL_INTRINSIC_2,
+                crate::target::operands316::BinaryIntrinsic::MATCH_CLASS_ISINSTANCE.argument(),
+                -1,
+            )?;
+            return self.jump_to_match_fail(context, POP_JUMP_IF_FALSE, -1);
+        }
         let keyword_names = pattern
             .arguments
             .keywords
@@ -3141,7 +3165,8 @@ impl Compiler<'_> {
         &mut self,
         fstring: &ruff_python_ast::ExprFString,
     ) -> Result<(), CompileError> {
-        let mut components = fstring_components(fstring, self.context.source);
+        let mut components =
+            fstring_components(fstring, self.context.source, self.context.python_version);
         let value_count = components.len();
         if let [InterpolatedStringComponent::Literal(literal)] = components.as_mut_slice() {
             literal.range = self.fstring_result_range(fstring);
@@ -3189,7 +3214,11 @@ impl Compiler<'_> {
                     }
                     InterpolatedStringElement::Interpolation(interpolation) => {
                         if let Some(debug) =
-                            interpolation_debug_text(interpolation, self.context.source)
+                            interpolation_debug_text(
+                                interpolation,
+                                self.context.source,
+                                self.context.python_version,
+                            )
                         {
                             PendingInterpolatedLiteral::append(
                                 strings.last_mut().unwrap(),
@@ -3289,16 +3318,26 @@ impl Compiler<'_> {
     ) -> String {
         let start = usize::from(interpolation.range.start()) + 1;
         if let Some(operator) =
-            interpolation_not_equal_truncation(interpolation, self.context.source)
+            interpolation_not_equal_truncation(
+                interpolation,
+                self.context.source,
+                self.context.python_version,
+            )
         {
             return strip_expression_comments(
                 self.context.source[start..usize::from(operator)].trim_end(),
             );
         }
+        let keeps_trailing_whitespace = self.context.python_version >= PythonVersion::Py316;
         if interpolation.debug_text.is_some() {
             let range = self.debug_expression_source_range(interpolation);
             let source = &self.context.source[usize::from(range.start())..usize::from(range.end())];
-            return strip_expression_comments(source).trim_end().to_string();
+            let text = strip_expression_comments(source);
+            return if keeps_trailing_whitespace {
+                text
+            } else {
+                text.trim_end().to_string()
+            };
         }
         let end = if interpolation.conversion != ConversionFlag::None {
             self.context
@@ -3318,9 +3357,12 @@ impl Compiler<'_> {
                 .map_or(interpolation.end(), Ranged::start)
                 - ruff_text_size::TextSize::new(1)
         };
-        strip_expression_comments(&self.context.source[start..usize::from(end)])
-            .trim_end()
-            .to_string()
+        let text = strip_expression_comments(&self.context.source[start..usize::from(end)]);
+        if keeps_trailing_whitespace {
+            text
+        } else {
+            text.trim_end().to_string()
+        }
     }
 
     fn compile_interpolated_elements(
@@ -3329,7 +3371,12 @@ impl Compiler<'_> {
         range: ruff_text_size::TextRange,
         is_raw: bool,
     ) -> Result<(), CompileError> {
-        let components = format_spec_components(elements, is_raw, self.context.source);
+        let components = format_spec_components(
+            elements,
+            is_raw,
+            self.context.source,
+            self.context.python_version,
+        );
         let value_count = components.len();
         for component in components {
             match component {
@@ -3727,7 +3774,7 @@ impl Compiler<'_> {
 
         if !shape.has_starred
             && !shape.has_keyword_unpack
-            && (direct_method || shape.positional_count + shape.keyword_count * 2 <= 30)
+            && (direct_method || self.call_arguments_fit_stack(&shape))
         {
             for argument in &call.arguments.args {
                 self.compile_simple_expression_operand(argument)?;
@@ -3851,7 +3898,7 @@ impl Compiler<'_> {
             self.call_opcode_location_with_method(shape.direct_method, call_location);
         if !shape.has_starred
             && !shape.has_keyword_unpack
-            && (direct_method || shape.positional_count + shape.keyword_count * 2 <= 30)
+            && (direct_method || self.call_arguments_fit_stack(&shape))
         {
             for argument in &call.arguments.args {
                 self.compile_expression(argument)?;
@@ -4114,6 +4161,15 @@ impl Compiler<'_> {
         self.assembler.mark(end);
         self.set_depth(base_depth + 1);
         Ok(())
+    }
+
+    pub(super) fn call_arguments_fit_stack(&self, shape: &super::source::CallShape<'_>) -> bool {
+        let stack_use = if self.context.python_version >= PythonVersion::Py316 {
+            shape.positional_count + shape.keyword_count + usize::from(shape.keyword_count != 0)
+        } else {
+            shape.positional_count + shape.keyword_count * 2
+        };
+        stack_use <= CPYTHON_STACK_USE_GUIDELINE
     }
 
     /// Builds the keyword dictionary for an expanded call in source evaluation order.
@@ -4768,7 +4824,7 @@ impl Compiler<'_> {
         // Legacy AST folding applies to every comprehension iterable, including
         // async clauses; ordinary async-for statements follow a different rule.
         if (generators[0].is_async && self.context.python_version >= PythonVersion::Py314)
-            || self.context.python_version == PythonVersion::Py315
+            || self.context.python_version >= PythonVersion::Py315
         {
             self.compile_expression(&generators[0].iter)?;
         } else {
@@ -4812,6 +4868,9 @@ impl Compiler<'_> {
             value,
             &mut self_iterated_nested_targets,
         );
+        if self.context.python_version >= PythonVersion::Py316 {
+            temporary_names.retain(|name| local_names.contains(name));
+        }
         let mut active_temporary_names = temporary_names.clone();
         let legacy_class_comprehension = self.context.python_version <= PythonVersion::Py313
             && matches!(self.unit.scope, Scope::Class { .. })
@@ -4960,10 +5019,12 @@ impl Compiler<'_> {
             };
             seen_temporaries.insert(key)
         });
-        // CPython saves the hidden fast slot, but creates and accesses a captured
+        // CPython before 3.16 saves the hidden fast slot, but creates and accesses a captured
         // target's cell through its existing free slot while the comprehension is active.
         let mut comprehension_free_cell_indices = FxHashMap::default();
-        if let Scope::Function { free_indices, .. } = &self.unit.scope {
+        if let Scope::Function { free_indices, .. } = &self.unit.scope
+            && self.context.python_version < PythonVersion::Py316
+        {
             for name in &temporary_names {
                 let name_id = self.symbol_analysis_name_id(name);
                 if comprehension_cell_ids.contains(name_id)
@@ -5152,7 +5213,9 @@ impl Compiler<'_> {
                 {
                     continue;
                 }
-                if self.symbols.imported_scope_names.remove(name_id) {
+                if self.context.python_version < PythonVersion::Py316
+                    && self.symbols.imported_scope_names.remove(name_id)
+                {
                     removed_imports.push(name_id);
                 }
             }
@@ -7670,6 +7733,16 @@ impl Compiler<'_> {
         elements: &[Expr],
         kind: CollectionKind,
     ) -> Result<(), CompileError> {
+        if self.context.python_version >= PythonVersion::Py316
+            && elements.iter().any(is_empty_starred_literal)
+        {
+            let elements = elements
+                .iter()
+                .filter(|element| !is_empty_starred_literal(element))
+                .cloned()
+                .collect::<Vec<_>>();
+            return self.compile_collection(&elements, kind);
+        }
         let collection_location = self.assembler.location();
         if !elements.iter().any(Expr::is_starred_expr) {
             if kind == CollectionKind::Tuple
@@ -7867,13 +7940,18 @@ impl Compiler<'_> {
                 // The 3.15 flowgraph folds constant append chains before removing this
                 // intrinsic, preserving the tuple's location on the folded load.
                 self.compile_collection(&tuple.elts, CollectionKind::List)?;
-                if self.context.python_version == PythonVersion::Py315 {
+                if self.context.python_version >= PythonVersion::Py315 {
                     self.emit_unary_intrinsic(UnaryIntrinsic::LIST_TO_TUPLE)?;
                 } else {
                     // Python 3.14 removes the conversion before GET_ITER but retains its array slot.
                     self.assembler.add_last_hidden_exception_owner_slots(1);
                 }
                 Ok(())
+            }
+            Expr::List(list)
+                if list.elts.is_empty() && self.context.python_version >= PythonVersion::Py316 =>
+            {
+                self.emit_build(BUILD_LIST, 0)
             }
             Expr::List(list) if !list.elts.iter().any(Expr::is_starred_expr) => {
                 if (self.context.python_version <= PythonVersion::Py313 || list.elts.len() <= 30)
@@ -10916,6 +10994,18 @@ pub(super) fn optimized_generator_callable_for_target(
         return None;
     }
     Some(name.id.as_str())
+}
+
+pub(super) fn is_empty_starred_literal(expression: &Expr) -> bool {
+    let Expr::Starred(starred) = expression else {
+        return false;
+    };
+    match starred.value.as_ref() {
+        Expr::Tuple(tuple) => tuple.elts.is_empty(),
+        Expr::List(list) => list.elts.is_empty(),
+        Expr::Dict(dict) => dict.items.is_empty(),
+        _ => false,
+    }
 }
 
 fn is_frozenset_display_call(call: &ruff_python_ast::ExprCall) -> bool {

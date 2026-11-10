@@ -151,6 +151,7 @@ pub(super) struct CodeUnit {
     pub(super) legacy_sync_coroutine: bool,
     pub(super) first_line_number: u32,
     pub(super) annotation_thunk: bool,
+    pub(super) renames_format_parameter: bool,
 }
 
 #[derive(Debug)]
@@ -1433,7 +1434,7 @@ impl<'source> Compiler<'source> {
                 if (self.unit.free_names_are_final
                     && index >= self.symbols.locals.len() - self.symbols.free_names.len()
                     || self.unit.header_symbol_names_are_final)
-                    && !(self.unit.annotation_thunk && spelling == ".format")
+                    && !(self.unit.renames_format_parameter && spelling == ".format")
                 {
                     return (
                         MetadataName::from(interner.clone_name(*name_id)),
@@ -1442,7 +1443,7 @@ impl<'source> Compiler<'source> {
                 }
                 // The annotation argument has a separate internal identity so user names
                 // and comprehension targets spelled `format` do not bind to its slot.
-                if self.unit.annotation_thunk && spelling == ".format" {
+                if self.unit.renames_format_parameter && spelling == ".format" {
                     return (
                         MetadataName::new_static("format"),
                         MetadataId::from(self.required_name_id("format")),
@@ -1575,7 +1576,7 @@ impl<'source> Compiler<'source> {
                     assembly_order: None,
                     interning_events: Vec::new(),
                     interned_metadata_tuples: Vec::new(),
-                    locals_identity: if self.unit.annotation_thunk {
+                    locals_identity: if self.unit.renames_format_parameter {
                         LocalsIdentity::Fresh
                     } else {
                         LocalsIdentity::ByValue
@@ -1743,6 +1744,7 @@ impl CodeUnit {
             legacy_sync_coroutine: false,
             first_line_number: spec.first_line_number,
             annotation_thunk: false,
+            renames_format_parameter: false,
         }
     }
 }

@@ -3965,8 +3965,7 @@ impl<'source> Compiler<'source> {
                     let shape = self.call_shape(call);
                     if !shape.has_starred
                         && !shape.has_keyword_unpack
-                        && (shape.direct_method.is_some()
-                            || shape.positional_count + shape.keyword_count * 2 <= 30)
+                        && (shape.direct_method.is_some() || self.call_arguments_fit_stack(&shape))
                         && std::iter::once(call.func.as_ref())
                             .chain(call.arguments.args.iter())
                             .chain(call.arguments.keywords.iter().map(|keyword| &keyword.value))
@@ -3977,7 +3976,7 @@ impl<'source> Compiler<'source> {
                         && shape.keyword_count > 0
                         && !shape.has_starred
                         && !shape.has_keyword_unpack
-                        && shape.positional_count + shape.keyword_count * 2 <= 30
+                        && self.call_arguments_fit_stack(&shape)
                     {
                         let keyword_names = call
                             .arguments

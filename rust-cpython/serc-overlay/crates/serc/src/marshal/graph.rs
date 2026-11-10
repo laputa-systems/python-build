@@ -559,6 +559,16 @@ impl<'a> ObjectGraph<'a> {
     }
 
     fn sort_frozen_set_members(&self, values: &'a [Constant]) -> FrozenSetMembers<'a> {
+        if self.python_version >= PythonVersion::Py316 {
+            // CPython 3.16 sorts members by their standalone dumps, where an object written
+            // once has no reference flag and only interned-candidate strings are interned.
+            return frozen_set_members_with_properties(values, self.python_version, &|value| {
+                (
+                    false,
+                    matches!(value, Constant::String(value) if should_intern(value)),
+                )
+            });
+        }
         if self.needs_reference_sorting {
             frozen_set_members_with_properties(values, self.python_version, &|value| {
                 self.sort_key_properties(value)
@@ -1956,6 +1966,11 @@ fn collect_recreated_frozensets(
     initial_intern_state: &InitialInternState,
     values: &mut FxHashSet<usize>,
 ) -> Result<(), CompileError> {
+    // CPython 3.16 interns frozenset members in the compilation's constant cache, so
+    // every code object shares one container instead of copying it per code object.
+    if python_version >= PythonVersion::Py316 {
+        return Ok(());
+    }
     // A complete state may omit built-in entries whose later identifier interning
     // still matters. Keep the existing shortcuts for supplemental states.
     let need =

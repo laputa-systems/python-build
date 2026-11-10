@@ -22,7 +22,7 @@ impl OptimizationPipeline {
         &mut self,
         constants: &mut dyn ConstantTable,
     ) -> Result<Option<u32>, CompileError> {
-        if self.python_version != PythonVersion::Py315
+        if self.python_version < PythonVersion::Py315
             || !self.graph.features().has_sequence_target()
         {
             return Ok(None);
@@ -213,7 +213,7 @@ impl OptimizationPipeline {
     /// Resolves newly unlocated sequence loads after local fusion, as CPython does.
     /// Returns whether the pass ran and may have changed locations.
     pub(super) fn resolve_folded_sequence_locations(&mut self) -> bool {
-        if self.python_version != PythonVersion::Py315
+        if self.python_version < PythonVersion::Py315
             || !self.graph.iter_items().any(|item| {
                 matches!(item, Item::Instruction(instruction) if instruction.has_late_fold_location())
             })
@@ -282,6 +282,42 @@ impl OptimizationPipeline {
             final_locations.insert(block, previous);
         }
         true
+    }
+
+    /// CPython folds an iterated empty list after lowering common constants, so this
+    /// empty tuple stays a `LOAD_CONST`.
+    pub(super) fn fold_empty_iterated_lists(
+        &mut self,
+        constants: &mut dyn ConstantTable,
+    ) -> Result<bool, CompileError> {
+        let mut positions = Vec::new();
+        for block in self.graph.order().to_vec() {
+            let items = self.graph[block].items();
+            for offset in 0..items.len() {
+                let Item::Instruction(instruction) = items[offset] else {
+                    continue;
+                };
+                if instruction.opcode == BUILD_LIST
+                    && instruction.value_argument() == Some(0)
+                    && matches!(
+                        items.get(offset + 1),
+                        Some(Item::Instruction(next)) if matches!(next.opcode, GET_ITER | CONTAINS_OP)
+                    )
+                {
+                    positions.push(ItemPosition::new(block, offset));
+                }
+            }
+        }
+        if positions.is_empty() {
+            return Ok(false);
+        }
+        let index = constants.fold_sequence(Vec::new(), false)?;
+        for position in positions {
+            let instruction = self.graph.instruction_mut(position).unwrap();
+            instruction.opcode = LOAD_CONST;
+            instruction.set_operand(Operand::Value(index));
+        }
+        Ok(true)
     }
 
     /// Lowers modern immortal constants after value-based graph optimizations.
