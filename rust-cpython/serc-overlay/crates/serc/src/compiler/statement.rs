@@ -9239,23 +9239,15 @@ impl<'source> Compiler<'source> {
                     && self
                         .control
                         .finally
-                        .active_return_finally_contexts
-                        .is_empty()
-                    && self
-                        .control
-                        .finally
                         .preserved_return_value_contexts
                         .is_empty()
                     && self.control.exceptions.active_exception_handlers.is_empty()
                     && self.control.exceptions.active_exception_group_handlers == 0
-                    && self.control.exceptions.active_try_marker_slots.is_empty()
-                    && self
+                    && !self
                         .control
                         .exceptions
                         .active_exception_region_exclusions
-                        .len()
-                        == 1
-                    && self.control.withs.active_with_exits.is_empty())
+                        .is_empty())
                 .then(|| {
                     self.control
                         .loops
@@ -9265,17 +9257,20 @@ impl<'source> Compiler<'source> {
                 })
                 .flatten()
                 .filter(|&depth| {
+                    let exception_region_depth = self
+                        .control
+                        .exceptions
+                        .active_exception_region_exclusions
+                        .len();
                     self.control.loops.contexts[..depth].iter().all(|context| {
                         context.finally_end_depth == 0
-                            && context.exception_region_depth == 0
-                            && context.with_depth == 0
+                            && context.exception_region_depth < exception_region_depth
                     }) && self.control.loops.contexts[depth..]
                         .iter()
                         .any(|context| context.iterator_cleanup != IteratorCleanup::None)
                         && self.control.loops.contexts[depth..].iter().all(|context| {
                             context.finally_end_depth == 1
-                                && context.exception_region_depth == 1
-                                && context.with_depth == 0
+                                && context.exception_region_depth == exception_region_depth
                         })
                 });
                 if let Some(depth) = loops_before_finally_end {
@@ -9411,6 +9406,13 @@ impl<'source> Compiler<'source> {
                 } else {
                     self.emit_finally_end_unwind(0, preserve_tos, None)?
                 };
+                let finally_end_unwind_end = (finally_end_unwind_start.is_some()
+                    && deferred_finally_end_start.is_none())
+                .then(|| {
+                    let end = self.assembler.label();
+                    self.assembler.mark(end);
+                    end
+                });
                 let outer_finally_pop_end = returning_finally_region.map(|_| {
                     let end = self.assembler.label();
                     self.assembler.mark(end);
@@ -10532,7 +10534,7 @@ impl<'source> Compiler<'source> {
                 // The saved depths identify two adjacent regions with no intervening
                 // handler, manager, iterator, or ordinary try to unwind.
                 let tracks_finally_end_before_outer_finally = self.context.python_version
-                    <= crate::PythonVersion::Py313
+                    <= crate::PythonVersion::Py316
                     && !return_is_overridden
                     && self.control.finally.active_finally_end_blocks == 1
                     && self.control.finally.active_normal_finally_bodies == 0
@@ -15996,6 +15998,21 @@ impl<'source> Compiler<'source> {
                                 },
                                 |(_, start)| start,
                             );
+                        let exclusion_start = if let (Some(end), Some(owner)) = (
+                            finally_end_unwind_end,
+                            self.control.finally.finally_end_region_indices.last().copied(),
+                        ) && owner < region_count
+                        {
+                            if index == owner {
+                                finally_end_unwind_start.unwrap_or(end)
+                            } else if index < owner {
+                                end
+                            } else {
+                                exclusion_start
+                            }
+                        } else {
+                            exclusion_start
+                        };
                         let exclusion_start = handler_region_unwind_starts
                             .as_ref()
                             .and_then(|starts| starts[index])
@@ -44503,23 +44520,11 @@ impl<'source> Compiler<'source> {
             .exceptions
             .active_exception_region_exclusions
             .push(Vec::new());
-        let explicit_handler_end = self.with_native_finally_copy(
+        let handler_end = self.with_native_finally_copy(
             statement.range,
             FinallyCopy::Exceptional,
             |compiler| {
-                let mut explicit_handler_end = None;
-                let has_enclosing_finally_cleanup = compiler.control.finally.active_finally_try_bodies > 0
-                    || compiler.control.finally.active_normal_finally_bodies > 0
-                    || compiler.control.finally.active_finally_end_blocks > 0
-                    || compiler.control.finally.active_copied_finally_bodies > 0;
-                if let Some((Stmt::Return(return_statement), leading)) = statement.finalbody.split_last()
-                    && has_enclosing_finally_cleanup
-                    && !compiler.control.finally.copies_terminating_finally_returns
-                {
-                    compiler.compile_suite(leading)?;
-                    explicit_handler_end =
-                        Some(compiler.compile_return_from_exception_handler(return_statement)?);
-                } else if let [Stmt::If(final_if)] = statement.finalbody.as_slice()
+                if let [Stmt::If(final_if)] = statement.finalbody.as_slice()
                     && final_if.elif_else_clauses.is_empty()
                 {
                     let condition_false = if compiler.control.in_synchronous_with()
@@ -44625,16 +44630,11 @@ impl<'source> Compiler<'source> {
                         compiler.emit_reraise(ReraiseStackState::ActiveExceptionHandler)?;
                     }
                 }
-                Ok(explicit_handler_end)
+                Ok(())
             },
         )?;
-        let handler_end = if let Some(handler_end) = explicit_handler_end {
-            handler_end
-        } else {
-            let handler_end = self.assembler.label();
-            self.assembler.mark(handler_end);
-            handler_end
-        };
+        let handler_end = self.assembler.label();
+        self.assembler.mark(handler_end);
         let handler_exclusions = self
             .control
             .exceptions
@@ -44746,82 +44746,6 @@ impl<'source> Compiler<'source> {
         self.emit_reraise(ReraiseStackState::HandlerCleanup)?;
         self.set_depth(base_depth);
         Ok(())
-    }
-
-    fn compile_return_from_exception_handler(
-        &mut self,
-        statement: &ruff_python_ast::StmtReturn,
-    ) -> Result<Label, CompileError> {
-        let preserve_value = statement
-            .value
-            .as_deref()
-            .is_some_and(|value| !self.return_value_is_constant(value));
-        if preserve_value {
-            self.compile_expression(
-                statement
-                    .value
-                    .as_deref()
-                    .expect("preserved return has a value"),
-            )?;
-            self.emit(SWAP, 2, 0)?;
-        } else {
-            let range = statement
-                .value
-                .as_deref()
-                .map_or(statement.range, Ranged::range);
-            self.assembler.set_location(self.source_location(range));
-        }
-
-        self.emit(POP_TOP, 0, -1)?;
-        if preserve_value {
-            self.emit(SWAP, 2, 0)?;
-        }
-        let handler_end = self.assembler.label();
-        self.assembler.mark(handler_end);
-        self.emit(POP_EXCEPT, 0, -1)?;
-        self.emit_loop_iterator_cleanup(0, self.control.loops.contexts.len(), preserve_value)?;
-
-        let pass_finally_unwind_start = (!self
-            .control
-            .finally
-            .active_pass_finally_locations
-            .is_empty())
-        .then(|| {
-            let start = self.assembler.label();
-            self.assembler.mark(start);
-            start
-        });
-        self.emit_pass_finally_nops()?;
-
-        if !preserve_value {
-            if let Some(value) = &statement.value {
-                self.compile_expression(value)?;
-            } else {
-                let none = self.add_constant(Constant::None)?;
-                self.emit(LOAD_CONST, none, 1)?;
-            }
-        }
-        self.emit(RETURN_VALUE, 0, -1)?;
-        if let Some(pass_finally_unwind_start) = pass_finally_unwind_start {
-            let unwind_end = self.assembler.label();
-            self.assembler.mark(unwind_end);
-            let outer_region_count = self
-                .control
-                .exceptions
-                .active_exception_region_exclusions
-                .len()
-                .saturating_sub(1);
-            for exclusions in self
-                .control
-                .exceptions
-                .active_exception_region_exclusions
-                .iter_mut()
-                .take(outer_region_count)
-            {
-                exclusions.push((pass_finally_unwind_start, unwind_end));
-            }
-        }
-        Ok(handler_end)
     }
 
     fn compile_with_statement(

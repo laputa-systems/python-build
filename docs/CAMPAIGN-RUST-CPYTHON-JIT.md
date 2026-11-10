@@ -1213,6 +1213,23 @@ fixture from `perf-rust` (the C compiler, same source):
 - a folded constant jump is never a small-exit copy site on 3.16, since
   CPython folds it after `inline_small_or_no_lineno_blocks` has run.
 
+**Abrupt exits from `finally` (2026-11-10).** A `return` in an exceptional
+finalizer now follows `codegen.c`'s fblock order: iterators entered inside the
+finalizer are discarded before `FINALLY_END`, enclosing `finally` bodies and
+`with` exits run before the value is returned, and the handler region covers
+the finalizer's `POP_TOP` but not its `POP_EXCEPT`. The separate direct-return
+path was removed. Six marshal fixtures pin the crashing and skipping repros
+(`try_finally_loop_return_under_except`,
+`try_finally_direct_return_under_except`,
+`try_finally_loop_return_under_handler`, `return_in_finally_under_finally`,
+`return_in_else_finally_under_finally`,
+`return_in_finally_under_finally_no_raise`); `serc_parity.py` now generates
+270 `try`/`finally`/`except`/`with`/`for`/`while` programs (nesting depth up to
+3, `return`/`break`/`continue`). `cargo test -p serc --lib` passes 1,250;
+`perf-rust-serc-v3` builds clean; both review repros equal the C compiler; the
+parity census reports 0 mismatches in 10,005 cases; the full suite fails
+exactly the e891 set.
+
 Evidence at `52091c9`, from an empty bytecode cache on macOS arm64:
 `perf.py test --name perf-rust-serc --all` fails exactly the e891 set
 (`test_asyncio.test_sendfile`, `test_asyncio.test_sslproto`,
@@ -1526,7 +1543,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 | --- | --- | --- | --- |
 | J | active | T3 inline-frame elision implemented and CORRECT; measured no bucket-(a) fall, dropped under P1. Next: virtual-frame inlining or T3 attribute/global caches | Inline frames: incumbent-named bucket (a) richards 24.0% → 17.2%, raytrace 11.6% → 9.6%, but including the new `_INLINE_*` call/frame uops 23.9% → 24.6% and 11.5% → 11.7%; CORRECT (5 incumbent superseded assertions; new `jit_inline_integration`), advisory 1.0123 |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
-| C | active | C2 in-process `exec`: one layout-only verify difference in `test_compile` blocks the exit | `campaign/c2` (base `19a75b1`): `perf-rust-serc-v3` builds clean; verify run fails the e891 set plus only `test_condition_expression_with_redundant_comparisons_compiles` (4 subtests; `test_try_except_in_while_with_chained_condition_compiles` now matches, pinned by a marshal fixture that fails unpatched); `cargo test -p serc --lib` passes 1,244; the Boolean-statement and redundant-jump classes stay open; memory-only bench WITHIN-BUDGET under OD15; independent review pending |
+| C | active | C2 in-process `exec`: one layout-only verify difference in `test_compile` blocks the exit; abrupt `finally` exits fixed | `campaign/c2` (base `266ae26`): `perf-rust-serc-v3` builds clean; full suite fails exactly the e891 set; `cargo test -p serc --lib` passes 1,250; `serc_parity.py --oracle perf-rust` reports 0 mismatches in 10,005 cases including a generated 270-program `try`/`finally` corpus; `crash_min.py` and `skipfin.py` match the C compiler; verify run still fails the e891 set plus only `test_condition_expression_with_redundant_comparisons_compiles` (known layout difference); memory-only bench WITHIN-BUDGET under OD15 (unchanged); independent review pending |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
 
 **Owner queue:** R1 reference report (informational, no target change

@@ -174,7 +174,102 @@ def prepare_corpus(oracle: Path, corpus: Path) -> Path:
     lock = LINUX_CP316_LOCK_PATH if lb.IS_LINUX else MACOS_CP316_LOCK_PATH
     prepare_site(oracle, corpus / "site", groups={"django"}, lock=load_lock(lock))
     shutil.copytree(TOOLING_CORPUS, corpus / "tooling", ignore=ignore)
+    write_generated_corpus(corpus / "generated_try_finally")
     return corpus
+
+
+GENERATED_EXITS = {
+    "return_const": ["return 1"],
+    "return_expr": ["return x + 1"],
+    "for_return_const": ["for i in range(2):", "    return 1"],
+    "for_return_name": ["for i in range(2):", "    return x"],
+    "while_return_const": ["while True:", "    return 1"],
+    "for_cond_return": ["for i in range(2):", "    if i:", "        return 1"],
+    "for_cond_continue_return": [
+        "for i in range(2):",
+        "    if i:",
+        "        continue",
+        "    return x",
+    ],
+    "for_cond_break_return": ["for i in range(2):", "    if i:", "        break", "return 1"],
+    "nested_try_return": [
+        "try:",
+        '    log.append("nested")',
+        "except ValueError:",
+        "    pass",
+        "return 1",
+    ],
+}
+
+GENERATED_INNERS = {
+    "raise": ['raise KeyError("k")'],
+    "pass": ["pass"],
+    "raise_else": [
+        "try:",
+        '    raise KeyError("k")',
+        "except ValueError:",
+        "    pass",
+        "else:",
+        '    log.append("else")',
+    ],
+}
+
+GENERATED_WRAPPERS = {
+    "except": (["try:"], ["except KeyError:", '    log.append("caught")']),
+    "finally": (["try:"], ["finally:", '    log.append("outer")']),
+    "with": (["with CM(log):"], []),
+    "for": (["for j in range(2):"], []),
+    "while": (["while True:"], []),
+}
+
+GENERATED_CHAINS = [
+    [],
+    ["except"],
+    ["finally"],
+    ["with"],
+    ["for"],
+    ["while"],
+    ["finally", "except"],
+    ["with", "finally"],
+    ["for", "finally"],
+    ["while", "with"],
+]
+
+GENERATED_CLASS = (
+    "class CM:\n"
+    "    def __init__(self, log): self.log = log\n"
+    "    def __enter__(self): return self\n"
+    '    def __exit__(self, *a): self.log.append("exit"); return False\n'
+)
+
+
+def indent_generated(lines: list[str], amount: int) -> list[str]:
+    pad = " " * amount
+    return [pad + line if line else line for line in lines]
+
+
+def wrap_generated(lines: list[str], kind: str) -> list[str]:
+    open_lines, close_lines = GENERATED_WRAPPERS[kind]
+    return indent_generated(open_lines + indent_generated(lines, 4) + close_lines, 4)
+
+
+def build_generated_program(chain: list[str], inner: list[str], exit_lines: list[str]) -> str:
+    core = ["try:"] + indent_generated(inner, 4) + ["finally:"] + indent_generated(exit_lines, 4)
+    body = indent_generated(core, 4)
+    for kind in reversed(chain):
+        body = wrap_generated(body, kind)
+    return GENERATED_CLASS + "\ndef f(log, x):\n" + "\n".join(body) + "\n"
+
+
+def write_generated_corpus(root: Path) -> None:
+    root.mkdir(parents=True)
+    index = 0
+    for chain in GENERATED_CHAINS:
+        for inner in GENERATED_INNERS.values():
+            for exit_lines in GENERATED_EXITS.values():
+                index += 1
+                source = build_generated_program(chain, inner, exit_lines)
+                (root / f"try_finally_{index:04d}.py").write_text(source)
 
 
 def pyc_path(source: Path, optimize: int) -> Path:
