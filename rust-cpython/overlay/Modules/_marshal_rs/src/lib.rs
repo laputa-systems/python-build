@@ -12,12 +12,12 @@ use std::ptr;
 use std::slice;
 
 use cpython_sys::{
-    PyBool_Type, PyBytes_FromStringAndSize, PyBytes_Type, PyCapsule_New, PyComplex_FromDoubles,
-    PyComplex_ImagAsDouble, PyComplex_RealAsDouble, PyComplex_Type, PyCode_Type, Py_DecRef,
-    Py_IncRef, PyDict_New, PyDict_Next, PyDict_SetItem, PyDict_Type, PyErr_Clear, PyErr_Occurred,
-    PyFloat_FromDouble, PyFloat_Type, PyFrozenSet_New, PyFrozenSet_Type,
-    PyIter_Next, PyList_Append, PyList_GetItem, PyList_New, PyList_SetItem, PyList_Sort,
-    PyList_Type, PyLong_AsLongLongAndOverflow, PyLong_Export, PyLong_FreeExport,
+    PyASCIIObject, PyBool_Type, PyBytes_FromStringAndSize, PyBytes_Type, PyCapsule_New,
+    PyComplex_FromDoubles, PyComplex_ImagAsDouble, PyComplex_RealAsDouble, PyComplex_Type,
+    PyCode_Type, Py_DecRef, Py_IncRef, PyDict_New, PyDict_Next, PyDict_SetItem, PyDict_Type,
+    PyErr_Clear, PyErr_Occurred, PyFloat_FromDouble, PyFloat_Type, PyFrozenSet_New,
+    PyFrozenSet_Type, PyIter_Next, PyList_Append, PyList_GetItem, PyList_New, PyList_SetItem,
+    PyList_Sort, PyList_Type, PyLong_AsLongLongAndOverflow, PyLong_Export, PyLong_FreeExport,
     PyLong_FromLongLong, PyLong_GetNativeLayout, PyLong_Type, PyLongExport, PyLongWriter_Create,
     PyLongWriter_Discard, PyLongWriter_Finish, PyMem_Calloc, PyMem_Free, PyMem_Realloc, PyModule_Add,
     PyModuleDef, PyModuleDef_HEAD_INIT, PyModuleDef_Init, PyModuleDef_Slot, PyObject,
@@ -134,20 +134,27 @@ fn kind_of(ty: *mut PyTypeObject) -> Option<Kind> {
 }
 
 struct UnicodeInfo {
-    /// The bytes of an ASCII string, or null for any other string.
+    /// The bytes of a compact ASCII string, or null for any other string.
     data: *const c_char,
     length: usize,
     interned: bool,
+    /// `PyUnicode_IS_ASCII`: the string's characters are all ASCII, whether
+    /// or not its storage is compact ASCII.  A non-compact string can hold
+    /// ASCII characters, and upstream picks its tag from this flag, not from
+    /// the UTF-8 bytes.
+    ascii: bool,
 }
 
 unsafe fn unicode_info(value: *mut PyObject) -> UnicodeInfo {
     let mut data: *const c_char = ptr::null();
     let mut length: Py_ssize_t = 0;
     let bits = unsafe { _PyMarshal_RustUnicode(value, &mut data, &mut length) };
+    let state = unsafe { ptr::addr_of!((*value.cast::<PyASCIIObject>()).state) };
     UnicodeInfo {
         data: if bits & 1 != 0 { data } else { ptr::null() },
         length: length as usize,
         interned: bits & 2 != 0,
+        ascii: unsafe { (*state).ascii() } != 0,
     }
 }
 
@@ -674,7 +681,10 @@ impl Encoder {
             return Err(());
         }
         let bytes = unsafe { slice::from_raw_parts(data.cast::<u8>(), length as usize) };
-        if bytes.is_ascii() {
+        // Upstream writes an ASCII-content string in the ASCII form even when
+        // its storage is not compact ASCII; the encoded bytes alone cannot
+        // tell the two apart.
+        if info.ascii {
             return unsafe { self.write_ascii(bytes, interned) };
         }
         unsafe { self.counted(if interned { b't' } else { b'u' }, bytes) }

@@ -106,11 +106,7 @@ UPSTREAM_COMPRESSION_OMITTED_MEMBERS = frozenset({"_bz2_rs", "_zlib_rs"})
 UPSTREAM_COMPRESSION_MODULES = ("zlib", "_bz2", "binascii")
 COMPLETED = {"built", "suite-failed", "suite-passed", "all-failed", "all-passed"}
 DEFAULT_MIN_IDLE = 80.0
-# compileall_source hashes the .pyc bytes it writes; the checklist's marshal
-# route documents that Rust marshal output differs from pristine CPython's
-# selective-reference bytes, so that workload is not comparable to the
-# control. It stays comparable between two Rust builds.
-KNOWN_CONTROL_MISMATCHES = frozenset({"compileall_source"})
+KNOWN_CONTROL_MISMATCHES: frozenset[str] = frozenset()
 PROFILE_MODULE_ROUNDS = {"quick": 3, "standard": 5, "rigorous": 10}
 MODULE_TARGET_SECONDS = 0.25
 MODULE_MAX_ITERATIONS = 20_000
