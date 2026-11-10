@@ -40,6 +40,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
+from xml.etree import ElementTree
 
 LANE = Path(__file__).resolve().parent
 REPO = LANE.parent
@@ -127,6 +128,12 @@ CLIMB_SUITES = (
     "test_gc",
     "test_weakref",
 )
+CLIMB_SUPERSEDED_UOP_ASSERTIONS = frozenset({
+    "test.test_capi.test_opt.TestUopsOptimization.test_float_add_chain_both_unique",
+    "test.test_capi.test_opt.TestUopsOptimization.test_float_inplace_chain_propagation",
+    "test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_inplace_unique_lhs",
+    "test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_unique_result_enables_inplace",
+})
 CLIMB_FROZEN_PREFIXES = ("benchmarks/",)
 CLIMB_FROZEN_FILES = ("rust-cpython/perf_verdict.py", "rust-cpython/tests/jit_fuzz.py")
 
@@ -1868,6 +1875,12 @@ def _failed_suites(log: Path) -> list[str]:
     return []
 
 
+def _failed_tests(junit: Path) -> list[str]:
+    root = ElementTree.parse(junit).getroot()
+    return sorted(case.get("name", "") for case in root.iter("testcase")
+                  if any(child.tag in ("failure", "error") for child in case))
+
+
 def _climb_suites(python: Path) -> list[str]:
     probe = ("import pathlib, test\n"
              "print(' '.join(sorted(path.stem for path in "
@@ -1888,12 +1901,29 @@ def _climb_suite_failures(side: dict[str, Any], suites: list[str], *, jit: bool,
     paths = _paths(side["name"], side["lane"])
     label = "jit" if jit else "no-jit"
     log = lb.LOGS / f"climb-{side['name']}-{label}.log"
+    junit = log.with_suffix(".xml")
+    junit.unlink(missing_ok=True)
     workers = jobs if jobs is not None else lb._test_jobs()
     with host_lease("test", f"climb suites {side['name']} {label}"):
         result = lb._run_python_test(
-            [str(side["python"]), "-m", "test", "-j", str(workers), "--timeout=900", *suites],
+            [str(side["python"]), "-m", "test", "-j", str(workers), "--timeout=900",
+             "--junit-xml", str(junit), *suites],
             cwd=paths["build"], env=env, log=log)
-    return {"log": str(log), "returncode": result["returncode"], "failed": _failed_suites(log)}
+    return {"log": str(log), "returncode": result["returncode"], "failed": _failed_suites(log),
+            "failed_tests": _failed_tests(junit)}
+
+
+def _unexplained_jit_failures(jit_run: dict[str, Any],
+                              nojit_run: dict[str, Any]) -> dict[str, list[str]]:
+    only_jit_tests = set(jit_run["failed_tests"]) - set(nojit_run["failed_tests"])
+    superseded = only_jit_tests & CLIMB_SUPERSEDED_UOP_ASSERTIONS
+    modules = []
+    for module in sorted(set(jit_run["failed"]) - set(nojit_run["failed"])):
+        failing = {test for test in jit_run["failed_tests"] if test.startswith(f"test.{module}.")}
+        if not failing or not failing <= superseded:
+            modules.append(module)
+    return {"modules": modules, "tests": sorted(only_jit_tests - superseded),
+            "superseded": sorted(superseded)}
 
 
 def _perf_gate_ready(*, post: bool) -> dict[str, Any]:
@@ -2051,13 +2081,17 @@ def _climb_correctness(side: dict[str, Any], verdict: dict[str, Any], reasons: l
     with contextlib.redirect_stdout(sys.stderr):
         jit_run = _climb_suite_failures(side, suites, jit=True, jobs=jobs)
         nojit_run = _climb_suite_failures(side, suites, jit=False, jobs=jobs)
-    only_jit = sorted(set(jit_run["failed"]) - set(nojit_run["failed"]))
+    unexplained = _unexplained_jit_failures(jit_run, nojit_run)
     only_nojit = sorted(set(nojit_run["failed"]) - set(jit_run["failed"]))
+    only_nojit_tests = sorted(set(nojit_run["failed_tests"]) - set(jit_run["failed_tests"]))
     verdict["suites"] = {"suites": suites, "jit": jit_run["failed"],
                          "no_jit": nojit_run["failed"],
-                         "only_jit": only_jit, "only_no_jit": only_nojit,
+                         "only_jit": unexplained["modules"],
+                         "only_jit_tests": unexplained["tests"],
+                         "superseded_uop_assertions": unexplained["superseded"],
+                         "only_no_jit": only_nojit, "only_no_jit_tests": only_nojit_tests,
                          "logs": {"jit": jit_run["log"], "no_jit": nojit_run["log"]}}
-    if only_jit or only_nojit:
+    if unexplained["modules"] or unexplained["tests"] or only_nojit or only_nojit_tests:
         reasons.append("the targeted suites do not have the same failed-test set with and "
                        "without the JIT")
         return finish("REJECT", 1)

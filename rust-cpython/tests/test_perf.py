@@ -2213,7 +2213,7 @@ def climb_side(ref, *, commit="a" * 40):
 
 class ClimbStepTests(unittest.TestCase):
     def climb(self, candidate, *, screen=False, correctness=False, measure, fuzzer=None,
-              suites=None, gate_ready=None):
+              suites=None, tests=None, gate_ready=None):
         candidate_side = climb_side(candidate)
         incumbent_side = climb_side(perf.CLIMB_INCUMBENT, commit="b" * 40)
         calls = []
@@ -2227,6 +2227,7 @@ class ClimbStepTests(unittest.TestCase):
             fuzz=mock.Mock(return_value=mock.Mock(
                 programs=2000, mismatches=[], nondeterministic=[], programs_jitted=1900)))
         suites = suites or {"jit": [], "no_jit": []}
+        tests = tests or {"jit": [], "no_jit": []}
         with tempfile.TemporaryDirectory() as temp, \
                 mock.patch.object(perf, "resolve", side_effect=resolve), \
                 mock.patch.object(perf, "_frozen_changes", return_value=[]), \
@@ -2240,7 +2241,8 @@ class ClimbStepTests(unittest.TestCase):
                 mock.patch.object(perf, "_climb_suite_failures",
                                   side_effect=lambda side, names, *, jit, jobs: {
                                       "log": "log", "returncode": 0,
-                                      "failed": suites["jit" if jit else "no_jit"]}):
+                                      "failed": suites["jit" if jit else "no_jit"],
+                                      "failed_tests": tests["jit" if jit else "no_jit"]}):
             output = io.StringIO()
             with redirect_stdout(output):
                 code = perf.climb_step(candidate=candidate, screen=screen,
@@ -2277,6 +2279,41 @@ class ClimbStepTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(verdict["decision"], "REJECT")
         self.assertEqual(verdict["suites"]["only_jit"], ["test_float"])
+
+    def test_superseded_uop_assertions_alone_do_not_reject(self):
+        superseded = sorted(perf.CLIMB_SUPERSEDED_UOP_ASSERTIONS)
+        code, verdict, _ = self.climb(
+            "candidate", correctness=True,
+            measure=[{"entities": climb_entities(1.0), "directory": "/t"},
+                     {"entities": climb_entities(1.0), "directory": "/h"}],
+            suites={"jit": ["test_capi.test_opt"], "no_jit": []},
+            tests={"jit": superseded, "no_jit": []})
+        self.assertEqual(code, 0)
+        self.assertEqual(verdict["decision"], "CORRECT")
+        self.assertEqual(verdict["suites"]["superseded_uop_assertions"], superseded)
+
+    def test_unlisted_failure_beside_superseded_ones_rejects(self):
+        other = "test.test_capi.test_opt.TestUopsOptimization.test_int_add"
+        superseded = sorted(perf.CLIMB_SUPERSEDED_UOP_ASSERTIONS)
+        code, verdict, _ = self.climb(
+            "candidate", correctness=True,
+            measure=[{"entities": climb_entities(1.0), "directory": "/t"},
+                     {"entities": climb_entities(1.0), "directory": "/h"}],
+            suites={"jit": ["test_capi.test_opt"], "no_jit": []},
+            tests={"jit": sorted([*superseded, other]), "no_jit": []})
+        self.assertEqual(code, 1)
+        self.assertEqual(verdict["decision"], "REJECT")
+        self.assertEqual(verdict["suites"]["only_jit"], ["test_capi.test_opt"])
+        self.assertEqual(verdict["suites"]["only_jit_tests"], [other])
+
+    def test_module_failing_without_failed_tests_rejects(self):
+        code, verdict, _ = self.climb(
+            "candidate", correctness=True,
+            measure=[{"entities": climb_entities(1.0), "directory": "/t"},
+                     {"entities": climb_entities(1.0), "directory": "/h"}],
+            suites={"jit": ["test_capi.test_opt"], "no_jit": []})
+        self.assertEqual(code, 1)
+        self.assertEqual(verdict["suites"]["only_jit"], ["test_capi.test_opt"])
 
     def test_clean_step_accepts_and_reports_every_check(self):
         gate = {"entities": climb_entities(0.97), "directory": "/gate",
@@ -2323,6 +2360,20 @@ class ClimbStepTests(unittest.TestCase):
                            "\n"
                            "460 tests OK.\n")
             self.assertEqual(perf._failed_suites(log), ["test_ssl", "test_support"])
+
+
+    def test_failed_tests_are_read_from_the_junit_report(self):
+        with tempfile.TemporaryDirectory() as temp:
+            junit = Path(temp) / "suite.xml"
+            junit.write_text(
+                "<testsuites><testsuite>"
+                "<testcase name='test.test_float.T.test_ok'/>"
+                "<testcase name='test.test_float.T.test_bad'><failure>x</failure></testcase>"
+                "<testcase name='test.test_long.T.test_err'><error>y</error></testcase>"
+                "<testcase name='test.test_long.T.test_skip'><skipped/></testcase>"
+                "</testsuite></testsuites>")
+            self.assertEqual(perf._failed_tests(junit),
+                             ["test.test_float.T.test_bad", "test.test_long.T.test_err"])
 
 
 class SelectionTests(unittest.TestCase):
