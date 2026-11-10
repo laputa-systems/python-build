@@ -4357,3 +4357,11 @@ fn python316_marshal_matches_cpython_for_exceptional_finally_nested_pass_try() {
         ),
     );
 }
+
+#[test]
+fn python316_marshal_matches_cpython_for_same_line_nop_after_store() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/same_line_nop_after_store.py"),
+        include_str!("../../tests/fixtures/python316_parity/same_line_nop_after_store.marshal.hex"),
+    );
+}
