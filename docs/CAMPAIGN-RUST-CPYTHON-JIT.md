@@ -352,9 +352,30 @@ epilogue and 7 of 12 in `_PyThreadState_PopFrame`, about 1.23% mean, or 1.27%
 with the NULL-slot scan. Inlining the clear loop as well would add about 0.9%
 but duplicates the materialized-frame and generator paths into every return
 stencil, and the loop body is necessary decref work either way. The removable
-part is above P1's 1% floor, so the item stays in the backlog as inlining
-the pop fast paths into the return stencil, ranked first in T1 now that the
-guards item is dropped.
+part is above P1's 1% floor and landed as a static-inline fast path:
+`Include/internal/pycore_interpframe.h:400-430` adds
+`_PyEval_FrameClearAndPopThreadFast`, for a thread-owned frame with
+`frame_obj == NULL`, which clears the frame and then pops it inline unless it
+starts a datastack chunk (upstream's order: the chunk is read after the clear,
+whose finalizers may push and pop chunks), and `_PyThreadState_PopFrameFast`; `_RETURN_VALUE` and `RETURN_GENERATOR`
+(`overlay/Python/bytecodes.c:1691`, `:5950`) use them, and every other case
+calls the out-of-line functions unchanged. Sampled self time of the two
+symbols, same command and iteration counts (`perf.py profile --tool sample
+--jit-map --iterations 500/70/4121/2074`), `perf-jit-tlv` →
+`perf-jit-popinline`: richards 7.85% → 0.00%, raytrace 5.24% → 0.00%,
+deltablue 5.48% → 0.00%, scimark_sor 4.89% → 0.00% (mean over the four
+5.87% → 0.00%). `_RETURN_VALUE`'s own sampled share rises 1.03% → 6.42% on
+richards and 0.53% → 3.99% on deltablue as the work moves into the stencil,
+whose `_RETURN_VALUE_r11` grows 60 → 192 bytes. These profiles ran on an
+earlier draft whose stencil checked the chunk before clearing; the landed
+stencil differs only in that order. On a clean build of the landed source,
+climb-step `--correctness` is CORRECT: digests equal, 2,000 fuzz programs with
+0 mismatches, targeted suites match. JIT code bytes are at most 1.30x M0
+(raytrace 457,068); the incumbent-relative growth is largest on richards
+(+6.7%); peak RSS is +0.1% to +1.1%
+over the incumbent and at most +6.0% (raytrace) over the no-JIT sibling
+`perf-rust`. Evidence:
+`rust-cpython/results/perf-profile/20261110T1658*-perf-jit-{tlv,popinline}-*-sample`.
 
 **Type and version guards (measured 2026-11-10: 0.01% removable, dropped).**
 The backlog's 8.5% mean is an upper bound. Upstream's abstract interpreter
@@ -995,7 +1016,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | T1 frame push and pop pop fast-path inlining (1.3% removable), next in the re-ranked backlog | T1 generic thread-state deallocation: fft `_tlv_get_addr` 3.68%/3.70% → 2.49%/2.84%, `float_dealloc` 3.97%/3.49% → 2.13%/2.03%, `long_dealloc` 1.16%/0.93% → 0.50%/0.51%, `PyLong_FromLong` 0.71%/1.15% → 0.08%/0.08%; CORRECT |
+| J | active | T1 backlog done; next: generic `_BINARY_OP` (`array` subscripts, 11.4% mean) and T3 inlining | T1 frame pop fast-path inlining: `_PyEval_FrameClearAndPop` + `_PyThreadState_PopFrame` self richards 7.85% → 0.00%, raytrace 5.24% → 0.00%, deltablue 5.48% → 0.00%, sor 4.89% → 0.00%; CORRECT |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | active | C2 in-process `exec` | C0, marshal parity and C1 landed: census 9,102 / 9,135 exact, 0 mismatches on e891 |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -1023,6 +1044,14 @@ it the old local, which is NULL on first assignment; `_ITER_NEXT_RANGE` uses
 `_Py_DeallocTstate` is the only new exported name. Independent review: one
 blocking finding (a non-X close in `POP_TOP` asserted on NULL in assert-enabled
 builds), fixed; nothing else above low.
+
+**Owner queue:** T1 frame pop fast-path inlining (landed, async review). New
+overlay copy `Include/internal/pycore_interpframe.h` adds the private
+static-inline helpers `_PyEval_FrameClearAndPopThreadFast` and
+`_PyThreadState_PopFrameFast`; `overlay/Python/bytecodes.c` uses them at
+`_RETURN_VALUE` and `RETURN_GENERATOR`. No new exported symbol; every other
+case calls the existing `_PyEval_FrameClearAndPop` and
+`_PyThreadState_PopFrame` unchanged.
 
 **Owner ruling (2026-11-10):** a J candidate may fail, only with the JIT,
 upstream tests whose sole failing assertion names a uop the candidate rewrites
@@ -1216,4 +1245,5 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-10 | e891 | J | T1 | frame push and pop: 13.0% sampled share; clear-loop slots 96.4-99.8% live on return-heavy kernels; prologue/epilogue plus NULL-slot scan 1.3% removable | `perf-jit-int-unbox` | — | — | MEASURED (above P1's 1% floor; ranked first in T1) | `rust-cpython/results/perf-profile/20261110T14*-perf-jit-int-unbox-*-sample` |
 | 2026-11-10 | e891 | J | T1 | type and version guards: 8.5% sampled share; 4.6% first checks, 3.8% on values with no trace-local fact, 0.01% provably removable (go `_CHECK_MANAGED_OBJECT_HAS_VALUES` and same-frame globals versions); code-version repeats 0.06% are not provable | `perf-jit-int-unbox` | — | — | DROPPED (under P1's 1% floor) | `rust-cpython/results/perf-profile/20261110T14*-perf-jit-int-unbox-*-sample` |
 | 2026-11-10 | e891 | J | T1 | `_CHECK_VALIDITY` and `_SET_IP`: 3.47% sampled share (2.90% + 0.57%); 0 of 227 sampled `_SET_IP` and 0 of 835 sampled `_CHECK_VALIDITY` removable, every one has a following escaping/needs-IP observer or a preceding escape; the removal pass runs before T2 unboxing, which leaves one unsampled stale pair | `perf-jit-int-unbox` | — | — | DROPPED (under P1's 1% floor) | `rust-cpython/results/perf-profile/20261110T14*-perf-jit-int-unbox-*-sample` |
+| 2026-11-10 | e891 | J | T1 | frame pop fast-path inlining: `_PyEval_FrameClearAndPop` + `_PyThreadState_PopFrame` self richards 7.85% → 0.00%, raytrace 5.24% → 0.00%, deltablue 5.48% → 0.00%, sor 4.89% → 0.00%; `_RETURN_VALUE_r11` stencil 60 → 192 bytes | `perf-jit-tlv` | timing deferred (OD14) | — | CORRECT (clean build; independent review clean) | `campaign/t1-popinline` |
 | 2026-11-10 | e891 | J | T1 | generic thread-state deallocation: `_tlv_get_addr` sampled share fft 3.68%/3.70% → 2.49%/2.84%, fannkuch 6.80% → 6.34%/5.31% (one incumbent repeat 18.52% sampling outlier), raytrace 2.70% → 2.16%, nqueens 5.25% → 5.26%, richards 0.42% → 0.63%; fft `float_dealloc` 3.97%/3.49% → 2.13%/2.03%, `long_dealloc` 1.16%/0.93% → 0.50%/0.51%, `PyLong_FromLong` 0.71%/1.15% → 0.08%/0.08%; the remaining `PyFloat_FromDouble` TLV enters through `array_subscr` | `perf-jit-int-unbox` | timing deferred (OD14) | — | CORRECT | `rust-cpython/results/perf-profile/20261110T1607*-perf-jit-{int-unbox,tlv}-{nqueens,fannkuch,scimark_fft,richards,raytrace}-sample`, repeats `20261110T1609*-...-{fannkuch,scimark_fft}-sample` |

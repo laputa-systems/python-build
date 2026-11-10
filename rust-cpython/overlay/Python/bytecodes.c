@@ -1688,7 +1688,9 @@ dummy_func(
             // GH-99729: We need to unlink the frame *before* clearing it:
             _PyInterpreterFrame *dying = frame;
             frame = tstate->current_frame = dying->previous;
-            _PyEval_FrameClearAndPop(tstate, dying);
+            if (!_PyEval_FrameClearAndPopThreadFast(tstate, dying)) {
+                _PyEval_FrameClearAndPop(tstate, dying);
+            }
             RELOAD_STACK();
             LOAD_IP(frame->return_offset);
             res = temp;
@@ -5945,7 +5947,9 @@ dummy_func(
             _Py_LeaveRecursiveCallPy(tstate);
             _PyInterpreterFrame *prev = frame->previous;
             _PyThreadState_UpdateLastProfiledFrame(tstate, frame, prev);
-            _PyThreadState_PopFrame(tstate, frame);
+            if (!_PyThreadState_PopFrameFast(tstate, frame)) {
+                _PyThreadState_PopFrame(tstate, frame);
+            }
             frame = tstate->current_frame = prev;
             LOAD_IP(frame->return_offset);
             RELOAD_STACK();
