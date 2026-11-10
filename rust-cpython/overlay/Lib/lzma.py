@@ -29,6 +29,7 @@ import os
 from compression._common import _streams
 from _lzma import *
 from _lzma import LZMACompressor as _CPythonLZMACompressor
+from _lzma import LZMADecompressor as _CPythonLZMADecompressor
 from _lzma import _encode_filter_properties, _decode_filter_properties  # noqa: F401
 
 try:
@@ -404,7 +405,9 @@ def decompress(data, format=FORMAT_AUTO, memlimit=None, filters=None):
 
     For incremental decompression, use an LZMADecompressor instead.
     """
-    if (_rust_lzma is not None and type(format) is int
+    if (_rust_lzma is not None
+            and LZMADecompressor is _CPythonLZMADecompressor
+            and type(format) is int
             and format in (FORMAT_AUTO, FORMAT_XZ)
             and memlimit is None and filters is None):
         result = _rust_lzma.decompress_xz(data)

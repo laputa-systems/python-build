@@ -58,6 +58,17 @@ def _new_compressor(compresslevel):
     return _RustCompressor(compresslevel)
 
 
+def _replaced_zlib_decompressobj():
+    zlib = sys.modules.get("zlib")
+    if zlib is None:
+        return None
+    current = zlib.decompressobj
+    if (current is getattr(zlib, "_rust_decompressobj", None)
+            or getattr(current, "__self__", None) is zlib):
+        return None
+    return current
+
+
 def _new_decompressor(wbits=-_MAX_WBITS, size_hint=0):
     if _gzip_rs is None:
         return zlib._ZlibDecompressor(wbits=wbits)
@@ -788,10 +799,13 @@ def decompress(data):
     while True:
         if _read_gzip_header(fp) is None:
             return b"".join(decompressed_members)
-        # Use a zlib raw deflate compressor
-        # The last member's trailer stores its decompressed size.
-        do = _new_decompressor(wbits=-_MAX_WBITS,
-                               size_hint=int.from_bytes(data[-4:], "little"))
+        replaced_decompressobj = _replaced_zlib_decompressobj()
+        if replaced_decompressobj is not None:
+            do = replaced_decompressobj(wbits=-_MAX_WBITS)
+        else:
+            do = _new_decompressor(
+                wbits=-_MAX_WBITS,
+                size_hint=int.from_bytes(data[-4:], "little"))
         crc = _crc32(b"")
         length = 0
         # Feed the member in chunks of increasing size, so that what is read

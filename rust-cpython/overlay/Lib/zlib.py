@@ -182,6 +182,7 @@ def _install_rust_codecs():
     native.decompress = decompress
     native.compressobj = compressobj
     native.decompressobj = decompressobj
+    native._rust_decompressobj = decompressobj
     sys.modules[__name__] = native
 
 

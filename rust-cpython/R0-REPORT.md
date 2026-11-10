@@ -143,7 +143,86 @@ were not rebuilt with these overlay changes; the Rust marshal tie port is
 validated by `test_marshal` and the parity run, not by the full corpus again;
 TLS paths were untouched.
 
+## Fix B: remaining overlay-only failures (macOS arm64)
 
+Three further suites failed only on `perf-rust` (`logs/perf-rust-all.log`, taken
+before Fix A). Each was the lane's Rust fast path not producing the observable
+behaviour of the upstream path it replaced; all three are fixed in `overlay/`.
+`ssl.py`, `_ssl_rs`, RTLS and the rest of the TLS code were not touched.
+
+1. **`test_gzip.test_decompress_many_members` (test_gzip.py:873) and
+   `test_lzma.test_decompress_many_streams` (test_lzma.py:563): `0 not less
+   than 0`.** Both post-a1 tests replace the decoder factory
+   (`zlib.decompressobj`, `lzma.LZMADecompressor`) with a counter and assert the
+   input fed grows linearly with the number of members. `gzip.decompress` built
+   each member through `_new_decompressor` (now `overlay/Lib/gzip.py:800-802`)
+   and `lzma.decompress` returned `_rust_lzma.decompress_xz` directly (now
+   `overlay/Lib/lzma.py:412`), so the replaced factory was never constructed and
+   both `fed` counts stayed 0. `gzip.decompress` now calls the zlib factory when
+   the module attribute no longer belongs to `zlib`
+   (`gzip.py:795-798`; `zlib.decompressobj.__self__ is not zlib`), keeping the
+   Rust decoder only when the factory is untouched; `lzma.decompress` takes the
+   Rust fast path only while the module global is the C class
+   (`lzma.py:32` imports `_lzma.LZMADecompressor`; `lzma.py:407-408` requires
+   `LZMADecompressor is _CPythonLZMADecompressor`) and otherwise uses upstream's
+   `_streams._decompress_all`. Upstream behaviour (which reads the callers can
+   observe) is the oracle; the unpatched fast path is unchanged.
+2. **`test_hmac.test_hmac_digest_reject_memoryview_for_key` (test_hmac.py:1550):
+   `TypeError not raised`.** With `_hashlib` and `_hmac` blocked, upstream's
+   `hmac.digest` reaches `_compute_digest_fallback`, whose
+   `isinstance(key, (bytes, bytearray))` check raises `TypeError` for a
+   `memoryview` key. The lane consulted `_hmac_rs.compute_digest` before the
+   fallback, and it accepted the buffer. The Rust call is now gated on
+   `isinstance(key, (bytes, bytearray))` (`overlay/Lib/hmac.py:406-407`), so a
+   non-bytes key reaches the upstream fallback and raises. `hmac.HMAC` already
+   had upstream's key check at the top of `__init__`.
+
+**Acceptance (this worktree, `TMPDIR=$PWD/.work/tmp`):**
+
+- `python3 rust-cpython/perf.py build --name perf-rust --incremental` exit 0:
+  `OK incremental overlay sync: 3 changed file(s)`, `OK perf CPython 3.16.0a1+dev
+  (incremental, 58 release Rust extensions verified, 95s)`.
+- `rust-cpython/stage-perf-rust/bin/python3.16 -m test -j6 test_gzip test_lzma
+  test_hmac test_zlib test_bz2 test_tarfile test_zipfile` exit 0:
+  `All 7 tests OK.` / `Total tests: run=1,964 skipped=17` /
+  `Total test files: run=7/7` / `Result: SUCCESS`.
+- Same command on `stage-perf-upstream` exit 0: `All 7 tests OK.` /
+  `Total tests: run=1,964 skipped=17` / `Total test files: run=7/7` /
+  `Result: SUCCESS`. `perf-rust` fails no test `perf-upstream` passes.
+
+### Classification: asyncio sendfile/sslproto, test_ssl, test_support
+
+Each suite was run verbosely on both builds (`-m test -v <suite>`, per suite).
+`perf-rust` fails all four; `perf-upstream` passes all four. The TLS-side
+modules are not an overlay difference: `asyncio/sslproto.py` is byte-identical
+between the builds (sha256 `5e2fd44d…9586`), and the `asyncio/base_events.py`
+overlay diff is only `_asyncio_rs` ready-queue/timer dispatch, not the sendfile
+or fallback path. `overlay/Lib/socket.py` differs only in `inet_pton`/`inet_ntop`
+and the `_socket_rs` import gate; the non-SSL sendfile tests pass on `perf-rust`.
+
+| Failing test | Class | Evidence |
+| --- | --- | --- |
+| `test_asyncio.test_sendfile`: `Kqueue/Poll/SelectEventLoopTests.test_sendfile_ssl_close_peer_in_the_middle_closes_transport` (3 failures, `ConnectionError not raised`, test_sendfile.py:580) | (a) frozen TLS stack | New after a1: absent from v3.16.0a1's `Lib/test/test_asyncio/test_sendfile.py`, which has only the two non-SSL `*_close_peer_in_the_middle_of_receiving` tests. An instrumented run (`.work/tmp/probe_sendfile.py`, scratch) shows the difference is EOF/close semantics: on `perf-upstream` the peer's close surfaces mid-transfer as `SSLError(1, '[SSL: APPLICATION_DATA_AFTER_CLOSE_NOTIFY] … (_ssl.c:3303)')` and `BrokenPipeError`, so `_SendfileFallbackProtocol.drain()` raises `ConnectionError` (`asyncio/base_events.py:229-231`); on `perf-rust` all 69 drains see `is_closing()=False` and `connection_lost(None)` is delivered only at cleanup, so sendfile returns normally. The lane's frozen RTLS stack maps the peer's close_notify to a clean EOF where upstream's OpenSSL `_ssl` reports a fatal error. |
+| `test_asyncio.test_sslproto`: `SslProtoHandshakeTests.test_pause_reading_if_ssl_replies_are_not_read` (`transport.write` called once) and `test_no_pause_reading_if_app_data_is_not_read` (called twice) | (a) frozen TLS stack | Both tests are new after a1 (absent from a1's `test_sslproto.py`), added with upstream's outgoing accounting that a1's `sslproto.py` lacks (`_outgoing_app_size` at main `Lib/asyncio/sslproto.py:311`, `_outgoing_app_size +=` at `:755`, `_process_outgoing` at `:758`). The lane has that upstream `sslproto.py`, but its frozen `ssl` differs: `ctx.wrap_bio(...)` leaves a 1460-byte ClientHello pending on `perf-rust` and 0 bytes on `perf-upstream` (direct probe on both stages), so `_process_outgoing()` writes it to the mocked transport and violates `assert_not_called()`/`assert_called_once_with`. |
+| `test_ssl`: file-level `AttributeError: module 'ssl' has no attribute 'HAS_ECH'` at import (`test_ssl.py:2065`, `class ECHTests`) | (b) a1 known-red + (a) frozen TLS stack | Recorded a1 known red as `test_ssl` "RTLS policy gaps" (`rust-cpython/ENGINEERING.md:129-134`). Concrete instance is ECH, added after v3.16.0a1: a1's `Lib/ssl.py` has no `HAS_ECH` and a1's `test_ssl.py` has no ECH tests, while main's `Lib/ssl.py:121` imports `HAS_ECH` and `test_ssl.py:2065` requires it. The lane's `ssl.py` is the unrebased RTLS shim (`from rtls import *`), so the import aborts the whole suite (`run=0`). |
+| `test_support`: 14 errors, all `TestHashlibSupport.test_disable_hash` subTests (`allow_openssl=True, allow_builtin=False`) raising `ValueError: unsupported hash algorithm <name>` | (b) a1 known-red | Recorded a1 known red as `test_support` "hashlib shim" (`ENGINEERING.md:129-134`). The lane's `hashlib.__rust_new` probes `__get_builtin_constructor` and raises when the test blocks it (`overlay/Lib/hashlib.py:308-312`), instead of serving the algorithm through the Rust/OpenSSL route the helper allows. Fixing it would need `Lib/hashlib.py`, outside this task's writable paths. |
+
+No (c) new non-TLS regression was found in these four suites.
+
+**Results (individual verbose runs):**
+
+| Suite | `perf-rust` | `perf-upstream` |
+| --- | --- | --- |
+| `test_asyncio.test_sendfile` | exit 2; `Ran 72 tests`; `FAILED (failures=3)`; `Total tests: run=72 failures=3`; `Total test files: run=1/1 failed=1`; `Result: FAILURE` | exit 0; `Ran 72 tests`; `OK`; `Total tests: run=72`; `Total test files: run=1/1`; `Result: SUCCESS` |
+| `test_asyncio.test_sslproto` | exit 2; `Ran 52 tests`; `FAILED (failures=2, skipped=17)`; `Total tests: run=52 failures=2 skipped=17`; `run=1/1 failed=1`; `Result: FAILURE` | exit 0; `Ran 52 tests`; `OK (skipped=17)`; `Total tests: run=52 skipped=17`; `run=1/1`; `Result: SUCCESS` |
+| `test_ssl` | exit 2; `Total tests: run=0`; `Total test files: run=1/1 failed=1`; `Result: FAILURE` | exit 0; `Ran 243 tests`; `OK (skipped=19)`; `Total tests: run=243 skipped=19`; `run=1/1`; `Result: SUCCESS` |
+| `test_support` | exit 2; `Ran 78 tests`; `FAILED (errors=14, skipped=6)`; `Total tests: run=78 skipped=6`; `run=1/1 failed=1`; `Result: FAILURE` | exit 0; `Ran 78 tests`; `OK (skipped=6)`; `Total tests: run=78 skipped=6`; `run=1/1`; `Result: SUCCESS` |
+
+**Unverified / not touched:** no full `test --all` rerun after Fix B (only the
+seven compression suites and the four classified suites); `perf-rust-jit` and
+the other builds were not rebuilt with Fix B; the a1 comparison uses the
+`v3.16.0a1` tag files fetched into `.work/tmp/a1` (peeled commit `22d79d98`),
+not an a1 build; TLS code was untouched.
 
 JIT used the locked LLVM 23.1.4 via `build.py:1017` (`LLVM_VERSION`, 
 `LLVM_TOOLS_INSTALL_DIR`) and `build.py:751` (archive-extracted object tools).

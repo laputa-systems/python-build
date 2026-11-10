@@ -403,7 +403,8 @@ def digest(key, msg, digest):
             # and large messages.
             pass
 
-    if rust_hmac is not None and _rust_hmac_usable(spec[0]):
+    if (rust_hmac is not None and isinstance(key, (bytes, bytearray))
+            and _rust_hmac_usable(spec[0])):
         try:
             return rust_hmac.compute_digest(key, msg, spec[0])
         except ValueError:
