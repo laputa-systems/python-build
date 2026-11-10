@@ -292,3 +292,26 @@ removed) because the debug unwind-info path was not needed for these tests.
 - `perf-upstream` and `perf-rust` were built but not tested in this continuation.
 - The pydebug JIT oracle is a scratch build under `.work/tmp/r0/dbgbuild`, not a named
   lane build; its stencil headers carry no debug unwind info.
+
+## Step 4 parity after Fix B (macOS arm64)
+
+`perf.py test --all`, after an incremental rebuild of `perf-rust` and
+`perf-rust-jit` on `99cce2b`:
+
+| Build | Failed files |
+| --- | --- |
+| `perf-upstream` | `test_multiprocessing_forkserver.test_misc` |
+| `perf-upstream-jit` | `test_multiprocessing_forkserver.test_misc`, `test_concurrent_futures.test_process_pool` (flaky) |
+| `perf-rust` | upstream-red above; known red `test_ssl`, `test_support`; frozen-TLS `test_asyncio.test_sendfile`, `test_asyncio.test_sslproto` |
+| `perf-rust-jit` | same set as `perf-rust` |
+
+A first run at load average 15-17 also failed `test_socket`, `test_tarfile`,
+`test_concurrent_futures.test_shutdown` and `test_os.test_os` with
+`os.getcwd()` raising `FileNotFoundError`; all four pass in isolation on the
+overlay and upstream builds and did not recur in the confirming run.
+
+Fuzzer, `perf-rust-jit`, 2,000 programs: seeds 0, 1, 2 give 0 mismatches,
+0 nondeterministic (JIT coverage 0.9745, 0.9775, 0.9725).
+
+`perf.py` has no pydebug build mode; pydebug evidence is the pristine scratch
+build above.
