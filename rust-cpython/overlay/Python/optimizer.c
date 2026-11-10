@@ -1883,10 +1883,15 @@ unbox_floats(_PyUOpInstruction *buffer, int length,
     }
     Py_ssize_t count = _PyJitOpt_PlanFloatUnboxing(uops, length, synthetic, steps, capacity);
     PyMem_RawFree(uops);
+#ifdef Py_DEBUG
     if (count < 0) {
-        Py_FatalError("float unboxing plan contradicts the uop metadata");
+        char *python_lltrace = Py_GETENV("PYTHON_LLTRACE");
+        if (python_lltrace != NULL && *python_lltrace >= '2') {
+            printf("Float unboxing plan rejected; the trace stays boxed\n");
+        }
     }
-    if (count == 0) {
+#endif
+    if (count <= 0) {
         PyMem_RawFree(steps);
         return length;
     }

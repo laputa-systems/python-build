@@ -22,6 +22,12 @@ class FSub(float):
         EVENTS.append(("FSub", float.hex(self)))
 
 
+class Point:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+
 def show(value):
     if isinstance(value, float):
         return [type(value).__name__, float.hex(value)]
@@ -92,6 +98,15 @@ def deopts(n, a, b, steps):
             frame = error.__traceback__.tb_frame
             errors.append((k, str(error), frame.f_locals["f"], frame.f_locals["g"]))
     return acc, errors
+
+
+def owned(n, a, b, c, items, point):
+    acc = 0.0
+    for k in range(n):
+        acc = acc + (a * items[k] + b * c)
+        acc = acc - (items[k] * b + c * a)
+        acc = acc + (point.x * b + c * point.y)
+    return acc
 
 
 def branches(n, a, b, c, flags):
@@ -167,15 +182,22 @@ def run(n):
     for k in range(WARM + 10, n, 97):
         steps[k] = float(k)
     flags = [True] * n
+    items = [float(k % 11) + 0.25 for k in range(n)]
+    items[WARM + 80] = FSub(1.5)
+    point = Point(float("2.5"), float("-1.75"))
     for k in range(WARM + 5, n, 89):
         flags[k] = False
     sys.monitoring.use_tool_id(TOOL, "jit-unbox")
     sys.monitoring.register_callback(TOOL, sys.monitoring.events.LINE, monitor_line)
-    before = [sys.getrefcount(value) for value in (a, b, c, d)]
+    def counts():
+        return [sys.getrefcount(value) for value in (a, b, c, d, point.x, point.y, *items)]
+
+    before = counts()
     results = {}
     probes = {}
     for name, function, args in (("merged", merged, (a, b, c, d)), ("exits", exits, (a, b, c, values)),
-                                 ("deopts", deopts, (a, b, steps)), ("branches", branches, (a, b, c, flags))):
+                                 ("deopts", deopts, (a, b, steps)), ("branches", branches, (a, b, c, flags)),
+                                 ("owned", owned, (a, b, c, items, point))):
         results[name] = function(n, *args)
         probes[name] = uops(function)
     del function, args
@@ -188,9 +210,10 @@ def run(n):
     })
     del values
     gc.collect()
-    after = [sys.getrefcount(value) for value in (a, b, c, d)]
+    after = counts()
     print(json.dumps({"results": show(results), "events": EVENTS,
-                      "refcount_delta": [x - y for x, y in zip(after, before)],
+                      "refcounts_moved": [[index, x - y] for index, (x, y) in enumerate(zip(after, before))
+                                          if x != y],
                       "trace_lines": sorted(TRACE_LINES), "monitor_lines": sorted(MONITOR_LINES),
                       "uops": probes}, sort_keys=True))
 
@@ -205,6 +228,8 @@ EXPECTED_UOPS = {
     "exits": {"_BINARY_OP_ADD_FLOAT_UNBOXED", "_BOX_FLOAT_STACK"},
     "deopts": {"_BINARY_OP_TRUEDIV_FLOAT_UNBOXED", "_BOX_FLOAT_STACK"},
     "branches": {"_BINARY_OP_ADD_FLOAT_UNBOXED", "_BOX_FLOAT_STACK", "_CLEAR_FLOAT_STACK"},
+    "owned": {"_BINARY_OP_ADD_FLOAT_UNBOXED", "_BINARY_OP_MULTIPLY_FLOAT_UNBOXED",
+              "_UNBOX_FLOAT_NOS", "_UNBOX_FLOAT_TOS"},
 }
 JIT_ONLY_FIELDS = ("uops", "monitor_lines")
 
@@ -229,8 +254,8 @@ def main() -> int:
         failures.append("the JIT-off runs disagree; the program is not deterministic")
     if interpreter["monitor_lines"] != again["monitor_lines"]:
         failures.append("monitoring lines differ between JIT-off runs")
-    if any(interpreter["refcount_delta"]):
-        failures.append(f"operand refcounts moved: {interpreter['refcount_delta']}")
+    if interpreter["refcounts_moved"]:
+        failures.append(f"operand refcounts moved: {interpreter['refcounts_moved']}")
     for name, expected in EXPECTED_UOPS.items():
         missing = expected - set(jit["uops"][name])
         if missing:

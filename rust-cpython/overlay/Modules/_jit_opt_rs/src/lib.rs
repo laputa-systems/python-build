@@ -1,5 +1,6 @@
 mod unbox;
 
+use std::mem::MaybeUninit;
 use std::slice;
 
 pub use unbox::{
@@ -13,14 +14,16 @@ pub use unbox::{
 /// Plans float unboxing for one optimized tier-2 trace.
 ///
 /// Returns the number of steps written to `steps` when the trace is rewritten,
-/// 0 when it stays as it is, and -1 when the descriptors contradict the
-/// unboxing contract.
+/// 0 when it stays as it is, and -1 when the descriptors or the planned
+/// rewrite contradict the unboxing contract. Only a positive return writes to
+/// `steps`, and then only its first that-many entries.
 ///
 /// # Safety
 ///
-/// `uops` must point to `length` readable descriptors, `synthetic` to
-/// `SYNTHETIC_ACTIONS` readable descriptors, and `steps` to `capacity`
-/// writable steps. The regions must not overlap.
+/// `uops` must point to `length` initialized descriptors and `synthetic` to
+/// `SYNTHETIC_ACTIONS` initialized descriptors. `steps` must be non-null,
+/// aligned, and valid for writes of `capacity` steps; its contents may be
+/// uninitialized. `steps` must not overlap either descriptor array.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn _PyJitOpt_PlanFloatUnboxing(
     uops: *const JitOptUop,
@@ -29,16 +32,96 @@ pub unsafe extern "C" fn _PyJitOpt_PlanFloatUnboxing(
     steps: *mut JitOptStep,
     capacity: usize,
 ) -> isize {
+    // SAFETY: the caller provides `length` initialized descriptors at `uops`.
     let uops = unsafe { slice::from_raw_parts(uops, length) };
+    // SAFETY: the caller provides `SYNTHETIC_ACTIONS` initialized descriptors at `synthetic`.
     let synthetic = unsafe { slice::from_raw_parts(synthetic, SYNTHETIC_ACTIONS) };
-    let steps = unsafe { slice::from_raw_parts_mut(steps, capacity) };
+    // SAFETY: the caller provides `capacity` writable, non-overlapping steps; viewing them as
+    // `MaybeUninit` makes no claim that they are initialized.
+    let steps = unsafe { slice::from_raw_parts_mut(steps.cast::<MaybeUninit<JitOptStep>>(), capacity) };
     match plan_float_unboxing(uops, synthetic) {
         Ok(Plan::Unchanged) => 0,
         Ok(Plan::Rewrite(plan)) if plan.len() <= steps.len() => {
-            steps[..plan.len()].copy_from_slice(&plan);
+            for (slot, step) in steps.iter_mut().zip(&plan) {
+                slot.write(*step);
+            }
             plan.len() as isize
         }
         Ok(Plan::Rewrite(_)) => 0,
         Err(Inconsistent) => -1,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn uop(kind: u8, detail: u8, shape: (i8, i8, i8), read: u8, effects: u8) -> JitOptUop {
+        JitOptUop { kind, detail, inputs: shape.0, popped: shape.1, pushed: shape.2, read, effects, exit_at_end: 0 }
+    }
+
+    fn synthetic() -> [JitOptUop; SYNTHETIC_ACTIONS] {
+        let binary = uop(KIND_OTHER, 0, (2, 2, 1), 0b11, 0);
+        [
+            uop(KIND_OTHER, 0, (1, 1, 1), 1, 0),
+            uop(KIND_OTHER, 0, (2, 2, 2), 0b11, 0),
+            binary,
+            binary,
+            binary,
+            uop(KIND_OTHER, 0, (2, 2, 1), 0b11, EFFECT_EXIT),
+            binary,
+            uop(KIND_OTHER, 0, (1, 1, 1), 1, EFFECT_ERROR),
+        ]
+    }
+
+    fn sum_of_products() -> Vec<JitOptUop> {
+        let load = uop(KIND_OTHER, 0, (0, 0, 1), 0, 0);
+        let pop = uop(KIND_POP, 0, (1, 1, 0), 1, 0);
+        let multiply = uop(KIND_FLOAT_ARITH, ARITH_MULTIPLY, (2, 2, 3), 0b11, EFFECT_ERROR | EFFECT_ERROR_NO_POP);
+        let add = uop(KIND_FLOAT_ARITH, ARITH_ADD | REUSE_LEFT, (2, 2, 3), 0b11, EFFECT_ERROR | EFFECT_ERROR_NO_POP);
+        vec![load, load, multiply, pop, pop, load, load, multiply, pop, pop, add, pop, pop, uop(KIND_OTHER, 0, (1, 1, 1), 1, 0)]
+    }
+
+    const UNTOUCHED: JitOptStep = JitOptStep { source: 0xbeef, action: 0xee, exit_unboxed: 0xdead, error_unboxed: 0xface };
+
+    fn plan(trace: &[JitOptUop], synthetic: &[JitOptUop; SYNTHETIC_ACTIONS], steps: &mut [JitOptStep]) -> isize {
+        // SAFETY: every pointer comes from a live slice of the stated length, and `steps` is
+        // a distinct mutable borrow.
+        unsafe {
+            _PyJitOpt_PlanFloatUnboxing(trace.as_ptr(), trace.len(), synthetic.as_ptr(), steps.as_mut_ptr(), steps.len())
+        }
+    }
+
+    #[test]
+    fn a_rejected_plan_writes_no_steps() {
+        let mut contradictory = sum_of_products();
+        contradictory[2].pushed = 1;
+        let mut steps = [UNTOUCHED; 32];
+        assert_eq!(plan(&contradictory, &synthetic(), &mut steps), -1);
+        assert!(steps.iter().all(|step| *step == UNTOUCHED));
+
+        let mut wrong = synthetic();
+        wrong[0].effects = EFFECT_BARRIER;
+        assert_eq!(plan(&sum_of_products(), &wrong, &mut steps), -1);
+        assert!(steps.iter().all(|step| *step == UNTOUCHED));
+    }
+
+    #[test]
+    fn a_rewrite_writes_exactly_its_steps() {
+        let mut steps = [UNTOUCHED; 32];
+        let written = plan(&sum_of_products(), &synthetic(), &mut steps);
+        let Ok(Plan::Rewrite(expected)) = plan_float_unboxing(&sum_of_products(), &synthetic()) else {
+            panic!("the sum of two products is rewritten");
+        };
+        assert_eq!(written, expected.len() as isize);
+        assert_eq!(&steps[..expected.len()], expected.as_slice());
+        assert!(steps[expected.len()..].iter().all(|step| *step == UNTOUCHED));
+    }
+
+    #[test]
+    fn a_rewrite_longer_than_the_buffer_leaves_the_trace_unchanged() {
+        let mut steps = [UNTOUCHED; 4];
+        assert_eq!(plan(&sum_of_products(), &synthetic(), &mut steps), 0);
+        assert!(steps.iter().all(|step| *step == UNTOUCHED));
     }
 }
