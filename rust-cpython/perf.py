@@ -1161,6 +1161,8 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
             env.update(lb._build_mpdecimal(toolchain, target, workers, sandbox))
         lb._require_command(configure, cwd=paths["build"], env=env,
                             log=paths["configure_log"], sealed=sandbox)
+        if not empty_overlay:
+            lb._python_for_regen_version(paths["build"] / "Makefile", env)
         setup_local = source / "Modules" / "Setup.local"
         if setup_local.is_file():
             contents = setup_local.read_text()

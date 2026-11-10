@@ -89,7 +89,7 @@ class JitConfigurationTests(unittest.TestCase):
         makefile, _ = self.regen("3.12.3")
         self.assertEqual(perf.lb._python_for_regen_version(makefile, {}), "3.12.3")
 
-    def test_a_build_without_the_jit_never_needs_the_regen_interpreter(self) -> None:
+    def test_jit_verification_skips_the_regen_interpreter_without_the_jit(self) -> None:
         makefile, _ = self.regen("3.9.6")
         with mock.patch.object(perf.lb, "_jit_stage_state", return_value={}), \
                 mock.patch.object(perf.lb, "_require_jit_state"):

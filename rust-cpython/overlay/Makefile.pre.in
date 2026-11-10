@@ -2195,6 +2195,18 @@ regen-cases: \
 		regen-generated-cases regen-executor-cases regen-optimizer-cases regen-record-functions \
 		regen-opcode-metadata regen-uop-metadata regen-test-cases regen-test-opcode-targets
 
+CASES_GENERATED_STAMP=	.cases-stamp
+
+CASES_DEPS = \
+		$(srcdir)/Python/bytecodes.c \
+		$(srcdir)/Python/optimizer_bytecodes.c \
+		$(srcdir)/Modules/_testinternalcapi/testbytecodes.c \
+		$(srcdir)/Tools/cases_generator/*.py
+
+$(CASES_GENERATED_STAMP): $(CASES_DEPS)
+	$(MAKE) regen-cases
+	@touch $@
+
 .PHONY: regen-opcode-ids
 regen-opcode-ids:
 	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/cases_generator/opcode_id_generator.py \
@@ -2330,7 +2342,7 @@ regen-slots: Python/slots.toml
 	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/build/generate_slots.py \
 		--generate-all
 
-$(LIBRARY_OBJS) $(MODOBJS) Modules/config_bootstrap.o Programs/python.o $(PLATFORM_MAIN_OBJS): $(PYTHON_HEADERS)
+$(LIBRARY_OBJS) $(MODOBJS) Modules/config_bootstrap.o Programs/python.o $(PLATFORM_MAIN_OBJS): $(PYTHON_HEADERS) $(CASES_GENERATED_STAMP)
 
 
 ######################################################################
@@ -3259,6 +3271,7 @@ JIT_DEPS = \
 		$(srcdir)/Tools/jit/*.h \
 		$(srcdir)/Tools/jit/*.py \
 		$(srcdir)/Python/executor_cases.c.h \
+		$(CASES_GENERATED_STAMP) \
 		pyconfig.h
 
 $(JIT_GENERATED_STAMP): $(JIT_DEPS)
@@ -3526,7 +3539,7 @@ Python/thread.o: @THREADHEADERS@ $(srcdir)/Python/condvar.h
 ##########################################################################
 # Module dependencies and platform-specific files
 
-cpython-sys: Modules/cpython-sys/Cargo.toml Modules/cpython-sys/build.rs Modules/cpython-sys/wrapper.h Modules/cpython-sys/parser.h
+cpython-sys: Modules/cpython-sys/Cargo.toml Modules/cpython-sys/build.rs Modules/cpython-sys/wrapper.h Modules/cpython-sys/parser.h $(CASES_GENERATED_STAMP)
 	CARGO_TARGET_DIR=$(abs_builddir)/target PYTHON_BUILD_DIR=$(abs_builddir) PY_CC="$(CC)" PY_CPPFLAGS="$(CPPFLAGS)" PY_CFLAGS="$(CFLAGS)" LLVM_TARGET="$(LLVM_TARGET)" IPHONEOS_DEPLOYMENT_TARGET=$(IPHONEOS_DEPLOYMENT_TARGET) $(CARGO_HOME)/bin/cargo build --lib --locked --package cpython-sys --profile $(CARGO_PROFILE) $(if $(filter release,$(CARGO_PROFILE)),-Z build-std=std -Z build-std-features=,) $(if $(CARGO_TARGET),--target=$(CARGO_TARGET)) --manifest-path $(srcdir)/Cargo.toml
 
 RUST_STATICLIB_A= target/$(if $(CARGO_TARGET),$(CARGO_TARGET)/$(CARGO_TARGET_DIR),$(CARGO_TARGET_DIR))/libcpython_rust_staticlib.a
@@ -3536,7 +3549,7 @@ cpython-rust-staticlib: cpython-sys
 
 # force rebuild when header file or module build flavor (static/shared) is changed
 MODULE_DEPS_STATIC=Modules/config.c
-MODULE_DEPS_SHARED=@MODULE_DEPS_SHARED@
+MODULE_DEPS_SHARED=@MODULE_DEPS_SHARED@ $(CASES_GENERATED_STAMP)
 
 MODULE__CURSES_DEPS=$(srcdir)/Include/py_curses.h
 MODULE__CURSES_PANEL_DEPS=$(srcdir)/Include/py_curses.h

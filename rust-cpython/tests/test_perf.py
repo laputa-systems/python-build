@@ -1245,6 +1245,8 @@ class IncrementalRecipeTests(unittest.TestCase):
                 perf.lb, "verify_jit_build"))
             patches.enter_context(mock.patch.object(perf.lb, "_extract_fresh", return_value=source))
             patches.enter_context(mock.patch.object(perf.lb, "_verify_cargo_lock"))
+            regen = patches.enter_context(
+                mock.patch.object(perf.lb, "_python_for_regen_version", return_value="3.15.1"))
             patches.enter_context(mock.patch.object(perf.lb, "_require_command", side_effect=command))
             patches.enter_context(mock.patch.object(perf.lb, "_make_value", return_value="dev"))
             engines = patches.enter_context(mock.patch.object(
@@ -1391,6 +1393,7 @@ class IncrementalRecipeTests(unittest.TestCase):
                                     ["/make", "install", *perf.MAKE_VARS]]))
             if single_install:
                 self.assertFalse(paths["build_log"].exists())
+            self.assertEqual(regen.call_count, int(not incremental and not empty_overlay))
             return report
 
     def test_abrupt_placement_mutation_persists_nonresumable_state_before_copy(self):
