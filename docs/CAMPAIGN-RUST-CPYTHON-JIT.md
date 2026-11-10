@@ -670,6 +670,88 @@ attribute and global inline caches whose invalidation honours descriptors,
 mutation, inheritance, lazy imports, and subinterpreters. Remove non-escaping
 allocations. Lengthen traces with loop peeling and invariant-guard hoisting.
 
+**Measured shares (2026-11-10).** All 16 `--jit-set` kernels were profiled on a
+clean `perf.py build --name perf-jit-t3m --jit` of `b356e9f`
+(`rust-cpython/results/perf-jit-t3m.json`: `commit=b356e9f5c7`, `dirty=False`,
+`verified=True`) with `perf.py profile --tool sample --jit-map`, 174-37,677,648 iterations per
+kernel (9 s sample window; workloads ran 6.2-11.0 s; attribution coverage
+95.9-100%). Each sample is
+attributed to the innermost JIT uop on its stack, callees included, exactly as
+the **Backlog re-rank** did; the denominator is every sampled frame, so the
+six rows sum to the 92.7% JIT-attributed mean. Means are over all 16 kernels,
+the eight numeric kernels, and the eight object kernels. The classifier is
+`.work/tmp/t3/classify_t3.py`; every number comes from the `report.txt` in
+these reports:
+
+```text
+rust-cpython/results/perf-profile/20261110T203455Z-perf-jit-t3m-nbody-sample
+rust-cpython/results/perf-profile/20261110T203502Z-perf-jit-t3m-spectral_norm-sample
+rust-cpython/results/perf-profile/20261110T203509Z-perf-jit-t3m-float-sample
+rust-cpython/results/perf-profile/20261110T203519Z-perf-jit-t3m-richards-sample
+rust-cpython/results/perf-profile/20261110T203531Z-perf-jit-t3m-raytrace-sample
+rust-cpython/results/perf-profile/20261110T203541Z-perf-jit-t3m-fannkuch-sample
+rust-cpython/results/perf-profile/20261110T203550Z-perf-jit-t3m-deltablue-sample
+rust-cpython/results/perf-profile/20261110T203558Z-perf-jit-t3m-chaos-sample
+rust-cpython/results/perf-profile/20261110T203604Z-perf-jit-t3m-go-sample
+rust-cpython/results/perf-profile/20261110T203612Z-perf-jit-t3m-nqueens-sample
+rust-cpython/results/perf-profile/20261110T203620Z-perf-jit-t3m-hexiom-sample
+rust-cpython/results/perf-profile/20261110T203630Z-perf-jit-t3m-scimark_sor-sample
+rust-cpython/results/perf-profile/20261110T203640Z-perf-jit-t3m-scimark_sparse_mat_mult-sample
+rust-cpython/results/perf-profile/20261110T203650Z-perf-jit-t3m-scimark_fft-sample
+rust-cpython/results/perf-profile/20261110T203700Z-perf-jit-t3m-scimark_lu-sample
+rust-cpython/results/perf-profile/20261110T203710Z-perf-jit-t3m-scimark_monte_carlo-sample
+```
+
+| Rank | Item | Tier | Mean | Numeric | Object | Peak |
+| ---: | --- | --- | ---: | ---: | ---: | --- |
+| 1 | (f) Everything else: generic `_BINARY_OP`, `_STORE_SUBSCR`/`_STORE_SLICE`, `_CHECK_VALIDITY`, `_HANDLE_PENDING_AND_DEOPT`, typed pops, non-short-lived allocation | T3 | 54.6% | 59.2% | 50.0% | fannkuch 75.5%, fft 73.3%, hexiom 70.9%, monte_carlo 67.6% |
+| 2 | (d) Allocation and free of short-lived float, int, tuple, list, bound-method and frame objects | T3 | 12.9% | 16.7% | 9.1% | sparse 27.4%, spectral 25.1%, nqueens 24.4%, nbody 21.7% |
+| 3 | (a) Python-to-Python call and frame uops: `_INIT_CALL_PY_EXACT_ARGS*`, `_PUSH_FRAME`, `_RETURN_VALUE` with the frame clear and pop, `_CHECK_STACK_SPACE*`, `_TIER2_RESUME_CHECK`, `_CREATE_INIT_FRAME`, `_CHECK_FUNCTION*` | T3 | 12.5% | 8.2% | 16.7% | richards 35.7%, raytrace 31.1%, deltablue 24.2%, sor 23.0% |
+| 4 | (b) Attribute loads and stores, method loads, and their type and version guards | T3 | 6.1% | 2.6% | 9.7% | richards 23.0%, deltablue 21.6%, go 14.4%, raytrace 9.6% |
+| 5 | (e) Generic decref pops of unknown type (`_POP_TOP`) | T3 | 5.7% | 6.5% | 4.8% | nbody 18.9%, sparse 11.5%, nqueens 10.1%, fannkuch 7.9% |
+| 6 | (c) Global and builtin loads with their dict-version guards | T3 | 0.9% | 0.6% | 1.2% | lu 2.8%, richards 2.6%, go 2.3%, deltablue 2.3% |
+
+**Removable bounds.** Each is an estimate with the stated direction. (a) upper
+bound 8.9% mean (5.2% numeric, 12.7% object) if every Python-to-Python callee
+under 40 bytecodes (the `dis` instruction count) with no generator or closure
+flag is inlined, weighted by each kernel's eligible-call fraction from a
+`PYTHON_JIT=0` `sys.setprofile` census (richards 86.3% eligible, spectral
+100%, nqueens 0% because its hot callees are generator expressions); this
+assumes equal per-call cost and every site inlinable. (b) 0.01% mean measured
+over the traces that matched an executor dump (80.6-96.8% of samples per
+kernel); the trace-local guard simulator proves only seven samples of repeated
+attribute guards on the same object (go 0.13%), far under P1's floor, and
+unmatched traces could only add repeats, so this is a lower bound on the
+matched subset, not a global upper bound. (c) 0.01% mean on the same matched
+sample set (nqueens 0.11%, chaos 0.02%): repeated globals/builtins version
+guards, also far under the floor. (d) at most all of 12.9% if every
+short-lived allocation is non-escaping and removed; the named dealloc side is
+2.4% mean (a lower bound on the removable part when those frees belong to
+allocations in the same trace), 2.7% is in named allocator callees, and 7.9%
+is the owning uop's own stencil (`_POP_TOP_FLOAT`/`_POP_TOP_INT`,
+`_ALLOCATE_OBJECT`, `_SET_ADD`, `_BUILD_*`, binary-op boxing). (e) at most all
+of 5.7%; only 0.04% mean has a typed producer immediately before the generic
+pop, so typing the operand removes little without loop peeling (T2 measured
+0.0% achievable for loop-carried locals). (f) is residual and has no single
+mechanism estimate. Allocations performed inside (a)-(c) and (e) uops stay in
+those rows — frame clear and pop under `_RETURN_VALUE` in (a), bound-method
+allocation under `_LOAD_ATTR_METHOD_*` in (b) — so (d) understates total
+alloc/free cost, while 12.9% remains an upper bound on what allocation
+removal can take from the (d)-attributed paths. Int arithmetic
+(`_PyCompactLong_Add/Subtract/Multiply`) is counted in (f), not (d), unless a
+named allocator or deallocator is sampled. Inputs outside the profiles: (a)
+`.work/tmp/t3/census/*.json`, (b)/(c) `.work/tmp/t3/guard-repeats.txt` with
+dumps in `.work/tmp/t3/dumps/`, (d)/(e) the same 16 reports above.
+
+Bucket (f) is diffuse. Its largest items, as 16-kernel means, are generic
+`_STORE_SUBSCR` 5.1% (array stores among them), generic `_BINARY_OP` 3.9%,
+`_CHECK_VALIDITY` 3.3%, `_HANDLE_PENDING_AND_DEOPT` 2.3%, `_STORE_SLICE`
+2.1%, `_BINARY_OP_SUBSCR_ARRAY_D` 1.8% and `_BINARY_OP_SUBSCR_LIST_SLICE` 1.5%;
+nothing else reaches 1.4%. Under P1 this ranks inlining (a) first among T3
+mechanisms, with allocation removal (d) next; the store and generic-op items
+are T2 specializations, and `_HANDLE_PENDING_AND_DEOPT` needs its exits
+explained before it is ranked.
+
 ### T4: backend, toward M4
 
 Revisit whole-trace register allocation (the a1 attempt cut spills 8% for no
