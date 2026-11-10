@@ -1,19 +1,19 @@
 {
   "source": {
     "repository": "https://github.com/python/cpython",
-    "branch": "v3.16.0a1",
-    "commit": "22d79d9840a275ed6ed36cd590dc74edc61765fb",
-    "version": "3.16.0a1",
+    "branch": "main",
+    "commit": "e891a9117985888df3e5d48145cf07ddda098335",
+    "version": "3.16.0a1+dev",
     "license": "PSF-2.0",
     "cargo_lock_sha256": "52922e3dfd93e680ddc0b3c6d0d5e48703cc3307bdc21d3c7a7720eb950c21e8"
   },
   "inputs": [
     {
       "name": "cpython-rust",
-      "version": "3.16.0a1",
-      "url": "https://codeload.github.com/python/cpython/tar.gz/22d79d9840a275ed6ed36cd590dc74edc61765fb",
-      "sha256": "7dcd8a1fdfe3b6eae9fd706ef6eb2fb8322d0af99773bad5573efb880c365c60",
-      "size": 44114970,
+      "version": "3.16.0a1+dev",
+      "url": "https://codeload.github.com/python/cpython/tar.gz/e891a9117985888df3e5d48145cf07ddda098335",
+      "sha256": "af50f4ca750e1a28e6dc197a7f23bc1ae6ce5fe25cee6caf52eaa275065877fe",
+      "size": 36219192,
       "role": "build-source",
       "target": "aarch64-apple-darwin",
       "license": "PSF-2.0",

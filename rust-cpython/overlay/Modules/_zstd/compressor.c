@@ -40,6 +40,10 @@ typedef struct {
     /* (nbWorker >= 1) ? 1 : 0 */
     int use_multithread;
 
+    /* Nonzero if worker threads may still be compressing submitted data:
+       set by any call that did not complete a frame, including a failed one */
+    int mt_maybe_busy;
+
     /* Compression level */
     int compression_level;
 
@@ -392,6 +396,7 @@ _zstd_ZstdCompressor_new_impl(PyTypeObject *type, PyObject *level,
     }
 
     self->use_multithread = 0;
+    self->mt_maybe_busy = 0;
     self->compression_level = ZSTD_CLEVEL_DEFAULT;
     self->dict = NULL;
     self->rust_module = NULL;
@@ -500,6 +505,18 @@ ZstdCompressor_dealloc(PyObject *ob)
 
     /* Free compression context */
     if (self->cctx) {
+        if (self->mt_maybe_busy) {
+            /* ZSTD_freeCCtx() (as of libzstd 1.5.7) frees the context's own
+               copy of a dictionary loaded with ZSTD_CCtx_loadDictionary()
+               before it stops the worker threads, which may still be
+               reading it.  Starting a new frame makes libzstd wait for the
+               jobs of the previous one, and with no input it starts none. */
+            ZSTD_inBuffer in = {NULL, 0, 0};
+            ZSTD_outBuffer out = {NULL, 0, 0};
+            (void)ZSTD_CCtx_reset(self->cctx, ZSTD_reset_session_only);
+            (void)ZSTD_compressStream2(self->cctx, &out, &in,
+                                       ZSTD_e_continue);
+        }
         ZSTD_freeCCtx(self->cctx);
     }
 
@@ -744,6 +761,8 @@ _zstd_ZstdCompressor_compress_impl(ZstdCompressor *self, Py_buffer *data,
             ZSTD_CCtx_reset(self->cctx, ZSTD_reset_session_only);
         }
     }
+    self->mt_maybe_busy = (self->use_multithread
+                           && (ret == NULL || mode != ZSTD_e_end));
     PyMutex_Unlock(&self->lock);
 
     return ret;
@@ -794,6 +813,8 @@ _zstd_ZstdCompressor_flush_impl(ZstdCompressor *self, int mode)
             ZSTD_CCtx_reset(self->cctx, ZSTD_reset_session_only);
         }
     }
+    self->mt_maybe_busy = (self->use_multithread
+                           && (ret == NULL || mode != ZSTD_e_end));
     PyMutex_Unlock(&self->lock);
 
     return ret;
@@ -894,21 +915,15 @@ static int
 ZstdCompressor_traverse(PyObject *ob, visitproc visit, void *arg)
 {
     ZstdCompressor *self = ZstdCompressor_CAST(ob);
+    Py_VISIT(Py_TYPE(ob));
     Py_VISIT(self->dict);
     Py_VISIT(self->rust_module);
     Py_VISIT(self->rust_encoder);
     return 0;
 }
 
-static int
-ZstdCompressor_clear(PyObject *ob)
-{
-    ZstdCompressor *self = ZstdCompressor_CAST(ob);
-    Py_CLEAR(self->dict);
-    Py_CLEAR(self->rust_encoder);
-    Py_CLEAR(self->rust_module);
-    return 0;
-}
+/* No tp_clear: the compression context (and its worker threads) uses the
+   dictionary until ZstdCompressor_dealloc() has freed the context. */
 
 static PyType_Slot zstdcompressor_slots[] = {
     {Py_tp_new, _zstd_ZstdCompressor_new},
@@ -917,7 +932,6 @@ static PyType_Slot zstdcompressor_slots[] = {
     {Py_tp_members, ZstdCompressor_members},
     {Py_tp_doc, (void *)_zstd_ZstdCompressor_new__doc__},
     {Py_tp_traverse,  ZstdCompressor_traverse},
-    {Py_tp_clear, ZstdCompressor_clear},
     {0, 0}
 };
 

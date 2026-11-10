@@ -198,7 +198,13 @@ if hasattr(socket, 'TCP_NODELAY'):
         if (sock.family in {socket.AF_INET, socket.AF_INET6} and
                 sock.type == socket.SOCK_STREAM and
                 sock.proto == socket.IPPROTO_TCP):
-            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            try:
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            except OSError:
+                # TCP_NODELAY is only a latency optimization.  It can fail
+                # on a connection already reset by the peer (e.g. EINVAL
+                # on macOS); the error will surface on the next I/O.
+                pass
 else:
     def _set_nodelay(sock):
         pass
@@ -434,7 +440,6 @@ class BaseEventLoop(events.AbstractEventLoop):
         # Identifier of the thread running the event loop, or None if the
         # event loop is not running
         self._thread_id = None
-        self._clock_resolution = time.get_clock_info('monotonic').resolution
         self._exception_handler = None
         self.set_debug(coroutines._is_debug_mode())
         # The preserved state of async generator hooks.
@@ -1246,6 +1251,7 @@ class BaseEventLoop(events.AbstractEventLoop):
             await waiter
         except:
             transport.close()
+            waiter = None
             raise
 
         return transport, protocol
@@ -1383,6 +1389,7 @@ class BaseEventLoop(events.AbstractEventLoop):
             transport.close()
             conmade_cb.cancel()
             resume_cb.cancel()
+            waiter = None
             raise
 
         return ssl_protocol._app_transport
@@ -2057,7 +2064,7 @@ class BaseEventLoop(events.AbstractEventLoop):
         now = self.time()
         # Ensure that `end_time` is strictly increasing
         # when the clock resolution is too small.
-        end_time = now + max(self._clock_resolution, math.ulp(now))
+        end_time = now + max(constants.CLOCK_RESOLUTION, math.ulp(now))
         promote_due_timers(self._scheduled, self._ready, end_time,
                            heapq.heappop)
 

@@ -1299,7 +1299,7 @@ def test(*, name: str, suites: list[str], all_suites: bool = False,
     _check_name(name)
     if all_suites == bool(suites):
         raise LaneError("select --all or at least one --suite, but not both")
-    if any(re.fullmatch(r"test_[a-z0-9_]+", suite) is None for suite in suites):
+    if any(re.fullmatch(r"test_[a-z0-9_]+(?:\.[a-z0-9_]+)*", suite) is None for suite in suites):
         raise LaneError("suite names must be CPython test modules or packages named test_*")
     if jobs is not None and jobs < 1:
         raise LaneError("test jobs must be positive")
