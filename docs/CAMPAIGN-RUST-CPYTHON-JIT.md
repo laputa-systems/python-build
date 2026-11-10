@@ -671,14 +671,40 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | ready | R0 | a1 epoch M0, `S0 = 0.7474`; no climb step taken |
-| R1 | active | step 2, timed runs | setup done: CinderX `e48f370d` on 3.15.1, tests green, 24/24 digests match |
-| C | active | C1 slice 2 | C0 vetted; lock entries land after R0; marshal parity landed (`660068e`) |
+| J | ready | P1 ceilings, then T1 | e891 epoch M0, `S0 = 0.7748`, held-out 0.8216 |
+| R1 | ready | step 2, timed runs (WIP `campaign/r1` `4dcc3ed`) | setup done: CinderX `e48f370d` on 3.15.1, tests green, 24/24 digests match |
+| C | active | C0 lock entries, then C1 co_code | C1 census 3,493 / 6,252 exact on e891 (`campaign/c1`) |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
 
 **Owner queue:** empty.
 
-**Epoch a1** (`v3.16.0a1`, `22d79d98`) closes at R0; its numbers do not carry
+**Epoch e891** (`main` `e891a911`, pinned 2026-11-10) opened at R0 on macOS
+arm64:
+
+- **Parity.** `perf.py test --all` on the four builds: each overlay build
+  fails only what its upstream counterpart fails
+  (`test_multiprocessing_forkserver.test_misc`) plus known red: `test_ssl`
+  (RTLS has no `HAS_ECH`, added upstream after a1), `test_support` (hashlib
+  shim), and two post-a1 asyncio TLS tests, `test_sendfile` and
+  `test_sslproto`, which depend on OpenSSL close-notify and BIO-buffer
+  behaviour the frozen RTLS stack does not share. Fuzzer seeds 0-2 at 2,000
+  programs: 0 mismatches. `perf.py` has no pydebug mode; the 3.16.0a1
+  findings were rechecked on a pristine pydebug JIT build at the pin: the
+  settrace block leak is gone, the `-R` failures of `test_capi.test_opt` and
+  `test_monitoring` remain JIT-specific, and `test_optimizer` still leaks 6
+  references per run with or without the JIT. The `effective_trace_length`
+  pystats fix stays.
+- **Measured.** A/A max 1.19% (`scimark_sparse_mat_mult`), geomean 1.0022.
+  `S0 = 0.7748`, held-out 0.8216, both on a quiet host. Kernel peak RSS at
+  most +5.4% (`hexiom`). Guard CPU ratios 0.980-1.006, from a run with one
+  noisy host sample of six. M0 JIT code bytes (`perf.py jit-stats --ref
+  perf-rust-jit --jit-set`): nbody 39,112; spectral_norm 18,880; float
+  11,400; richards 144,612; raytrace 350,828; fannkuch 61,700; deltablue
+  262,008; chaos 123,252; go 421,312; nqueens 37,352; hexiom 320,080;
+  scimark_sor 48,428; scimark_sparse_mat_mult 11,684; scimark_fft 41,792;
+  scimark_lu 56,796; scimark_monte_carlo 65,596.
+
+**Epoch a1** (`v3.16.0a1`, `22d79d98`) closed at R0; its numbers do not carry
 over. The P0 tooling it built stays: kernel-region CPU, the held-out set, the
 differential fuzzer, and `climb-step`. Evidence from a1 that shapes the
 backlog:
@@ -701,3 +727,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | Date | Epoch | Lane | Step | Mechanism | Ref | `S` before → after | Moved >1% | Verdict | Directory |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-11-02 | a1 | J | M0 | instrument | `perf-rust-jit` | — → 0.7474 | A/A max 0.19% | MEASURED | `rust-cpython/results/perf-bench/20261102T174650Z-perf-climb-ref-vs-perf-rust-jit` |
+| 2026-11-10 | e891 | J | M0 | instrument | `perf-rust-jit` | — → 0.7748 | A/A max 1.19% | MEASURED | `rust-cpython/results/perf-bench/20261110T041724Z-perf-climb-ref-vs-perf-rust-jit` |
