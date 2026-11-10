@@ -353,8 +353,50 @@ with the NULL-slot scan. Inlining the clear loop as well would add about 0.9%
 but duplicates the materialized-frame and generator paths into every return
 stencil, and the loop body is necessary decref work either way. The removable
 part is above P1's 1% floor, so the item stays in the backlog as inlining
-the pop fast paths into the return stencil, ranked by its 1.3% below the
-guards' 8.5% upper bound.
+the pop fast paths into the return stencil, ranked first in T1 now that the
+guards item is dropped.
+
+**Type and version guards (measured 2026-11-10: 0.01% removable, dropped).**
+The backlog's 8.5% mean is an upper bound. Upstream's abstract interpreter
+already nops an exact-type guard when `sym_matches_type` holds
+(`Python/optimizer_cases.c.h:911-929` for float and `:569-592` for int), a
+`_GUARD_TYPE_VERSION` when `sym_matches_type_version` holds (`:2731-2780`), and
+a repeated `_GUARD_GLOBALS_VERSION` in one abstract frame (`:2340-2362`); it
+types the producers (`_ITER_NEXT_RANGE` `:3996`, `_BINARY_OP_*_FLOAT` `:931`)
+and `_LOAD_FAST` copies the frame local's symbol (`:42-62`), so a fact won once
+survives a reload. The saved 16 `perf.py profile --tool sample --jit-map` runs
+give 8.51% mean (richards 18.9%, go 17.7%): 0.72% `_GUARD_TYPE_VERSION` and
+`_GUARD_TYPE`, 3.31% exact-type and `_GUARD_BINARY_OP_EXTEND` guards, 1.45%
+`_CHECK_MANAGED_OBJECT_HAS_VALUES`/`_CHECK_ATTR_*`/`_GUARD_DORV_*`, 1.39%
+function, globals and builtins versions, 0.23% code versions, 0.17% callable
+and object checks, and 1.23% pure value guards (`_GUARD_IS_*`,
+`_GUARD_BIT_IS_*`), which are outside this mechanism. Matching a `gc` dump of
+each `uop_executor`, with opargs and operand0 intact, to the sampled uops, and
+keeping a fact only until an escaping uop or an object store, with immutable
+builtin type facts outliving escapes: 4.6% mean of samples are the first
+occurrence of that check on that value, 3.8% sit on values with no trace-local
+type or version fact (loop-entry stack slots, call results, attribute loads,
+unpack elements), and no guard repeats a check that an escape invalidated. The
+executor dump reads each `uop_executor` item as `(name, oparg, target,
+operand0)`, so type versions are compared per trace. The only
+provable repeats are 3 samples on go (`Board.useful`, `_CHECK_MANAGED_OBJECT`
+twice in one trace) and 5 on go and nqueens globals-version checks in one frame
+with no intervening escape. Repeated `_GUARD_CODE_VERSION__PUSH_FRAME` guards
+(sor 0.53%, lu 0.24%, hexiom 0.03% of samples) are not provable: an equal
+`co_version` names a code object, but a repeat at another `PUSH_FRAME` does not
+prove that call site's callee is that object
+(`overlay/Python/bytecodes.c:6439-6445`). No trace pairs a version fact with an
+exact-type or `_GUARD_BINARY_OP_EXTEND` guard on the same value, and every
+surviving `_GUARD_BINARY_OP_EXTEND` uses a descriptor whose guard the pass
+cannot evaluate (`Python/optimizer_cases.c.h:1371`). Unmatched side traces hold
+0.6% of deltablue's samples and 0.1% of hexiom's and raytrace's, 0.05% mean
+overall, so counting all of them as removable still leaves 0.11% mean. The sound
+share is 0.01% mean, under P1's
+1% floor: dropped. Evidence:
+`rust-cpython/results/perf-profile/20261110T14*-perf-jit-int-unbox-*-sample`,
+dumps and `guard_redundancy.py` under `.work/tmp`. It reopens if upstream stops
+proving the guards it removes today, or if T3 gives attribute loads a
+trace-local dict fact.
 
 ### T2: unboxing, toward M2
 
@@ -504,7 +546,7 @@ and the eight object kernels:
 | Rank | Item | Tier | Mean | Numeric | Object | Peak |
 | ---: | --- | --- | ---: | ---: | ---: | --- |
 | 1 | Frame push and pop: `_RETURN_VALUE` with its frame clear and pop (6.0% of samples alone), `_INIT_CALL_PY_EXACT_ARGS_*`, `_PUSH_FRAME`, `_TIER2_RESUME_CHECK`, `_CHECK_STACK_SPACE*`, `_CREATE_INIT_FRAME` (measured 2026-11-10: 1.3% removable as pop fast-path inlining, see **T1**) | T1 | 13.0% | 7.9% | 18.1% | richards 35.3%, raytrace 31.6%, deltablue 25.7%, sor 21.3% |
-| 2 | Type and version guards, all of them; upstream's optimizer has already removed those it proves | T1 | 8.5% | 6.4% | 10.7% | richards 18.9%, go 18.0% |
+| 2 | Type and version guards, all of them; upstream's optimizer has already removed those it proves (measured 2026-11-10: 0.01% removable under trace-local facts, dropped under P1's 1% floor, see **T1**) | T1 | 8.5% | 6.4% | 10.7% | richards 18.9%, go 17.7% |
 | 3 | `_CHECK_VALIDITY` and `_SET_IP` | T1 | 3.5% | 3.2% | 3.8% | nbody 4.9% |
 | 4 | Residual `_tlv_get_addr`, from `float_dealloc`, `PyFloat_FromDouble`, `PyLong_FromLong`, and `long_dealloc` on generic paths | T1 | 3.0% | 3.2% | 2.9% | nqueens 6.8%, fannkuch 5.8%, fft 5.7% |
 | 5 | Unboxed loop-carried locals (above) | T2 | 0.0% | 0.0% | 0.0% | ceiling nbody 15.0% |
@@ -909,7 +951,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | T1 type and version guards, next in the re-ranked backlog (8.5% mean) | T1 frame push and pop measured: 13.0% share is 1.3% removable (pop fast-path inlining, queued after guards), clear-loop slots 96.4-99.8% live |
+| J | active | T1 frame push and pop pop fast-path inlining (1.3% removable), next in the re-ranked backlog | T1 type and version guards measured: 8.5% share is 0.01% removable under trace-local facts (0.06% with code-version repeats, which do not identify a call site); dropped under P1's 1% floor |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | active | C2 in-process `exec` | C0, marshal parity and C1 landed: census 9,102 / 9,135 exact, 0 mismatches on e891 |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -1114,4 +1156,5 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-10 | e891 | J | T2 | float unboxing across binary ops and compares (float boxing 8.9-38.6% of samples; float-op chains nbody 27.5% → 26.3%, fft 11.4% → 9.5%) | `perf-rust-jit` | timing deferred (OD14); advisory 0.9962 | — | CORRECT (4 named superseded `test_capi.test_opt` uop assertions, owner ruling) | `aadaf25` |
 | 2026-11-10 | e891 | J | T2 | compact-int unboxing across binary ops and compares (int uops 29.6% of samples on spectral_norm, 8.2% mean; spectral_norm 29.6% → 27.0%, int runtime calls 17.0% → 12.0%) | `perf-jit-unbox` | timing deferred (OD14); advisory 0.9939 | — | CORRECT (5 named superseded `test_capi.test_opt` uop assertions); independent review clean | `60e3a7b` |
 | 2026-11-10 | e891 | J | T2 | unboxed loop-carried locals (float-local stores 3.1% of numeric samples, int 0.7%; 0.0% with no barrier between store and next store) | `perf-jit-int-unbox` | — | — | DROPPED (under P1's 1% floor) | `rust-cpython/results/perf-profile/20261110T14*-perf-jit-int-unbox-*-sample` |
-| 2026-11-10 | e891 | J | T1 | frame push and pop: 13.0% sampled share; clear-loop slots 96.4-99.8% live on return-heavy kernels; prologue/epilogue plus NULL-slot scan 1.3% removable | `perf-jit-int-unbox` | — | — | MEASURED (above P1's 1% floor; re-ranked below guards) | `rust-cpython/results/perf-profile/20261110T14*-perf-jit-int-unbox-*-sample` |
+| 2026-11-10 | e891 | J | T1 | frame push and pop: 13.0% sampled share; clear-loop slots 96.4-99.8% live on return-heavy kernels; prologue/epilogue plus NULL-slot scan 1.3% removable | `perf-jit-int-unbox` | — | — | MEASURED (above P1's 1% floor; ranked first in T1) | `rust-cpython/results/perf-profile/20261110T14*-perf-jit-int-unbox-*-sample` |
+| 2026-11-10 | e891 | J | T1 | type and version guards: 8.5% sampled share; 4.6% first checks, 3.8% on values with no trace-local fact, 0.01% provably removable (go `_CHECK_MANAGED_OBJECT_HAS_VALUES` and same-frame globals versions); code-version repeats 0.06% are not provable | `perf-jit-int-unbox` | — | — | DROPPED (under P1's 1% floor) | `rust-cpython/results/perf-profile/20261110T14*-perf-jit-int-unbox-*-sample` |
