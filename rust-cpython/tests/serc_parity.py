@@ -368,7 +368,7 @@ def run_oracle(oracle: Path, corpus: Path, files: list[Path], work: Path) -> dic
                     "id": f"{index}-{optimize}",
                     "file": str(path.relative_to(corpus)),
                     "path": str(path),
-                    "filename": str(path),
+                    "filename": str(path.relative_to(corpus)),
                     "optimize": optimize,
                     "pyc": str(pyc_path(path, optimize)),
                 }

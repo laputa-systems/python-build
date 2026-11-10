@@ -190,12 +190,24 @@ impl Writer<'_, '_, '_> {
         self.output.extend_from_slice(&header);
     }
 
+    /// CPython 3.16 flags an object exactly when the graph writes it more than once, so neither
+    /// the caller's ownership nor interning can force a reference. Earlier targets keep the
+    /// refcount-driven mode requested by the traversal.
+    fn flags_only_shared(&self) -> bool {
+        self.graph.python_version() >= PythonVersion::Py316
+    }
+
     #[expect(
         clippy::inline_always,
         reason = "specialize reference checks at the forced structural-object call sites"
     )]
     #[inline(always)]
     fn begin_object(&mut self, object: ObjectId, reference_mode: ReferenceMode) -> Option<u8> {
+        let reference_mode = if self.flags_only_shared() {
+            ReferenceMode::IfShared
+        } else {
+            reference_mode
+        };
         let reference = self
             .graph
             .object_for_writing(object)
@@ -227,9 +239,12 @@ impl Writer<'_, '_, '_> {
     }
 
     fn string_with_object(&mut self, object: ObjectId, value: &str, reference_mode: ReferenceMode) {
+        let graph_references = self.flags_only_shared();
         let object = self.graph.object_for_writing(object);
         let interned = object.is_interned();
-        let reference_mode = if interned {
+        let reference_mode = if graph_references {
+            ReferenceMode::IfShared
+        } else if interned {
             ReferenceMode::Forced
         } else {
             reference_mode
@@ -274,26 +289,34 @@ impl Writer<'_, '_, '_> {
         value: impl FnOnce() -> &'a str,
         automatically_interned: bool,
     ) {
+        let graph_references = self.flags_only_shared();
         let object = self.graph.object_for_writing(object);
         debug_assert!(object.is_interned(), "marshal metadata must be interned");
-        let reference =
-            object.reference_for_write(ReferenceMode::Forced, &mut self.reference_count);
-        match reference {
-            ObjectReference::Existing(index) => self.byte_and_long(TYPE_REF, index.as_u32()),
-            ObjectReference::New => {
-                let value = value();
-                // The hint includes ASCII identifiers and CPython's cached Latin-1 characters.
-                let ascii = if automatically_interned {
-                    value.len() != 2 || value.as_bytes()[0].is_ascii()
-                } else {
-                    value.is_ascii()
-                };
-                self.string_payload_with_ascii::<true>(value, FLAG_REF, ascii);
+        let reference_mode = if graph_references {
+            ReferenceMode::IfShared
+        } else {
+            ReferenceMode::Forced
+        };
+        let reference = object.reference_for_write(reference_mode, &mut self.reference_count);
+        let flag = match reference {
+            ObjectReference::Existing(index) => {
+                self.byte_and_long(TYPE_REF, index.as_u32());
+                return;
             }
+            ObjectReference::New => FLAG_REF,
             ObjectReference::Unshared => {
-                unreachable!("forced marshal reference cannot be unshared")
+                debug_assert!(graph_references);
+                0
             }
-        }
+        };
+        let value = value();
+        // The hint includes ASCII identifiers and CPython's cached Latin-1 characters.
+        let ascii = if automatically_interned {
+            value.len() != 2 || value.as_bytes()[0].is_ascii()
+        } else {
+            value.is_ascii()
+        };
+        self.string_payload_with_ascii::<true>(value, flag, ascii);
     }
 
     #[inline]
@@ -357,9 +380,12 @@ impl Writer<'_, '_, '_> {
         value: &[u8],
         reference_mode: ReferenceMode,
     ) {
+        let graph_references = self.flags_only_shared();
         let object = self.graph.object_for_writing(object);
         let interned = object.is_interned();
-        let reference_mode = if interned {
+        let reference_mode = if graph_references {
+            ReferenceMode::IfShared
+        } else if interned {
             ReferenceMode::Forced
         } else {
             reference_mode
