@@ -360,7 +360,7 @@ A candidate replaces the incumbent only when all hold:
    give identical output, exceptions, and reference-tracer counts with the JIT
    on and off.
 5. **Targeted suites:** the same failed-test set as `perf-rust` for
-   `test_capi.test_opt`, `test_jit*`, `test_float`, `test_long`,
+   `test_capi.test_opt`, any `test_jit*` files present at the pin, `test_float`, `test_long`,
    `test_sys_settrace`, `test_monitoring`, `test_generators`, `test_frame`,
    `test_gc`, `test_weakref`, plus any suites the item adds.
 6. **Independent review:** a reviewer agent that did not write the change and
