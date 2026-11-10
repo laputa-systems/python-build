@@ -579,6 +579,46 @@ as `60e3a7b`. Its follow-up, `06a636c`, pins the offset of every field of
 `_PyJitOptUop` and `_PyJitOptStep` in `optimizer.c` and in the crate's layout
 test, so reordering two same-sized C fields no longer compiles.
 
+**Array subscript specialization (CORRECT, landed 2026-11-10).** Exact `array.array` loads with an exact non-negative
+compact int index specialize in `_Py_Specialize_BinaryOp` for typecodes `d`
+and `i`. The type is identified by `PyType_GetModule` plus the module's `array`
+dict entry, so a Python class named `array.array` cannot match; its type
+version is written into the `BINARY_OP` cache and `_GUARD_NOS_OBJECT_TYPE_VERSION`
+rechecks it. `_BINARY_OP_SUBSCR_ARRAY_D`/`_I` bounds-check and read `ob_item`
+through `_PyArray_ReadDoubleItem`/`_PyArray_ReadIntItem`, which live in
+`Python/specialize.c`; `arrayobject`/`arraydescr` move to
+`Include/internal/pycore_arrayobject.h` so core does not link against the
+builtin module. Out-of-range and negative-out-of-range indices, non-compact or
+non-exact indices, other typecodes, array subclasses and arrays resized mid-loop
+all deopt to tier 1, which raises the original `IndexError`. `d` loads box with
+`_PyFloat_FromDoubleTstate` and `i` loads with `_PyLong_FromCompactTstate`;
+an `i` item outside the compact range (|v| >= 2**30) deopts, since boxing it
+as a one-digit int would break equality and hashing. Both results are claimed
+unique, which selects the in-place float and int ops downstream; the boxing
+error path is still an unbox-pass barrier, so no `_UNBOX_FLOAT_*` forms around
+the load. The win is tier 1: `_GUARD_NOS_OBJECT_TYPE_VERSION` has no optimizer
+case (as upstream's `_GUARD_NOS_TYPE_VERSION` has none), so traces recheck the
+version each iteration. Eliding it needs a recorded NOS type and stays open.
+On `scimark_sparse_mat_mult`, `scimark_fft` and `scimark_lu` the sampled share
+of generic `_BINARY_OP` with its callees plus the `array_subscr` subtree falls
+62.4% → 0.0%, 27.8% → 4.8% and 20.5% → 0.0%; the new load uops take 29.2%,
+9.2% and 9.1%. `climb-step --correctness` against `perf-jit-popinline` is
+CORRECT (advisory 0.9277): training and held-out digests match, 2,000 fuzz
+programs give 0 mismatches at 97.45% JIT coverage, and the suites differ only by
+the incumbent's five superseded `test_capi.test_opt` uop assertions.
+`rust-cpython/tests/jit_array_subscr_integration.py` compares JIT-on and JIT-off
+for out-of-range and negative indices, wrong index types, array subclasses,
+mid-loop appends and pops, an `__index__` that resizes, and `f`/`l`/`h`
+typecodes, and checks that both load uops run. `jit_unbox_integration.py` is OK;
+`test_array`, `test_buffer` and `test_memoryview` pass under `PYTHON_JIT=1` and
+`test_capi.test_opt` fails only those five. JIT code bytes are at most 1.30x M0
+(raytrace, 457,068 bytes) and 1.23x (spectral_norm); peak RSS is 0.997-1.008x
+the incumbent. `perf-climb-ref` is absent in this worktree, so the OD4
+`perf-climb-ref` comparison is unverified; against `perf-rust` the four kernels
+the early-reject pass reached are +2.0% to +3.6%. Stores (`array_ass_subscr`)
+stay generic at 1.3-2.2% of fft/lu samples and were not specialized. Timing is
+deferred under OD14.
+
 **Unboxed loop-carried locals (dropped 2026-11-10: 0.0% achievable).** Any uop
 that can run arbitrary code can observe a local through `frame.f_locals`,
 `locals()`, tracing, monitoring, tracebacks, or the GC's frame traversal. A raw
@@ -1016,7 +1056,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | T1 backlog done; next: generic `_BINARY_OP` (`array` subscripts, 11.4% mean) and T3 inlining | T1 frame pop fast-path inlining: `_PyEval_FrameClearAndPop` + `_PyThreadState_PopFrame` self richards 7.85% → 0.00%, raytrace 5.24% → 0.00%, deltablue 5.48% → 0.00%, sor 4.89% → 0.00%; CORRECT |
+| J | active | T2 `array` subscript loads landed; next: monte_carlo generic ops (19.9% peak), nbody `**` (8.9% peak), T3 inlining | T2 array subscript loads: generic `_BINARY_OP` + `array_subscr` sparse 62.4% → 0.0%, fft 27.8% → 4.8%, lu 20.5% → 0.0%; CORRECT (5 incumbent superseded assertions) |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | active | C2 in-process `exec` | C0, marshal parity and C1 landed: census 9,102 / 9,135 exact, 0 mismatches on e891 |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -1092,6 +1132,21 @@ the float helpers; the overlay now carries `Python/ceval.c` and
 `Python/ceval.h` for the debug uop-interpreter dump; and
 `test_int_inplace_chain_propagation` joins
 `perf.CLIMB_SUPERSEDED_UOP_ASSERTIONS` (its result check passes first).
+
+**Owner queue:** T2 array subscript specialization (landed; independent
+review found no correctness defect, its low findings fixed). New overlay copies
+`Python/specialize.c`, `Python/optimizer_bytecodes.c`,
+`Modules/arraymodule.c`, `Tools/jit/template.c`,
+`Include/internal/pycore_array.h` and
+`Include/internal/pycore_arrayobject.h`; `Python/ceval.h` and `Python/jit.c`
+gain the include. `arrayobject`/`arraydescr` move to the shared header so
+`libpython` core never links against the builtin module. New specialized
+opcodes `BINARY_OP_SUBSCR_ARRAY_D`/`_I`; new uops
+`_GUARD_NOS_OBJECT_TYPE_VERSION`, `_BINARY_OP_SUBSCR_ARRAY_D` and
+`_BINARY_OP_SUBSCR_ARRAY_I`; new exported symbols
+`_PyArray_GetSpecializationKind`, `_PyArray_ReadDoubleItem` and
+`_PyArray_ReadIntItem`, defined in `Python/specialize.c`. The
+`BINARY_OP` cache carries the recorded type version in `external_cache[0..1]`.
 
 **Epoch e891** (`main` `e891a911`, pinned 2026-11-10) opened at R0 on macOS
 arm64:
@@ -1247,3 +1302,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-10 | e891 | J | T1 | `_CHECK_VALIDITY` and `_SET_IP`: 3.47% sampled share (2.90% + 0.57%); 0 of 227 sampled `_SET_IP` and 0 of 835 sampled `_CHECK_VALIDITY` removable, every one has a following escaping/needs-IP observer or a preceding escape; the removal pass runs before T2 unboxing, which leaves one unsampled stale pair | `perf-jit-int-unbox` | — | — | DROPPED (under P1's 1% floor) | `rust-cpython/results/perf-profile/20261110T14*-perf-jit-int-unbox-*-sample` |
 | 2026-11-10 | e891 | J | T1 | frame pop fast-path inlining: `_PyEval_FrameClearAndPop` + `_PyThreadState_PopFrame` self richards 7.85% → 0.00%, raytrace 5.24% → 0.00%, deltablue 5.48% → 0.00%, sor 4.89% → 0.00%; `_RETURN_VALUE_r11` stencil 60 → 192 bytes | `perf-jit-tlv` | timing deferred (OD14) | — | CORRECT (clean build; independent review clean) | `campaign/t1-popinline` |
 | 2026-11-10 | e891 | J | T1 | generic thread-state deallocation: `_tlv_get_addr` sampled share fft 3.68%/3.70% → 2.49%/2.84%, fannkuch 6.80% → 6.34%/5.31% (one incumbent repeat 18.52% sampling outlier), raytrace 2.70% → 2.16%, nqueens 5.25% → 5.26%, richards 0.42% → 0.63%; fft `float_dealloc` 3.97%/3.49% → 2.13%/2.03%, `long_dealloc` 1.16%/0.93% → 0.50%/0.51%, `PyLong_FromLong` 0.71%/1.15% → 0.08%/0.08%; the remaining `PyFloat_FromDouble` TLV enters through `array_subscr` | `perf-jit-int-unbox` | timing deferred (OD14) | — | CORRECT | `rust-cpython/results/perf-profile/20261110T1607*-perf-jit-{int-unbox,tlv}-{nqueens,fannkuch,scimark_fft,richards,raytrace}-sample`, repeats `20261110T1609*-...-{fannkuch,scimark_fft}-sample` |
+| 2026-11-10 | e891 | J | T2 | `array.array` `d`/`i` subscript loads: generic `_BINARY_OP` with callees plus the `array_subscr` subtree sparse 54.2% + 8.2% → 0.0%, fft 25.2% + 2.6% → 4.8%, lu 18.1% + 2.4% → 0.0%, replaced by `_BINARY_OP_SUBSCR_ARRAY_D/I` at 29.2%, 9.2% and 9.1%; JIT code bytes ≤1.30x M0, peak RSS 0.997-1.008x incumbent | `perf-jit-popinline` | timing deferred (OD14); advisory 0.9277 | sparse generic `_BINARY_OP` 54.2% → 0.0%, fft 25.2% → 4.8%, lu 18.1% → 0.0% of samples | CORRECT (5 incumbent superseded `test_capi.test_opt` uop assertions; differential array test) | `rust-cpython/results/perf-bench/20261110T184902Z-perf-jit-popinline-vs-perf-jit-array`, `rust-cpython/results/perf-profile/20261110T1851*-perf-jit-{popinline,array}-scimark_{sparse_mat_mult,fft,lu}-sample` |

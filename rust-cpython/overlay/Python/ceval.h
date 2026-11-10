@@ -2,6 +2,7 @@
 
 #include "Python.h"
 #include "pycore_abstract.h"      // _PyIndex_Check()
+#include "pycore_array.h"
 #include "pycore_audit.h"         // _PySys_Audit()
 #include "pycore_backoff.h"
 #include "pycore_call.h"          // _PyObject_CallNoArgs()

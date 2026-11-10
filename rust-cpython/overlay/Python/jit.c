@@ -3,6 +3,7 @@
 #include "Python.h"
 
 #include "pycore_abstract.h"
+#include "pycore_array.h"
 #include "pycore_bitutils.h"
 #include "pycore_call.h"
 #include "pycore_ceval.h"

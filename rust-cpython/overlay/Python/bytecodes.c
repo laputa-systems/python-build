@@ -8,6 +8,7 @@
 
 #include "Python.h"
 #include "pycore_abstract.h"      // _PyIndex_Check()
+#include "pycore_array.h"
 #include "pycore_audit.h"         // _PySys_Audit()
 #include "pycore_backoff.h"
 #include "pycore_call.h"          // _Py_METH_CALL_FLAGS
@@ -624,6 +625,8 @@ dummy_func(
             BINARY_OP_SUBTRACT_FLOAT,
             BINARY_OP_ADD_UNICODE,
             BINARY_OP_SUBSCR_LIST_INT,
+            BINARY_OP_SUBSCR_ARRAY_D,
+            BINARY_OP_SUBSCR_ARRAY_I,
             BINARY_OP_SUBSCR_LIST_SLICE,
             BINARY_OP_SUBSCR_TUPLE_INT,
             BINARY_OP_SUBSCR_STR_INT,
@@ -1271,6 +1274,60 @@ dummy_func(
 #endif
             STAT_INC(BINARY_OP, hit);
             ls = list_st;
+            ss = sub_st;
+            INPUTS_DEAD();
+        }
+
+        macro(BINARY_OP_SUBSCR_ARRAY_D) =
+            _GUARD_TOS_INT + unused/1 + _GUARD_NOS_OBJECT_TYPE_VERSION + unused/2 +
+            _BINARY_OP_SUBSCR_ARRAY_D + _POP_TOP_INT + POP_TOP;
+
+        op(_BINARY_OP_SUBSCR_ARRAY_D, (array_st, sub_st -- res, ls, ss)) {
+            PyObject *sub = PyStackRef_AsPyObjectBorrow(sub_st);
+            PyObject *array = PyStackRef_AsPyObjectBorrow(array_st);
+
+            assert(PyLong_CheckExact(sub));
+            assert(_PyLong_IsCompact((PyLongObject *)sub));
+
+            Py_ssize_t index = _PyLong_CompactValue((PyLongObject *)sub);
+            double value;
+            int found = _PyArray_ReadDoubleItem(array, index, &value);
+            EXIT_IF(!found);
+            PyObject *res_o = _PyFloat_FromDoubleTstate(tstate, value);
+            if (res_o == NULL) {
+                ERROR_NO_POP();
+            }
+            STAT_INC(BINARY_OP, hit);
+            res = PyStackRef_FromPyObjectSteal(res_o);
+            ls = array_st;
+            ss = sub_st;
+            INPUTS_DEAD();
+        }
+
+        macro(BINARY_OP_SUBSCR_ARRAY_I) =
+            _GUARD_TOS_INT + unused/1 + _GUARD_NOS_OBJECT_TYPE_VERSION + unused/2 +
+            _BINARY_OP_SUBSCR_ARRAY_I + _POP_TOP_INT + POP_TOP;
+
+        op(_BINARY_OP_SUBSCR_ARRAY_I, (array_st, sub_st -- res, ls, ss)) {
+            PyObject *sub = PyStackRef_AsPyObjectBorrow(sub_st);
+            PyObject *array = PyStackRef_AsPyObjectBorrow(array_st);
+
+            assert(PyLong_CheckExact(sub));
+            assert(_PyLong_IsCompact((PyLongObject *)sub));
+
+            Py_ssize_t index = _PyLong_CompactValue((PyLongObject *)sub);
+            int value;
+            int found = _PyArray_ReadIntItem(array, index, &value);
+            EXIT_IF(!found);
+            /* A C int can exceed the compact range; box those generically. */
+            EXIT_IF(!_PyLong_FitsCompact(value));
+            PyObject *res_o = _PyLong_FromCompactTstate(tstate, value);
+            if (res_o == NULL) {
+                ERROR_NO_POP();
+            }
+            STAT_INC(BINARY_OP, hit);
+            res = PyStackRef_FromPyObjectSteal(res_o);
+            ls = array_st;
             ss = sub_st;
             INPUTS_DEAD();
         }
@@ -2940,6 +2997,12 @@ dummy_func(
 
         op(_GUARD_TYPE_VERSION, (type_version/2, owner -- owner)) {
             PyTypeObject *tp = Py_TYPE(PyStackRef_AsPyObjectBorrow(owner));
+            assert(type_version != 0);
+            EXIT_IF(FT_ATOMIC_LOAD_UINT_RELAXED(tp->tp_version_tag) != type_version);
+        }
+
+        op(_GUARD_NOS_OBJECT_TYPE_VERSION, (type_version/2, nos, unused -- nos, unused)) {
+            PyTypeObject *tp = Py_TYPE(PyStackRef_AsPyObjectBorrow(nos));
             assert(type_version != 0);
             EXIT_IF(FT_ATOMIC_LOAD_UINT_RELAXED(tp->tp_version_tag) != type_version);
         }

@@ -537,6 +537,8 @@ NON_ESCAPING_FUNCTIONS = (
     "_PyFloat_FromDoubleTstate",
     "_PyLong_FromCompactTstate",
     "_PyLong_FitsCompact",
+    "_PyArray_ReadDoubleItem",
+    "_PyArray_ReadIntItem",
     "PyFunction_GET_CODE",
     "PyFunction_GET_GLOBALS",
     "PyList_GET_ITEM",
