@@ -29,6 +29,24 @@ workspace crates. Do not update the source, toolchain, or Cargo lock accidentall
 source refresh happens only as a campaign source epoch. The LLVM pins never
 change; intentional vetted crate additions update the overlay lockfile.
 
+Track C's compiler is Serc 0.1.11, pinned by archive digest in the same lock
+with `MIT OR Apache-2.0`. `fetch` verifies the archive, applies
+`serc-overlay/` to it, and caches its crates from the official
+`https://index.crates.io` index in the private Cargo home; the repo-wide
+`.cargo/config.toml` keeps its `stuff` replacement. The lane owns `serc-lane`,
+a one-dependency anchor, and the Serc tree stays an excluded path dependency
+rather than a workspace member, so `overlay/Cargo.lock` pins only the
+compiler library's 97 normal and 19 build-only crates. Serc's CLI, benchmark
+crates, `mimalloc`, and `rayon` stay out of the lane lock; they exist only in
+the archive's own test workspace, which `fetch` also caches. The closure is
+permissive (MIT, Apache-2.0, BSD, Unicode-3.0, Unicode-DFS-2016, Zlib,
+Unlicense), including `psm` 0.1.32 through `stacker` 0.1.25 and
+`ruff_python_parser` 0.0.15 at git `9d0f58b1`. Every lane cargo invocation
+exports `HOST_CC`, `HOST_CXX`, and `HOST_AR` as the locked LLVM tools because
+cc-rs prefers them over `CC`; `psm` compiles its assembly through that clang.
+`cargo test -p serc --locked` runs offline in the assembled archive tree
+(`work/source/serc` after a build) on `nightly-2026-09-15`.
+
 The lane uses a shared `cpython-binding` layer and `cpython-deflate` engine,
 a static Rust carrier for built-in modules, a shared `_ssl_rs` extension, and
 ThinLTO release builds. Build, test, and benchmark commands run through

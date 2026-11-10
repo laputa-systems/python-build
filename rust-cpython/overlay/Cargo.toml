@@ -10,8 +10,10 @@ members = [
     "Modules/_unicodedata_rs", "Modules/_urllib_parse_rs", "Modules/_urllib_request_rs", "Modules/_uuid_rs", "Modules/_warnings_rs", "Modules/_zipimport_rs", "Modules/_zlib_rs", "Modules/_zstd_rs",
     "Modules/cpython-binding", "Modules/cpython-build-helper", "Modules/cpython-deflate",
     "Modules/cpython-libbz2-rs", "Modules/cpython-libz-rs",
-    "Modules/cpython-rust-staticlib", "Modules/cpython-sys"
+    "Modules/cpython-rust-staticlib", "Modules/cpython-sys",
+    "serc-lane"
 ]
+exclude = ["serc"]
 
 [workspace.package]
 # Make sure to also update the Rust toolchains in GitHub Actions whenever this version is modified
@@ -30,5 +32,6 @@ lto = "thin"
 # session-API and policy patches. Every workspace requirement resolves to
 # these trees so the engine, its provider, and its verifier share one copy.
 [patch.crates-io]
+ruff_python_parser = { git = "https://github.com/astral-sh/ruff", rev = "9d0f58b1d2fb1cf1062d3ff99b18ebf293563f6f" }
 rustls = { git = "https://github.com/laputa-systems/rustls", branch = "laputa/0.23.45" }
 rustls-webpki = { git = "https://github.com/laputa-systems/webpki", branch = "laputa/0.103.15" }

@@ -8,8 +8,10 @@ x86_64 glibc Linux (`x86_64-unknown-linux-gnu`); the host selects the target.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import dataclasses
 import hashlib
+import http.server
 import json
 import os
 import platform
@@ -21,7 +23,10 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import tomllib
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -76,10 +81,25 @@ SYMBOL_PREFIX = "" if IS_LINUX else "_"
 RUST_CHANNEL = "nightly-2026-09-15"
 SOURCE_LOCK = LANE / "sources.lock.json"
 OVERLAY = LANE / "overlay"
+SERC_OVERLAY = LANE / "serc-overlay"
 BOOTSTRAP_LOCK = REPO / "bootstrap.lock.json"
 LINUX_TOOLCHAIN_LOCK = LANE / "linux-toolchain.lock.json"
 CACHE_ROOT = REPO / ".cache"
 CARGO_HOME = LANE / ".cargo-home"
+CARGO_CONFIG_ISOLATED_CWD = Path("/")
+INDEX_FORWARDER_PORT = 18737
+LANE_INDEX_SOURCE = "lane-official"
+LANE_INDEX_URL = f"sparse+http://127.0.0.1:{INDEX_FORWARDER_PORT}/"
+LANE_CARGO_SOURCE_ARGS = (
+    "--config", f'source.crates-io.replace-with="{LANE_INDEX_SOURCE}"',
+    "--config", f'source.{LANE_INDEX_SOURCE}.registry="{LANE_INDEX_URL}"',
+)
+LANE_CARGO_CONFIG = (
+    "[source.crates-io]\n"
+    f'replace-with = "{LANE_INDEX_SOURCE}"\n\n'
+    f"[source.{LANE_INDEX_SOURCE}]\n"
+    f'registry = "{LANE_INDEX_URL}"\n'
+)
 WORK = LANE / "work"
 BUILD = WORK / "build"
 SOURCE = WORK / "source"
@@ -119,8 +139,8 @@ def _read_lock() -> tuple[dict[str, Any], Input]:
     except (OSError, json.JSONDecodeError, KeyError, TypeError, InputError) as error:
         raise LaneError(f"cannot read Rust-for-CPython source lock: {error}") from error
     names = {entry.name for entry in entries}
-    if "cpython-rust" not in names or names - {"cpython-rust", "rust-std-src"}:
-        raise LaneError(f"{SOURCE_LOCK}: expected CPython and only the named Rust std input")
+    if "cpython-rust" not in names or names - {"cpython-rust", "rust-std-src", "serc"}:
+        raise LaneError(f"{SOURCE_LOCK}: expected CPython and only the named source inputs")
     entry = next(entry for entry in entries if entry.name == "cpython-rust")
     required = {
         "repository", "branch", "commit", "version", "license",
@@ -140,6 +160,35 @@ def _read_lock() -> tuple[dict[str, Any], Input]:
         or entry.license != metadata["license"]
     ):
         raise LaneError(f"{SOURCE_LOCK}: source metadata and archive pin disagree")
+    return metadata, entry
+
+
+def _read_serc_lock() -> tuple[dict[str, Any], Input]:
+    _read_lock()
+    try:
+        document = json.loads(SOURCE_LOCK.read_text())
+        metadata = document["serc_source"]
+        entries = [entry for entry in load_lock(SOURCE_LOCK) if entry.name == "serc"]
+        required = {"repository", "commit", "version", "license", "cargo_lock_sha256"}
+        if not isinstance(metadata, dict) or required - metadata.keys():
+            raise LaneError(f"{SOURCE_LOCK}: incomplete Serc source metadata")
+        if len(entries) != 1:
+            raise LaneError(f"{SOURCE_LOCK}: expected one Serc source input")
+        entry = entries[0]
+        commit = metadata["commit"]
+        lock_hash = metadata["cargo_lock_sha256"]
+        if (not isinstance(metadata["license"], str) or not metadata["license"]
+                or not isinstance(metadata["repository"], str) or not metadata["repository"]
+                or entry.version != metadata["version"]
+                or entry.license != metadata["license"]
+                or entry.role != "build-source" or entry.target not in LANE_TARGETS
+                or entry.url != f"https://codeload.github.com/astral-experiments/serc/tar.gz/{commit}"
+                or type(entry.size) is not int or entry.size <= 0
+                or not isinstance(commit, str) or re.fullmatch(r"[0-9a-f]{40}", commit) is None
+                or not isinstance(lock_hash, str) or re.fullmatch(r"[0-9a-f]{64}", lock_hash) is None):
+            raise LaneError(f"{SOURCE_LOCK}: Serc metadata and archive pin disagree")
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, InputError) as error:
+        raise LaneError(f"cannot read Serc source lock: {error}") from error
     return metadata, entry
 
 
@@ -625,14 +674,17 @@ def _verify_cargo_lock(source: Path) -> None:
         )
 
 
-def _extract_fresh(destination: Path) -> Path:
+def _extract_fresh(destination: Path, *, apply_serc: bool = True) -> Path:
     metadata, source_input = _read_lock()
     del metadata
     blob = Cache(CACHE_ROOT).require(source_input)
     if destination.exists():
         shutil.rmtree(destination)
     extraction = safe_extract(blob, destination)
-    return _source_root(extraction)
+    source = _source_root(extraction)
+    if apply_serc:
+        _apply_serc_source(source)
+    return source
 
 
 def _apply_overlay(source: Path) -> dict[str, Any]:
@@ -675,6 +727,95 @@ def _apply_overlay(source: Path) -> dict[str, Any]:
         )
         count += 1
     return {"files": count, "sha256": digest.hexdigest()}
+
+
+def _copy_overlay_tree(overlay: Path, destination: Path) -> dict[str, Any]:
+    digest = hashlib.sha256()
+    count = 0
+    if overlay.is_symlink() or (overlay.exists() and not overlay.is_dir()):
+        raise LaneError(f"source overlay is not a directory: {overlay}")
+    if not overlay.is_dir():
+        return {"files": 0, "sha256": digest.hexdigest()}
+    for path in sorted(overlay.rglob("*")):
+        if path.is_symlink():
+            raise LaneError(f"source overlay cannot contain symlinks: {path}")
+        if path.is_dir():
+            continue
+        if not path.is_file():
+            raise LaneError(f"source overlay contains a non-file: {path}")
+        relative = path.relative_to(overlay)
+        target = destination / relative
+        if target.is_symlink() or (target.exists() and not target.is_file()):
+            raise LaneError(f"source overlay target is not a file: {relative}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        data = path.read_bytes()
+        mode = path.stat().st_mode & 0o777
+        target.write_bytes(data)
+        target.chmod(mode)
+        digest.update(
+            relative.as_posix().encode() + b"\0" + str(mode).encode()
+            + b"\0" + data + b"\0"
+        )
+        count += 1
+    return {"files": count, "sha256": digest.hexdigest()}
+
+
+def _serc_lane_manifest() -> str:
+    return (
+        "[package]\n"
+        'name = "serc-lane"\n'
+        'version = "0.0.0"\n'
+        'edition = "2024"\n'
+        "publish = false\n\n"
+        "[lib]\n"
+        'name = "serc_lane"\n'
+        'path = "src/lib.rs"\n\n'
+        "[dependencies]\n"
+        'serc = { path = "../serc/crates/serc" }\n'
+    )
+
+
+def _write_serc_lane_anchor(source: Path) -> dict[str, Any]:
+    anchor = source / "serc-lane"
+    manifest = anchor / "Cargo.toml"
+    library = anchor / "src" / "lib.rs"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    library.parent.mkdir(parents=True, exist_ok=True)
+    manifest_text = _serc_lane_manifest()
+    library_text = "pub use serc;\n"
+    if not manifest.is_file() or manifest.read_text() != manifest_text:
+        manifest.write_text(manifest_text)
+    if not library.is_file() or library.read_text() != library_text:
+        library.write_text(library_text)
+    return {"manifest": manifest_text, "library": library_text}
+
+
+def _apply_serc_source(source: Path) -> dict[str, Any]:
+    metadata, entry = _read_serc_lock()
+    blob = Cache(CACHE_ROOT).require(entry)
+    destination = source / "serc"
+    if destination.exists():
+        shutil.rmtree(destination)
+    safe_extract(blob, destination)
+    roots = [child for child in destination.iterdir() if child.is_dir()]
+    if len(roots) != 1:
+        raise LaneError(
+            f"expected one Serc source directory beneath {destination}, found {len(roots)}"
+        )
+    root = roots[0]
+    for child in list(root.iterdir()):
+        os.replace(child, destination / child.name)
+    root.rmdir()
+    lock = destination / "Cargo.lock"
+    found_lock_hash = hashlib.sha256(lock.read_bytes()).hexdigest()
+    if found_lock_hash != metadata["cargo_lock_sha256"]:
+        raise LaneError(
+            "Serc Cargo.lock digest disagrees with the source lock: "
+            f"{found_lock_hash} != {metadata['cargo_lock_sha256']}"
+        )
+    overlay = _copy_overlay_tree(SERC_OVERLAY, destination)
+    anchor = _write_serc_lane_anchor(source)
+    return {"overlay": overlay, "anchor": anchor}
 
 
 def _llvm_layout():
@@ -816,7 +957,12 @@ def _environment(toolchain, *, offline: bool, build_dir: Path | None = None) -> 
         "RUSTUP_HOME": os.environ.get("RUSTUP_HOME", str(Path.home() / ".rustup")),
         "CARGO_HOME": str(CARGO_HOME),
         "CARGO_NET_OFFLINE": "true" if offline else "false",
+        "CARGO_NET_GIT_FETCH_WITH_CLI": "true",
         "CARGO_TARGET_DIR": str(build_dir / "target"),
+        "HOST_CC": str(llvm_bin / "clang"),
+        "HOST_CXX": str(llvm_bin / "clang++"),
+        "HOST_AR": str(llvm_bin / "llvm-ar"),
+        "RANLIB": str(llvm_bin / "llvm-ranlib"),
         "RUSTUP_TOOLCHAIN": RUST_CHANNEL,
         "RUST_SHARED_BUILD": "1",
         "LLVM_TARGET": TARGET,
@@ -875,18 +1021,74 @@ def _require_command(
     return result
 
 
-def _fetch_cargo_dependencies(source: Path, toolchain) -> None:
+class _IndexForwarder(http.server.BaseHTTPRequestHandler):
+    upstream = "https://index.crates.io/"
+
+    def do_GET(self) -> None:
+        try:
+            with urllib.request.urlopen(
+                self.upstream + self.path.lstrip("/"), timeout=60
+            ) as response:
+                body = response.read()
+                self.send_response(response.status)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+        except urllib.error.HTTPError as error:
+            self.send_response(error.code)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        except Exception:
+            self.send_response(502)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+    def log_message(self, *args: Any) -> None:
+        pass
+
+
+@contextlib.contextmanager
+def _official_index_forwarder():
+    try:
+        server = http.server.ThreadingHTTPServer(
+            ("127.0.0.1", INDEX_FORWARDER_PORT), _IndexForwarder
+        )
+    except OSError as error:
+        raise LaneError(
+            f"cannot listen on the lane index forwarder port {INDEX_FORWARDER_PORT}: {error}"
+        ) from error
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield LANE_INDEX_URL
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def _write_cargo_source_config(directory: Path) -> Path:
+    config = directory / ".cargo" / "config.toml"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    if not config.is_file() or config.read_text() != LANE_CARGO_CONFIG:
+        config.write_text(LANE_CARGO_CONFIG)
+    return config
+
+
+def _fetch_cargo_dependencies(
+    manifest: Path, toolchain, *, log: Path, extra_args: tuple[str, ...] = ()
+) -> None:
+    source = manifest.parent
     env = _environment(toolchain, offline=False)
     env["PATH"] = f"{CARGO_HOME / 'bin'}:{env['PATH']}"
     command = [
         str(CARGO_HOME / "bin" / "cargo"), "fetch", "--locked",
-        "-Z", "build-std=std", "-Z", "build-std-features=",
-        "--manifest-path", str(source / "Cargo.toml"),
+        "--manifest-path", str(manifest), *LANE_CARGO_SOURCE_ARGS, *extra_args,
     ]
     cargo_lock = source / "Cargo.lock"
     before = hashlib.sha256(cargo_lock.read_bytes()).hexdigest()
     _require_command(
-        command, cwd=source, env=env, log=LOGS / "cargo-fetch.log"
+        command, cwd=CARGO_CONFIG_ISOLATED_CWD, env=env, log=log
     )
     after = hashlib.sha256(cargo_lock.read_bytes()).hexdigest()
     if after != before:
@@ -904,6 +1106,12 @@ def fetch() -> int:
     except (InputError, OSError) as error:
         raise LaneError(f"cannot fetch the pinned CPython source: {error}") from error
     print(f"OK    source archive ({route}) -> {source_blob}")
+    _serc_metadata, serc_input = _read_serc_lock()
+    try:
+        serc_blob = Cache(CACHE_ROOT).fetch(serc_input)
+    except (InputError, OSError) as error:
+        raise LaneError(f"cannot fetch the pinned Serc source: {error}") from error
+    print(f"OK    Serc source archive -> {serc_blob}")
     if not IS_LINUX:
         _std_metadata, std_input = _read_rust_std_lock()
         try:
@@ -931,11 +1139,19 @@ def fetch() -> int:
     with tempfile.TemporaryDirectory(prefix="cargo-fetch-", dir=WORK) as temporary:
         source = _source_root(safe_extract(source_blob, Path(temporary) / "source"))
         _apply_overlay(source)
+        _apply_serc_source(source)
         _verify_cargo_lock(source)
-        _fetch_cargo_dependencies(source, toolchain)
+        with _official_index_forwarder():
+            _fetch_cargo_dependencies(
+                source / "Cargo.toml", toolchain, log=LOGS / "cargo-fetch.log",
+                extra_args=("-Z", "build-std=std", "-Z", "build-std-features="),
+            )
+            _fetch_cargo_dependencies(
+                source / "serc" / "Cargo.toml", toolchain, log=LOGS / "cargo-fetch-serc.log",
+            )
     print(
         f"OK    Cargo dependencies cached under {CARGO_HOME}; "
-        f"source pin {metadata['commit']}"
+        f"source pins {metadata['commit']} and Serc {serc_input.version}"
     )
     return 0
 
@@ -1385,11 +1601,11 @@ def _workspace_members(source: Path, env: dict[str, str]) -> list[str]:
     command = [
         str(CARGO_HOME / "bin" / "cargo"), "metadata", "--locked", "--offline",
         "--no-deps", "--format-version", "1", "--manifest-path",
-        str(source / "Cargo.toml"),
+        str(source / "Cargo.toml"), *LANE_CARGO_SOURCE_ARGS,
     ]
     result = subprocess.run(
-        command, cwd=source, env=env, capture_output=True, text=True, timeout=120,
-        check=False,
+        command, cwd=CARGO_CONFIG_ISOLATED_CWD, env=env, capture_output=True, text=True,
+        timeout=120, check=False,
     )
     if result.returncode != 0:
         raise LaneError(f"cargo metadata failed: {(result.stderr or result.stdout).strip()}")
@@ -1418,8 +1634,10 @@ COMPRESSION_ENGINES = (
 def _package_include_directory(source: Path, env: dict[str, str], package: str) -> Path:
     result = subprocess.run(
         [str(CARGO_HOME / "bin" / "cargo"), "metadata", "--locked", "--offline",
-         "--format-version", "1", "--manifest-path", str(source / "Cargo.toml")],
-        cwd=source, env=env, capture_output=True, text=True, timeout=120, check=False,
+         "--format-version", "1", "--manifest-path", str(source / "Cargo.toml"),
+         *LANE_CARGO_SOURCE_ARGS],
+        cwd=CARGO_CONFIG_ISOLATED_CWD, env=env, capture_output=True, text=True,
+        timeout=120, check=False,
     )
     if result.returncode != 0:
         raise LaneError(f"cargo metadata failed: {(result.stderr or result.stdout).strip()}")
@@ -1450,8 +1668,9 @@ def compression_engine_environment(
         [str(CARGO_HOME / "bin" / "cargo"), "build", "--lib", "--locked", "--offline",
          "--profile", profile, "--manifest-path", str(source / "Cargo.toml"),
          *[argument for engine in COMPRESSION_ENGINES
-           for argument in ("--package", engine.carrier_package)]],
-        cwd=source, env=cargo_env, log=log, sealed=sealed,
+           for argument in ("--package", engine.carrier_package)],
+         *LANE_CARGO_SOURCE_ARGS],
+        cwd=CARGO_CONFIG_ISOLATED_CWD, env=cargo_env, log=log, sealed=sealed,
     )
     profile_directory = "release" if profile == "release" else "debug"
     variables: dict[str, str] = {}
@@ -1525,6 +1744,7 @@ def _configure_source(source: Path, toolchain, target, jobs: int,
         if path.exists():
             shutil.rmtree(path)
         path.mkdir(parents=True)
+    _write_cargo_source_config(BUILD)
     args, env = _configuration(toolchain, target, jit=jit)
     if jit:
         env["PATH"] = f"{_jit_llvm_tools(toolchain)}:{env['PATH']}"
@@ -1636,8 +1856,8 @@ def build(*, jobs: int | None = None, jit: bool = False) -> int:
     env = _environment(toolchain, offline=True)
     _require_command(
         [str(CARGO_HOME / "bin" / "cargo"), "fetch", "--locked", "--offline",
-         "--manifest-path", str(source / "Cargo.toml")],
-        cwd=source, env=env, log=LOGS / "cargo-offline-check.log",
+         "--manifest-path", str(source / "Cargo.toml"), *LANE_CARGO_SOURCE_ARGS],
+        cwd=CARGO_CONFIG_ISOLATED_CWD, env=env, log=LOGS / "cargo-offline-check.log",
     )
     sandbox = _sealed_sandbox()
     workers = jobs if jobs is not None else max(1, (os.cpu_count() or 4) - 1)

@@ -966,13 +966,15 @@ def cargo(*, name: str, arguments: list[str]) -> int:
         sync = _plan_overlay_sync(paths, _report_route(previous))
         _refuse_unsyncable(sync.changes)
         _copy_changed_overlay(paths, sync.source, sync.changes)
+        lb._apply_serc_source(sync.source)
         _write_json(paths["overlay_manifest"], sync.files)
         toolchain, target = lb._toolchain()
         lb._llvm_ready(toolchain)
         env = _build_environment(toolchain, target, paths, workers=_worker_count(None),
                                  sandbox=lb._sealed_sandbox(),
                                  jit=bool(previous.get("jit", False)))
-        return subprocess.run([str(lb.CARGO_HOME / "bin" / "cargo"), *arguments],
+        return subprocess.run([str(lb.CARGO_HOME / "bin" / "cargo"),
+                               *lb.LANE_CARGO_SOURCE_ARGS, *arguments],
                               cwd=sync.source, env=env, check=False).returncode
 
 
@@ -1101,8 +1103,9 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
             _write_json(paths["report"], {"status": "building", "name": _tag(name),
                                           "pristine": False, "configured": False})
         _copy_changed_overlay(paths, source, changes)
+        lb._apply_serc_source(source)
     else:
-        source = lb._extract_fresh(paths["source_parent"])
+        source = lb._extract_fresh(paths["source_parent"], apply_serc=not empty_overlay)
         if empty_overlay:
             overlay, files = {"files": 0, "sha256": None, "pristine": True}, []
         else:
@@ -1122,8 +1125,9 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
         lb._require_command(
             [str(lb.CARGO_HOME / "bin" / "cargo"), "fetch", "--locked", "--offline",
              "-Z", "build-std=std", "-Z", "build-std-features=",
-             "--manifest-path", str(source / "Cargo.toml")],
-            cwd=source, env=lb._environment(toolchain, offline=True, build_dir=paths["build"]),
+             "--manifest-path", str(source / "Cargo.toml"), *lb.LANE_CARGO_SOURCE_ARGS],
+            cwd=lb.CARGO_CONFIG_ISOLATED_CWD,
+            env=lb._environment(toolchain, offline=True, build_dir=paths["build"]),
             log=paths["cargo_log"],
         )
     workers = _worker_count(jobs)
@@ -1167,6 +1171,7 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
             setup_target.write_text(contents)
             setup_target.chmod(setup_local.stat().st_mode & 0o777)
         state["configured"] = True
+    lb._write_cargo_source_config(paths["build"])
     if placement:
         # The existing generators own module registration and linker recipes.
         # Explicit regeneration happens before deleting any compiled owner.

@@ -5,7 +5,7 @@
     "commit": "e891a9117985888df3e5d48145cf07ddda098335",
     "version": "3.16.0a1+dev",
     "license": "PSF-2.0",
-    "cargo_lock_sha256": "52922e3dfd93e680ddc0b3c6d0d5e48703cc3307bdc21d3c7a7720eb950c21e8"
+    "cargo_lock_sha256": "40972a32d336a0facf21573d172b80051acb2853d86b4fd093184d93115016c4"
   },
   "inputs": [
     {
@@ -29,8 +29,26 @@
       "target": "aarch64-apple-darwin",
       "license": "MIT OR Apache-2.0",
       "purpose": "Matching Rust compiler source for isolated source-built abort std; incorporated third-party licenses retained with the CSV route"
+    },
+    {
+      "name": "serc",
+      "version": "0.1.11",
+      "url": "https://codeload.github.com/astral-experiments/serc/tar.gz/bc563167d6c03d620367d8fb9832f43f247b06dd",
+      "sha256": "4db43e58bd6f3b7e46728f686c7482d4404b61fe5143371642e1940041d3e84b",
+      "size": 3445293,
+      "role": "build-source",
+      "target": "aarch64-apple-darwin",
+      "license": "MIT OR Apache-2.0",
+      "purpose": "Pinned Serc 0.1.11 Rust source compiler for track C; the lane links only the compiler library, never the CLI or benchmarks"
     }
   ],
+  "serc_source": {
+    "repository": "https://github.com/astral-experiments/serc",
+    "commit": "bc563167d6c03d620367d8fb9832f43f247b06dd",
+    "version": "0.1.11",
+    "license": "MIT OR Apache-2.0",
+    "cargo_lock_sha256": "5d9d3e072529e6739875b2950e24d230e1a76b2b459bef2f077a282a8a79bcfe"
+  },
   "rust_std_source": {
     "version": "1.100.0-nightly (574ff7d98 2026-09-14)",
     "compiler_revision": "574ff7d98bd6d037e5236a8453029173b32631fd",

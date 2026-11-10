@@ -1113,7 +1113,8 @@ class CargoCommandTests(unittest.TestCase):
     def test_arguments_are_forwarded_verbatim(self):
         arguments = ["test", "-p", "_bz2_rs", "--offline", "--", "--nocapture", "--"]
         _status, run, *_ = self.run_cargo(arguments, report={"configured": True, "pristine": False})
-        self.assertEqual(run.call_args.args[0][1:], arguments)
+        self.assertEqual(run.call_args.args[0][1:],
+                         [*perf.lb.LANE_CARGO_SOURCE_ARGS, *arguments])
         with mock.patch.object(perf, "cargo", return_value=0) as call:
             self.assertEqual(perf.main(["cargo", "--name", "fixture", "--", *arguments]), 0)
         self.assertEqual(call.call_args.kwargs, {"name": "fixture", "arguments": arguments})

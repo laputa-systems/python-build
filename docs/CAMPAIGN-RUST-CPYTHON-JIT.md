@@ -496,16 +496,33 @@ follow:
 - The repo's `.cargo/config.toml` replaces crates-io with the `stuff` mirror,
   which lacks 47 of the crates (every `ruff_*` 0.0.15, `psm`, `stacker`,
   `cc`, `dashu-int`). Serc's dependencies come from crates.io (OD13): lane
-  `fetch` resolves crates-io from the official index for the overlay
-  workspace, with `--locked` checksums as the integrity check. The repo-wide
+  `fetch` resolves crates-io from the official index for its own cargo
+  invocations, with `--locked` checksums as the integrity check. The repo-wide
   `.cargo/config.toml` is unchanged.
 - cc-rs prefers `HOST_CC` over `CC`, and the host cargo config sets
   `HOST_CC="kache clang"`, so `psm` silently compiles with Apple clang. Every
-  build that compiles Serc exports `HOST_CC`, `HOST_CXX`, and `HOST_AR` as the
+  lane cargo invocation now exports `HOST_CC`, `HOST_CXX`, and `HOST_AR` as the
   locked LLVM tools.
 - A binary that calls the compiler gains about 9.2 MB of text (staticlib
   probe, ThinLTO, prebuilt std), against about 3.3 MB of `libpython` text. C2's
   memory gate is the likely failure; C2 measures it first.
+
+**Landed (2026-11-10).** The Serc archive record and `serc_source` metadata
+are in `sources.lock.json`; `overlay/Cargo.lock` grows from 311 to 364
+packages with `serc-lane`, `serc`, `psm` 0.1.32, `stacker` 0.1.25, and the
+`ruff_*` 0.0.15 crates. `serc` is a path dependency of the one-dependency
+`serc-lane` anchor and the Serc tree is excluded from the lane workspace, so
+the lock holds only the library's 97 normal and 19 build-only crates; the CLI,
+benchmark crates, `mimalloc`, and `rayon` stay in Serc's own test workspace.
+`build.py fetch` verifies the archive, applies `serc-overlay/`, and caches the
+lane lock and the Serc test workspace from `https://index.crates.io` in the
+private Cargo home. Offline `cargo test -p serc --locked --no-fail-fast` runs
+8,624 tests on `nightly-2026-09-15` with the locked LLVM: with
+`SERC_TEST_PYTHON` naming CPython 3.14.5, 6,777 pass and the other 1,847
+fail only their oracle precondition, which demands exactly CPython 3.13.15
+or 3.15.0 (absent on this host). `psm`'s `aarch_aapcs64.o` embeds `clang
+version 23.1.4`. A clean `perf-rust` build on this lock fails exactly the
+e891 parity set.
 
 ### Marshal parity
 
@@ -691,7 +708,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 | --- | --- | --- | --- |
 | J | active | T1 thread-state, ranked by profile share (OD14) | e891 epoch M0, `S0 = 0.7748`, held-out 0.8216 |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
-| C | active | C0 lock entries, then C1 co_code | C1 census 3,493 / 6,252 exact on e891 (`campaign/c1`) |
+| C | active | C1 co_code | C0 landed: Serc pinned, offline fetch and lane build green; C1 census 3,493 / 6,252 exact on e891 (`campaign/c1`) |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
 
 **Owner queue:** R1 reference report (informational, no target change
