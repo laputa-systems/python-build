@@ -1750,7 +1750,20 @@ typedef struct {
 } _PyJitOptStep;
 
 static_assert(sizeof(_PyJitOptUop) == 8, "_PyJitOptUop matches _jit_opt_rs::JitOptUop");
+static_assert(offsetof(_PyJitOptUop, kind) == 0, "_PyJitOptUop matches _jit_opt_rs::JitOptUop");
+static_assert(offsetof(_PyJitOptUop, detail) == 1, "_PyJitOptUop matches _jit_opt_rs::JitOptUop");
+static_assert(offsetof(_PyJitOptUop, inputs) == 2, "_PyJitOptUop matches _jit_opt_rs::JitOptUop");
+static_assert(offsetof(_PyJitOptUop, popped) == 3, "_PyJitOptUop matches _jit_opt_rs::JitOptUop");
+static_assert(offsetof(_PyJitOptUop, pushed) == 4, "_PyJitOptUop matches _jit_opt_rs::JitOptUop");
+static_assert(offsetof(_PyJitOptUop, read) == 5, "_PyJitOptUop matches _jit_opt_rs::JitOptUop");
+static_assert(offsetof(_PyJitOptUop, effects) == 6, "_PyJitOptUop matches _jit_opt_rs::JitOptUop");
+static_assert(offsetof(_PyJitOptUop, exit_at_end) == 7, "_PyJitOptUop matches _jit_opt_rs::JitOptUop");
 static_assert(sizeof(_PyJitOptStep) == 16, "_PyJitOptStep matches _jit_opt_rs::JitOptStep");
+static_assert(offsetof(_PyJitOptStep, source) == 0, "_PyJitOptStep matches _jit_opt_rs::JitOptStep");
+static_assert(offsetof(_PyJitOptStep, action) == 2, "_PyJitOptStep matches _jit_opt_rs::JitOptStep");
+static_assert(offsetof(_PyJitOptStep, exit_floats) == 4, "_PyJitOptStep matches _jit_opt_rs::JitOptStep");
+static_assert(offsetof(_PyJitOptStep, exit_ints) == 8, "_PyJitOptStep matches _jit_opt_rs::JitOptStep");
+static_assert(offsetof(_PyJitOptStep, error_unboxed) == 12, "_PyJitOptStep matches _jit_opt_rs::JitOptStep");
 
 enum {
     JIT_OPT_KIND_OTHER = 0,

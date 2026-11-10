@@ -1187,7 +1187,17 @@ mod tests {
     #[test]
     fn ffi_layouts_match_the_c_glue() {
         assert_eq!(std::mem::size_of::<JitOptUop>(), 8);
+        assert_eq!(std::mem::offset_of!(JitOptUop, kind), 0);
+        assert_eq!(std::mem::offset_of!(JitOptUop, detail), 1);
+        assert_eq!(std::mem::offset_of!(JitOptUop, inputs), 2);
+        assert_eq!(std::mem::offset_of!(JitOptUop, popped), 3);
+        assert_eq!(std::mem::offset_of!(JitOptUop, pushed), 4);
+        assert_eq!(std::mem::offset_of!(JitOptUop, read), 5);
+        assert_eq!(std::mem::offset_of!(JitOptUop, effects), 6);
+        assert_eq!(std::mem::offset_of!(JitOptUop, exit_at_end), 7);
         assert_eq!(std::mem::size_of::<JitOptStep>(), 16);
+        assert_eq!(std::mem::offset_of!(JitOptStep, source), 0);
+        assert_eq!(std::mem::offset_of!(JitOptStep, action), 2);
         assert_eq!(std::mem::offset_of!(JitOptStep, exit_floats), 4);
         assert_eq!(std::mem::offset_of!(JitOptStep, exit_ints), 8);
         assert_eq!(std::mem::offset_of!(JitOptStep, error_unboxed), 12);
