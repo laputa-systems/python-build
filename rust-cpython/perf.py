@@ -83,7 +83,8 @@ GATE_WORKLOADS = (
 )
 # Registered workloads whose 3.16 input closures do not exist yet.
 UNAVAILABLE_WORKLOADS = frozenset({
-    "pylint_source", "pycparser_source", "import_app_stack", "pip_install_wheelhouse",
+    "pylint_source", "pycparser_source", "import_app_stack", "cold_import_app_stack",
+    "pip_install_wheelhouse",
 })
 # Configure selects Cargo's dev profile whenever --enable-optimizations is
 # absent. Every make invocation, including `make install`, must override it:
