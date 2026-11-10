@@ -5,3 +5,4 @@
 /stage/
 /work/
 /stage-perf-*/
+!/serc-overlay/crates/serc/src/target/
