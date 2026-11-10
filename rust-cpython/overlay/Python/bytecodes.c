@@ -359,7 +359,7 @@ dummy_func(
         }
 
         pure inst(POP_TOP, (value --)) {
-            PyStackRef_XCLOSE(value);
+            PyStackRef_XCLOSE_TSTATE(tstate, value);
         }
 
         op(_POP_TOP_NOP, (value --)) {
@@ -1554,7 +1554,7 @@ dummy_func(
             INPUTS_DEAD();
             ls = list_st;
             ss = sub_st;
-            Py_DECREF(old_value);
+            _Py_DECREF_TSTATE(tstate, old_value);
         }
 
         macro(STORE_SUBSCR_DICT) =
@@ -3209,7 +3209,7 @@ dummy_func(
             UNLOCK_OBJECT(owner_o);
             o = owner;
             DEAD(owner);
-            Py_XDECREF(old_value);
+            _Py_XDECREF_TSTATE(tstate, old_value);
         }
 
         op(_LOCK_OBJECT, (value -- value)) {
@@ -3257,7 +3257,7 @@ dummy_func(
             STAT_INC(STORE_ATTR, hit);
             o = owner;
             DEAD(owner);
-            Py_XDECREF(old_value);
+            _Py_XDECREF_TSTATE(tstate, old_value);
         }
 
         macro(STORE_ATTR_WITH_HINT) =
@@ -3278,7 +3278,7 @@ dummy_func(
             UNLOCK_OBJECT(owner_o);
             INPUTS_DEAD();
             o = owner;
-            Py_XDECREF(old_value);
+            _Py_XDECREF_TSTATE(tstate, old_value);
         }
 
         macro(STORE_ATTR_SLOT) =
@@ -4184,7 +4184,9 @@ dummy_func(
             long value = r->start;
             r->start = value + r->step;
             r->len--;
-            PyObject *res = PyLong_FromLong(value);
+            PyObject *res = _PyLong_FitsCompact(value)
+                ? _PyLong_FromCompactTstate(tstate, value)
+                : PyLong_FromLong(value);
             ERROR_IF(res == NULL);
             next = PyStackRef_FromPyObjectSteal(res);
         }

@@ -227,6 +227,8 @@ static inline void _Py_ClearImmortal(PyObject *op)
 
 typedef void (*_PyTstateDestructor)(PyThreadState *, PyObject *);
 
+PyAPI_FUNC(void) _Py_DeallocTstate(PyThreadState *tstate, PyObject *op);
+
 #if !defined(Py_GIL_DISABLED)
 static inline void
 _Py_DECREF_SPECIALIZED(PyObject *op, const destructor destruct)
@@ -275,10 +277,35 @@ _Py_DECREF_SPECIALIZED_TSTATE(PyThreadState *tstate, PyObject *op,
     }
 }
 
+static inline void
+_Py_DECREF_TSTATE(PyThreadState *tstate, PyObject *op)
+{
+    if (_Py_IsImmortal(op)) {
+        _Py_DECREF_IMMORTAL_STAT_INC();
+        return;
+    }
+    _Py_DECREF_STAT_INC();
+#ifdef Py_REF_DEBUG
+    _Py_DEC_REFTOTAL(tstate->interp);
+#endif
+    if (--op->ob_refcnt != 0) {
+        assert(op->ob_refcnt > 0);
+    }
+    else {
+        _Py_DeallocTstate(tstate, op);
+    }
+}
+
 #else
 // TODO: implement Py_DECREF specializations for Py_GIL_DISABLED build
 static inline void
 _Py_DECREF_SPECIALIZED(PyObject *op, const destructor destruct)
+{
+    Py_DECREF(op);
+}
+
+static inline void
+_Py_DECREF_TSTATE(PyThreadState *tstate, PyObject *op)
 {
     Py_DECREF(op);
 }
@@ -293,6 +320,14 @@ _Py_REF_IS_MERGED(Py_ssize_t ob_ref_shared)
 // refcount when merging.
 Py_ssize_t _Py_ExplicitMergeRefcount(PyObject *op, Py_ssize_t extra);
 #endif // !defined(Py_GIL_DISABLED)
+
+static inline void
+_Py_XDECREF_TSTATE(PyThreadState *tstate, PyObject *op)
+{
+    if (op != NULL) {
+        _Py_DECREF_TSTATE(tstate, op);
+    }
+}
 
 #ifdef Py_REF_DEBUG
 #  undef _Py_DEC_REFTOTAL
@@ -482,6 +517,22 @@ static inline void _Py_DECREF_MORTAL_SPECIALIZED_TSTATE(const char *filename, in
 }
 #define Py_DECREF_MORTAL_SPECIALIZED_TSTATE(tstate, op, destruct) _Py_DECREF_MORTAL_SPECIALIZED_TSTATE(__FILE__, __LINE__, tstate, op, destruct)
 
+static inline void _Py_DECREF_MORTAL_TSTATE(const char *filename, int lineno, PyThreadState *tstate, PyObject *op)
+{
+    if (op->ob_refcnt <= 0) {
+        _Py_NegativeRefcount(filename, lineno, op);
+    }
+    _Py_DECREF_STAT_INC();
+    assert(!_Py_IsStaticImmortal(op));
+    if (!_Py_IsImmortal(op)) {
+        _Py_DECREF_DecRefTotal();
+    }
+    if (--op->ob_refcnt == 0) {
+        _Py_DeallocTstate(tstate, op);
+    }
+}
+#define Py_DECREF_MORTAL_TSTATE(tstate, op) _Py_DECREF_MORTAL_TSTATE(__FILE__, __LINE__, tstate, _PyObject_CAST(op))
+
 #else
 
 static inline void Py_DECREF_MORTAL(PyObject *op)
@@ -516,11 +567,22 @@ static inline void Py_DECREF_MORTAL_SPECIALIZED_TSTATE(PyThreadState *tstate, Py
 }
 #define Py_DECREF_MORTAL_SPECIALIZED_TSTATE(tstate, op, destruct) Py_DECREF_MORTAL_SPECIALIZED_TSTATE(tstate, _PyObject_CAST(op), destruct)
 
+static inline void Py_DECREF_MORTAL_TSTATE(PyThreadState *tstate, PyObject *op)
+{
+    assert(!_Py_IsStaticImmortal(op));
+    _Py_DECREF_STAT_INC();
+    if (--op->ob_refcnt == 0) {
+        _Py_DeallocTstate(tstate, op);
+    }
+}
+#define Py_DECREF_MORTAL_TSTATE(tstate, op) Py_DECREF_MORTAL_TSTATE(tstate, _PyObject_CAST(op))
+
 #endif
 #else  // Py_GIL_DISABLED
 # define Py_DECREF_MORTAL(op) Py_DECREF(op)
 # define Py_DECREF_MORTAL_SPECIALIZED(op, destruct) Py_DECREF(op)
 # define Py_DECREF_MORTAL_SPECIALIZED_TSTATE(tstate, op, destruct) Py_DECREF(op)
+# define Py_DECREF_MORTAL_TSTATE(tstate, op) Py_DECREF(op)
 #endif
 
 /* Inline functions trading binary compatibility for speed:

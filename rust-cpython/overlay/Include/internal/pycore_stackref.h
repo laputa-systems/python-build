@@ -229,6 +229,22 @@ _PyStackRef_CLOSE(_PyStackRef ref, const char *filename, int linenumber)
 #define PyStackRef_CLOSE(REF) _PyStackRef_CLOSE((REF), __FILE__, __LINE__)
 
 static inline void
+_PyStackRef_CLOSE_TSTATE(PyThreadState *tstate, _PyStackRef ref, const char *filename, int linenumber)
+{
+    assert(!PyStackRef_IsError(ref));
+    assert(!PyStackRef_IsNull(ref));
+    if (PyStackRef_IsTaggedInt(ref)) {
+        return;
+    }
+    PyObject *obj = _Py_stackref_close(ref, filename, linenumber);
+    assert(Py_REFCNT(obj) > 0);
+    if (PyStackRef_RefcountOnObject(ref)) {
+        _Py_DECREF_TSTATE(tstate, obj);
+    }
+}
+#define PyStackRef_CLOSE_TSTATE(TSTATE, REF) _PyStackRef_CLOSE_TSTATE((TSTATE), (REF), __FILE__, __LINE__)
+
+static inline void
 _PyStackRef_XCLOSE(_PyStackRef ref, const char *filename, int linenumber)
 {
     assert(!PyStackRef_IsError(ref));
@@ -238,6 +254,17 @@ _PyStackRef_XCLOSE(_PyStackRef ref, const char *filename, int linenumber)
     _PyStackRef_CLOSE(ref, filename, linenumber);
 }
 #define PyStackRef_XCLOSE(REF) _PyStackRef_XCLOSE((REF), __FILE__, __LINE__)
+
+static inline void
+_PyStackRef_XCLOSE_TSTATE(PyThreadState *tstate, _PyStackRef ref, const char *filename, int linenumber)
+{
+    assert(!PyStackRef_IsError(ref));
+    if (PyStackRef_IsNull(ref)) {
+        return;
+    }
+    _PyStackRef_CLOSE_TSTATE(tstate, ref, filename, linenumber);
+}
+#define PyStackRef_XCLOSE_TSTATE(TSTATE, REF) _PyStackRef_XCLOSE_TSTATE((TSTATE), (REF), __FILE__, __LINE__)
 
 static inline _PyStackRef
 _PyStackRef_DUP(_PyStackRef ref, const char *filename, int linenumber)
@@ -720,6 +747,15 @@ PyStackRef_CLOSE(_PyStackRef ref)
 #endif
 
 static inline void
+PyStackRef_CLOSE_TSTATE(PyThreadState *tstate, _PyStackRef ref)
+{
+    assert(!PyStackRef_IsNull(ref));
+    if (PyStackRef_RefcountOnObject(ref)) {
+        Py_DECREF_MORTAL_TSTATE(tstate, BITS_TO_PTR(ref));
+    }
+}
+
+static inline void
 PyStackRef_CLOSE_SPECIALIZED(_PyStackRef ref, destructor destruct)
 {
     assert(!PyStackRef_IsNull(ref));
@@ -747,6 +783,20 @@ PyStackRef_XCLOSE(_PyStackRef ref)
     if (PyStackRef_RefcountOnObject(ref)) {
         assert(!PyStackRef_IsNull(ref));
         Py_DECREF_MORTAL(BITS_TO_PTR(ref));
+    }
+}
+#endif
+
+#ifdef _WIN32
+#define PyStackRef_XCLOSE_TSTATE PyStackRef_CLOSE_TSTATE
+#else
+static inline void
+PyStackRef_XCLOSE_TSTATE(PyThreadState *tstate, _PyStackRef ref)
+{
+    assert(ref.bits != 0);
+    if (PyStackRef_RefcountOnObject(ref)) {
+        assert(!PyStackRef_IsNull(ref));
+        Py_DECREF_MORTAL_TSTATE(tstate, BITS_TO_PTR(ref));
     }
 }
 #endif

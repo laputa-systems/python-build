@@ -1,6 +1,7 @@
 /* Execute compiled code */
 
 #include "ceval.h"
+#include "pycore_floatobject.h"
 #include "pycore_long.h"
 
 #ifdef HAVE_PTHREAD_NP_H
@@ -934,6 +935,26 @@ _Py_LoadAttr_StackRefSteal(
     _PyObject_GetMethodStackRef(tstate, &self.ref, name, &method.ref);
     *self_or_null = _PyThreadState_PopCStackRefSteal(tstate, &self);
     return _PyThreadState_PopCStackRefSteal(tstate, &method);
+}
+
+void
+_Py_DeallocTstate(PyThreadState *tstate, PyObject *op)
+{
+    PyTypeObject *type = Py_TYPE(op);
+    if (type != &PyFloat_Type && type != &PyLong_Type) {
+        _Py_Dealloc(op);
+        return;
+    }
+#ifdef Py_TRACE_REFS
+    _Py_ForgetReference(op);
+#endif
+    _PyReftracerTrack(op, PyRefTracer_DESTROY);
+    if (type == &PyFloat_Type) {
+        _PyFloat_ExactDeallocTstate(tstate, op);
+    }
+    else {
+        _PyLong_ExactDeallocTstate(tstate, op);
+    }
 }
 
 #ifdef Py_DEBUG

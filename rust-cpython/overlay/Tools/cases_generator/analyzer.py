@@ -756,6 +756,14 @@ def escaping_call_in_simple_stmt(stmt: SimpleStmt, result: dict[SimpleStmt, Esca
             kills = tokens[idx+2]
             if kills.kind != "IDENTIFIER":
                 raise analysis_error(f"Expected identifier, got '{kills.text}'", kills)
+        elif tkn.text in ("PyStackRef_CLOSE_TSTATE", "PyStackRef_XCLOSE_TSTATE"):
+            if len(tokens) <= idx+4:
+                raise analysis_error("Unexpected end of file", next_tkn)
+            if tokens[idx+2].kind != "IDENTIFIER" or tokens[idx+3].kind != "COMMA":
+                raise analysis_error(f"Expected a thread-state identifier and comma, got '{tokens[idx+2].text}'", tokens[idx+2])
+            kills = tokens[idx+4]
+            if kills.kind != "IDENTIFIER":
+                raise analysis_error(f"Expected identifier, got '{kills.text}'", kills)
         else:
             kills = None
         result[stmt] = EscapingCall(stmt, tkn, kills)
