@@ -5224,8 +5224,9 @@ impl Compiler<'_> {
             to_u32(temporary_indices.len() + 1, "comprehension local count")?,
             0,
         )?;
+        let restores_fuse = self.context.python_version >= PythonVersion::Py316;
         for (position, index) in temporary_indices.iter().rev().enumerate() {
-            if position > 0 {
+            if position > 0 && !restores_fuse {
                 self.assembler.fusion_barrier();
             }
             self.emit(STORE_FAST, *index, -1)?;
@@ -5277,12 +5278,14 @@ impl Compiler<'_> {
                     .rev()
                     .chain(final_restore);
                 for (position, restore) in restores.copied().enumerate() {
-                    if position > 0 {
+                    if position > 0 && !restores_fuse {
                         self.assembler.fusion_barrier();
                     }
                     let emitted = self.emit_comprehension_restore(restore)?;
-                    self.assembler
-                        .prevent_instruction_fusion_with_previous(emitted);
+                    if !restores_fuse {
+                        self.assembler
+                            .prevent_instruction_fusion_with_previous(emitted);
+                    }
                 }
             } else {
                 // STORE_FAST_MAYBE_NULL restores share one original CPython block.
@@ -5290,12 +5293,17 @@ impl Compiler<'_> {
                 // without splitting that block before small-exit copying.
                 for restore in temporary_restores.iter().rev().copied() {
                     let emitted = self.emit_comprehension_restore(restore)?;
-                    self.assembler
-                        .prevent_instruction_fusion_with_previous(emitted);
+                    if !restores_fuse {
+                        self.assembler
+                            .prevent_instruction_fusion_with_previous(emitted);
+                    }
                 }
             }
-            // CPython converts STORE_FAST_MAYBE_NULL only after inserting superinstructions.
-            self.assembler.prevent_last_instruction_fusion();
+            // CPython before 3.16 converts STORE_FAST_MAYBE_NULL only after inserting
+            // superinstructions.
+            if !restores_fuse {
+                self.assembler.prevent_last_instruction_fusion();
+            }
             if discard_result && !discard_before_restore {
                 self.assembler.set_location(SourceLocation::NONE);
                 self.emit(POP_TOP, 0, -1)?;

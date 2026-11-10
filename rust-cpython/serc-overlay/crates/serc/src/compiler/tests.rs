@@ -3546,3 +3546,135 @@ fn class_explicit_globals_reset_definition_qualified_names_for_all_targets() {
         );
     }
 }
+
+#[test]
+fn python316_fuses_local_pairs_after_borrowing_and_owns_normalized_markers() {
+    use crate::PythonVersion::{Py315, Py316};
+    use crate::target::opcodes::{
+        CACHE, CALL, LOAD_ATTR, LOAD_COMMON_CONSTANT, LOAD_FAST_BORROW, POP_TOP, RESUME,
+        STORE_FAST, STORE_FAST_LOAD_FAST, STORE_FAST_STORE_FAST,
+    };
+
+    let source = "def store_then_borrow(a):
+    x = a.y; x.z()
+
+
+def restore_pair(dirs, files):
+    return [d + f for d in dirs for f in files]
+
+
+def guarded_call(a, b):
+    try:
+        if a:
+            b()
+    except ValueError:
+        pass
+";
+    for python_version in [Py315, Py316] {
+        let module = crate::compile_with_options(
+            source,
+            "fusion.py",
+            &crate::CompileOptions {
+                python_version,
+                ..crate::CompileOptions::default()
+            },
+        )
+        .unwrap();
+        let function = |name: &str| {
+            module
+                .code
+                .constants
+                .iter()
+                .find_map(|constant| match constant {
+                    Constant::Code(code) if code.name == name => Some(code),
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("module should contain {name}"))
+        };
+        let opcodes = |code: &CodeObject| {
+            code.bytecode
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|unit| unit[0])
+                .filter(|&opcode| opcode != CACHE.code_for(python_version))
+                .collect::<Vec<_>>()
+        };
+        let encoded = |sequence: &[crate::target::Opcode]| {
+            sequence
+                .iter()
+                .map(|opcode| opcode.code_for(python_version))
+                .collect::<Vec<_>>()
+        };
+
+        let store_then_borrow: &[_] = if python_version == Py316 {
+            &[
+                RESUME,
+                LOAD_FAST_BORROW,
+                LOAD_ATTR,
+                STORE_FAST,
+                LOAD_FAST_BORROW,
+                LOAD_ATTR,
+                CALL,
+                POP_TOP,
+                LOAD_COMMON_CONSTANT,
+                RETURN_VALUE,
+            ]
+        } else {
+            &[
+                RESUME,
+                LOAD_FAST_BORROW,
+                LOAD_ATTR,
+                STORE_FAST_LOAD_FAST,
+                LOAD_ATTR,
+                CALL,
+                POP_TOP,
+                LOAD_COMMON_CONSTANT,
+                RETURN_VALUE,
+            ]
+        };
+        assert_eq!(
+            opcodes(function("store_then_borrow")),
+            encoded(store_then_borrow),
+            "{python_version:?}"
+        );
+
+        let restore_pairs = opcodes(function("restore_pair"))
+            .into_iter()
+            .filter(|&opcode| opcode == STORE_FAST_STORE_FAST.code_for(python_version))
+            .count();
+        assert_eq!(
+            restore_pairs,
+            if python_version == Py316 { 2 } else { 0 },
+            "{python_version:?}"
+        );
+
+        let guarded = function("guarded_call");
+        let mut ranges = Vec::new();
+        let mut index = 0;
+        while index < guarded.exception_table.len() {
+            let start = read_exception_varint(&guarded.exception_table, &mut index);
+            let length = read_exception_varint(&guarded.exception_table, &mut index);
+            read_exception_varint(&guarded.exception_table, &mut index);
+            read_exception_varint(&guarded.exception_table, &mut index);
+            ranges.push(start..start + length);
+        }
+        let marker_owners = guarded
+            .bytecode
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(_, unit)| unit[0] == NOT_TAKEN.code_for(python_version))
+            .map(|(offset, _)| {
+                let offset = u32::try_from(offset).unwrap();
+                ranges.iter().any(|range| range.contains(&offset))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            marker_owners,
+            [python_version == Py316; 2],
+            "{python_version:?}"
+        );
+    }
+}

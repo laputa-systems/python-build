@@ -798,6 +798,7 @@ impl Compiler<'_> {
         } else {
             None
         };
+        let restores_fuse = self.context.python_version >= PythonVersion::Py316;
         for (restores, location) in restores {
             self.assembler.set_location(location);
             let mut last_restore = None;
@@ -808,20 +809,27 @@ impl Compiler<'_> {
                 .expect("pending restores should not be empty");
             let ordered_restores = preceding.iter().rev().chain(std::iter::once(last));
             for (position, restore) in ordered_restores.copied().enumerate() {
-                self.assembler.fusion_barrier();
+                if !restores_fuse {
+                    self.assembler.fusion_barrier();
+                }
                 if position > 0 {
                     self.assembler.set_location(location);
                 }
                 let emitted = self.emit_comprehension_restore(restore)?;
-                self.assembler
-                    .prevent_instruction_fusion_with_previous(emitted);
+                if !restores_fuse {
+                    self.assembler
+                        .prevent_instruction_fusion_with_previous(emitted);
+                }
                 last_restore = Some(emitted);
             }
             let last_restore = last_restore.expect("pending restores should not be empty");
             // The SWAP/STORE_FAST_MAYBE_NULL restore contracts by one CFG slot.
             self.assembler.add_last_hidden_exception_owner_slots(1);
-            // CPython converts STORE_FAST_MAYBE_NULL only after inserting superinstructions.
-            self.assembler.prevent_instruction_fusion(last_restore);
+            // CPython before 3.16 converts STORE_FAST_MAYBE_NULL only after inserting
+            // superinstructions.
+            if !restores_fuse {
+                self.assembler.prevent_instruction_fusion(last_restore);
+            }
             if let Some(location) = original_tail_location {
                 self.assembler
                     .record_original_fallthrough_location(last_restore, location);

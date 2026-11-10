@@ -251,7 +251,7 @@ impl LayoutAssembler {
                             | NormalizedExceptionOwner::OverridePresent
                     )
                     || (!authored
-                        && ((self.python_version == crate::PythonVersion::Py315
+                        && ((self.python_version >= crate::PythonVersion::Py315
                             && instruction.opcode == NOT_TAKEN)
                             || dynamic_exception_owners.get(index).is_some()))
             });
@@ -307,6 +307,8 @@ impl LayoutAssembler {
         let mut late_exception_inclusions = Vec::new();
         let mut late_exception_overrides = Vec::new();
         let mut late_source_exception_owners = Vec::new();
+        let mut inherited_exception_owners = Vec::new();
+        let mut previous_start = None;
         let mut previous_instruction = None;
         let cache_widths = OpcodeCacheWidths::for_version(self.python_version);
         for item in owner_items {
@@ -340,14 +342,21 @@ impl LayoutAssembler {
                         + u32::from(width(instruction_index))
                         + 1
                         + u32::from(cache_widths.get(instruction.opcode));
-                    if self.python_version == crate::PythonVersion::Py315
-                        && instruction.opcode == NOT_TAKEN
-                        && !instruction.jump_policy.is_authored_branch_marker()
-                    {
+                    let normalized_marker = instruction.opcode == NOT_TAKEN
+                        && !instruction.jump_policy.is_authored_branch_marker();
+                    if self.python_version == crate::PythonVersion::Py315 && normalized_marker {
                         // Python 3.15 clears removed CFG slots before jump normalization.
                         // Newly appended markers therefore never inherit an exception owner.
                         late_exception_exclusions.push((position, end));
                     }
+                    if self.python_version >= crate::PythonVersion::Py316
+                        && normalized_marker
+                        && let Some(source) = previous_start
+                    {
+                        // Python 3.16 gives a normalized marker its conditional's handler.
+                        inherited_exception_owners.push((position, end, source));
+                    }
+                    previous_start = Some(position);
                     let dynamic_owner = (!instruction.jump_policy.is_authored_branch_marker())
                         .then(|| dynamic_exception_owners.get(instruction_index))
                         .flatten();
@@ -580,6 +589,9 @@ impl LayoutAssembler {
             }
         }
 
+        if !inherited_exception_owners.is_empty() {
+            flattened = inherit_exception_owners(&flattened, &inherited_exception_owners, position);
+        }
         let mut output = Vec::with_capacity(flattened.len().saturating_mul(8));
         for (start, end, target, depth, preserve_lasti) in flattened {
             write_exception_varint(&mut output, start, true);
@@ -814,6 +826,43 @@ impl LayoutAssembler {
 
         position
     }
+}
+
+/// Replaces each range's handler with the one covering its source code unit.
+fn inherit_exception_owners(
+    flattened: &[(u32, u32, u32, u32, bool)],
+    inherited: &[(u32, u32, u32)],
+    code_units: u32,
+) -> Vec<(u32, u32, u32, u32, bool)> {
+    let mut owners = vec![None; usize::try_from(code_units).unwrap()];
+    for &(start, end, target, depth, preserve_lasti) in flattened {
+        for owner in &mut owners[usize::try_from(start).unwrap()..usize::try_from(end).unwrap()] {
+            *owner = Some((target, depth, preserve_lasti));
+        }
+    }
+    for &(start, end, source) in inherited {
+        let owner = owners[usize::try_from(source).unwrap()];
+        for slot in &mut owners[usize::try_from(start).unwrap()..usize::try_from(end).unwrap()] {
+            *slot = owner;
+        }
+    }
+    let mut entries = Vec::<(u32, u32, u32, u32, bool)>::new();
+    for (unit, owner) in owners.into_iter().enumerate() {
+        let Some((target, depth, preserve_lasti)) = owner else {
+            continue;
+        };
+        let unit = u32::try_from(unit).unwrap();
+        if let Some((_, end, previous_target, previous_depth, previous_lasti)) = entries.last_mut()
+            && *end == unit
+            && (*previous_target, *previous_depth, *previous_lasti)
+                == (target, depth, preserve_lasti)
+        {
+            *end = unit + 1;
+        } else {
+            entries.push((unit, unit + 1, target, depth, preserve_lasti));
+        }
+    }
+    entries
 }
 
 /// Resolves CPython's SEND-relative monitoring offset for an async iterator exit.

@@ -465,8 +465,8 @@ impl Compiler<'_> {
                 1,
             )?;
         }
-        if default_argument_count > 0 {
-            // CPython inserts closure loads after fusing the synthetic default
+        if default_argument_count > 0 && wrapper.context.python_version < PythonVersion::Py316 {
+            // CPython before 3.16 inserts closure loads after fusing the synthetic default
             // argument loads, so the last default does not fuse with a cell.
             wrapper.assembler.prevent_last_instruction_fusion();
         }

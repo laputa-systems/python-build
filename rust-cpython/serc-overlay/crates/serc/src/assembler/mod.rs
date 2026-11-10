@@ -9034,6 +9034,7 @@ impl Assembler {
         &mut self,
         emitted: EmittedInstruction,
     ) {
+        let python_version = self.python_version;
         let instruction = self.emitted_instruction_mut(emitted, "marking a maybe-null restore");
         assert_eq!(
             instruction.opcode, STORE_FAST,
@@ -9042,10 +9043,12 @@ impl Assembler {
         instruction
             .local_policy
             .mark_maybe_null_comprehension_restore();
-        // Native lowers STORE_FAST_MAYBE_NULL after local-pair fusion. Keep both
-        // boundaries attached to the restore when static swaps move it.
-        instruction.fusion_policy.prevent_with_previous();
-        instruction.fusion_policy.prevent_with_next();
+        // CPython before 3.16 lowers STORE_FAST_MAYBE_NULL after local-pair fusion. Keep
+        // both boundaries attached to the restore when static swaps move it.
+        if python_version < crate::PythonVersion::Py316 {
+            instruction.fusion_policy.prevent_with_previous();
+            instruction.fusion_policy.prevent_with_next();
+        }
     }
 
     pub(crate) fn mark_load_fast_as_post_analysis_closure(&mut self, emitted: EmittedInstruction) {

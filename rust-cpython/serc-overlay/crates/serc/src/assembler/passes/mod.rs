@@ -1533,6 +1533,11 @@ impl OptimizationPipeline {
                 }
             }
         }
+        if self.python_version >= crate::PythonVersion::Py316
+            && (features.has_fast_load() || features.has_store_fast())
+        {
+            locals::fuse_borrowed_superinstructions(&mut items);
+        }
         if features.has_borrow_empty_block() || !omitted_borrow_markers.is_empty() {
             control_flow::retire_module_annotation_borrow_markers(
                 &mut items,

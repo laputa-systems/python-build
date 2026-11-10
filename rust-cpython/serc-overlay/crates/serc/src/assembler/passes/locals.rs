@@ -1967,6 +1967,46 @@ pub(super) fn fuse_pair(first: &Instruction, second: &Instruction) -> Option<Ins
         (STORE_FAST, STORE_FAST) => STORE_FAST_STORE_FAST,
         _ => return None,
     };
+    fuse_pair_as(opcode, first, second)
+}
+
+/// Returns the local-pair fusion CPython 3.16 applies after borrowed-load analysis.
+///
+/// A borrowed load no longer fuses with an owned neighbor or a preceding store.
+pub(super) fn fuse_borrowed_pair(first: &Instruction, second: &Instruction) -> Option<Instruction> {
+    let opcode = match (first.opcode, second.opcode) {
+        (LOAD_FAST_BORROW, LOAD_FAST_BORROW) => LOAD_FAST_BORROW_LOAD_FAST_BORROW,
+        (LOAD_FAST, LOAD_FAST) => LOAD_FAST_LOAD_FAST,
+        (STORE_FAST, LOAD_FAST) => STORE_FAST_LOAD_FAST,
+        (STORE_FAST, STORE_FAST) => STORE_FAST_STORE_FAST,
+        _ => return None,
+    };
+    fuse_pair_as(opcode, first, second)
+}
+
+/// Fuses non-overlapping adjacent local pairs without crossing a label.
+pub(in crate::assembler) fn fuse_borrowed_superinstructions(items: &mut Vec<Item>) {
+    let mut read = 0;
+    let mut write = 0;
+    while read < items.len() {
+        let fused = match (&items[read], items.get(read + 1)) {
+            (Item::Instruction(first), Some(Item::Instruction(second))) => {
+                fuse_borrowed_pair(first, second)
+            }
+            _ => None,
+        };
+        items[write] = fused.map_or(items[read], Item::Instruction);
+        read += if fused.is_some() { 2 } else { 1 };
+        write += 1;
+    }
+    items.truncate(write);
+}
+
+fn fuse_pair_as(
+    opcode: crate::target::Opcode,
+    first: &Instruction,
+    second: &Instruction,
+) -> Option<Instruction> {
     if first.fusion_policy.prevents_with_next()
         || first.no_location_policy.borrow_fallthrough() == BorrowFallthrough::Barrier
         || second.fusion_policy.prevents_with_previous()
@@ -3747,7 +3787,7 @@ impl OptimizationPipeline {
             return;
         }
 
-        let (blocks, reachable) = if python_version == crate::PythonVersion::Py315 {
+        let (blocks, reachable) = if python_version >= crate::PythonVersion::Py315 {
             let labels = BorrowBoundaryLabels::collect(
                 items,
                 exception_regions.iter().map(|region| region.target),
@@ -4838,7 +4878,9 @@ impl OptimizationPipeline {
 
     pub(in crate::assembler) fn fuse_superinstructions(&mut self) -> bool {
         let features = self.graph.features();
-        if !features.has_fast_load() && !features.has_store_fast() {
+        if self.python_version >= crate::PythonVersion::Py316
+            || !features.has_fast_load() && !features.has_store_fast()
+        {
             return false;
         }
 
