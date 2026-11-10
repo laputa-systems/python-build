@@ -353,9 +353,10 @@ measurable gain), then reduce stencil glue.
 
 Under OD14 a candidate lands on steps 3-6 alone, plus the memory and
 code-size bars from **Targets** measured on any host. Steps 1, 2, and 7 and
-the **Milestone gate** run at **Close** for the stacked result. A
-`climb-step --screen` number on whatever host is free is recorded in the
-ledger as advisory, verdict SCREEN; it never blocks. Mechanisms rank by
+the **Milestone gate** run at **Close** for the stacked result.
+`perf.py climb-step --candidate C --correctness` runs steps 3-5 without
+waiting for a quiet host and prints verdict CORRECT; its one-run training
+point estimate goes in the ledger as advisory and never blocks. Mechanisms rank by
 sampled profile share from `perf.py profile`, not by P1 probes.
 
 After OD14 lifts, a candidate replaces the incumbent only when all hold:

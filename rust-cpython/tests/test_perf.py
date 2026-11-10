@@ -2205,7 +2205,8 @@ def climb_side(ref, *, commit="a" * 40):
 
 
 class ClimbStepTests(unittest.TestCase):
-    def climb(self, candidate, *, screen=False, measure, fuzzer=None, suites=None):
+    def climb(self, candidate, *, screen=False, correctness=False, measure, fuzzer=None,
+              suites=None, gate_ready=None):
         candidate_side = climb_side(candidate)
         incumbent_side = climb_side(perf.CLIMB_INCUMBENT, commit="b" * 40)
         calls = []
@@ -2224,7 +2225,9 @@ class ClimbStepTests(unittest.TestCase):
                 mock.patch.object(perf, "_frozen_changes", return_value=[]), \
                 mock.patch.object(perf, "SCRATCH", Path(temp)), \
                 mock.patch.object(perf, "_measure", side_effect=measure), \
-                mock.patch.object(perf, "_perf_gate_ready", return_value={"exit": 0, "detail": ""}), \
+                mock.patch.object(perf, "_perf_gate_ready",
+                                  side_effect=gate_ready or
+                                  (lambda post: {"exit": 0, "detail": ""})), \
                 mock.patch.object(perf, "_jit_fuzz_module", return_value=fuzzer), \
                 mock.patch.object(perf, "_climb_suites", return_value=["test_float"]), \
                 mock.patch.object(perf, "_climb_suite_failures",
@@ -2233,7 +2236,8 @@ class ClimbStepTests(unittest.TestCase):
                                       "failed": suites["jit" if jit else "no_jit"]}):
             output = io.StringIO()
             with redirect_stdout(output):
-                code = perf.climb_step(candidate=candidate, screen=screen, runs=5, min_idle=0,
+                code = perf.climb_step(candidate=candidate, screen=screen,
+                                       correctness=correctness, runs=5, min_idle=0,
                                        fuzz_programs=2000, fuzz_seed=0, jobs=1)
         return code, json.loads(output.getvalue()), calls
 
@@ -2277,6 +2281,29 @@ class ClimbStepTests(unittest.TestCase):
         self.assertEqual(verdict["gate"]["decision"], "ACCEPT")
         self.assertEqual(verdict["fuzz"]["mismatches"], 0)
         self.assertEqual(verdict["suites"]["only_jit"], [])
+
+    def test_correctness_mode_never_consults_the_host_or_the_gate(self):
+        training = {"entities": climb_entities(1.2), "directory": "/training"}
+        heldout = {"entities": climb_entities(1.0), "directory": "/heldout"}
+
+        def busy(post):
+            raise AssertionError("correctness mode must not wait on perf-gate-ready")
+
+        code, verdict, _ = self.climb("candidate", correctness=True,
+                                      measure=[training, heldout], gate_ready=busy)
+        self.assertEqual(code, 0)
+        self.assertEqual(verdict["decision"], "CORRECT")
+        self.assertNotIn("gate", verdict)
+        self.assertEqual(verdict["training_digests"]["advisory_point_estimate"], 1.2)
+
+    def test_correctness_mode_rejects_a_training_digest_mismatch(self):
+        entities = climb_entities(1.0)
+        entities["nbody"] = climb_entity(1.0, mismatch=True)
+        code, verdict, _ = self.climb("candidate", correctness=True,
+                                      measure=[{"entities": entities, "directory": "/t"}])
+        self.assertEqual(code, 1)
+        self.assertEqual(verdict["decision"], "REJECT")
+        self.assertEqual(verdict["training_digests"]["mismatches"], ["nbody"])
 
     def test_failed_suite_summary_is_parsed_from_the_log_tail(self):
         with tempfile.TemporaryDirectory() as temp:

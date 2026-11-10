@@ -1899,8 +1899,10 @@ def _perf_gate_ready(*, post: bool) -> dict[str, Any]:
             "detail": (result.stderr or result.stdout).strip()[-2000:]}
 
 
-def climb_step(*, candidate: str, screen: bool, runs: int, min_idle: float,
-               fuzz_programs: int, fuzz_seed: int, jobs: int | None) -> int:
+def climb_step(*, candidate: str, screen: bool, correctness: bool, runs: int,
+               min_idle: float, fuzz_programs: int, fuzz_seed: int, jobs: int | None) -> int:
+    if screen and correctness:
+        raise LaneError("--screen and --correctness are exclusive")
     if runs < 2:
         raise LaneError("a climb gate needs at least two independent runs")
     if fuzz_programs < 1:
@@ -1918,7 +1920,7 @@ def climb_step(*, candidate: str, screen: bool, runs: int, min_idle: float,
         "candidate_commit": side["report"]["git"]["commit"],
         "incumbent": incumbent["name"],
         "incumbent_commit": incumbent["report"]["git"]["commit"],
-        "mode": "screen" if screen else "full",
+        "mode": "correctness" if correctness else "screen" if screen else "full",
         "runs": runs,
     }
     reasons: list[str] = []
@@ -1944,6 +1946,25 @@ def climb_step(*, candidate: str, screen: bool, runs: int, min_idle: float,
         if point > CLIMB_SCREEN_CEILING:
             reasons.append(f"screen point estimate {point:.4f} is above {CLIMB_SCREEN_CEILING}")
             return finish("SCREEN-REJECTED", 1)
+
+    if correctness:
+        with contextlib.redirect_stdout(sys.stderr):
+            training = _measure(baseline_ref=CLIMB_INCUMBENT, candidate_ref=candidate,
+                                workloads=[], modules=[], gate=False, runs=1,
+                                profile="standard", timing_only=True, min_idle=0,
+                                self_compare=False, record_baselines=False, jit_set=True)
+        mismatched = sorted(name for name, entity in training["entities"].items()
+                            if entity["mismatch"])
+        verdict["training_digests"] = {"mismatches": mismatched,
+                                       "directory": training["directory"],
+                                       "advisory_point_estimate":
+                                           _kernel_score(training["entities"])}
+        if mismatched:
+            reasons.append("training or guard outputs differ: " + ", ".join(mismatched))
+            return finish("REJECT", 1)
+        return _climb_correctness(side, verdict, reasons, finish, min_idle=0,
+                                  fuzz_programs=fuzz_programs, fuzz_seed=fuzz_seed,
+                                  jobs=jobs, candidate=candidate, gated=False)
 
     before = _perf_gate_ready(post=False)
     verdict["gate_ready_before"] = before
@@ -1978,6 +1999,14 @@ def climb_step(*, candidate: str, screen: bool, runs: int, min_idle: float,
                                    for item in regressions))
         return finish("REJECT", 1)
 
+    return _climb_correctness(side, verdict, reasons, finish, min_idle=min_idle,
+                              fuzz_programs=fuzz_programs, fuzz_seed=fuzz_seed,
+                              jobs=jobs, candidate=candidate, gated=True)
+
+
+def _climb_correctness(side: dict[str, Any], verdict: dict[str, Any], reasons: list[str],
+                       finish: Any, *, min_idle: float, fuzz_programs: int, fuzz_seed: int,
+                       jobs: int | None, candidate: str, gated: bool) -> int:
     with contextlib.redirect_stdout(sys.stderr):
         heldout = _measure(baseline_ref=CLIMB_INCUMBENT, candidate_ref=candidate,
                            workloads=[], modules=[], gate=False, runs=1,
@@ -2026,6 +2055,9 @@ def climb_step(*, candidate: str, screen: bool, runs: int, min_idle: float,
                        "without the JIT")
         return finish("REJECT", 1)
 
+    if not gated:
+        reasons.append("timing not gated; digests equal, fuzz clean, targeted suites match")
+        return finish("CORRECT", 0)
     reasons.append("gate ACCEPT, no kernel regression, digests equal, fuzz clean, "
                    "targeted suites match")
     return finish("ACCEPT", 0)
@@ -2672,6 +2704,8 @@ def main(argv: list[str] | None = None) -> int:
     climb_parser.add_argument("--candidate", required=True, help="local JIT build name")
     climb_parser.add_argument("--screen", action="store_true",
                               help="pre-filter with one training-set run; gate only at or below 0.99")
+    climb_parser.add_argument("--correctness", action="store_true",
+                              help="skip the timing gate; check digests, fuzz, and suites only")
     climb_parser.add_argument("--runs", type=int, default=5, help="gate runs (at least 2)")
     climb_parser.add_argument("--min-idle", type=float, default=DEFAULT_MIN_IDLE)
     climb_parser.add_argument("--fuzz-programs", type=int, default=CLIMB_FUZZ_PROGRAMS)
@@ -2749,7 +2783,8 @@ def main(argv: list[str] | None = None) -> int:
                          matched_prefix=args.matched_prefix, matched_executable=args.matched_executable,
                          jit_set=args.jit_set, jit_heldout=args.jit_heldout)
         if args.command == "climb-step":
-            return climb_step(candidate=args.candidate, screen=args.screen, runs=args.runs,
+            return climb_step(candidate=args.candidate, screen=args.screen,
+                              correctness=args.correctness, runs=args.runs,
                               min_idle=args.min_idle, fuzz_programs=args.fuzz_programs,
                               fuzz_seed=args.fuzz_seed, jobs=args.jobs)
         if args.command == "goals":
