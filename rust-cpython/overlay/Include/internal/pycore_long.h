@@ -56,6 +56,7 @@ extern void _PyLong_FiniTypes(PyInterpreterState *interp);
 
 PyAPI_FUNC(void) _PyLong_ExactDealloc(PyObject *self);
 PyAPI_FUNC(void) _PyLong_ExactDeallocTstate(PyThreadState *tstate, PyObject *self);
+PyAPI_FUNC(PyObject *) _PyLong_FromCompactTstate(PyThreadState *tstate, Py_ssize_t value);
 
 #define _PyLong_SMALL_INTS _Py_SINGLETON(small_ints)
 
@@ -67,6 +68,12 @@ PyAPI_FUNC(void) _PyLong_ExactDeallocTstate(PyThreadState *tstate, PyObject *sel
 
 #define _PY_IS_SMALL_INT(val) \
     (-_PY_NSMALLNEGINTS <= (val) && (val) < _PY_NSMALLPOSINTS)
+
+static inline bool
+_PyLong_FitsCompact(Py_ssize_t value)
+{
+    return -(Py_ssize_t)PyLong_MASK <= value && value <= (Py_ssize_t)PyLong_MASK;
+}
 
 // Return a reference to the immortal zero singleton.
 // The function cannot return NULL.

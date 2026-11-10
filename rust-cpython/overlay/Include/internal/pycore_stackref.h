@@ -785,6 +785,24 @@ PyStackRef_AsUnboxedFloat(_PyStackRef ref)
     return value;
 }
 
+static_assert(sizeof(Py_ssize_t) == sizeof(_PyStackRef), "an unboxed compact int fills one stack ref");
+
+static inline _PyStackRef
+PyStackRef_FromUnboxedInt(Py_ssize_t value)
+{
+    _PyStackRef ref;
+    memcpy(&ref, &value, sizeof(value));
+    return ref;
+}
+
+static inline Py_ssize_t
+PyStackRef_AsUnboxedInt(_PyStackRef ref)
+{
+    Py_ssize_t value;
+    memcpy(&value, &ref, sizeof(value));
+    return value;
+}
+
 static inline PyTypeObject *
 PyStackRef_TYPE(_PyStackRef stackref) {
     if (PyStackRef_IsTaggedInt(stackref)) {

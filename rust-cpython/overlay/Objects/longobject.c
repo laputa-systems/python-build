@@ -3645,6 +3645,27 @@ _PyLong_ExactDealloc(PyObject *self)
     PyObject_Free(self);
 }
 
+PyObject *
+_PyLong_FromCompactTstate(PyThreadState *tstate, Py_ssize_t value)
+{
+    assert(_PyLong_FitsCompact(value));
+    if (_PY_IS_SMALL_INT(value)) {
+        return (PyObject *)get_small_int((sdigit)value);
+    }
+    PyLongObject *v = _Py_FREELIST_POP_TSTATE(PyLongObject, tstate, ints);
+    if (v == NULL) {
+        v = PyObject_Malloc(sizeof(PyLongObject));
+        if (v == NULL) {
+            return PyErr_NoMemory();
+        }
+        _PyObject_Init((PyObject *)v, &PyLong_Type);
+        _PyLong_InitTag(v);
+    }
+    _PyLong_SetSignAndDigitCount(v, value < 0 ? -1 : 1, 1);
+    v->long_value.ob_digit[0] = (digit)(value < 0 ? -value : value);
+    return (PyObject *)v;
+}
+
 void
 _PyLong_ExactDeallocTstate(PyThreadState *tstate, PyObject *self)
 {

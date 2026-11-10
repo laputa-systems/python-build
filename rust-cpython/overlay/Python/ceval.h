@@ -176,18 +176,38 @@ dump_item(_PyStackRef item)
     printf("<%s at %p>", Py_TYPE(obj)->tp_name, (void *)obj);
 }
 
+typedef struct {
+    uint32_t floats;
+    uint32_t ints;
+    uint32_t untyped;
+} unboxed_slots;
+
 static void
-dump_stack_item(_PyStackRef item, bool unboxed_float)
+dump_stack_item(_PyStackRef item, unboxed_slots unboxed, int depth)
 {
-    if (unboxed_float) {
+    if (depth < 32 && ((unboxed.floats >> depth) & 1)) {
         printf("<unboxed float %.17g>", PyStackRef_AsUnboxedFloat(item));
+        return;
+    }
+    if (depth < 32 && ((unboxed.ints >> depth) & 1)) {
+        printf("<unboxed int %zd>", PyStackRef_AsUnboxedInt(item));
+        return;
+    }
+    if (depth < 32 && ((unboxed.untyped >> depth) & 1)) {
+        printf("<unboxed bits %#" PRIx64 ">", (uint64_t)PyStackRef_AsUnboxedInt(item));
         return;
     }
     dump_item(item);
 }
 
+static inline unboxed_slots
+unboxed_slots_below(unboxed_slots unboxed, int depth)
+{
+    return (unboxed_slots){unboxed.floats >> depth, unboxed.ints >> depth, unboxed.untyped >> depth};
+}
+
 static void
-dump_stack(_PyInterpreterFrame *frame, _PyStackRef *stack_pointer, uint32_t unboxed_floats)
+dump_stack(_PyInterpreterFrame *frame, _PyStackRef *stack_pointer, unboxed_slots unboxed)
 {
     _PyFrame_SetStackPointer(frame, stack_pointer);
     _PyStackRef *locals_base = _PyFrame_GetLocalsArray(frame);
@@ -210,8 +230,7 @@ dump_stack(_PyInterpreterFrame *frame, _PyStackRef *stack_pointer, uint32_t unbo
             if (ptr != stack_base) {
                 printf(", ");
             }
-            int depth = (int)(stack_pointer - ptr) - 1;
-            dump_stack_item(*ptr, depth < 32 && ((unboxed_floats >> depth) & 1));
+            dump_stack_item(*ptr, unboxed, (int)(stack_pointer - ptr) - 1);
         }
         printf("]\n");
     }
@@ -222,43 +241,54 @@ dump_stack(_PyInterpreterFrame *frame, _PyStackRef *stack_pointer, uint32_t unbo
 
 #if defined(_Py_TIER2) && !defined(_Py_JIT) && defined(Py_DEBUG)
 static void
-dump_cache_item(_PyStackRef cache, int position, int depth, uint32_t unboxed_floats)
+dump_cache_item(_PyStackRef cache, int position, int depth, unboxed_slots unboxed)
 {
     if (position < depth) {
-        dump_stack_item(cache, (unboxed_floats >> (depth - 1 - position)) & 1);
+        dump_stack_item(cache, unboxed, depth - 1 - position);
     }
     else {
         printf("---");
     }
 }
 
-static uint32_t
-unboxed_floats_after(const _PyUOpInstruction *inst, uint32_t unboxed)
+static unboxed_slots
+unboxed_slots_after(const _PyUOpInstruction *inst, unboxed_slots unboxed)
 {
     int opcode = _PyUop_Uncached[inst->opcode];
     const _PyUopStackShape *shape = &_PyUop_StackShape[opcode];
     if (shape->inputs < 0 || shape->popped < 0 || shape->pushed < 0) {
-        return 0;
+        return (unboxed_slots){0, 0, 0};
     }
-    uint64_t below = (uint64_t)unboxed >> shape->popped;
+    uint64_t floats = (uint64_t)unboxed.floats >> shape->popped;
+    uint64_t ints = (uint64_t)unboxed.ints >> shape->popped;
     switch (opcode) {
         case _UNBOX_FLOAT_TOS:
         case _BINARY_OP_ADD_FLOAT_UNBOXED:
         case _BINARY_OP_SUBTRACT_FLOAT_UNBOXED:
         case _BINARY_OP_MULTIPLY_FLOAT_UNBOXED:
         case _BINARY_OP_TRUEDIV_FLOAT_UNBOXED:
-            return (uint32_t)((below << 1) | 1);
+            return (unboxed_slots){(uint32_t)((floats << 1) | 1), (uint32_t)(ints << 1), 0};
+        case _UNBOX_INT_TOS:
+        case _BINARY_OP_ADD_INT_UNBOXED:
+        case _BINARY_OP_SUBTRACT_INT_UNBOXED:
+        case _BINARY_OP_MULTIPLY_INT_UNBOXED:
+            return (unboxed_slots){(uint32_t)(floats << 1), (uint32_t)((ints << 1) | 1), 0};
         case _UNBOX_FLOAT_NOS:
-            return (uint32_t)((below << 2) | 2 | (unboxed & 1));
+            return (unboxed_slots){(uint32_t)((floats << 2) | 2 | (unboxed.floats & 1)),
+                                   (uint32_t)((ints << 2) | (unboxed.ints & 1)), 0};
+        case _UNBOX_INT_NOS:
+            return (unboxed_slots){(uint32_t)((floats << 2) | (unboxed.floats & 1)),
+                                   (uint32_t)((ints << 2) | 2 | (unboxed.ints & 1)), 0};
         default:
-            return (uint32_t)(below << shape->pushed);
+            return (unboxed_slots){(uint32_t)(floats << shape->pushed),
+                                   (uint32_t)(ints << shape->pushed), 0};
     }
 }
 
-static uint32_t
-unboxed_floats_before(const _PyExecutorObject *executor, const _PyUOpInstruction *next)
+static unboxed_slots
+unboxed_slots_before(const _PyExecutorObject *executor, const _PyUOpInstruction *next)
 {
-    uint32_t unboxed = 0;
+    unboxed_slots unboxed = {0, 0, 0};
     for (const _PyUOpInstruction *inst = executor->trace; inst < next; inst++) {
         int opcode = _PyUop_Uncached[inst->opcode];
         if (opcode == _EXIT_TRACE || opcode == _DEOPT || opcode == _JUMP_TO_TOP ||
@@ -269,12 +299,15 @@ unboxed_floats_before(const _PyExecutorObject *executor, const _PyUOpInstruction
                 fixup++;
             }
             int fixup_opcode = _PyUop_Uncached[fixup->opcode];
-            if (fixup_opcode == _BOX_FLOAT_STACK || fixup_opcode == _CLEAR_FLOAT_STACK) {
-                return (uint32_t)fixup->operand0;
+            if (fixup_opcode == _BOX_UNBOXED_SLOTS) {
+                return (unboxed_slots){(uint32_t)fixup->operand0, (uint32_t)fixup->operand1, 0};
             }
-            return 0;
+            if (fixup_opcode == _CLEAR_UNBOXED_SLOTS) {
+                return (unboxed_slots){0, 0, (uint32_t)fixup->operand0};
+            }
+            return (unboxed_slots){0, 0, 0};
         }
-        unboxed = unboxed_floats_after(inst, unboxed);
+        unboxed = unboxed_slots_after(inst, unboxed);
     }
     return unboxed;
 }
@@ -289,7 +322,7 @@ lltrace_instruction(_PyInterpreterFrame *frame,
 {
     int offset = 0;
     if (frame->owner < FRAME_OWNED_BY_INTERPRETER) {
-        dump_stack(frame, stack_pointer, 0);
+        dump_stack(frame, stack_pointer, (unboxed_slots){0, 0, 0});
         offset = (int)(next_instr - _PyFrame_GetBytecode(frame));
     }
     const char *opname = _PyOpcode_OpName[opcode];

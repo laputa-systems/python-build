@@ -3,6 +3,8 @@ pub const KIND_NOP: u8 = 1;
 pub const KIND_POP: u8 = 2;
 pub const KIND_FLOAT_ARITH: u8 = 3;
 pub const KIND_FLOAT_COMPARE: u8 = 4;
+pub const KIND_INT_ARITH: u8 = 5;
+pub const KIND_INT_COMPARE: u8 = 6;
 
 pub const ARITH_ADD: u8 = 0;
 pub const ARITH_SUBTRACT: u8 = 1;
@@ -18,18 +20,9 @@ pub const EFFECT_ERROR: u8 = 4;
 pub const EFFECT_ERROR_NO_POP: u8 = 8;
 
 pub const ACTION_COPY: u8 = 0;
-pub const ACTION_UNBOX_TOS: u8 = 1;
-pub const ACTION_UNBOX_NOS: u8 = 2;
-const ACTION_ARITH_BASE: u8 = 3;
-pub const ACTION_COMPARE: u8 = 7;
-pub const ACTION_BOX: u8 = 8;
-pub const SYNTHETIC_ACTIONS: usize = 8;
+pub const SYNTHETIC_ACTIONS: usize = 15;
 
 pub const MAX_UNBOXED_DEPTH: usize = 32;
-
-pub const fn arith_action(op: u8) -> u8 {
-    ACTION_ARITH_BASE + op
-}
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -49,7 +42,8 @@ pub struct JitOptUop {
 pub struct JitOptStep {
     pub source: u16,
     pub action: u8,
-    pub exit_unboxed: u32,
+    pub exit_floats: u32,
+    pub exit_ints: u32,
     pub error_unboxed: u32,
 }
 
@@ -63,22 +57,17 @@ pub enum Plan {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Domain {
+    Float,
+    Int,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ArithOp {
     Add,
     Subtract,
     Multiply,
     TrueDivide,
-}
-
-impl ArithOp {
-    fn code(self) -> u8 {
-        match self {
-            ArithOp::Add => ARITH_ADD,
-            ArithOp::Subtract => ARITH_SUBTRACT,
-            ArithOp::Multiply => ARITH_MULTIPLY,
-            ArithOp::TrueDivide => ARITH_TRUE_DIVIDE,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -89,8 +78,16 @@ enum Side {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum NodeKind {
-    Arith { op: ArithOp, reuses: Option<Side> },
-    Compare,
+    Arith { domain: Domain, op: ArithOp, reuses: Option<Side> },
+    Compare { domain: Domain },
+}
+
+impl NodeKind {
+    fn domain(self) -> Domain {
+        match self {
+            NodeKind::Arith { domain, .. } | NodeKind::Compare { domain } => domain,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -125,27 +122,32 @@ struct Uop {
     error: Option<ErrorStack>,
 }
 
+fn decode_arith(domain: Domain, detail: u8) -> Result<NodeKind, Inconsistent> {
+    let op = match (domain, detail & 0b11) {
+        (_, ARITH_ADD) => ArithOp::Add,
+        (_, ARITH_SUBTRACT) => ArithOp::Subtract,
+        (_, ARITH_MULTIPLY) => ArithOp::Multiply,
+        (Domain::Float, _) => ArithOp::TrueDivide,
+        (Domain::Int, _) => return Err(Inconsistent),
+    };
+    let reuses = match detail & !0b11 {
+        REUSE_NONE => None,
+        REUSE_LEFT => Some(Side::Left),
+        REUSE_RIGHT => Some(Side::Right),
+        _ => return Err(Inconsistent),
+    };
+    Ok(NodeKind::Arith { domain, op, reuses })
+}
+
 fn decode(raw: &JitOptUop) -> Result<Uop, Inconsistent> {
     let kind = match (raw.kind, raw.detail) {
         (KIND_OTHER, 0) => Kind::Other,
         (KIND_NOP, 0) => Kind::Nop,
         (KIND_POP, 0) => Kind::Pop,
-        (KIND_FLOAT_COMPARE, 0) => Kind::Node(NodeKind::Compare),
-        (KIND_FLOAT_ARITH, detail) => {
-            let op = match detail & 0b11 {
-                ARITH_ADD => ArithOp::Add,
-                ARITH_SUBTRACT => ArithOp::Subtract,
-                ARITH_MULTIPLY => ArithOp::Multiply,
-                _ => ArithOp::TrueDivide,
-            };
-            let reuses = match detail & !0b11 {
-                REUSE_NONE => None,
-                REUSE_LEFT => Some(Side::Left),
-                REUSE_RIGHT => Some(Side::Right),
-                _ => return Err(Inconsistent),
-            };
-            Kind::Node(NodeKind::Arith { op, reuses })
-        }
+        (KIND_FLOAT_COMPARE, 0) => Kind::Node(NodeKind::Compare { domain: Domain::Float }),
+        (KIND_INT_COMPARE, 0) => Kind::Node(NodeKind::Compare { domain: Domain::Int }),
+        (KIND_FLOAT_ARITH, detail) => Kind::Node(decode_arith(Domain::Float, detail)?),
+        (KIND_INT_ARITH, detail) => Kind::Node(decode_arith(Domain::Int, detail)?),
         _ => return Err(Inconsistent),
     };
     let shape = match (raw.inputs, raw.popped, raw.pushed) {
@@ -196,33 +198,48 @@ fn decode(raw: &JitOptUop) -> Result<Uop, Inconsistent> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Action {
     Copy,
-    UnboxTos,
-    UnboxNos,
-    Arith(ArithOp),
-    Compare,
-    Box,
+    UnboxTos(Domain),
+    UnboxNos(Domain),
+    Arith(Domain, ArithOp),
+    Compare(Domain),
+    Box(Domain),
+}
+
+struct Contract {
+    shape: (usize, usize, usize),
+    exits: bool,
+    error: Option<ErrorStack>,
 }
 
 impl Action {
     const SYNTHETIC: [Action; SYNTHETIC_ACTIONS] = [
-        Action::UnboxTos,
-        Action::UnboxNos,
-        Action::Arith(ArithOp::Add),
-        Action::Arith(ArithOp::Subtract),
-        Action::Arith(ArithOp::Multiply),
-        Action::Arith(ArithOp::TrueDivide),
-        Action::Compare,
-        Action::Box,
+        Action::UnboxTos(Domain::Float),
+        Action::UnboxNos(Domain::Float),
+        Action::Arith(Domain::Float, ArithOp::Add),
+        Action::Arith(Domain::Float, ArithOp::Subtract),
+        Action::Arith(Domain::Float, ArithOp::Multiply),
+        Action::Arith(Domain::Float, ArithOp::TrueDivide),
+        Action::Compare(Domain::Float),
+        Action::Box(Domain::Float),
+        Action::UnboxTos(Domain::Int),
+        Action::UnboxNos(Domain::Int),
+        Action::Arith(Domain::Int, ArithOp::Add),
+        Action::Arith(Domain::Int, ArithOp::Subtract),
+        Action::Arith(Domain::Int, ArithOp::Multiply),
+        Action::Compare(Domain::Int),
+        Action::Box(Domain::Int),
     ];
 
     fn code(self) -> u8 {
         match self {
             Action::Copy => ACTION_COPY,
-            Action::UnboxTos => ACTION_UNBOX_TOS,
-            Action::UnboxNos => ACTION_UNBOX_NOS,
-            Action::Arith(op) => arith_action(op.code()),
-            Action::Compare => ACTION_COMPARE,
-            Action::Box => ACTION_BOX,
+            synthetic => {
+                let index = Action::SYNTHETIC
+                    .iter()
+                    .position(|&action| action == synthetic)
+                    .expect("every non-copy action has a synthetic uop");
+                index as u8 + 1
+            }
         }
     }
 
@@ -233,15 +250,16 @@ impl Action {
         Action::SYNTHETIC.get(usize::from(code).checked_sub(1)?).copied()
     }
 
-    fn contract(self) -> (usize, usize, usize, bool, Option<ErrorStack>) {
-        match self {
+    fn contract(self) -> Contract {
+        let (shape, exits, error) = match self {
             Action::Copy => unreachable!("copies keep the traced uop's own shape"),
-            Action::UnboxTos => (1, 1, 1, false, None),
-            Action::UnboxNos => (2, 2, 2, false, None),
-            Action::Arith(ArithOp::TrueDivide) => (2, 2, 1, true, None),
-            Action::Arith(_) | Action::Compare => (2, 2, 1, false, None),
-            Action::Box => (1, 1, 1, false, Some(ErrorStack::PopsInputs)),
-        }
+            Action::UnboxTos(_) => ((1, 1, 1), false, None),
+            Action::UnboxNos(_) => ((2, 2, 2), false, None),
+            Action::Arith(Domain::Float, ArithOp::TrueDivide) | Action::Arith(Domain::Int, _) => ((2, 2, 1), true, None),
+            Action::Arith(Domain::Float, _) | Action::Compare(_) => ((2, 2, 1), false, None),
+            Action::Box(_) => ((1, 1, 1), false, Some(ErrorStack::PopsInputs)),
+        };
+        Contract { shape, exits, error }
     }
 }
 
@@ -259,20 +277,39 @@ fn decode_synthetic(raw: &[JitOptUop]) -> Result<[Uop; SYNTHETIC_ACTIONS], Incon
     }; SYNTHETIC_ACTIONS];
     for (slot, (action, raw)) in uops.iter_mut().zip(Action::SYNTHETIC.iter().zip(raw)) {
         let uop = decode(raw)?;
-        let (inputs, popped, pushed, exits, error) = action.contract();
+        let contract = action.contract();
         let shape = uop.shape.ok_or(Inconsistent)?;
         if uop.kind != Kind::Other
-            || (shape.inputs, shape.popped, shape.pushed) != (inputs, popped, pushed)
+            || (shape.inputs, shape.popped, shape.pushed) != contract.shape
             || uop.barrier
-            || uop.exits != exits
+            || uop.exits != contract.exits
             || uop.exit_at_end
-            || uop.error != error
+            || uop.error != contract.error
         {
             return Err(Inconsistent);
         }
         *slot = uop;
     }
     Ok(uops)
+}
+
+#[cfg(test)]
+pub(crate) fn synthetic_descriptors() -> [JitOptUop; SYNTHETIC_ACTIONS] {
+    Action::SYNTHETIC.map(|action| {
+        let contract = action.contract();
+        let (inputs, popped, pushed) = contract.shape;
+        let effects = if contract.exits { EFFECT_EXIT } else { 0 } | if contract.error.is_some() { EFFECT_ERROR } else { 0 };
+        JitOptUop {
+            kind: KIND_OTHER,
+            detail: 0,
+            inputs: inputs as i8,
+            popped: popped as i8,
+            pushed: pushed as i8,
+            read: (1 << inputs) - 1,
+            effects,
+            exit_at_end: 0,
+        }
+    })
 }
 
 type ValueId = usize;
@@ -371,7 +408,7 @@ fn dataflow(uops: &[Uop]) -> Dataflow {
                 let node = nodes.len();
                 let result = match kind {
                     NodeKind::Arith { .. } => fresh(&mut values, Producer::Result(node)),
-                    NodeKind::Compare => fresh(&mut values, Producer::Other),
+                    NodeKind::Compare { .. } => fresh(&mut values, Producer::Other),
                 };
                 let left = fresh(&mut values, Producer::Operand(node));
                 let right = fresh(&mut values, Producer::Operand(node));
@@ -432,7 +469,7 @@ fn find(parent: &mut [NodeId], node: NodeId) -> NodeId {
     root
 }
 
-pub fn plan_float_unboxing(raw: &[JitOptUop], synthetic: &[JitOptUop]) -> Result<Plan, Inconsistent> {
+pub fn plan_unboxing(raw: &[JitOptUop], synthetic: &[JitOptUop]) -> Result<Plan, Inconsistent> {
     let uops = raw.iter().map(decode).collect::<Result<Vec<_>, _>>()?;
     let synthetic = decode_synthetic(synthetic)?;
     if uops.len() > usize::from(u16::MAX) {
@@ -448,7 +485,10 @@ pub fn plan_float_unboxing(raw: &[JitOptUop], synthetic: &[JitOptUop]) -> Result
     let eligible = |value: Option<ValueId>, consumer: NodeId| -> Option<NodeId> {
         let value = value?;
         let producer = producer_node(value)?;
-        let usable = !flow.values[value].blocked && pops[producer].is_some() && pops[consumer].is_some();
+        let usable = !flow.values[value].blocked
+            && flow.nodes[producer].kind.domain() == flow.nodes[consumer].kind.domain()
+            && pops[producer].is_some()
+            && pops[consumer].is_some();
         usable.then_some(producer)
     };
 
@@ -514,7 +554,7 @@ pub fn plan_float_unboxing(raw: &[JitOptUop], synthetic: &[JitOptUop]) -> Result
     }
     let mut steps = Vec::with_capacity(uops.len() + flow.nodes.len());
     let mut emit = |source: usize, action: Action| {
-        steps.push(JitOptStep { source: source as u16, action: action.code(), exit_unboxed: 0, error_unboxed: 0 });
+        steps.push(JitOptStep { source: source as u16, action: action.code(), ..JitOptStep::default() });
     };
     for (index, uop) in uops.iter().enumerate() {
         if removed[index] {
@@ -526,25 +566,26 @@ pub fn plan_float_unboxing(raw: &[JitOptUop], synthetic: &[JitOptUop]) -> Result
         };
         let node = &flow.nodes[node_id];
         debug_assert!(matches!(uop.kind, Kind::Node(_)));
+        let domain = node.kind.domain();
         if !raw_edge(node.left, node_id) {
-            emit(index, Action::UnboxNos);
+            emit(index, Action::UnboxNos(domain));
         }
         if !raw_edge(node.right, node_id) {
-            emit(index, Action::UnboxTos);
+            emit(index, Action::UnboxTos(domain));
         }
         match node.kind {
             NodeKind::Arith { op, .. } => {
-                emit(index, Action::Arith(op));
-                let result = node.result.expect("arithmetic nodes produce a float");
+                emit(index, Action::Arith(domain, op));
+                let result = node.result.expect("arithmetic nodes produce a number");
                 let feeds_unboxed = flow.values[result]
                     .consumer
                     .and_then(|(uop, _)| flow.node_at[uop])
                     .is_some_and(|consumer| raw_edge(Some(result), consumer));
                 if !feeds_unboxed {
-                    emit(index, Action::Box);
+                    emit(index, Action::Box(domain));
                 }
             }
-            NodeKind::Compare => emit(index, Action::Compare),
+            NodeKind::Compare { .. } => emit(index, Action::Compare(domain)),
         }
     }
     verify(&uops, &synthetic, &mut steps)?;
@@ -554,20 +595,34 @@ pub fn plan_float_unboxing(raw: &[JitOptUop], synthetic: &[JitOptUop]) -> Result
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Slot {
     Boxed,
-    Unboxed,
+    Unboxed(Domain),
 }
 
-fn unboxed_mask(stack: &[Slot]) -> Result<u32, Inconsistent> {
-    let mut mask = 0u32;
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Masks {
+    floats: u32,
+    ints: u32,
+}
+
+impl Masks {
+    fn union(self) -> u32 {
+        self.floats | self.ints
+    }
+}
+
+fn unboxed_masks(stack: &[Slot]) -> Result<Masks, Inconsistent> {
+    let mut masks = Masks::default();
     for (depth, slot) in stack.iter().rev().enumerate() {
-        if *slot == Slot::Unboxed {
-            if depth >= MAX_UNBOXED_DEPTH {
-                return Err(Inconsistent);
-            }
-            mask |= 1 << depth;
+        let Slot::Unboxed(domain) = *slot else { continue };
+        if depth >= MAX_UNBOXED_DEPTH {
+            return Err(Inconsistent);
+        }
+        match domain {
+            Domain::Float => masks.floats |= 1 << depth,
+            Domain::Int => masks.ints |= 1 << depth,
         }
     }
-    Ok(mask)
+    Ok(masks)
 }
 
 fn verify(uops: &[Uop], synthetic: &[Uop; SYNTHETIC_ACTIONS], steps: &mut [JitOptStep]) -> Result<(), Inconsistent> {
@@ -578,7 +633,7 @@ fn verify(uops: &[Uop], synthetic: &[Uop; SYNTHETIC_ACTIONS], steps: &mut [JitOp
             Action::Copy => *uops.get(usize::from(step.source)).ok_or(Inconsistent)?,
             _ => synthetic[usize::from(step.action) - 1],
         };
-        let has_unboxed = stack.contains(&Slot::Unboxed);
+        let has_unboxed = stack.iter().any(|slot| *slot != Slot::Boxed);
         let Some(shape) = uop.shape else {
             if has_unboxed {
                 return Err(Inconsistent);
@@ -600,26 +655,26 @@ fn verify(uops: &[Uop], synthetic: &[Uop; SYNTHETIC_ACTIONS], steps: &mut [JitOp
                 }
                 vec![Slot::Boxed; shape.pushed]
             }
-            Action::UnboxTos => {
+            Action::UnboxTos(domain) => {
                 expect(0, Slot::Boxed)?;
-                vec![Slot::Unboxed]
+                vec![Slot::Unboxed(domain)]
             }
-            Action::UnboxNos => {
+            Action::UnboxNos(domain) => {
                 expect(1, Slot::Boxed)?;
-                vec![Slot::Unboxed, at(0)]
+                vec![Slot::Unboxed(domain), at(0)]
             }
-            Action::Arith(_) => {
-                expect(0, Slot::Unboxed)?;
-                expect(1, Slot::Unboxed)?;
-                vec![Slot::Unboxed]
+            Action::Arith(domain, _) => {
+                expect(0, Slot::Unboxed(domain))?;
+                expect(1, Slot::Unboxed(domain))?;
+                vec![Slot::Unboxed(domain)]
             }
-            Action::Compare => {
-                expect(0, Slot::Unboxed)?;
-                expect(1, Slot::Unboxed)?;
+            Action::Compare(domain) => {
+                expect(0, Slot::Unboxed(domain))?;
+                expect(1, Slot::Unboxed(domain))?;
                 vec![Slot::Boxed]
             }
-            Action::Box => {
-                expect(0, Slot::Unboxed)?;
+            Action::Box(domain) => {
+                expect(0, Slot::Unboxed(domain))?;
                 vec![Slot::Boxed]
             }
         };
@@ -627,23 +682,25 @@ fn verify(uops: &[Uop], synthetic: &[Uop; SYNTHETIC_ACTIONS], steps: &mut [JitOp
             return Err(Inconsistent);
         }
         if uop.exits && !uop.exit_at_end {
-            step.exit_unboxed = unboxed_mask(&stack)?;
+            let masks = unboxed_masks(&stack)?;
+            (step.exit_floats, step.exit_ints) = (masks.floats, masks.ints);
         }
         match uop.error {
-            Some(ErrorStack::KeepsInputs) => step.error_unboxed = unboxed_mask(&stack)?,
+            Some(ErrorStack::KeepsInputs) => step.error_unboxed = unboxed_masks(&stack)?.union(),
             Some(ErrorStack::PopsInputs) => {
                 let kept = stack.len().saturating_sub(shape.popped);
-                step.error_unboxed = unboxed_mask(&stack[..kept])?;
+                step.error_unboxed = unboxed_masks(&stack[..kept])?.union();
             }
             None => {}
         }
         stack.truncate(stack.len().saturating_sub(shape.popped));
         stack.extend(outputs);
         if uop.exits && uop.exit_at_end {
-            step.exit_unboxed = unboxed_mask(&stack)?;
+            let masks = unboxed_masks(&stack)?;
+            (step.exit_floats, step.exit_ints) = (masks.floats, masks.ints);
         }
     }
-    if stack.contains(&Slot::Unboxed) {
+    if stack.iter().any(|slot| *slot != Slot::Boxed) {
         return Err(Inconsistent);
     }
     Ok(())
@@ -665,8 +722,16 @@ mod tests {
         uop(KIND_FLOAT_ARITH, op | reuse, (2, 2, 3), 0b11, EFFECT_ERROR | EFFECT_ERROR_NO_POP)
     }
 
+    fn int_arith(op: u8, reuse: u8) -> JitOptUop {
+        uop(KIND_INT_ARITH, op | reuse, (2, 2, 3), 0b11, EFFECT_EXIT)
+    }
+
     fn compare() -> JitOptUop {
         uop(KIND_FLOAT_COMPARE, 0, (2, 2, 3), 0b11, 0)
+    }
+
+    fn int_compare() -> JitOptUop {
+        uop(KIND_INT_COMPARE, 0, (2, 2, 3), 0b11, 0)
     }
 
     fn pop() -> JitOptUop {
@@ -686,28 +751,21 @@ mod tests {
     }
 
     fn synthetic() -> [JitOptUop; SYNTHETIC_ACTIONS] {
-        let binary = uop(KIND_OTHER, 0, (2, 2, 1), 0b11, 0);
-        [
-            uop(KIND_OTHER, 0, (1, 1, 1), 1, 0),
-            uop(KIND_OTHER, 0, (2, 2, 2), 0b11, 0),
-            binary,
-            binary,
-            binary,
-            uop(KIND_OTHER, 0, (2, 2, 1), 0b11, EFFECT_EXIT),
-            binary,
-            uop(KIND_OTHER, 0, (1, 1, 1), 1, EFFECT_ERROR),
-        ]
+        synthetic_descriptors()
     }
 
-    fn steps(trace: &[JitOptUop]) -> Vec<(u16, u8)> {
-        match plan_float_unboxing(trace, &synthetic()).expect("consistent trace") {
+    fn steps(trace: &[JitOptUop]) -> Vec<(u16, Action)> {
+        match plan_unboxing(trace, &synthetic()).expect("consistent trace") {
             Plan::Unchanged => Vec::new(),
-            Plan::Rewrite(steps) => steps.iter().map(|step| (step.source, step.action)).collect(),
+            Plan::Rewrite(steps) => steps
+                .iter()
+                .map(|step| (step.source, Action::from_code(step.action).expect("planned actions decode")))
+                .collect(),
         }
     }
 
     fn rewrite(trace: &[JitOptUop]) -> Vec<JitOptStep> {
-        match plan_float_unboxing(trace, &synthetic()).expect("consistent trace") {
+        match plan_unboxing(trace, &synthetic()).expect("consistent trace") {
             Plan::Unchanged => panic!("expected a rewrite"),
             Plan::Rewrite(steps) => steps,
         }
@@ -732,27 +790,178 @@ mod tests {
         ]
     }
 
-    const MUL: u8 = arith_action(ARITH_MULTIPLY);
-    const ADD: u8 = arith_action(ARITH_ADD);
+    fn int_sum_of_products() -> Vec<JitOptUop> {
+        vec![
+            load(),
+            load(),
+            int_arith(ARITH_ADD, REUSE_NONE),
+            pop(),
+            pop(),
+            load(),
+            load(),
+            int_arith(ARITH_ADD, REUSE_NONE),
+            pop(),
+            pop(),
+            int_arith(ARITH_MULTIPLY, REUSE_LEFT),
+            pop(),
+            pop(),
+            consume(0),
+        ]
+    }
+
+    use Action::{Arith, Box as BoxValue, Compare, Copy, UnboxNos, UnboxTos};
+    use Domain::{Float, Int};
 
     #[test]
     fn merging_two_temporaries_boxes_only_the_sum() {
         assert_eq!(
             steps(&sum_of_products()),
             vec![
-                (0, ACTION_COPY),
-                (1, ACTION_COPY),
-                (2, ACTION_UNBOX_NOS),
-                (2, ACTION_UNBOX_TOS),
-                (2, MUL),
-                (5, ACTION_COPY),
-                (6, ACTION_COPY),
-                (7, ACTION_UNBOX_NOS),
-                (7, ACTION_UNBOX_TOS),
-                (7, MUL),
-                (10, ADD),
-                (10, ACTION_BOX),
-                (13, ACTION_COPY),
+                (0, Copy),
+                (1, Copy),
+                (2, UnboxNos(Float)),
+                (2, UnboxTos(Float)),
+                (2, Arith(Float, ArithOp::Multiply)),
+                (5, Copy),
+                (6, Copy),
+                (7, UnboxNos(Float)),
+                (7, UnboxTos(Float)),
+                (7, Arith(Float, ArithOp::Multiply)),
+                (10, Arith(Float, ArithOp::Add)),
+                (10, BoxValue(Float)),
+                (13, Copy),
+            ]
+        );
+    }
+
+    #[test]
+    fn integer_temporaries_merge_like_floats() {
+        assert_eq!(
+            steps(&int_sum_of_products()),
+            vec![
+                (0, Copy),
+                (1, Copy),
+                (2, UnboxNos(Int)),
+                (2, UnboxTos(Int)),
+                (2, Arith(Int, ArithOp::Add)),
+                (5, Copy),
+                (6, Copy),
+                (7, UnboxNos(Int)),
+                (7, UnboxTos(Int)),
+                (7, Arith(Int, ArithOp::Add)),
+                (10, Arith(Int, ArithOp::Multiply)),
+                (10, BoxValue(Int)),
+                (13, Copy),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_integer_overflow_exit_boxes_both_raw_operands() {
+        let plan = rewrite(&int_sum_of_products());
+        let multiply = plan
+            .iter()
+            .find(|step| step.action == Arith(Int, ArithOp::Multiply).code())
+            .expect("the product is unboxed");
+        assert_eq!((multiply.exit_floats, multiply.exit_ints), (0, 0b11));
+        let first_add = plan
+            .iter()
+            .find(|step| step.action == Arith(Int, ArithOp::Add).code())
+            .expect("the first sum is unboxed");
+        assert_eq!((first_add.exit_floats, first_add.exit_ints), (0, 0b11));
+    }
+
+    #[test]
+    fn an_integer_result_never_feeds_a_float_operation() {
+        let trace = vec![
+            load(),
+            load(),
+            int_arith(ARITH_ADD, REUSE_NONE),
+            pop(),
+            pop(),
+            load(),
+            arith(ARITH_MULTIPLY, REUSE_NONE),
+            pop(),
+            pop(),
+            consume(0),
+        ];
+        assert_eq!(steps(&trace), Vec::new());
+    }
+
+    #[test]
+    fn integer_division_is_contradictory() {
+        let mut trace = int_sum_of_products();
+        trace[2] = int_arith(ARITH_TRUE_DIVIDE, REUSE_NONE);
+        assert_eq!(plan_unboxing(&trace, &synthetic()), Err(Inconsistent));
+    }
+
+    #[test]
+    fn an_exit_records_floats_and_ints_in_their_own_masks() {
+        let trace = vec![
+            load(),
+            load(),
+            arith(ARITH_MULTIPLY, REUSE_NONE),
+            pop(),
+            pop(),
+            load(),
+            load(),
+            int_arith(ARITH_ADD, REUSE_NONE),
+            pop(),
+            pop(),
+            load(),
+            load(),
+            guard_nos(),
+            int_arith(ARITH_ADD, REUSE_NONE),
+            pop(),
+            pop(),
+            int_arith(ARITH_MULTIPLY, REUSE_LEFT),
+            pop(),
+            pop(),
+            consume(0),
+            arith(ARITH_ADD, REUSE_NONE),
+            pop(),
+            pop(),
+            consume(0),
+        ];
+        let plan = rewrite(&trace);
+        let guard = plan.iter().find(|step| step.source == 12).expect("guard is copied");
+        assert_eq!((guard.exit_floats, guard.exit_ints), (0b1000, 0b100));
+        let boxes: Vec<_> = plan
+            .iter()
+            .filter_map(|step| match Action::from_code(step.action) {
+                Some(BoxValue(domain)) => Some((step.source, domain)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(boxes, vec![(16, Int), (20, Float)]);
+    }
+
+    #[test]
+    fn a_compared_integer_temporary_is_never_boxed() {
+        let trace = vec![
+            load(),
+            load(),
+            int_arith(ARITH_ADD, REUSE_NONE),
+            pop(),
+            pop(),
+            load(),
+            int_compare(),
+            pop(),
+            pop(),
+            consume(0),
+        ];
+        assert_eq!(
+            steps(&trace),
+            vec![
+                (0, Copy),
+                (1, Copy),
+                (2, UnboxNos(Int)),
+                (2, UnboxTos(Int)),
+                (2, Arith(Int, ArithOp::Add)),
+                (5, Copy),
+                (6, UnboxTos(Int)),
+                (6, Compare(Int)),
+                (9, Copy),
             ]
         );
     }
@@ -791,15 +1000,15 @@ mod tests {
         assert_eq!(
             steps(&trace),
             vec![
-                (0, ACTION_COPY),
-                (1, ACTION_COPY),
-                (2, ACTION_UNBOX_NOS),
-                (2, ACTION_UNBOX_TOS),
-                (2, MUL),
-                (5, ACTION_COPY),
-                (6, ACTION_UNBOX_TOS),
-                (6, ACTION_COMPARE),
-                (9, ACTION_COPY),
+                (0, Copy),
+                (1, Copy),
+                (2, UnboxNos(Float)),
+                (2, UnboxTos(Float)),
+                (2, Arith(Float, ArithOp::Multiply)),
+                (5, Copy),
+                (6, UnboxTos(Float)),
+                (6, Compare(Float)),
+                (9, Copy),
             ]
         );
     }
@@ -809,11 +1018,17 @@ mod tests {
         let mut trace = sum_of_products();
         trace.insert(6, escaping_call());
         assert_eq!(steps(&trace), Vec::new());
+        let mut trace = int_sum_of_products();
+        trace.insert(6, escaping_call());
+        assert_eq!(steps(&trace), Vec::new());
     }
 
     #[test]
     fn a_temporary_read_by_another_uop_stays_boxed() {
         let mut trace = sum_of_products();
+        trace.insert(10, uop(KIND_OTHER, 0, (2, 0, 0), 0b11, EFFECT_EXIT));
+        assert_eq!(steps(&trace), Vec::new());
+        let mut trace = int_sum_of_products();
         trace.insert(10, uop(KIND_OTHER, 0, (2, 0, 0), 0b11, EFFECT_EXIT));
         assert_eq!(steps(&trace), Vec::new());
     }
@@ -825,8 +1040,8 @@ mod tests {
         let plan = rewrite(&trace);
         let guard = plan.iter().find(|step| step.source == 7).expect("guard is copied");
         assert_eq!(guard.action, ACTION_COPY);
-        assert_eq!(guard.exit_unboxed, 0b100);
-        assert!(plan.iter().filter(|step| step.source != 7).all(|step| step.exit_unboxed == 0));
+        assert_eq!((guard.exit_floats, guard.exit_ints), (0b100, 0));
+        assert!(plan.iter().filter(|step| step.source != 7).all(|step| step.exit_floats == 0));
     }
 
     #[test]
@@ -837,7 +1052,7 @@ mod tests {
         trace.splice(5..5, [load(), branch]);
         let plan = rewrite(&trace);
         let branch = plan.iter().find(|step| step.source == 6).expect("branch is copied");
-        assert_eq!(branch.exit_unboxed, 0b1);
+        assert_eq!(branch.exit_floats, 0b1);
     }
 
     #[test]
@@ -882,11 +1097,11 @@ mod tests {
             consume(0),
         ];
         let plan = rewrite(&trace);
-        let boxes: Vec<_> = plan.iter().filter(|step| step.action == ACTION_BOX).collect();
+        let boxes: Vec<_> = plan.iter().filter(|step| step.action == BoxValue(Float).code()).collect();
         assert_eq!(boxes.len(), 1);
         assert_eq!(boxes[0].source, 15);
         assert_eq!(boxes[0].error_unboxed, 0b1);
-        assert!(plan.iter().any(|step| step.source == 19 && step.action == ACTION_COMPARE));
+        assert!(plan.iter().any(|step| step.source == 19 && step.action == Compare(Float).code()));
     }
 
     #[test]
@@ -910,9 +1125,9 @@ mod tests {
         let plan = rewrite(&trace);
         let divide = plan
             .iter()
-            .find(|step| step.action == arith_action(ARITH_TRUE_DIVIDE))
+            .find(|step| step.action == Arith(Float, ArithOp::TrueDivide).code())
             .expect("division is unboxed");
-        assert_eq!(divide.exit_unboxed, 0b11);
+        assert_eq!(divide.exit_floats, 0b11);
     }
 
     #[test]
@@ -935,7 +1150,7 @@ mod tests {
         trace.insert(9, load());
         trace.insert(10, pop());
         assert_eq!(
-            steps(&trace).iter().filter(|(_, action)| *action == MUL).count(),
+            steps(&trace).iter().filter(|(_, action)| *action == Arith(Float, ArithOp::Multiply)).count(),
             0
         );
     }
@@ -951,17 +1166,30 @@ mod tests {
     fn contradictory_descriptors_are_rejected() {
         let mut trace = sum_of_products();
         trace[2] = uop(KIND_FLOAT_ARITH, ARITH_MULTIPLY, (2, 2, 1), 0b11, 0);
-        assert_eq!(plan_float_unboxing(&trace, &synthetic()), Err(Inconsistent));
+        assert_eq!(plan_unboxing(&trace, &synthetic()), Err(Inconsistent));
         let mut wrong = synthetic();
         wrong[7].effects = EFFECT_ERROR | EFFECT_ERROR_NO_POP;
-        assert_eq!(plan_float_unboxing(&sum_of_products(), &wrong), Err(Inconsistent));
+        assert_eq!(plan_unboxing(&sum_of_products(), &wrong), Err(Inconsistent));
+        let mut wrong = synthetic();
+        wrong[Action::SYNTHETIC.iter().position(|&a| a == Arith(Int, ArithOp::Add)).unwrap()].effects = 0;
+        assert_eq!(plan_unboxing(&int_sum_of_products(), &wrong), Err(Inconsistent));
+    }
+
+    #[test]
+    fn action_codes_round_trip() {
+        for action in Action::SYNTHETIC {
+            assert_eq!(Action::from_code(action.code()), Some(action));
+        }
+        assert_eq!(Action::from_code(ACTION_COPY), Some(Copy));
+        assert_eq!(Action::from_code(SYNTHETIC_ACTIONS as u8 + 1), None);
     }
 
     #[test]
     fn ffi_layouts_match_the_c_glue() {
         assert_eq!(std::mem::size_of::<JitOptUop>(), 8);
-        assert_eq!(std::mem::size_of::<JitOptStep>(), 12);
-        assert_eq!(std::mem::offset_of!(JitOptStep, exit_unboxed), 4);
-        assert_eq!(std::mem::offset_of!(JitOptStep, error_unboxed), 8);
+        assert_eq!(std::mem::size_of::<JitOptStep>(), 16);
+        assert_eq!(std::mem::offset_of!(JitOptStep, exit_floats), 4);
+        assert_eq!(std::mem::offset_of!(JitOptStep, exit_ints), 8);
+        assert_eq!(std::mem::offset_of!(JitOptStep, error_unboxed), 12);
     }
 }

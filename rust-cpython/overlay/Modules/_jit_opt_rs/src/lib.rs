@@ -4,14 +4,14 @@ use std::mem::MaybeUninit;
 use std::slice;
 
 pub use unbox::{
-    ACTION_BOX, ACTION_COMPARE, ACTION_COPY, ACTION_UNBOX_NOS, ACTION_UNBOX_TOS, ARITH_ADD,
-    ARITH_MULTIPLY, ARITH_SUBTRACT, ARITH_TRUE_DIVIDE, EFFECT_BARRIER, EFFECT_ERROR,
-    EFFECT_ERROR_NO_POP, EFFECT_EXIT, Inconsistent, JitOptStep, JitOptUop, KIND_FLOAT_ARITH,
-    KIND_FLOAT_COMPARE, KIND_NOP, KIND_OTHER, KIND_POP, MAX_UNBOXED_DEPTH, Plan, REUSE_LEFT,
-    REUSE_NONE, REUSE_RIGHT, SYNTHETIC_ACTIONS, arith_action, plan_float_unboxing,
+    ACTION_COPY, ARITH_ADD, ARITH_MULTIPLY, ARITH_SUBTRACT, ARITH_TRUE_DIVIDE, EFFECT_BARRIER,
+    EFFECT_ERROR, EFFECT_ERROR_NO_POP, EFFECT_EXIT, Inconsistent, JitOptStep, JitOptUop,
+    KIND_FLOAT_ARITH, KIND_FLOAT_COMPARE, KIND_INT_ARITH, KIND_INT_COMPARE, KIND_NOP, KIND_OTHER,
+    KIND_POP, MAX_UNBOXED_DEPTH, Plan, REUSE_LEFT, REUSE_NONE, REUSE_RIGHT, SYNTHETIC_ACTIONS,
+    plan_unboxing,
 };
 
-/// Plans float unboxing for one optimized tier-2 trace.
+/// Plans float and compact-int unboxing for one optimized tier-2 trace.
 ///
 /// Returns the number of steps written to `steps` when the trace is rewritten,
 /// 0 when it stays as it is, and -1 when the descriptors or the planned
@@ -25,7 +25,7 @@ pub use unbox::{
 /// aligned, and valid for writes of `capacity` steps; its contents may be
 /// uninitialized. `steps` must not overlap either descriptor array.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn _PyJitOpt_PlanFloatUnboxing(
+pub unsafe extern "C" fn _PyJitOpt_PlanUnboxing(
     uops: *const JitOptUop,
     length: usize,
     synthetic: *const JitOptUop,
@@ -39,7 +39,7 @@ pub unsafe extern "C" fn _PyJitOpt_PlanFloatUnboxing(
     // SAFETY: the caller provides `capacity` writable, non-overlapping steps; viewing them as
     // `MaybeUninit` makes no claim that they are initialized.
     let steps = unsafe { slice::from_raw_parts_mut(steps.cast::<MaybeUninit<JitOptStep>>(), capacity) };
-    match plan_float_unboxing(uops, synthetic) {
+    match plan_unboxing(uops, synthetic) {
         Ok(Plan::Unchanged) => 0,
         Ok(Plan::Rewrite(plan)) if plan.len() <= steps.len() => {
             for (slot, step) in steps.iter_mut().zip(&plan) {
@@ -61,17 +61,7 @@ mod tests {
     }
 
     fn synthetic() -> [JitOptUop; SYNTHETIC_ACTIONS] {
-        let binary = uop(KIND_OTHER, 0, (2, 2, 1), 0b11, 0);
-        [
-            uop(KIND_OTHER, 0, (1, 1, 1), 1, 0),
-            uop(KIND_OTHER, 0, (2, 2, 2), 0b11, 0),
-            binary,
-            binary,
-            binary,
-            uop(KIND_OTHER, 0, (2, 2, 1), 0b11, EFFECT_EXIT),
-            binary,
-            uop(KIND_OTHER, 0, (1, 1, 1), 1, EFFECT_ERROR),
-        ]
+        unbox::synthetic_descriptors()
     }
 
     fn sum_of_products() -> Vec<JitOptUop> {
@@ -82,13 +72,14 @@ mod tests {
         vec![load, load, multiply, pop, pop, load, load, multiply, pop, pop, add, pop, pop, uop(KIND_OTHER, 0, (1, 1, 1), 1, 0)]
     }
 
-    const UNTOUCHED: JitOptStep = JitOptStep { source: 0xbeef, action: 0xee, exit_unboxed: 0xdead, error_unboxed: 0xface };
+    const UNTOUCHED: JitOptStep =
+        JitOptStep { source: 0xbeef, action: 0xee, exit_floats: 0xdead, exit_ints: 0xf00d, error_unboxed: 0xface };
 
     fn plan(trace: &[JitOptUop], synthetic: &[JitOptUop; SYNTHETIC_ACTIONS], steps: &mut [JitOptStep]) -> isize {
         // SAFETY: every pointer comes from a live slice of the stated length, and `steps` is
         // a distinct mutable borrow.
         unsafe {
-            _PyJitOpt_PlanFloatUnboxing(trace.as_ptr(), trace.len(), synthetic.as_ptr(), steps.as_mut_ptr(), steps.len())
+            _PyJitOpt_PlanUnboxing(trace.as_ptr(), trace.len(), synthetic.as_ptr(), steps.as_mut_ptr(), steps.len())
         }
     }
 
@@ -110,7 +101,7 @@ mod tests {
     fn a_rewrite_writes_exactly_its_steps() {
         let mut steps = [UNTOUCHED; 32];
         let written = plan(&sum_of_products(), &synthetic(), &mut steps);
-        let Ok(Plan::Rewrite(expected)) = plan_float_unboxing(&sum_of_products(), &synthetic()) else {
+        let Ok(Plan::Rewrite(expected)) = plan_unboxing(&sum_of_products(), &synthetic()) else {
             panic!("the sum of two products is rewritten");
         };
         assert_eq!(written, expected.len() as isize);

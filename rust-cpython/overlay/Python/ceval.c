@@ -1392,8 +1392,8 @@ tier2_dispatch:
         uopcode = next_uop->opcode;
 #ifdef Py_DEBUG
         if (frame->lltrace >= 4) {
-            uint32_t unboxed = unboxed_floats_before(current_executor, next_uop);
-            dump_stack(frame, stack_pointer, unboxed >> current_cached_values);
+            unboxed_slots unboxed = unboxed_slots_before(current_executor, next_uop);
+            dump_stack(frame, stack_pointer, unboxed_slots_below(unboxed, current_cached_values));
             printf("    cache=[");
             dump_cache_item(_tos_cache0, 0, current_cached_values, unboxed);
             printf(", ");
