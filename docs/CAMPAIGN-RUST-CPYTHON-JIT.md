@@ -329,6 +329,33 @@ or the interpreter through the freelist, allocation, and frame paths, correct
 under threads and subinterpreters. Add `test_threading` and
 `test_interpreters` to its targeted suites.
 
+**Frame push and pop (measured 2026-11-10: 1.3% removable, re-ranked).** The
+backlog's 13.0% mean is almost all work that must happen. Profiles of the 16
+kernels on `perf-jit-int-unbox` (`perf.py profile --tool sample --jit-map`)
+split it as: `_PyFrame_ClearExceptCode` self 3.65% mean (the localsplus scan
+and inline decrefs, `Python/frame.c:100-135`), `_PyEval_FrameClearAndPop`
+1.44% (`Python/ceval.c:2038-2049`), `_PyThreadState_PopFrame` 1.16%
+(`Python/pystate.c:3332-3356`), push-side runtime 1.08%
+(`_PyFrame_Initialize`/`_PyFrame_PushUnchecked`, `pycore_interpframe.h:188-219`,
+`:404-415`), and the frame uops themselves 5.27%. Slot occupancy at return,
+measured with `_testinternalcapi.get_frame_local` over the same kernels, is
+96.4-99.8% live on the return-heavy kernels (sor 0.2% null, lu 0.1%, hexiom
+0.2%, raytrace 0.7%, deltablue 0.4%, nqueens 0.3%; go 10.9%, richards 3.6%),
+so clearing slots known NULL is at most 0.04% mean. Immortal and borrowed
+references already cost no decref: `PyStackRef` sets `Py_TAG_REFCNT` on them
+(`Include/internal/pycore_stackref.h:483-496`, `:744-751`) and the clear loop
+tests that bit. No frame field is redundantly initialised:
+`_PyFrame_Initialize` already zeroes only the tail beyond the passed arguments.
+What remains is out-of-line call overhead: the incumbent's disassembly has 10
+of 26 fast-path instructions in the `_PyEval_FrameClearAndPop` prologue and
+epilogue and 7 of 12 in `_PyThreadState_PopFrame`, about 1.23% mean, or 1.27%
+with the NULL-slot scan. Inlining the clear loop as well would add about 0.9%
+but duplicates the materialized-frame and generator paths into every return
+stencil, and the loop body is necessary decref work either way. The removable
+part is above P1's 1% floor, so the item stays in the backlog as inlining
+the pop fast paths into the return stencil, ranked by its 1.3% below the
+guards' 8.5% upper bound.
+
 ### T2: unboxing, toward M2
 
 Keep exact floats and compact ints as machine values between uops; box only at
@@ -476,7 +503,7 @@ and the eight object kernels:
 
 | Rank | Item | Tier | Mean | Numeric | Object | Peak |
 | ---: | --- | --- | ---: | ---: | ---: | --- |
-| 1 | Frame push and pop: `_RETURN_VALUE` with its frame clear and pop (6.0% of samples alone), `_INIT_CALL_PY_EXACT_ARGS_*`, `_PUSH_FRAME`, `_TIER2_RESUME_CHECK`, `_CHECK_STACK_SPACE*`, `_CREATE_INIT_FRAME` | T1 | 13.0% | 7.9% | 18.1% | richards 35.3%, raytrace 31.6%, deltablue 25.7%, sor 21.3% |
+| 1 | Frame push and pop: `_RETURN_VALUE` with its frame clear and pop (6.0% of samples alone), `_INIT_CALL_PY_EXACT_ARGS_*`, `_PUSH_FRAME`, `_TIER2_RESUME_CHECK`, `_CHECK_STACK_SPACE*`, `_CREATE_INIT_FRAME` (measured 2026-11-10: 1.3% removable as pop fast-path inlining, see **T1**) | T1 | 13.0% | 7.9% | 18.1% | richards 35.3%, raytrace 31.6%, deltablue 25.7%, sor 21.3% |
 | 2 | Type and version guards, all of them; upstream's optimizer has already removed those it proves | T1 | 8.5% | 6.4% | 10.7% | richards 18.9%, go 18.0% |
 | 3 | `_CHECK_VALIDITY` and `_SET_IP` | T1 | 3.5% | 3.2% | 3.8% | nbody 4.9% |
 | 4 | Residual `_tlv_get_addr`, from `float_dealloc`, `PyFloat_FromDouble`, `PyLong_FromLong`, and `long_dealloc` on generic paths | T1 | 3.0% | 3.2% | 2.9% | nqueens 6.8%, fannkuch 5.8%, fft 5.7% |
@@ -882,7 +909,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | T1 frame push and pop, top of the T1/T2 backlog re-rank in **T2** (13.0% mean sampled share) | T2 unboxed loop-carried locals dropped: float-local stores are 3.1% of numeric samples, 0.0% barrier-free; FFI field offsets pinned (`06a636c`) |
+| J | active | T1 type and version guards, next in the re-ranked backlog (8.5% mean) | T1 frame push and pop measured: 13.0% share is 1.3% removable (pop fast-path inlining, queued after guards), clear-loop slots 96.4-99.8% live |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | active | C2 in-process `exec` | C0, marshal parity and C1 landed: census 9,102 / 9,135 exact, 0 mismatches on e891 |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -1087,3 +1114,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-10 | e891 | J | T2 | float unboxing across binary ops and compares (float boxing 8.9-38.6% of samples; float-op chains nbody 27.5% → 26.3%, fft 11.4% → 9.5%) | `perf-rust-jit` | timing deferred (OD14); advisory 0.9962 | — | CORRECT (4 named superseded `test_capi.test_opt` uop assertions, owner ruling) | `aadaf25` |
 | 2026-11-10 | e891 | J | T2 | compact-int unboxing across binary ops and compares (int uops 29.6% of samples on spectral_norm, 8.2% mean; spectral_norm 29.6% → 27.0%, int runtime calls 17.0% → 12.0%) | `perf-jit-unbox` | timing deferred (OD14); advisory 0.9939 | — | CORRECT (5 named superseded `test_capi.test_opt` uop assertions); independent review clean | `60e3a7b` |
 | 2026-11-10 | e891 | J | T2 | unboxed loop-carried locals (float-local stores 3.1% of numeric samples, int 0.7%; 0.0% with no barrier between store and next store) | `perf-jit-int-unbox` | — | — | DROPPED (under P1's 1% floor) | `rust-cpython/results/perf-profile/20261110T14*-perf-jit-int-unbox-*-sample` |
+| 2026-11-10 | e891 | J | T1 | frame push and pop: 13.0% sampled share; clear-loop slots 96.4-99.8% live on return-heavy kernels; prologue/epilogue plus NULL-slot scan 1.3% removable | `perf-jit-int-unbox` | — | — | MEASURED (above P1's 1% floor; re-ranked below guards) | `rust-cpython/results/perf-profile/20261110T14*-perf-jit-int-unbox-*-sample` |
