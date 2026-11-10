@@ -1,0 +1,12 @@
+[package]
+name = "serc-lane"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "serc_lane"
+path = "src/lib.rs"
+
+[dependencies]
+serc = { path = "../serc/crates/serc" }

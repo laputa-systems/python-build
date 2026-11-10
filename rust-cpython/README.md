@@ -63,6 +63,7 @@ python3 rust-cpython/build.py doctor
 python3 rust-cpython/build.py fetch
 python3 rust-cpython/build.py build
 python3 rust-cpython/build.py build --jit
+python3 rust-cpython/build.py build --serc
 python3 rust-cpython/build.py test --suite test_bz2
 python3 rust-cpython/build.py test --all
 python3 rust-cpython/build.py clean
@@ -72,7 +73,8 @@ python3 rust-cpython/build.py clean
 `-O0 -g3`, and the overlay's Cargo `dev` profile. It runs offline and installs
 `stage/bin/python3.16d`. `build --jit` enables the experimental JIT and
 generates its stencils with the locked LLVM; a build without the flag keeps
-the JIT disabled. `test` accepts repeated `--suite test_NAME` options
+the JIT disabled. `build --serc` links Serc into `libpython`; see
+[In-process Serc](#in-process-serc). `test` accepts repeated `--suite test_NAME` options
 and runs only those complete CPython Python test modules or packages.
 `test --all` runs all CPython test modules under the test runner's default
 resource policy on the integrated tree. Each test file has a 900-second
@@ -131,11 +133,11 @@ and `inputs.linux-cp316.lock.json`; the macOS harness uses the macOS lock.
 
 | Command | Purpose |
 | --- | --- |
-| `build --name N [--incremental] [--jobs J] [--jit [--pystats]]` | Clean optimized build verified per Rust extension; `--incremental` syncs changed overlay files and refuses build-system, Cargo, JIT-flag, or pystats-flag changes; `--pystats` adds CPython's statistics counters to a JIT build |
+| `build --name N [--incremental] [--jobs J] [--jit [--pystats]] [--serc]` | Clean optimized build verified per Rust extension; `--incremental` syncs changed overlay files and refuses build-system, Cargo, JIT-flag, pystats-flag, or Serc-flag changes; `--pystats` adds CPython's statistics counters to a JIT build; `--serc` links Serc into `libpython` |
 | `build --name perf-upstream --empty-overlay` | Pristine-upstream control |
 | `build --name perf-upstream-jit --empty-overlay --jit` | Pristine-upstream JIT control |
 | `build --name N --upstream-compression` | Link CPython's stock `zlib`, `_bz2` and `binascii` against static `zlib-rs` and `libbz2-rs` archives of the locked crates, and omit the private `_zlib_rs`, `_bz2_rs` and `Lib/zlib.py` |
-| `test --name N --suite test_X ...` or `--all` | Complete CPython suites on a perf build |
+| `test --name N --suite test_X ...` or `--all` `[--serc-verify]` | Complete CPython suites on a perf build; `--serc-verify` runs a `--serc` build with `PYTHONSERCVERIFY=1` from an empty bytecode cache |
 | `cargo --name N -- <cargo args>` | Sync changed overlay files as `build --incremental` does, then run the pinned cargo in build `N`'s assembled source with the build's environment; exits with cargo's status |
 | `profile --ref R (--module M \| --workload W) --tool sample\|cprofile\|importtime [--jit-map]` | Native stacks, Python call costs, or import time; `--jit-map` attributes macOS JIT-set samples to uops |
 | `bench --baseline R --candidate R [--module M] [--workload W] [--gate] [--jit-set]` | Paired measurement with a coded verdict |
@@ -178,3 +180,47 @@ primary checkout. When two lanes' `overlay/Cargo.lock` edits merge textually
 but `cargo fetch --locked` rejects the result, regenerate it with `cargo
 metadata --offline` in the build's `work/perf/<name>/source/cpython-*/` using
 the primary `rust-cpython/.cargo-home`, copy the lock back, and rebuild.
+
+## In-process Serc
+
+A `--serc` build defines `Py_SERC` for the core C files and enables the static
+carrier's `serc` feature, which links the `serc-lane` crate and Serc into
+`libpython`. A default build compiles neither: its `pythonrun.c` and
+`marshal.c` objects are byte-identical to those built without the Serc hook.
+
+`overlay/Python/pythonrun.c` sends a compile request to Serc when all of these
+hold, and every other request to the C compiler:
+
+- the mode is `exec` (`Py_file_input`): `compile(..., "exec")`, `exec()` of a
+  string or bytes, imports, `-c`, and `PyRun_String*`;
+- the input is a source string or bytes, not an AST object or a `FILE *`
+  (`PyRun_File*`, the main script);
+- the effective compiler flags carry only the source-form bits
+  (`PyCF_SOURCE_IS_UTF8`, `PyCF_IGNORE_COOKIE`, and the obsolete `CO_NESTED`):
+  no future feature inherited or passed, no `PyCF_ONLY_AST`,
+  `PyCF_ALLOW_TOP_LEVEL_AWAIT`, or other compile-mode flag;
+- the filename is an exact `str`;
+- the source is text, or bytes that CPython decodes as UTF-8 without its codec
+  registry: no encoding cookie, or one that CPython's tokenizer maps to
+  `utf-8`. Any other cookie goes through `codecs.lookup`, which Serc cannot
+  call.
+
+`optimize=-1` resolves to the interpreter's `-O` level, and Serc receives the
+current `sys.get_int_max_str_digits()` limit. Serc's marshal bytes are loaded
+without the `marshal.loads` audit event.
+
+The C compiler stays the diagnostic authority. When Serc refuses a source, the
+hook compiles it with the C compiler only to raise CPython's exception; if the
+C compiler accepts it, the hook raises `SystemError("Serc cannot compile ...")`
+instead of returning the C result. Serc emits no warnings; when its scan finds
+a construct for which CPython may emit a `SyntaxWarning`, the C compiler runs
+for its warnings (or their errors under an `error` filter) and its code object
+is discarded.
+
+`PYTHONSERCVERIFY=1` (honoured unless `-E` or `-I`) compiles every Serc
+request with the C compiler too and raises `SystemError` when the marshal
+bytes differ or when the C compiler rejects a source Serc compiled. Serc
+converts decimal literals natively, so a replaced `_pylong.int_from_string`
+changes only the C compiler's constants; verification reports that
+difference. `tests/test_serc_compile.py` covers routing, diagnostics, and
+verification against the interpreter named by `SERC_PYTHON`.

@@ -18,6 +18,10 @@ _jit_opt_rs = { path = "../_jit_opt_rs" }
 _posixpath_rs = { path = "../_posixpath_rs" }
 _random_rs = { path = "../_random_rs", default-features = false }
 _tempfile_rs = { path = "../_tempfile_rs" }
+serc-lane = { path = "../../serc-lane", optional = true }
+
+[features]
+serc = ["dep:serc-lane"]
 
 [lib]
 name = "cpython_rust_staticlib"
