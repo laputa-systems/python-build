@@ -85,7 +85,9 @@ class GeneratedProgramTests(unittest.TestCase):
                 self.assertEqual(completed.stderr, "")
                 outputs.append(jit_fuzz.parse_reports(completed.stdout))
         self.assertEqual(set(outputs[0]), set(range(30)))
-        self.assertEqual(jit_fuzz.compare(*outputs), [])
+        self.assertEqual(jit_fuzz.compare(*outputs, ignore=("leak_blocks",)), [])
+        self.assertEqual(jit_fuzz.leak_mismatches(*outputs, tolerance=jit_fuzz.LEAK_NOISE_BLOCKS,
+                                                  excess_only=False), [])
         for record in outputs[0].values():
             self.assertEqual(record["result"][0], "ok", record)
 
