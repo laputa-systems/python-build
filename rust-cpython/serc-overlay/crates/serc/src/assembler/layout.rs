@@ -1,0 +1,1921 @@
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
+
+use smallvec::SmallVec;
+
+use super::{
+    EXTENDED_ARG, Item, LOAD_FAST_BORROW_LOAD_FAST_BORROW, LOAD_FAST_LOAD_FAST, LOAD_GLOBAL,
+    NOT_TAKEN, Operand, POP_TOP, STORE_FAST, STORE_FAST_LOAD_FAST, STORE_FAST_STORE_FAST,
+    ends_scope,
+};
+use crate::CompileError;
+use crate::assembler::{
+    Instruction, Label, LayoutAssembler, NormalizedExceptionOwner, SourceLocation,
+};
+use crate::target::opcodes::{END_ASYNC_FOR, NOP};
+use crate::target::{OpcodeCacheWidths, is_conditional_jump_for};
+
+type FinalArtifacts = (Vec<u8>, Vec<u8>, u32);
+
+impl LayoutAssembler {
+    /// Encodes scopes whose symbolic instruction indices cannot require an extended argument.
+    pub(in crate::assembler) fn encode_small_final_artifacts(
+        &self,
+        labels: &mut [Option<u32>],
+        first_line_number: u32,
+    ) -> Result<Option<FinalArtifacts>, CompileError> {
+        if self.items.len() > usize::from(u8::MAX) {
+            return Ok(None);
+        }
+        match self.python_version {
+            crate::PythonVersion::Py314 => {
+                self.encode_small_final_artifacts_for::<true>(labels, first_line_number)
+            }
+            crate::PythonVersion::Py315 | crate::PythonVersion::Py316 => {
+                self.encode_small_final_artifacts_for::<false>(labels, first_line_number)
+            }
+            _ => Ok(None),
+        }
+    }
+
+    fn encode_small_final_artifacts_for<const PY314: bool>(
+        &self,
+        labels: &mut [Option<u32>],
+        first_line_number: u32,
+    ) -> Result<Option<FinalArtifacts>, CompileError> {
+        let version = if PY314 {
+            crate::PythonVersion::Py314
+        } else {
+            crate::PythonVersion::Py315
+        };
+
+        let mut bytecode = Vec::with_capacity(self.items.len().saturating_mul(4));
+        let mut line_table = Vec::with_capacity(self.items.len().saturating_mul(3));
+        let mut jumps = SmallVec::<[(usize, usize, u32); 8]>::new();
+        let mut position = 0;
+        let mut current_line = i32::try_from(first_line_number).unwrap_or(i32::MAX);
+        let mut run = None::<(SourceLocation, u32)>;
+        let mut max_depth = 0;
+        let cache_widths = OpcodeCacheWidths::for_version(version);
+
+        for (item_index, item) in self.items.iter().enumerate() {
+            let instruction = match item {
+                Item::Instruction(instruction) => instruction,
+                Item::Label(label) => {
+                    labels[label.index()] = Some(position);
+                    continue;
+                }
+            };
+            let caches = cache_widths.get(instruction.opcode);
+            let size = 1 + u32::from(caches);
+            position += size;
+            let operand = if PY314 {
+                instruction.operand()
+            } else {
+                self.encoded_operand(instruction)?
+            };
+            let argument = match operand {
+                Operand::Value(argument) => {
+                    let Ok(argument) = u8::try_from(argument) else {
+                        return Ok(None);
+                    };
+                    argument
+                }
+                Operand::Forward(_) | Operand::Backward(_) => {
+                    jumps.push((item_index, bytecode.len() + 1, position));
+                    0
+                }
+                // Let ordinary layout report malformed streams in instruction order.
+                Operand::Deferred(_) => return Ok(None),
+            };
+            let opcode = if PY314 {
+                instruction.opcode.code_for(version)
+            } else if version == crate::PythonVersion::Py316 {
+                instruction.opcode.code_for_316()
+            } else {
+                instruction.opcode.code_for_315()
+            };
+            bytecode.extend_from_slice(&[opcode, argument]);
+            bytecode.resize(bytecode.len() + usize::from(caches) * 2, 0);
+
+            if let Some((location, length)) = &mut run
+                && *location == instruction.location
+            {
+                *length += size;
+            } else {
+                if let Some((location, length)) = run {
+                    write_location_run(&mut line_table, location, length, &mut current_line);
+                }
+                run = Some((instruction.location, size));
+            }
+            max_depth = max_depth.max(instruction.maximum_stack_depth());
+        }
+
+        for &(item_index, argument_index, jump_base) in &jumps {
+            let Item::Instruction(instruction) = &self.items[item_index] else {
+                unreachable!("only jump instructions are recorded");
+            };
+            let argument = match instruction.operand() {
+                Operand::Forward(label) => {
+                    let target = label_position(labels, label).ok_or_else(|| {
+                        CompileError::Internal("unbound forward jump label".to_string())
+                    })?;
+                    target.checked_sub(jump_base).ok_or_else(|| {
+                        CompileError::Internal("forward jump points backward".to_string())
+                    })?
+                }
+                Operand::Backward(label) => {
+                    let target = label_position(labels, label).ok_or_else(|| {
+                        CompileError::Internal("unbound backward jump label".to_string())
+                    })?;
+                    backward_argument(version, instruction, jump_base, target)?
+                }
+                Operand::Value(_) | Operand::Deferred(_) => {
+                    unreachable!("only jump instructions are recorded");
+                }
+            };
+            let Ok(argument) = u8::try_from(argument) else {
+                return Ok(None);
+            };
+            bytecode[argument_index] = argument;
+        }
+        drop(jumps);
+        if let Some((location, length)) = run {
+            write_location_run(&mut line_table, location, length, &mut current_line);
+        }
+        Ok(Some((bytecode, line_table, max_depth)))
+    }
+
+    pub(in crate::assembler) fn exception_table(
+        &self,
+        extended_args: &[u8],
+        labels: &[Option<u32>],
+    ) -> Result<Vec<u8>, CompileError> {
+        self.exception_table_for::<true>(extended_args, labels)
+    }
+
+    pub(in crate::assembler) fn unextended_exception_table(
+        &self,
+        labels: &[Option<u32>],
+    ) -> Result<Vec<u8>, CompileError> {
+        self.exception_table_for::<false>(&[], labels)
+    }
+
+    fn exception_table_for<const EXTENDED: bool>(
+        &self,
+        extended_args: &[u8],
+        labels: &[Option<u32>],
+    ) -> Result<Vec<u8>, CompileError> {
+        self.exception_table_with_label_flags::<EXTENDED, true>(extended_args, labels)
+    }
+
+    fn exception_table_with_label_flags<const EXTENDED: bool, const LAZY_LABEL_FLAGS: bool>(
+        &self,
+        extended_args: &[u8],
+        labels: &[Option<u32>],
+    ) -> Result<Vec<u8>, CompileError> {
+        const BLOCK_BOUNDARY: u8 = 1;
+        const SETUP_BOUNDARY: u8 = 2;
+
+        if self.exception_regions.is_empty() {
+            return Ok(Vec::new());
+        }
+        let width = |index| if EXTENDED { extended_args[index] } else { 0 };
+
+        let mut regions = self
+            .exception_regions
+            .iter()
+            .enumerate()
+            .map(|(index, region)| {
+                let start = label_position(labels, region.start).ok_or_else(|| {
+                    CompileError::Internal("unbound exception region start".to_string())
+                })?;
+                let end = label_position(labels, region.end).ok_or_else(|| {
+                    CompileError::Internal("unbound exception region end".to_string())
+                })?;
+                let target = label_position(labels, region.target).ok_or_else(|| {
+                    CompileError::Internal("unbound exception handler target".to_string())
+                })?;
+                let (priority_start, priority_end) = match region.priority {
+                    super::ExceptionRegionPriority::OriginalRange(start, end) => {
+                        let start = label_position(labels, start).ok_or_else(|| {
+                            CompileError::Internal(
+                                "unbound original exception region start".to_string(),
+                            )
+                        })?;
+                        let end = label_position(labels, end).ok_or_else(|| {
+                            CompileError::Internal(
+                                "unbound original exception region end".to_string(),
+                            )
+                        })?;
+                        (
+                            usize::try_from(start).unwrap(),
+                            usize::try_from(end).unwrap(),
+                        )
+                    }
+                    super::ExceptionRegionPriority::Resolved { start, end } => (start, end),
+                };
+                Ok((
+                    start,
+                    end,
+                    target,
+                    region.depth,
+                    region.preserve_lasti,
+                    (
+                        region.is_scope_fallback,
+                        Reverse(priority_start),
+                        priority_end,
+                        index,
+                    ),
+                ))
+            })
+            .collect::<Result<Vec<_>, CompileError>>()?;
+        let mut late_exception_exclusions = Vec::new();
+        let dynamic_exception_owners = self.dynamic_exception_owners();
+        let needs_late_owner_replay = self
+            .items
+            .iter()
+            .filter_map(Item::as_instruction)
+            .enumerate()
+            .any(|(index, instruction)| {
+                // The main walk only changes output for these explicit owner or exclusion
+                // requests. Block boundaries and stale slots alone cannot alter a region.
+                let policy = instruction.exception_policy();
+                let authored = instruction.jump_policy.is_authored_branch_marker();
+                policy.exclusion().applies(width(index))
+                    || matches!(
+                        policy.owner(),
+                        NormalizedExceptionOwner::Absent
+                            | NormalizedExceptionOwner::DynamicCondition
+                            | NormalizedExceptionOwner::Present
+                            | NormalizedExceptionOwner::OverridePresent
+                    )
+                    || (!authored
+                        && ((self.python_version == crate::PythonVersion::Py315
+                            && instruction.opcode == NOT_TAKEN)
+                            || dynamic_exception_owners.get(index).is_some()))
+            });
+        let label_flags = if needs_late_owner_replay || !LAZY_LABEL_FLAGS {
+            let mut label_flags = vec![0_u8; labels.len()];
+            let mut first_region_starts = vec![None; labels.len()];
+            for (region, &(start, _, _, _, _, _)) in self.exception_regions.iter().zip(&regions) {
+                if let Some(flags) = label_flags.get_mut(region.target.index()) {
+                    *flags |= BLOCK_BOUNDARY;
+                }
+                let target = region.target.index();
+                if first_region_starts[target].is_none_or(|(position, _)| start < position) {
+                    first_region_starts[target] = Some((start, region.start));
+                }
+            }
+            // Exclusions and cold-block placement split one protected region into multiple
+            // ranges. Only its initial setup can vacate an instruction slot; resuming a
+            // protected range does not emit another SETUP instruction in CPython.
+            for (_, label) in first_region_starts.into_iter().flatten() {
+                label_flags[label.index()] |= SETUP_BOUNDARY;
+            }
+            #[expect(
+                clippy::iter_over_hash_type,
+                reason = "Each boundary sets an independent indexed flag."
+            )]
+            for label in &self.preserved_block_boundaries {
+                if let Some(flags) = label_flags.get_mut(label.index()) {
+                    *flags |= BLOCK_BOUNDARY;
+                }
+            }
+            for item in &self.items {
+                if let Item::Instruction(instruction) = item
+                    && let Some(label) = instruction.jump_target()
+                    && let Some(flags) = label_flags.get_mut(label.index())
+                {
+                    *flags |= BLOCK_BOUNDARY;
+                }
+            }
+            label_flags
+        } else {
+            Vec::new()
+        };
+        let owner_items = if needs_late_owner_replay || !LAZY_LABEL_FLAGS {
+            self.items.as_slice()
+        } else {
+            &[]
+        };
+        let mut position = 0;
+        let mut instruction_index = 0;
+        let mut block_has_instruction = false;
+        let mut block_has_stale_exception_owner = false;
+        let mut block_has_applied_comprehension_swap = false;
+        let mut late_exception_inclusions = Vec::new();
+        let mut late_exception_overrides = Vec::new();
+        let mut late_source_exception_owners = Vec::new();
+        let mut previous_instruction = None;
+        let cache_widths = OpcodeCacheWidths::for_version(self.python_version);
+        for item in owner_items {
+            match item {
+                Item::Label(label) => {
+                    let flags = label_flags.get(label.index()).copied().unwrap_or_default();
+                    if block_has_instruction && flags & BLOCK_BOUNDARY != 0 {
+                        block_has_instruction = false;
+                        block_has_stale_exception_owner = false;
+                        block_has_applied_comprehension_swap = false;
+                        previous_instruction = None;
+                    }
+                    if flags & SETUP_BOUNDARY != 0 {
+                        block_has_stale_exception_owner = true;
+                    }
+                }
+                Item::Instruction(instruction) => {
+                    // CPython's static swap optimization removes the instruction before the
+                    // first comprehension restore, leaving that CFG slot's exception owner for
+                    // a later normalized marker.
+                    let is_comprehension_restore = instruction.opcode == STORE_FAST
+                        && instruction.fusion_policy.prevents_with_previous();
+                    let applied_comprehension_swap = is_comprehension_restore
+                        && previous_instruction.is_some_and(|previous: Instruction| {
+                            matches!(previous.opcode, POP_TOP | STORE_FAST)
+                                && !(previous.opcode == STORE_FAST
+                                    && previous.fusion_policy.prevents_with_previous())
+                        });
+
+                    let end = position
+                        + u32::from(width(instruction_index))
+                        + 1
+                        + u32::from(cache_widths.get(instruction.opcode));
+                    if self.python_version == crate::PythonVersion::Py315
+                        && instruction.opcode == NOT_TAKEN
+                        && !instruction.jump_policy.is_authored_branch_marker()
+                    {
+                        // Python 3.15 clears removed CFG slots before jump normalization.
+                        // Newly appended markers therefore never inherit an exception owner.
+                        late_exception_exclusions.push((position, end));
+                    }
+                    let dynamic_owner = (!instruction.jump_policy.is_authored_branch_marker())
+                        .then(|| dynamic_exception_owners.get(instruction_index))
+                        .flatten();
+                    if let Some(region) = dynamic_owner
+                        .and_then(super::exception_owners::ExceptionOwnerDecision::source_region)
+                    {
+                        late_source_exception_owners.push((position, end, region));
+                    } else {
+                        if instruction
+                            .exception_policy()
+                            .exclusion()
+                            .applies(width(instruction_index))
+                        {
+                            late_exception_exclusions.push((position, end));
+                        }
+                        if let Some(decision) = dynamic_owner {
+                            if decision.has_owner() {
+                                if decision.overrides_existing() {
+                                    late_exception_overrides.push((position, end));
+                                }
+                                late_exception_inclusions.push((position, end));
+                            } else if decision.is_definitive() {
+                                late_exception_exclusions.push((position, end));
+                            }
+                        }
+                        // Ordinary markers retain existing ownership rules if staged provenance
+                        // finds no additional vacancy. Boolean markers have fully modeled insertions.
+                        if instruction.exception_policy().owner()
+                            == NormalizedExceptionOwner::Absent
+                            || (instruction.exception_policy().owner()
+                                == NormalizedExceptionOwner::DynamicCondition
+                                && !dynamic_owner.is_some_and(
+                                    super::exception_owners::ExceptionOwnerDecision::has_owner,
+                                ))
+                        {
+                            if block_has_applied_comprehension_swap {
+                                late_exception_inclusions.push((position, end));
+                            }
+                            if !block_has_stale_exception_owner {
+                                late_exception_exclusions.push((position, end));
+                            }
+                        }
+                        if instruction.exception_policy().owner()
+                            == NormalizedExceptionOwner::Present
+                        {
+                            late_exception_inclusions.push((position, end));
+                        }
+                        if instruction.exception_policy().owner()
+                            == NormalizedExceptionOwner::OverridePresent
+                        {
+                            late_exception_overrides.push((position, end));
+                        }
+                    }
+                    if matches!(
+                        instruction.opcode,
+                        LOAD_FAST_BORROW_LOAD_FAST_BORROW
+                            | LOAD_FAST_LOAD_FAST
+                            | STORE_FAST_LOAD_FAST
+                            | STORE_FAST_STORE_FAST
+                    ) || matches!(
+                        (instruction.opcode, instruction.operand()),
+                        (LOAD_GLOBAL, Operand::Value(argument)) if argument & 1 != 0
+                    ) || applied_comprehension_swap
+                    {
+                        block_has_stale_exception_owner = true;
+                    }
+                    if applied_comprehension_swap {
+                        block_has_applied_comprehension_swap = true;
+                    }
+                    position = end;
+                    instruction_index += 1;
+                    block_has_instruction = true;
+                    if instruction.opcode == NOT_TAKEN
+                        || (!is_conditional_jump_for(self.python_version, instruction.opcode)
+                            && (instruction.value_argument().is_none()
+                                || ends_scope(instruction.opcode)))
+                    {
+                        block_has_instruction = false;
+                        block_has_stale_exception_owner = false;
+                        block_has_applied_comprehension_swap = false;
+                        previous_instruction = None;
+                    } else {
+                        previous_instruction = Some(*instruction);
+                    }
+                }
+            }
+        }
+        // Compiler-side region exclusions can leave a normalized marker structurally
+        // uncovered. Recreate its requested owner from the innermost owner of the immediately
+        // preceding instruction.
+        for (start, end) in late_exception_inclusions {
+            if regions
+                .iter()
+                .any(|(region_start, region_end, _, _, _, _)| {
+                    *region_start <= start && *region_end >= end
+                })
+            {
+                continue;
+            }
+            let Some((_, _, target, depth, preserve_lasti, priority)) = regions
+                .iter()
+                .filter(|(region_start, region_end, _, _, _, _)| {
+                    *region_start < start && *region_end >= start
+                })
+                .min_by_key(|(_, _, _, _, _, priority)| *priority)
+                .copied()
+            else {
+                continue;
+            };
+            regions.push((start, end, target, depth, preserve_lasti, priority));
+        }
+        for (start, end) in late_exception_overrides {
+            let Some((_, _, target, depth, preserve_lasti, priority)) = regions
+                .iter()
+                .filter(|(region_start, region_end, _, _, _, _)| {
+                    *region_start < start && *region_end >= start
+                })
+                .min_by_key(|(_, _, _, _, _, priority)| *priority)
+                .copied()
+            else {
+                continue;
+            };
+            if regions.iter().any(
+                |(region_start, region_end, region_target, region_depth, region_lasti, _)| {
+                    *region_start <= start
+                        && *region_end >= end
+                        && *region_target == target
+                        && *region_depth == depth
+                        && *region_lasti == preserve_lasti
+                },
+            ) {
+                continue;
+            }
+            let priority = (priority.0, Reverse(usize::MAX), 0, priority.3);
+            regions.push((start, end, target, depth, preserve_lasti, priority));
+        }
+        for (start, end, source) in late_source_exception_owners {
+            let (_, _, target, depth, preserve_lasti, priority) = regions[source];
+            // This owner was proved against an earlier original-array prefix. Give the exact
+            // selected handler precedence over any scope fallback covering the marker today.
+            regions.push((
+                start,
+                end,
+                target,
+                depth,
+                preserve_lasti,
+                (false, Reverse(usize::MAX), 0, priority.3),
+            ));
+        }
+        let mut boundaries = regions
+            .iter()
+            .flat_map(|(start, end, _, _, _, _)| [*start, *end])
+            .chain(
+                late_exception_exclusions
+                    .iter()
+                    .flat_map(|(start, end)| [*start, *end]),
+            )
+            .collect::<Vec<_>>();
+        boundaries.sort_unstable();
+        boundaries.dedup();
+
+        let mut region_starts = (0..regions.len()).collect::<Vec<_>>();
+        region_starts.sort_by_key(|index| regions[*index].0);
+        let mut exclusion_starts = late_exception_exclusions;
+        exclusion_starts.sort_unstable_by_key(|(start, _)| *start);
+        let mut next_region = 0;
+        let mut next_exclusion = 0;
+        let mut excluded_through = 0;
+        let mut active_regions =
+            BinaryHeap::<Reverse<(bool, Reverse<usize>, usize, usize, usize)>>::new();
+
+        let mut flattened = Vec::<(u32, u32, u32, u32, bool)>::new();
+        for boundary in boundaries.windows(2) {
+            let start = boundary[0];
+            let end = boundary[1];
+            if end <= start {
+                continue;
+            }
+            while next_exclusion < exclusion_starts.len()
+                && exclusion_starts[next_exclusion].0 <= start
+            {
+                excluded_through = excluded_through.max(exclusion_starts[next_exclusion].1);
+                next_exclusion += 1;
+            }
+            if excluded_through >= end {
+                continue;
+            }
+            while next_region < region_starts.len()
+                && regions[region_starts[next_region]].0 <= start
+            {
+                let region = region_starts[next_region];
+                let (
+                    _,
+                    _,
+                    _,
+                    _,
+                    _,
+                    (is_scope_fallback, priority_start, priority_end, original_index),
+                ) = regions[region];
+                active_regions.push(Reverse((
+                    is_scope_fallback,
+                    priority_start,
+                    priority_end,
+                    original_index,
+                    region,
+                )));
+                next_region += 1;
+            }
+            while active_regions
+                .peek()
+                .is_some_and(|Reverse((_, _, _, _, region))| regions[*region].1 <= start)
+            {
+                active_regions.pop();
+            }
+            let Some(Reverse((_, _, _, _, region))) = active_regions.peek().copied() else {
+                continue;
+            };
+            let (_, region_end, target, depth, preserve_lasti, _) = regions[region];
+            debug_assert!(region_end >= end);
+            if let Some((_, previous_end, previous_target, previous_depth, previous_lasti)) =
+                flattened.last_mut()
+                && *previous_end == start
+                && *previous_target == target
+                && *previous_depth == depth
+                && *previous_lasti == preserve_lasti
+            {
+                *previous_end = end;
+            } else {
+                flattened.push((start, end, target, depth, preserve_lasti));
+            }
+        }
+
+        let mut output = Vec::with_capacity(flattened.len().saturating_mul(8));
+        for (start, end, target, depth, preserve_lasti) in flattened {
+            write_exception_varint(&mut output, start, true);
+            write_exception_varint(&mut output, end - start, false);
+            write_exception_varint(&mut output, target, false);
+            write_exception_varint(&mut output, (depth << 1) | u32::from(preserve_lasti), false);
+        }
+        Ok(output)
+    }
+
+    pub(in crate::assembler) fn encode_final_artifacts(
+        &self,
+        extended_args: &[u8],
+        resolved_arguments: &[u32],
+        code_units: u32,
+        first_line_number: u32,
+    ) -> (Vec<u8>, Vec<u8>, u32) {
+        if self.python_version == crate::PythonVersion::Py314 {
+            self.encode_final_artifacts_for::<true>(
+                extended_args,
+                resolved_arguments,
+                code_units,
+                first_line_number,
+            )
+        } else {
+            self.encode_final_artifacts_for::<false>(
+                extended_args,
+                resolved_arguments,
+                code_units,
+                first_line_number,
+            )
+        }
+    }
+
+    fn encode_final_artifacts_for<const PY314: bool>(
+        &self,
+        extended_args: &[u8],
+        resolved_arguments: &[u32],
+        code_units: u32,
+        first_line_number: u32,
+    ) -> (Vec<u8>, Vec<u8>, u32) {
+        let mut bytecode = vec![0; usize::try_from(code_units).unwrap().saturating_mul(2)];
+        let mut line_table = Vec::with_capacity(extended_args.len().saturating_mul(3));
+        let mut byte_offset = 0;
+        let mut current_line = i32::try_from(first_line_number).unwrap_or(i32::MAX);
+        let mut run = None::<(SourceLocation, u32)>;
+        let mut max_depth = 0;
+        let mut instruction_index = 0_usize;
+        let version = if PY314 {
+            crate::PythonVersion::Py314
+        } else {
+            self.python_version
+        };
+        let cache_widths = OpcodeCacheWidths::for_version(version);
+        let extended_arg = EXTENDED_ARG.code_for(version);
+
+        for item in &self.items {
+            let Item::Instruction(instruction) = *item else {
+                continue;
+            };
+            let argument = resolved_arguments[instruction_index];
+            let extended_arg_count = extended_args[instruction_index];
+
+            for index in (1..=extended_arg_count).rev() {
+                bytecode[byte_offset] = extended_arg;
+                bytecode[byte_offset + 1] = ((argument >> (u32::from(index) * 8)) & 0xff) as u8;
+                byte_offset += 2;
+            }
+            bytecode[byte_offset] = instruction.opcode.code_for(version);
+            bytecode[byte_offset + 1] = (argument & 0xff) as u8;
+            let caches = cache_widths.get(instruction.opcode);
+            byte_offset += 2 + usize::from(caches) * 2;
+
+            let size = u32::from(extended_arg_count) + 1 + u32::from(caches);
+            if let Some((location, length)) = &mut run
+                && *location == instruction.location
+            {
+                *length += size;
+            } else {
+                if let Some((location, length)) = run {
+                    write_location_run(&mut line_table, location, length, &mut current_line);
+                }
+                run = Some((instruction.location, size));
+            }
+            // Legacy folds preserve located NOPs for tracing, but their removed
+            // producers' recorded stack peaks do not belong to the final CFG.
+            if PY314 || version >= crate::PythonVersion::Py314 || instruction.opcode != NOP {
+                max_depth = max_depth.max(instruction.maximum_stack_depth());
+            }
+            instruction_index += 1;
+        }
+
+        if let Some((location, length)) = run {
+            write_location_run(&mut line_table, location, length, &mut current_line);
+        }
+        debug_assert_eq!(byte_offset, bytecode.len());
+
+        (bytecode, line_table, max_depth)
+    }
+
+    pub(in crate::assembler) fn encode_unextended_final_artifacts(
+        &self,
+        labels: &[Option<u32>],
+        code_units: u32,
+        first_line_number: u32,
+    ) -> Result<Option<FinalArtifacts>, CompileError> {
+        if self.python_version == crate::PythonVersion::Py314 {
+            self.encode_unextended_final_artifacts_for::<true>(
+                labels,
+                code_units,
+                first_line_number,
+            )
+        } else {
+            self.encode_unextended_final_artifacts_for::<false>(
+                labels,
+                code_units,
+                first_line_number,
+            )
+        }
+    }
+
+    fn encode_unextended_final_artifacts_for<const PY314: bool>(
+        &self,
+        labels: &[Option<u32>],
+        code_units: u32,
+        first_line_number: u32,
+    ) -> Result<Option<FinalArtifacts>, CompileError> {
+        let mut bytecode = vec![0; usize::try_from(code_units).unwrap().saturating_mul(2)];
+        let mut line_table = Vec::with_capacity(self.items.len().saturating_mul(3));
+        let mut byte_offset = 0;
+        let mut position = 0;
+        let mut current_line = i32::try_from(first_line_number).unwrap_or(i32::MAX);
+        let mut run = None::<(SourceLocation, u32)>;
+        let mut max_depth = 0;
+        let version = if PY314 {
+            crate::PythonVersion::Py314
+        } else {
+            self.python_version
+        };
+        let cache_widths = OpcodeCacheWidths::for_version(version);
+
+        for item in &self.items {
+            let Item::Instruction(instruction) = *item else {
+                continue;
+            };
+            let size = 1 + u32::from(cache_widths.get(instruction.opcode));
+            let jump_base = position + size;
+            let operand = if PY314 {
+                instruction.operand()
+            } else {
+                self.encoded_operand(&instruction)?
+            };
+            let argument = match operand {
+                Operand::Value(argument) => argument,
+                Operand::Deferred(id) => {
+                    return Err(CompileError::Internal(format!(
+                        "unresolved operand patch {} reached final layout",
+                        id.as_u32()
+                    )));
+                }
+                Operand::Forward(label) => {
+                    let target = label_position(labels, label).ok_or_else(|| {
+                        CompileError::Internal("unbound forward jump label".to_string())
+                    })?;
+                    target.checked_sub(jump_base).ok_or_else(|| {
+                        CompileError::Internal("forward jump points backward".to_string())
+                    })?
+                }
+                Operand::Backward(label) => {
+                    let target = label_position(labels, label).ok_or_else(|| {
+                        CompileError::Internal("unbound backward jump label".to_string())
+                    })?;
+                    backward_argument(version, &instruction, jump_base, target)?
+                }
+            };
+            let Ok(argument) = u8::try_from(argument) else {
+                return Ok(None);
+            };
+
+            bytecode[byte_offset] = instruction.opcode.code_for(version);
+            bytecode[byte_offset + 1] = argument;
+            byte_offset += usize::try_from(size).unwrap() * 2;
+            position = jump_base;
+
+            if let Some((location, length)) = &mut run
+                && *location == instruction.location
+            {
+                *length += size;
+            } else {
+                if let Some((location, length)) = run {
+                    write_location_run(&mut line_table, location, length, &mut current_line);
+                }
+                run = Some((instruction.location, size));
+            }
+            // Legacy folds preserve located NOPs for tracing, but their removed
+            // producers' recorded stack peaks do not belong to the final CFG.
+            if PY314 || version >= crate::PythonVersion::Py314 || instruction.opcode != NOP {
+                max_depth = max_depth.max(instruction.maximum_stack_depth());
+            }
+        }
+
+        if let Some((location, length)) = run {
+            write_location_run(&mut line_table, location, length, &mut current_line);
+        }
+        debug_assert_eq!(byte_offset, bytecode.len());
+
+        Ok(Some((bytecode, line_table, max_depth)))
+    }
+
+    pub(in crate::assembler) fn label_positions(
+        &self,
+        extended_args: &[u8],
+        labels: &mut [Option<u32>],
+    ) -> u32 {
+        let mut position = 0_u32;
+        let mut instruction_index = 0;
+        let cache_widths = OpcodeCacheWidths::for_version(self.python_version);
+
+        for item in &self.items {
+            match *item {
+                Item::Instruction(instruction) => {
+                    position += u32::from(extended_args[instruction_index])
+                        + 1
+                        + u32::from(cache_widths.get(instruction.opcode));
+                    instruction_index += 1;
+                }
+                Item::Label(label) => {
+                    labels[label.index()] = Some(position);
+                }
+            }
+        }
+
+        position
+    }
+}
+
+/// Resolves CPython's SEND-relative monitoring offset for an async iterator exit.
+pub(super) fn backward_argument(
+    python_version: crate::PythonVersion,
+    instruction: &Instruction,
+    jump_base: u32,
+    target: u32,
+) -> Result<u32, CompileError> {
+    // The matching SEND's monitoring offset includes target-specific inline caches,
+    // even when cold-block collection places CLEANUP_THROW there instead of END_SEND.
+    let target = target
+        + u32::from(instruction.opcode == END_ASYNC_FOR)
+            * crate::target::end_send_offset_for(python_version);
+    jump_base
+        .checked_sub(target)
+        .ok_or_else(|| CompileError::Internal("backward jump points forward".to_string()))
+}
+
+pub(super) fn label_position(labels: &[Option<u32>], label: Label) -> Option<u32> {
+    labels.get(label.index()).copied().flatten()
+}
+
+/// Writes a source span as location entries covering at most eight code units each.
+#[inline]
+fn write_location_run(
+    output: &mut Vec<u8>,
+    location: SourceLocation,
+    length: u32,
+    current_line: &mut i32,
+) {
+    if length <= 8 {
+        if length != 0 {
+            write_location(output, location, length, current_line);
+        }
+    } else {
+        write_long_location_run(output, location, length, current_line);
+    }
+}
+
+#[inline(never)]
+fn write_long_location_run(
+    output: &mut Vec<u8>,
+    location: SourceLocation,
+    mut length: u32,
+    current_line: &mut i32,
+) {
+    write_location(output, location, 8, current_line);
+    length -= 8;
+    if length <= 8 {
+        write_location(output, location, length, current_line);
+        return;
+    }
+
+    // Once the first chunk has advanced the source line, every following chunk has
+    // the same zero-delta encoding; only the last chunk's three length bits can differ.
+    let repeat_start = output.len();
+    write_location(output, location, 8, current_line);
+    let repeat_end = output.len();
+    length -= 8;
+    while length >= 8 {
+        output.extend_from_within(repeat_start..repeat_end);
+        length -= 8;
+    }
+    if length != 0 {
+        let last_start = output.len();
+        output.extend_from_within(repeat_start..repeat_end);
+        output[last_start] = (output[last_start] & !7)
+            | u8::try_from(length - 1).expect("the final location chunk is less than eight units");
+    }
+}
+
+#[inline]
+fn write_location(
+    output: &mut Vec<u8>,
+    location: SourceLocation,
+    length: u32,
+    current_line: &mut i32,
+) {
+    if location.line < 0 {
+        write_location_start(output, 15, length);
+        return;
+    }
+    if location.line == *current_line && location.end_line == location.line {
+        let column = location.column.cast_unsigned();
+        let width = location.end_column.cast_unsigned().wrapping_sub(column);
+        if column < 80 && width < 16 {
+            output.extend_from_slice(&[
+                location_start((column >> 3).cast_signed(), length),
+                u8::try_from(((column & 7) << 4) | width)
+                    .expect("short-form location columns fit in one byte"),
+            ]);
+            return;
+        }
+    }
+    let line_delta = location.line - *current_line;
+    if location.end_line == location.line
+        && (0..3).contains(&line_delta)
+        && location.column.cast_unsigned() < 128
+        && location.end_column.cast_unsigned() < 128
+    {
+        output.extend_from_slice(&[
+            location_start(10 + line_delta, length),
+            u8::try_from(location.column).expect("one-line column fits in one byte"),
+            u8::try_from(location.end_column).expect("one-line column fits in one byte"),
+        ]);
+        *current_line = location.line;
+    } else {
+        write_location_slow(output, location, length, current_line, line_delta);
+    }
+}
+
+#[inline(never)]
+fn write_location_slow(
+    output: &mut Vec<u8>,
+    location: SourceLocation,
+    length: u32,
+    current_line: &mut i32,
+    line_delta: i32,
+) {
+    if location.column < 0 || location.end_column < 0 {
+        if location.end_line == location.line || location.end_line < 0 {
+            write_location_start(output, 13, length);
+            write_signed_varint(output, line_delta);
+            *current_line = location.line;
+            return;
+        }
+    }
+
+    write_location_start(output, 14, length);
+    write_signed_varint(output, line_delta);
+    write_varint(output, (location.end_line - location.line).cast_unsigned());
+    write_varint(output, (location.column + 1).cast_unsigned());
+    write_varint(output, (location.end_column + 1).cast_unsigned());
+    *current_line = location.line;
+}
+
+fn write_location_start(output: &mut Vec<u8>, code: i32, length: u32) {
+    output.push(location_start(code, length));
+}
+
+fn location_start(code: i32, length: u32) -> u8 {
+    let code = u8::try_from(code).expect("location code is four bits");
+    let length = u8::try_from(length).expect("location run is at most eight code units");
+    0x80 | (code << 3) | (length - 1)
+}
+
+/// Encodes a location-table line delta with a low sign bit and a shifted unsigned magnitude.
+fn write_signed_varint(output: &mut Vec<u8>, value: i32) {
+    let value = (value.unsigned_abs() << 1) | u32::from(value < 0);
+    write_varint(output, value);
+}
+
+fn write_varint(output: &mut Vec<u8>, mut value: u32) {
+    while value >= 64 {
+        output.push(64 | (value & 63) as u8);
+        value >>= 6;
+    }
+    output.push(u8::try_from(value).expect("varint tail is six bits"));
+}
+
+fn write_exception_varint(output: &mut Vec<u8>, value: u32, mark_entry_start: bool) {
+    let mut shift = if value >= 1 << 24 {
+        24
+    } else if value >= 1 << 18 {
+        18
+    } else if value >= 1 << 12 {
+        12
+    } else if value >= 1 << 6 {
+        6
+    } else {
+        0
+    };
+    let mut first = true;
+    loop {
+        let mut byte = u8::try_from((value >> shift) & 0x3f).expect("exception varint chunk");
+        if shift != 0 {
+            byte |= 0x40;
+        }
+        if first && mark_entry_start {
+            byte |= 0x80;
+        }
+        output.push(byte);
+        first = false;
+        if shift == 0 {
+            break;
+        }
+        shift -= 6;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rustc_hash::FxHashSet;
+
+    use super::*;
+    use crate::assembler::exception_owners::LazyExceptionOwnerProvenance;
+    use crate::assembler::{ExceptionPolicy, ExceptionRegion, NOP};
+
+    #[test]
+    fn short_location_columns_do_not_capture_other_encodings() {
+        for (location, length, first_line, expected, final_line) in [
+            (
+                SourceLocation::new(50, 50, 7, 12),
+                3,
+                50,
+                vec![0x82, 117],
+                50,
+            ),
+            (
+                SourceLocation::new(50, 50, 79, 94),
+                8,
+                50,
+                vec![0xcf, 127],
+                50,
+            ),
+            (
+                SourceLocation::new(50, 50, 80, 95),
+                1,
+                50,
+                vec![0xd0, 80, 95],
+                50,
+            ),
+            (
+                SourceLocation::new(50, 50, 7, 6),
+                1,
+                50,
+                vec![0xd0, 7, 6],
+                50,
+            ),
+            (
+                SourceLocation::new(50, 50, 7, 12),
+                1,
+                49,
+                vec![0xd8, 7, 12],
+                50,
+            ),
+            (
+                SourceLocation::new(52, 52, 0, 127),
+                8,
+                50,
+                vec![0xe7, 0, 127],
+                52,
+            ),
+            (
+                SourceLocation::new(53, 53, 7, 12),
+                1,
+                50,
+                vec![0xf0, 6, 0, 8, 13],
+                53,
+            ),
+            (
+                SourceLocation::new(50, 50, 7, 12),
+                1,
+                51,
+                vec![0xf0, 3, 0, 8, 13],
+                50,
+            ),
+            (
+                SourceLocation::new(50, 50, 128, 129),
+                1,
+                50,
+                vec![0xf0, 0, 0, 65, 2, 66, 2],
+                50,
+            ),
+            (
+                SourceLocation::new(50, 51, 7, 12),
+                1,
+                50,
+                vec![0xf0, 0, 1, 8, 13],
+                50,
+            ),
+            (SourceLocation::new(50, 50, 7, -1), 1, 50, vec![0xe8, 0], 50),
+            (SourceLocation::NONE, 1, -1, vec![0xf8], -1),
+            (SourceLocation::NONE, 8, 50, vec![0xff], 50),
+        ] {
+            let mut actual = Vec::new();
+            let mut current_line = first_line;
+            write_location(&mut actual, location, length, &mut current_line);
+            assert_eq!((actual, current_line), (expected, final_line));
+        }
+    }
+
+    #[test]
+    fn repeated_location_chunks_match_individual_encoding() {
+        let locations = [
+            SourceLocation::NONE,
+            SourceLocation::new(1, 1, -1, -1),
+            SourceLocation::new(50, -1, -1, -1),
+            SourceLocation::new(50, 50, 7, 12),
+            SourceLocation::new(50, 50, 79, 90),
+            SourceLocation::new(50, 50, 110, 127),
+            SourceLocation::new(50, 50, 200, 300),
+            SourceLocation::new(2_000, 5_000, -1, -1),
+            SourceLocation::new(2_000, 5_000, 4_000, 8_000),
+        ];
+        for location in locations {
+            for initial_line in [1, 49, 50, 500, 5_000] {
+                for length in (0..=40).chain([64, 80, 128, 255, 256]) {
+                    let mut expected = vec![0x42];
+                    let mut expected_line = initial_line;
+                    let mut remaining = length;
+                    while remaining != 0 {
+                        let chunk = remaining.min(8);
+                        write_location(&mut expected, location, chunk, &mut expected_line);
+                        remaining -= chunk;
+                    }
+                    let mut actual = vec![0x42];
+                    let mut actual_line = initial_line;
+                    write_location_run(&mut actual, location, length, &mut actual_line);
+                    assert_eq!((actual, actual_line), (expected, expected_line));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn wire_operand_lowering_preserves_target_specific_encodings() {
+        use crate::PythonVersion::{Py312, Py313, Py314, Py315};
+        use crate::target::GENEXPR_RESUME_ARGUMENT;
+        use crate::target::opcodes::{GET_YIELD_FROM_ITER, JUMP_FORWARD, RESUME};
+        use crate::target::operands::ResumeLocation;
+
+        let depth = ResumeLocation::AFTER_YIELD.at_depth(true);
+        let label = Label::from_u32(0);
+        for (version, expected_depth, expected_genexpr, expected_iter) in [
+            (Py312, 1, 0, 0),
+            (Py313, depth, 0, 0),
+            (Py314, depth, GENEXPR_RESUME_ARGUMENT, 0),
+            (Py315, 9, 4, 3),
+        ] {
+            let mut assembler = layout(Vec::new(), Vec::new());
+            assembler.python_version = version;
+            for (opcode, operand, expected) in [
+                (
+                    RESUME,
+                    Operand::Value(depth),
+                    Operand::Value(expected_depth),
+                ),
+                (
+                    RESUME,
+                    Operand::Value(GENEXPR_RESUME_ARGUMENT),
+                    Operand::Value(expected_genexpr),
+                ),
+                (
+                    GET_YIELD_FROM_ITER,
+                    Operand::Value(0),
+                    Operand::Value(expected_iter),
+                ),
+                (NOP, Operand::Value(1234), Operand::Value(1234)),
+                (
+                    JUMP_FORWARD,
+                    Operand::Forward(label),
+                    Operand::Forward(label),
+                ),
+            ] {
+                let instruction = Instruction::new(opcode, operand, SourceLocation::NONE, None);
+                assert_eq!(assembler.encoded_operand(&instruction).unwrap(), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn default_target_artifact_encoders_match_generic_layout() {
+        use crate::target::opcodes::{
+            JUMP_BACKWARD, JUMP_FORWARD, LOAD_CONST, RESUME, RETURN_VALUE,
+        };
+
+        let first = Label::from_u32(0);
+        let last = Label::from_u32(1);
+        let instruction = |opcode, operand, line, depth| {
+            Item::Instruction(Instruction::new(
+                opcode,
+                operand,
+                SourceLocation::new(line, line, 0, line),
+                Some(depth),
+            ))
+        };
+        for argument in [30, 300] {
+            let assembler = layout(
+                vec![
+                    Item::Label(first),
+                    instruction(RESUME, Operand::Value(0), 1, 0),
+                    instruction(LOAD_GLOBAL, Operand::Value(0), 2, 4),
+                    instruction(JUMP_FORWARD, Operand::Forward(last), 2, 1),
+                    instruction(LOAD_CONST, Operand::Value(argument), 3, 2),
+                    Item::Label(last),
+                    instruction(JUMP_BACKWARD, Operand::Backward(first), 4, 1),
+                    instruction(RETURN_VALUE, Operand::Value(0), 4, 0),
+                ],
+                Vec::new(),
+            );
+            let mut labels = [None; 2];
+            let unextended_units = assembler.label_positions(&[0; 6], &mut labels);
+            let default_unextended = assembler
+                .encode_unextended_final_artifacts_for::<true>(&labels, unextended_units, 1)
+                .unwrap();
+            assert_eq!(
+                default_unextended,
+                assembler
+                    .encode_unextended_final_artifacts_for::<false>(&labels, unextended_units, 1)
+                    .unwrap()
+            );
+            assert_eq!(default_unextended.is_some(), argument == 30);
+            let mut direct_labels = [None; 2];
+            let direct = assembler
+                .encode_small_final_artifacts(&mut direct_labels, 1)
+                .unwrap();
+            assert_eq!(direct.as_ref(), default_unextended.as_ref());
+            if direct.is_some() {
+                assert_eq!(direct_labels, labels);
+            }
+
+            let width = u8::from(argument == 300);
+            let widths = [0, 0, 0, width, 0, 0];
+            let units = assembler.label_positions(&widths, &mut labels);
+            let resolved = [
+                0,
+                0,
+                1 + u32::from(width),
+                argument,
+                10 + u32::from(width),
+                0,
+            ];
+            let default =
+                assembler.encode_final_artifacts_for::<true>(&widths, &resolved, units, 1);
+            assert_eq!(
+                default,
+                assembler.encode_final_artifacts_for::<false>(&widths, &resolved, units, 1)
+            );
+            assert_eq!(default.0.len(), 2 * usize::try_from(units).unwrap());
+            assert_eq!(default.2, 4);
+            if let Some(unextended) = default_unextended {
+                assert_eq!(default, unextended);
+            }
+        }
+    }
+
+    #[test]
+    fn small_layout_preserves_python315_wire_operands() {
+        use crate::PythonVersion::Py315;
+        use crate::target::GENEXPR_RESUME_ARGUMENT;
+        use crate::target::opcodes::{
+            GET_YIELD_FROM_ITER, JUMP_BACKWARD, JUMP_FORWARD, LOAD_CONST, RESUME, RETURN_VALUE,
+        };
+        use crate::target::operands::ResumeLocation;
+
+        let first = Label::from_u32(0);
+        let last = Label::from_u32(1);
+        let instruction = |opcode, operand| {
+            Item::Instruction(Instruction::new(
+                opcode,
+                operand,
+                SourceLocation::new(2, 2, 0, 8),
+                Some(4),
+            ))
+        };
+        let cache_expanded =
+            usize::from(u8::MAX) / (1 + usize::from(LOAD_GLOBAL.caches_for(Py315))) + 1;
+        for (argument, padding) in [(30, 0), (300, 0), (30, cache_expanded)] {
+            let mut items = vec![
+                Item::Label(first),
+                instruction(
+                    RESUME,
+                    Operand::Value(ResumeLocation::AFTER_YIELD.at_depth(true)),
+                ),
+                instruction(RESUME, Operand::Value(GENEXPR_RESUME_ARGUMENT)),
+                instruction(GET_YIELD_FROM_ITER, Operand::Value(0)),
+                instruction(LOAD_GLOBAL, Operand::Value(0)),
+                instruction(JUMP_FORWARD, Operand::Forward(last)),
+            ];
+            items.extend(std::iter::repeat_n(
+                instruction(LOAD_GLOBAL, Operand::Value(0)),
+                padding,
+            ));
+            items.extend([
+                instruction(LOAD_CONST, Operand::Value(argument)),
+                Item::Label(last),
+                instruction(JUMP_BACKWARD, Operand::Backward(first)),
+                instruction(RETURN_VALUE, Operand::Value(0)),
+            ]);
+            let widths = vec![0; items.len() - 2];
+            let mut assembler = layout(items, vec![region(0, 1, 1, 0, false)]);
+            assembler.python_version = Py315;
+            let mut labels = [None; 2];
+            let units = assembler.label_positions(&widths, &mut labels);
+            let expected = assembler
+                .encode_unextended_final_artifacts(&labels, units, 1)
+                .unwrap();
+            let mut direct_labels = [None; 2];
+            let direct = assembler
+                .encode_small_final_artifacts(&mut direct_labels, 1)
+                .unwrap();
+            assert_eq!(direct.is_some(), argument == 30 && padding == 0);
+            assert_eq!(direct, expected);
+            if direct.is_some() {
+                assert_eq!(direct_labels, labels);
+                assert_eq!(
+                    assembler
+                        .unextended_exception_table(&direct_labels)
+                        .unwrap(),
+                    assembler.exception_table(&widths, &labels).unwrap()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn small_layout_checks_symbolic_and_cache_expanded_jump_boundaries() {
+        use crate::target::opcodes::{JUMP_BACKWARD, JUMP_FORWARD, RETURN_VALUE};
+
+        let entry = Label::from_u32(0);
+        let target = Label::from_u32(1);
+        let instruction = |opcode, operand| {
+            Item::Instruction(Instruction::new(
+                opcode,
+                operand,
+                SourceLocation::NONE,
+                Some(0),
+            ))
+        };
+        let compare = |items: Vec<Item>, small: bool, generic: bool| {
+            let assembler = layout(items, vec![region(0, 1, 1, 0, false)]);
+            let instruction_count = assembler.items.len() - 2;
+            let mut direct_labels = [None; 2];
+            let direct = assembler
+                .encode_small_final_artifacts(&mut direct_labels, 1)
+                .unwrap();
+            assert_eq!(direct.is_some(), small);
+            let mut labels = [None; 2];
+            let widths = vec![0; instruction_count];
+            let units = assembler.label_positions(&widths, &mut labels);
+            let expected = assembler
+                .encode_unextended_final_artifacts(&labels, units, 1)
+                .unwrap();
+            assert_eq!(expected.is_some(), generic);
+            if let Some(artifacts) = direct {
+                assert_eq!(Some(artifacts), expected);
+                assert_eq!(direct_labels, labels);
+                assert_eq!(
+                    assembler.exception_table(&widths, &direct_labels).unwrap(),
+                    assembler.exception_table(&widths, &labels).unwrap()
+                );
+            }
+        };
+
+        for item_count in [254, 255, 256] {
+            let mut items = vec![
+                Item::Label(entry),
+                instruction(JUMP_FORWARD, Operand::Forward(target)),
+            ];
+            items.extend(std::iter::repeat_n(
+                instruction(NOP, Operand::Value(0)),
+                item_count - 4,
+            ));
+            items.extend([
+                Item::Label(target),
+                instruction(RETURN_VALUE, Operand::Value(0)),
+            ]);
+            compare(items, item_count <= 255, true);
+        }
+
+        for distance in [255, 256] {
+            let mut forward = vec![
+                Item::Label(entry),
+                instruction(JUMP_FORWARD, Operand::Forward(target)),
+            ];
+            forward.extend(std::iter::repeat_n(
+                instruction(LOAD_GLOBAL, Operand::Value(0)),
+                51,
+            ));
+            if distance == 256 {
+                forward.push(instruction(NOP, Operand::Value(0)));
+            }
+            forward.extend([
+                Item::Label(target),
+                instruction(RETURN_VALUE, Operand::Value(0)),
+            ]);
+            compare(forward, distance == 255, distance == 255);
+
+            let mut backward = vec![Item::Label(entry)];
+            backward.extend(std::iter::repeat_n(
+                instruction(LOAD_GLOBAL, Operand::Value(0)),
+                50,
+            ));
+            backward.extend(std::iter::repeat_n(
+                instruction(NOP, Operand::Value(0)),
+                distance - 252,
+            ));
+            backward.extend([
+                instruction(JUMP_BACKWARD, Operand::Backward(entry)),
+                Item::Label(target),
+                instruction(RETURN_VALUE, Operand::Value(0)),
+            ]);
+            compare(backward, distance == 255, distance == 255);
+        }
+    }
+
+    #[test]
+    fn legacy_annotation_tuple_nops_do_not_contribute_stack_peaks() {
+        let compiled = crate::compile_with_options(
+            "from __future__ import annotations\ndef f(\n    a: A,\n    b: B,\n) -> C:\n    pass\n",
+            "legacy_stack.py",
+            &crate::CompileOptions {
+                python_version: crate::PythonVersion::Py313,
+                ..crate::CompileOptions::default()
+            },
+        )
+        .unwrap();
+        // Pinned CPython 3.13.15 keeps annotation-line NOPs, then loads the folded
+        // annotation tuple and function code. Those two values are the live peak.
+        assert_eq!(compiled.code.stack_size, 2);
+    }
+
+    fn instruction(policy: ExceptionPolicy) -> Item {
+        let mut instruction = Instruction::new(NOP, Operand::Value(0), SourceLocation::NONE, None);
+        instruction.set_exception_policy(policy);
+        Item::Instruction(instruction)
+    }
+
+    fn layout(items: Vec<Item>, exception_regions: Vec<ExceptionRegion>) -> LayoutAssembler {
+        LayoutAssembler {
+            python_version: crate::PythonVersion::Py314,
+            legacy_uniform_jump_seed: false,
+            items,
+            exception_regions,
+            exception_owner_provenance: LazyExceptionOwnerProvenance::default(),
+            preserved_block_boundaries: FxHashSet::default(),
+            removed_max_depth: None,
+            next_label: 0,
+            has_next_location: false,
+        }
+    }
+
+    fn region(
+        start: u32,
+        end: u32,
+        target: u32,
+        depth: u32,
+        preserve_lasti: bool,
+    ) -> ExceptionRegion {
+        ExceptionRegion {
+            is_scope_fallback: false,
+            priority: super::super::ExceptionRegionPriority::OriginalRange(
+                Label::from_u32(start),
+                Label::from_u32(end),
+            ),
+            start: Label::from_u32(start),
+            end: Label::from_u32(end),
+            target: Label::from_u32(target),
+            depth,
+            preserve_lasti,
+        }
+    }
+
+    #[test]
+    fn delayed_owner_label_flags_match_unconditional_construction() {
+        use crate::PythonVersion::{Py312, Py313, Py314, Py315};
+        use crate::target::opcodes::JUMP_FORWARD;
+
+        let label = |index| Item::Label(Label::from_u32(index));
+        let value = |opcode, operand| {
+            Item::Instruction(Instruction::new(
+                opcode,
+                operand,
+                SourceLocation::NONE,
+                None,
+            ))
+        };
+        for version in [Py312, Py313, Py314, Py315] {
+            for (policy, marker, authored) in [
+                (ExceptionPolicy::default(), false, false),
+                (ExceptionPolicy::EXCLUDE_IF_EXTENDED, false, false),
+                (ExceptionPolicy::EXCLUDE_ALWAYS, false, false),
+                (ExceptionPolicy::NonePresent, false, false),
+                (ExceptionPolicy::NoneDynamic, false, false),
+                (ExceptionPolicy::NoneDynamicCondition, false, false),
+                (ExceptionPolicy::NoneDynamicConditionStrict, false, false),
+                (ExceptionPolicy::NoneUnchangedBooleanSingleton, false, false),
+                (ExceptionPolicy::default(), true, false),
+                (ExceptionPolicy::default(), true, true),
+            ] {
+                let mut candidate = Instruction::new(
+                    if marker { NOT_TAKEN } else { NOP },
+                    Operand::Value(0),
+                    SourceLocation::NONE,
+                    None,
+                );
+                candidate.set_exception_policy(policy);
+                if authored {
+                    candidate.jump_policy.mark_authored_branch_marker();
+                }
+                let mut assembler = layout(
+                    vec![
+                        label(0),
+                        value(LOAD_GLOBAL, Operand::Value(0)),
+                        label(1),
+                        Item::Instruction(candidate),
+                        value(JUMP_FORWARD, Operand::Forward(Label::from_u32(3))),
+                        label(2),
+                        instruction(ExceptionPolicy::default()),
+                        label(3),
+                        instruction(ExceptionPolicy::default()),
+                        label(4),
+                        instruction(ExceptionPolicy::default()),
+                        label(5),
+                        instruction(ExceptionPolicy::default()),
+                    ],
+                    vec![region(0, 4, 5, 0, false), region(1, 2, 4, 1, true)],
+                );
+                assembler.python_version = version;
+                assembler.next_label = 6;
+                assembler
+                    .preserved_block_boundaries
+                    .extend([Label::from_u32(2), Label::from_u32(100)]);
+                for candidate_width in [0, 1] {
+                    let widths = [0, candidate_width, 0, 0, 0, 0, 0];
+                    let mut labels = [None; 128];
+                    assembler.label_positions(&widths, &mut labels);
+                    let eager = assembler
+                        .exception_table_with_label_flags::<true, false>(&widths, &labels)
+                        .unwrap();
+                    let lazy = assembler
+                        .exception_table_with_label_flags::<true, true>(&widths, &labels)
+                        .unwrap();
+                    assert!(!eager.is_empty());
+                    assert_eq!(
+                        lazy, eager,
+                        "{version:?} {policy:?} {marker} {authored} {candidate_width}"
+                    );
+                    if candidate_width == 0 {
+                        assert_eq!(
+                            assembler
+                                .exception_table_with_label_flags::<false, true>(&[], &labels)
+                                .unwrap(),
+                            assembler
+                                .exception_table_with_label_flags::<false, false>(&[], &labels)
+                                .unwrap(),
+                        );
+                    }
+                    labels[0] = None;
+                    assert_eq!(
+                        assembler
+                            .exception_table_with_label_flags::<true, true>(&widths, &labels)
+                            .unwrap_err(),
+                        assembler
+                            .exception_table_with_label_flags::<true, false>(&widths, &labels)
+                            .unwrap_err(),
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn unextended_exception_tables_match_explicit_zero_widths() {
+        use crate::PythonVersion::{Py312, Py313, Py314, Py315};
+
+        let with_opcode = |opcode, policy| {
+            let mut instruction =
+                Instruction::new(opcode, Operand::Value(0), SourceLocation::NONE, None);
+            instruction.set_exception_policy(policy);
+            Item::Instruction(instruction)
+        };
+        let label = |index| Item::Label(Label::from_u32(index));
+
+        for version in [Py312, Py313, Py314, Py315] {
+            let mut assembler = layout(
+                vec![
+                    label(0),
+                    with_opcode(LOAD_GLOBAL, ExceptionPolicy::default()),
+                    instruction(ExceptionPolicy::EXCLUDE_IF_EXTENDED),
+                    label(1),
+                    instruction(ExceptionPolicy::EXCLUDE_ALWAYS),
+                    instruction(ExceptionPolicy::normalized_owner(false)),
+                    with_opcode(NOT_TAKEN, ExceptionPolicy::NonePresent),
+                    label(2),
+                    instruction(ExceptionPolicy::normalized_owner(true)),
+                    label(3),
+                    label(4),
+                    instruction(ExceptionPolicy::default()),
+                    label(5),
+                    instruction(ExceptionPolicy::default()),
+                ],
+                vec![region(0, 3, 4, 0, false), region(1, 2, 5, 1, true)],
+            );
+            assembler.python_version = version;
+            assembler
+                .preserved_block_boundaries
+                .extend([Label::from_u32(1), Label::from_u32(7)]);
+            let zeros = [0; 8];
+            let mut labels = [None; 8];
+            assembler.label_positions(&zeros, &mut labels);
+
+            let explicit = assembler.exception_table(&zeros, &labels).unwrap();
+            assert!(!explicit.is_empty());
+            assert_eq!(
+                assembler.unextended_exception_table(&labels).unwrap(),
+                explicit
+            );
+
+            let mut missing = labels;
+            missing[0] = None;
+            assert_eq!(
+                assembler.unextended_exception_table(&missing).unwrap_err(),
+                assembler.exception_table(&zeros, &missing).unwrap_err(),
+            );
+
+            assembler.exception_regions.clear();
+            assert_eq!(assembler.unextended_exception_table(&missing).unwrap(), []);
+            assert_eq!(assembler.exception_table(&zeros, &missing).unwrap(), []);
+        }
+    }
+
+    fn read_varint(table: &[u8], index: &mut usize) -> u32 {
+        let mut byte = table[*index];
+        *index += 1;
+        let mut value = u32::from(byte & 0x3f);
+        while byte & 0x40 != 0 {
+            byte = table[*index];
+            *index += 1;
+            value = (value << 6) | u32::from(byte & 0x3f);
+        }
+        value
+    }
+
+    fn entries(table: &[u8]) -> Vec<(u32, u32, u32, u32, bool)> {
+        let mut index = 0;
+        let mut entries = Vec::new();
+        while index < table.len() {
+            assert_ne!(table[index] & 0x80, 0);
+            let start = read_varint(table, &mut index);
+            let length = read_varint(table, &mut index);
+            let target = read_varint(table, &mut index);
+            let depth_and_lasti = read_varint(table, &mut index);
+            entries.push((
+                start,
+                start + length,
+                target,
+                depth_and_lasti >> 1,
+                depth_and_lasti & 1 != 0,
+            ));
+        }
+        entries
+    }
+
+    #[test]
+    fn python315_normalized_markers_do_not_reuse_cleared_exception_owners() {
+        use crate::PythonVersion::{Py314, Py315};
+
+        for (version, authored) in [(Py314, false), (Py315, false), (Py315, true)] {
+            let mut marker =
+                Instruction::new(NOT_TAKEN, Operand::Value(0), SourceLocation::NONE, None);
+            marker.set_exception_policy(ExceptionPolicy::NonePresent);
+            if authored {
+                marker.jump_policy.mark_authored_branch_marker();
+            }
+            let mut assembler = layout(
+                vec![
+                    instruction(ExceptionPolicy::default()),
+                    Item::Instruction(marker),
+                    instruction(ExceptionPolicy::default()),
+                ],
+                vec![region(0, 1, 2, 0, false)],
+            );
+            assembler.python_version = version;
+            let table = assembler
+                .exception_table(&[0; 3], &[Some(0), Some(3), Some(4)])
+                .unwrap();
+            let expected = if version == Py314 || authored {
+                vec![(0, 3, 4, 0, false)]
+            } else {
+                vec![(0, 1, 4, 0, false), (2, 3, 4, 0, false)]
+            };
+            assert_eq!(entries(&table), expected);
+        }
+    }
+
+    #[test]
+    fn python315_inline_caches_extend_exception_ranges() {
+        use crate::PythonVersion::Py315;
+        use crate::target::opcodes::{GET_ITER, RESUME};
+
+        let mut assembler = layout(
+            vec![
+                Item::Label(Label::from_u32(0)),
+                Item::Instruction(Instruction::new(
+                    RESUME,
+                    Operand::Value(0),
+                    SourceLocation::NONE,
+                    None,
+                )),
+                Item::Label(Label::from_u32(1)),
+                Item::Instruction(Instruction::new(
+                    GET_ITER,
+                    Operand::Value(0),
+                    SourceLocation::NONE,
+                    None,
+                )),
+                Item::Label(Label::from_u32(2)),
+            ],
+            vec![region(0, 2, 2, 0, false)],
+        );
+        assembler.python_version = Py315;
+        let mut labels = [None; 3];
+        assert_eq!(assembler.label_positions(&[0, 0], &mut labels), 4);
+        assert_eq!(labels, [Some(0), Some(2), Some(4)]);
+        let table = assembler.exception_table(&[0, 0], &labels).unwrap();
+        assert_eq!(entries(&table), [(0, 4, 4, 0, false)]);
+    }
+
+    #[test]
+    fn preserved_exception_boundaries_reset_owners_before_reapplying_setups() {
+        let items = vec![
+            Item::Label(Label::from_u32(0)),
+            instruction(ExceptionPolicy::default()),
+            Item::Label(Label::from_u32(1)),
+            instruction(ExceptionPolicy::normalized_owner(false)),
+            instruction(ExceptionPolicy::default()),
+            Item::Label(Label::from_u32(2)),
+        ];
+        let labels = [Some(0), Some(1), Some(3), Some(3), Some(20)];
+        let outer = region(0, 2, 3, 0, false);
+        let mut assembler = layout(items, vec![outer]);
+        assembler
+            .preserved_block_boundaries
+            .extend([Label::from_u32(4), Label::from_u32(99)]);
+        assert_eq!(
+            entries(&assembler.exception_table(&[0; 3], &labels).unwrap()),
+            [(0, 3, 3, 0, false)]
+        );
+
+        assembler
+            .preserved_block_boundaries
+            .insert(Label::from_u32(1));
+        assert_eq!(
+            entries(&assembler.exception_table(&[0; 3], &labels).unwrap()),
+            [(0, 1, 3, 0, false), (2, 3, 3, 0, false)]
+        );
+
+        assembler.exception_regions.push(region(1, 2, 4, 1, true));
+        assert_eq!(
+            entries(&assembler.exception_table(&[0; 3], &labels).unwrap()),
+            [(0, 1, 3, 0, false), (1, 3, 20, 1, true)]
+        );
+    }
+
+    #[test]
+    fn exception_sweep_prefers_innermost_then_original_order_and_keeps_adjacent_entries() {
+        let assembler = layout(
+            vec![instruction(ExceptionPolicy::default()); 8],
+            vec![
+                region(0, 3, 5, 1, false),
+                region(1, 2, 6, 2, true),
+                region(1, 2, 7, 3, false),
+                region(3, 4, 8, 4, true),
+            ],
+        );
+        let labels = [
+            Some(0),
+            Some(1),
+            Some(4),
+            Some(6),
+            Some(8),
+            Some(20),
+            Some(21),
+            Some(22),
+            Some(23),
+        ];
+
+        let table = assembler.exception_table(&[0; 8], &labels).unwrap();
+
+        assert_eq!(
+            entries(&table),
+            [
+                (0, 1, 20, 1, false),
+                (1, 4, 21, 2, true),
+                (4, 6, 20, 1, false),
+                (6, 8, 23, 4, true),
+            ]
+        );
+    }
+
+    #[test]
+    fn exception_sweep_keeps_scope_fallback_outside_shorter_splits() {
+        let mut fallback_prefix = region(2, 3, 5, 0, true);
+        fallback_prefix.is_scope_fallback = true;
+        let mut fallback_suffix = region(1, 6, 5, 0, true);
+        fallback_suffix.is_scope_fallback = true;
+        let assembler = layout(
+            vec![instruction(ExceptionPolicy::default()); 10],
+            vec![region(0, 1, 4, 0, false), fallback_prefix, fallback_suffix],
+        );
+        let labels = [
+            Some(0),
+            Some(8),
+            Some(2),
+            Some(4),
+            Some(20),
+            Some(21),
+            Some(10),
+        ];
+
+        let table = assembler.exception_table(&[0; 10], &labels).unwrap();
+
+        assert_eq!(
+            entries(&table),
+            [(0, 8, 20, 0, false), (8, 10, 21, 0, true)]
+        );
+    }
+
+    #[test]
+    fn late_exception_owner_repairs_keep_scope_fallback_outside_nested_handlers() {
+        for owner in [
+            NormalizedExceptionOwner::Present,
+            NormalizedExceptionOwner::OverridePresent,
+        ] {
+            let mut policy = ExceptionPolicy::default();
+            policy.set_owner(owner);
+            let mut fallback = region(1, 2, 4, 0, true);
+            fallback.is_scope_fallback = true;
+            let assembler = layout(
+                vec![
+                    instruction(ExceptionPolicy::default()),
+                    instruction(ExceptionPolicy::default()),
+                    instruction(ExceptionPolicy::default()),
+                    instruction(ExceptionPolicy::default()),
+                    instruction(policy),
+                ],
+                vec![region(0, 2, 3, 0, false), fallback],
+            );
+            let labels = [Some(0), Some(2), Some(4), Some(20), Some(21)];
+
+            let table = assembler.exception_table(&[0; 5], &labels).unwrap();
+
+            assert_eq!(entries(&table), [(0, 5, 20, 0, false)]);
+        }
+    }
+
+    #[test]
+    fn exception_sweep_respects_always_and_extended_exclusions_as_half_open_ranges() {
+        let assembler = layout(
+            vec![
+                instruction(ExceptionPolicy::default()),
+                instruction(ExceptionPolicy::default()),
+                instruction(ExceptionPolicy::EXCLUDE_ALWAYS),
+                instruction(ExceptionPolicy::default()),
+                instruction(ExceptionPolicy::EXCLUDE_IF_EXTENDED),
+                instruction(ExceptionPolicy::default()),
+            ],
+            vec![region(0, 3, 4, 1, false), region(1, 2, 5, 2, true)],
+        );
+        let labels = [Some(0), Some(1), Some(6), Some(7), Some(20), Some(21)];
+
+        let table = assembler
+            .exception_table(&[0, 0, 0, 0, 1, 0], &labels)
+            .unwrap();
+
+        assert_eq!(
+            entries(&table),
+            [
+                (0, 1, 20, 1, false),
+                (1, 2, 21, 2, true),
+                (3, 4, 21, 2, true),
+                (6, 7, 20, 1, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn exception_sweep_keeps_late_inclusion_and_override_repairs_ordered() {
+        let included = layout(
+            vec![
+                instruction(ExceptionPolicy::default()),
+                instruction(ExceptionPolicy::default()),
+                instruction(ExceptionPolicy::normalized_owner(true)),
+            ],
+            vec![region(0, 1, 2, 1, true)],
+        );
+        let included_labels = [Some(0), Some(2), Some(10)];
+        let included_table = included.exception_table(&[0; 3], &included_labels).unwrap();
+        assert_eq!(entries(&included_table), [(0, 3, 10, 1, true)]);
+
+        let mut override_policy = ExceptionPolicy::default();
+        override_policy.set_owner(NormalizedExceptionOwner::OverridePresent);
+        let overridden = layout(
+            vec![
+                instruction(ExceptionPolicy::default()),
+                instruction(ExceptionPolicy::default()),
+                instruction(override_policy),
+                instruction(ExceptionPolicy::default()),
+            ],
+            vec![region(0, 1, 3, 1, false), region(1, 2, 4, 2, true)],
+        );
+        let overridden_labels = [Some(0), Some(2), Some(4), Some(10), Some(11)];
+        let overridden_table = overridden
+            .exception_table(&[0; 4], &overridden_labels)
+            .unwrap();
+
+        assert_eq!(
+            entries(&overridden_table),
+            [(0, 3, 10, 1, false), (3, 4, 11, 2, true)]
+        );
+    }
+}
