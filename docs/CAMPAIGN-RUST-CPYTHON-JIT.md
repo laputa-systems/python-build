@@ -484,8 +484,10 @@ follow:
 
 - The repo's `.cargo/config.toml` replaces crates-io with the `stuff` mirror,
   which lacks 47 of the crates (every `ruff_*` 0.0.15, `psm`, `stacker`,
-  `cc`, `dashu-int`). Scratch builds use the official crates.io index with
-  `--locked`; the lock entries cannot land until the mirror carries them.
+  `cc`, `dashu-int`). Serc's dependencies come from crates.io (OD13): lane
+  `fetch` resolves crates-io from the official index for the overlay
+  workspace, with `--locked` checksums as the integrity check. The repo-wide
+  `.cargo/config.toml` is unchanged.
 - cc-rs prefers `HOST_CC` over `CC`, and the host cargo config sets
   `HOST_CC="kache clang"`, so `psm` silently compiles with Apple clang. Every
   build that compiles Serc exports `HOST_CC`, `HOST_CXX`, and `HOST_AR` as the
@@ -605,6 +607,8 @@ A/A spread, and `S0`. Scores compare only within an epoch.
   compiler is not replaced.
 - **OD12 (2026-11-09):** M4 stays the end goal. The campaign runs unattended;
   owner reviews are asynchronous except those listed in **Owner queue**.
+- **OD13 (2026-11-10):** Serc's crate dependencies are fetched from crates.io,
+  not the `stuff` mirror.
 - **Parked:** a method-based frontend (withdrawn PEP 836 prototype, observed
   head `04a79098`) opens only by owner decision.
 
@@ -669,14 +673,10 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 | --- | --- | --- | --- |
 | J | ready | R0 | a1 epoch M0, `S0 = 0.7474`; no climb step taken |
 | R1 | active | step 2, timed runs | setup done: CinderX `e48f370d` on 3.15.1, tests green, 24/24 digests match |
-| C | active | C1 first slice; marshal parity running | C0 vetted; lock entries wait for the `stuff` mirror |
+| C | active | C1 slice 2 | C0 vetted; lock entries land after R0; marshal parity landed (`660068e`) |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
 
-**Owner queue:**
-
-- Publish Serc's 47 missing crates (list in the C0 vetting result) to the
-  `stuff` crates-io mirror, or allow the lane to fetch them from crates.io.
-  Blocks only C0's lock entries and C2.
+**Owner queue:** empty.
 
 **Epoch a1** (`v3.16.0a1`, `22d79d98`) closes at R0; its numbers do not carry
 over. The P0 tooling it built stays: kernel-region CPU, the held-out set, the
