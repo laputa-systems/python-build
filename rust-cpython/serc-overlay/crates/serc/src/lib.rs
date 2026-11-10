@@ -18,6 +18,7 @@ mod python_312_starred_defaults;
 mod semicolon_syntax;
 mod source;
 mod stack;
+mod syntax_warning;
 mod target;
 mod type_alias_syntax;
 mod yield_from_syntax;
@@ -37,7 +38,7 @@ pub use config::{
 pub use initial_intern_state::InitialInternState;
 use ruff_text_size::{Ranged, TextRange, TextSize};
 use siphasher::sip::SipHasher13;
-pub use source::{SourceDecodeError, decode_source};
+pub use source::{SourceDecodeError, decode_source, decodes_as_utf8};
 
 /// The exact CPython implementation targeted by this compiler backend.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -98,6 +99,7 @@ pub struct CompiledModule {
     code: Box<CodeObject>,
     python_version: PythonVersion,
     initial_intern_state: InitialInternState,
+    may_warn: bool,
 }
 
 impl CompiledModule {
@@ -109,6 +111,14 @@ impl CompiledModule {
     /// Return the exact CPython target for this module.
     pub fn target(&self) -> CpythonTarget {
         self.python_version.target()
+    }
+
+    /// Report whether CPython's compiler could emit a `SyntaxWarning` for this module's source.
+    ///
+    /// Serc emits no warnings. `false` guarantees that CPython 3.16 emits none either; `true`
+    /// marks a source that contains a construct one of CPython's warning checks inspects.
+    pub fn may_warn(&self) -> bool {
+        self.may_warn
     }
 
     /// Return the module's raw CPython instruction stream.
@@ -383,6 +393,69 @@ pub fn compile_with_options_and_integer_limits(
         Some(parse_limit),
         mapping_key_limit,
     )
+}
+
+/// Compile source text for a filename given as CPython's `surrogatepass` UTF-8 bytes.
+///
+/// CPython stores filenames as `str`, which can hold lone surrogates; their `surrogatepass`
+/// encoding is the only byte form that preserves every such value. A filename containing a
+/// null character, or bytes that are not that encoding, is rejected. The limits mean what they
+/// mean in [`compile_with_options_and_integer_limits`].
+pub fn compile_with_python_filename_and_integer_limits(
+    source: &str,
+    filename: &[u8],
+    options: &CompileOptions,
+    parse_limit: u32,
+    mapping_key_limit: Option<u32>,
+) -> Result<CompiledModule, CompileError> {
+    let filename = python_filename(filename)?;
+    validate_integer_limits(parse_limit, mapping_key_limit)?;
+    compile_text_source(
+        source,
+        filename,
+        options,
+        Some(parse_limit),
+        mapping_key_limit,
+    )
+}
+
+/// Decode and compile source bytes for a filename given as CPython's `surrogatepass` UTF-8 bytes.
+///
+/// The filename has the same form as in [`compile_with_python_filename_and_integer_limits`], and
+/// the limits mean what they mean in [`compile_with_options_and_integer_limits`].
+pub fn compile_bytes_with_python_filename_and_integer_limits(
+    source: &[u8],
+    filename: &[u8],
+    options: &CompileOptions,
+    parse_limit: u32,
+    mapping_key_limit: Option<u32>,
+) -> Result<CompiledModule, CompileError> {
+    let filename = python_filename(filename)?;
+    validate_integer_limits(parse_limit, mapping_key_limit)?;
+    compile_byte_source(
+        source,
+        filename,
+        options,
+        Some(parse_limit),
+        mapping_key_limit,
+    )
+}
+
+fn python_filename(filename: &[u8]) -> Result<CodeFilename, CompileError> {
+    if filename.contains(&0) {
+        return Err(CompileError::InvalidFilename);
+    }
+    if let Ok(filename) = std::str::from_utf8(filename) {
+        return Ok(CodeFilename::from(filename));
+    }
+    let mut remaining = filename;
+    while let Err(error) = std::str::from_utf8(remaining) {
+        match &remaining[error.valid_up_to()..] {
+            [0xed, 0xa0..=0xbf, 0x80..=0xbf, rest @ ..] => remaining = rest,
+            _ => return Err(CompileError::InvalidFilename),
+        }
+    }
+    Ok(CodeFilename::Surrogate(filename.into()))
 }
 
 fn compile_text_source(
@@ -1065,6 +1138,7 @@ fn compile_normalized(
     }
     parsed_module.recover_bare_raises(&bare_raises);
     let parsed = &parsed_module;
+    let may_warn = syntax_warning::may_warn(source, parsed.tokens(), parsed.suite());
     if source.len() > 640
         && parse_int_max_str_digits.is_none()
         && has_large_decimal_token(source, parsed.tokens())
@@ -1130,6 +1204,7 @@ fn compile_normalized(
         code,
         python_version: options.python_version,
         initial_intern_state: options.initial_intern_state.clone(),
+        may_warn,
     })
 }
 
@@ -1215,7 +1290,19 @@ pub fn compile_to_pyc(
 
 #[cfg(test)]
 mod tests {
-    use super::may_depend_on_decimal_parse;
+    use super::{CodeFilename, CompileError, may_depend_on_decimal_parse, python_filename};
+
+    #[test]
+    fn python_filenames_keep_lone_surrogates_and_reject_other_bytes() {
+        assert_eq!(python_filename(b"pkg/mod.py"), Ok(CodeFilename::from("pkg/mod.py")));
+        assert_eq!(
+            python_filename(b"a\xed\xa0\x80b\xed\xbf\xbf"),
+            Ok(CodeFilename::Surrogate(b"a\xed\xa0\x80b\xed\xbf\xbf"[..].into()))
+        );
+        for invalid in [&b"a\0b"[..], b"\xff", b"\xed\xa0", b"\xed\x9f\xbf\xff"] {
+            assert_eq!(python_filename(invalid), Err(CompileError::InvalidFilename), "{invalid:?}");
+        }
+    }
 
     #[test]
     fn decimal_prescan_distinguishes_separated_digit_runs() {
