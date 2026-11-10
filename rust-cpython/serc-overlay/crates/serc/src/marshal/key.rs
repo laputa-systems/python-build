@@ -808,7 +808,11 @@ pub(super) fn slice_member_uses_identity_for(
         | Constant::Float(_)
         | Constant::Complex { .. }
         | Constant::NonReflexive(_) => true,
-        Constant::String(value) => !value.is_empty() && !is_cached_character(value),
+        Constant::String(value) => {
+            !value.is_empty()
+                && !is_cached_character(value)
+                && !(python_version >= PythonVersion::Py316 && should_intern(value))
+        }
         Constant::SurrogateString(_) => true,
         Constant::Bytes(value) => value.len() > 1,
         Constant::None

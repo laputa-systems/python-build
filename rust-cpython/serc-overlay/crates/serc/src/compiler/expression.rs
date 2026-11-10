@@ -5577,7 +5577,7 @@ impl Compiler<'_> {
         let child = child.finish_inner(false)?;
 
         self.emit_function_with_closure(child, &plan.freevars)?;
-        if self.context.python_version == PythonVersion::Py315 {
+        if self.context.python_version >= PythonVersion::Py315 {
             self.compile_expression(&generators[0].iter)?;
         } else {
             self.compile_iterable_expression(&generators[0].iter)?;

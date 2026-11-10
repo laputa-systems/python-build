@@ -6,7 +6,7 @@ use std::rc::Rc;
 use ruff_python_ast::name::Name;
 use ruff_python_ast::token::{TokenKind, Tokens};
 use ruff_python_ast::visitor::transformer::{Transformer, walk_expr as transform_expr};
-use ruff_python_ast::visitor::{Visitor, walk_expr, walk_stmt};
+use ruff_python_ast::visitor::{Visitor, walk_comprehension, walk_expr, walk_stmt};
 use ruff_python_ast::{
     Expr, ExprContext, FStringPartRef, InterpolatedStringElement, Operator, Stmt, StmtFunctionDef,
     StringLiteralFlags, StringLiteralValue, Suite,
@@ -2529,6 +2529,7 @@ fn unparse_annotation_inner(expression: &Expr, source: &str) -> String {
         large_integer_values: Vec<&'ast ruff_python_ast::ExprNumberLiteral>,
         unpacked_keywords: Vec<&'ast ruff_python_ast::Keyword>,
         templates: Vec<&'ast ruff_python_ast::ExprTString>,
+        tuple_comprehension_targets: Vec<&'ast ruff_python_ast::ExprTuple>,
     }
 
     impl<'ast> Visitor<'ast> for AnnotationStrings<'ast> {
@@ -2582,6 +2583,16 @@ fn unparse_annotation_inner(expression: &Expr, source: &str) -> String {
                 self.unpacked_keywords.push(keyword);
             }
             self.visit_expr(&keyword.value);
+        }
+
+        fn visit_comprehension(&mut self, comprehension: &'ast ruff_python_ast::Comprehension) {
+            if let Expr::Tuple(tuple) = &comprehension.target
+                && tuple.parenthesized
+                && !tuple.elts.is_empty()
+            {
+                self.tuple_comprehension_targets.push(tuple);
+            }
+            walk_comprehension(self, comprehension);
         }
     }
 
@@ -2829,6 +2840,14 @@ fn unparse_annotation_inner(expression: &Expr, source: &str) -> String {
             if parenthesis_pairs.contains(&(opening, closing)) {
                 removals.extend([opening, closing]);
             }
+        }
+    }
+    // Ruff parenthesizes a tuple comprehension target; CPython writes `for i, _ in`.
+    for tuple in generated_strings.tuple_comprehension_targets {
+        let opening = usize::from(tuple.start());
+        let closing = usize::from(tuple.end()).saturating_sub(1);
+        if parenthesis_pairs.contains(&(opening, closing)) {
+            removals.extend([opening, closing]);
         }
     }
     // CPython writes a space after lambda only when it has positional parameters.

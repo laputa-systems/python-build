@@ -2919,7 +2919,21 @@ impl<'source> Compiler<'source> {
                         continue;
                     }
                     Stmt::Expr(expression)
-                        if matches!(expression.value.as_ref(), Expr::BoolOp(_)) =>
+                        if matches!(expression.value.as_ref(), Expr::BoolOp(boolean)
+                            if straight_boolean_operand(boolean)
+                                == Some(StraightBooleanOperand::Decisive)) =>
+                    {
+                        self.compile_expression(&expression.value)?;
+                        self.assembler
+                            .set_location(self.source_location(expression.value.range()));
+                        self.emit(POP_TOP, 0, -1)?;
+                        self.emit_implicit_return()?;
+                        self.control.statements.emitted_fallthrough_return = true;
+                        continue;
+                    }
+                    Stmt::Expr(expression)
+                        if matches!(expression.value.as_ref(), Expr::BoolOp(boolean)
+                            if terminal_bool_expression_keeps_jumps(boolean)) =>
                     {
                         let Expr::BoolOp(expression) = expression.value.as_ref() else {
                             unreachable!();
@@ -6961,6 +6975,10 @@ impl<'source> Compiler<'source> {
 
         let mut short_circuits = Vec::with_capacity(leading.len());
         for value in leading {
+            if jump_constant_truthiness(value).is_some() {
+                self.record_folded_value(value)?;
+                continue;
+            }
             let short_circuit = self.assembler.label();
             let continue_outer = self.assembler.label();
             short_circuits.push(short_circuit);
@@ -7215,17 +7233,22 @@ impl<'source> Compiler<'source> {
                     } else {
                         None
                     };
+                let folds_to_straight_operand = matches!(expression.value.as_ref(),
+                    Expr::BoolOp(boolean)
+                        if straight_boolean_operand(boolean) == Some(StraightBooleanOperand::Final));
                 let preserve_no_location = matches!(
                     expression.value.as_ref(),
                     Expr::BoolOp(_) | Expr::If(_)
                 ) && folded_boolean_value.is_none()
+                    && !folds_to_straight_operand
                     || matches!(expression.value.as_ref(), Expr::Compare(compare) if compare.ops.len() > 1);
                 let optimized_generator_call = matches!(
                     expression.value.as_ref(),
                     Expr::Call(call) if optimized_generator_callable_for_target(call, self.context.python_version).is_some()
                 );
-                if let Expr::If(conditional) = expression.value.as_ref()
-                    && early_condition_truthiness(&conditional.test) == Some(false)
+                if (folds_to_straight_operand
+                    || matches!(expression.value.as_ref(), Expr::If(conditional)
+                        if early_condition_truthiness(&conditional.test) == Some(false)))
                     && let Some(location) = self.assembler.last_instruction_location()
                 {
                     // The false arm falls through its original join. Keep the selected value's
@@ -36267,7 +36290,13 @@ impl<'source> Compiler<'source> {
         } else {
             None
         };
-        if !terminal && let Some(location) = body_noop_location {
+        let body_noop_on_statement_line = statement.orelse.is_empty()
+            && body_noop_location.is_some_and(|location| {
+                location.line == self.source_location(statement.range).line
+            });
+        if (!terminal || body_noop_on_statement_line)
+            && let Some(location) = body_noop_location
+        {
             self.assembler.set_location(location);
             self.emit(NOP, 0, 0)?;
         }
@@ -59189,6 +59218,42 @@ mod tests {
     }
 }
 
+fn terminal_bool_expression_keeps_jumps(expression: &ruff_python_ast::ExprBoolOp) -> bool {
+    if straight_boolean_operand(expression).is_some() {
+        return false;
+    }
+    let Some((last, leading)) = expression.values.split_last() else {
+        return false;
+    };
+    leading
+        .iter()
+        .all(|value| jump_constant_truthiness(value) != Some(expression.op == BoolOp::Or))
+        && !matches!(last, Expr::BoolOp(inner) if !terminal_bool_expression_keeps_jumps(inner))
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum StraightBooleanOperand {
+    Decisive,
+    Final,
+}
+
+fn straight_boolean_operand(
+    expression: &ruff_python_ast::ExprBoolOp,
+) -> Option<StraightBooleanOperand> {
+    let (last, leading) = expression.values.split_last()?;
+    for value in leading {
+        match jump_constant_truthiness(value)? {
+            truthiness if truthiness == (expression.op == BoolOp::Or) => {
+                return Some(StraightBooleanOperand::Decisive);
+            }
+            _ => {}
+        }
+    }
+    (!matches!(last, Expr::BoolOp(_) | Expr::If(_))
+        && !matches!(last, Expr::Compare(compare) if compare.ops.len() > 1))
+    .then_some(StraightBooleanOperand::Final)
+}
+
 #[cfg(test)]
 mod context_tests {
     use super::{Compiler, StatementContext};
@@ -59229,3 +59294,4 @@ mod context_tests {
         }
     }
 }
+

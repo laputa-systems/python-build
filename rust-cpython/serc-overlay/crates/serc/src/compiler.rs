@@ -26,6 +26,7 @@ mod orchestration;
 mod scope;
 mod source;
 mod statement;
+pub(crate) mod static_blocks;
 mod symbol;
 pub(crate) mod syntax;
 #[cfg(test)]

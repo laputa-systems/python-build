@@ -1164,6 +1164,9 @@ fn compile_normalized(
         options.optimization_level,
         mapping_key_int_max_str_digits,
     )?;
+    if options.python_version >= PythonVersion::Py316 {
+        compiler::static_blocks::validate(parsed.suite(), options.optimization_level)?;
+    }
     let mut owned_tokens = None;
     let (optimized_body, original_scopes) = if compiler::optimization::requires_optimization(
         parsed.suite(),

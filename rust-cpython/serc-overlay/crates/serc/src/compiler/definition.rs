@@ -864,15 +864,25 @@ impl Compiler<'_> {
                 name.to_owned()
             }
         };
+        let header_inlines_comprehensions = !matches!(self.unit.scope, Scope::Class { .. });
         let mut header_references = ReferenceCollector::default();
         if let Some(arguments) = definition.arguments.as_deref() {
             let mut collect = |expression: &Expr| {
                 header_references.visit_expr(expression);
-                let nested =
+                let nested = if header_inlines_comprehensions {
+                    let mut nested = nested_expression_required_names(expression);
+                    if !nested.is_empty() {
+                        let required =
+                            expression_required_names_with_mangler(expression, &header_mangle);
+                        nested.retain(|name| required.contains(name));
+                    }
+                    nested
+                } else {
                     annotation_nested_required_names_with_mangler(expression, &header_mangle)
-                        .into_iter()
-                        .map(|name| header_mangle(&name))
-                        .collect::<BTreeSet<_>>();
+                }
+                .into_iter()
+                .map(|name| header_mangle(&name))
+                .collect::<BTreeSet<_>>();
                 wrapper_requirements.extend(
                     expression_required_names_with_mangler(expression, &header_mangle)
                         .into_iter()
@@ -924,6 +934,29 @@ impl Compiler<'_> {
             required_names.contains(&emitted) || class_plan.unmangled_required.contains(&emitted)
         }));
         cellvars.insert(self.required_name_id(".type_params"));
+        let mut inlined_cellvars = FxHashSet::default();
+        if header_inlines_comprehensions && let Some(arguments) = definition.arguments.as_deref() {
+            let mut comprehension_slot = locals.len() - 1;
+            for expression in arguments
+                .args
+                .iter()
+                .chain(arguments.keywords.iter().map(|keyword| &keyword.value))
+            {
+                for name in inlined_comprehension_local_names_in_expression(expression) {
+                    let name = self.required_name_id(&header_mangle(&name));
+                    if !locals.contains(&name) {
+                        locals.insert(comprehension_slot, name);
+                        comprehension_slot += 1;
+                    }
+                }
+                inlined_cellvars.extend(
+                    inlined_comprehension_cell_names_in_expression(expression)
+                        .iter()
+                        .map(|name| self.required_name_id(&header_mangle(name))),
+                );
+            }
+        }
+        cellvars.extend(inlined_cellvars.iter().copied());
         let mut captures = Vec::new();
         #[expect(
             clippy::iter_over_hash_type,
@@ -983,6 +1016,7 @@ impl Compiler<'_> {
             local_aliases,
             globals,
             cellvars,
+            inlined_comprehension_cellvars: inlined_cellvars,
             freevars,
             ..LoweringFunctionPlan::default()
         };
@@ -1921,6 +1955,8 @@ impl Compiler<'_> {
         let mut annotation_globals: FxHashSet<_> = references
             .references
             .iter()
+            .map(String::as_str)
+            .chain(local_names.iter().skip(1).map(String::as_str))
             .map(|name| self.required_name_id(name))
             .filter(|name| !freevars.contains(name))
             .collect();
@@ -2199,6 +2235,7 @@ impl Compiler<'_> {
         let mut seen = FxHashSet::default();
         local_names.retain(|name| seen.insert(name.clone()));
         let cellvars = self.name_id_set(inlined_cellvars);
+        let comprehension_only_locals = self.name_ids(&local_names[1..]);
         let plan = LoweringFunctionPlan {
             locals: self.name_ids(&local_names),
             inlined_comprehension_cellvars: cellvars.clone(),
@@ -2222,6 +2259,9 @@ impl Compiler<'_> {
         child.inherit_lexical_context(self);
         child.unit.annotation_thunk = true;
         child.unit.renames_format_parameter = true;
+        if let Scope::Function { globals, .. } = &mut child.unit.scope {
+            globals.extend(comprehension_only_locals);
+        }
         child.emit_function_prologue()?;
         let setup_location =
             self.physical_source_location(body.first().map_or(first.range, Ranged::range));

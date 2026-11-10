@@ -411,6 +411,7 @@ fn new_validator<'source, 'ast, const PRUNE_STATEMENTS: bool, const FUTURE_ONLY:
         check_bare_starred: true,
         has_declarations: false,
         pre_lowering_only: false,
+        annotation_scope_depth: 0,
         optimization_level,
         comprehension_yield_operand: false,
         checking_comprehension_yield: false,
@@ -645,6 +646,7 @@ fn simple_function_checker_view(function: &ast::StmtFunctionDef) -> Option<Stmt>
 
 struct Validator<'source, 'ast, const PRUNE_STATEMENTS: bool, const FUTURE_ONLY: bool> {
     pre_lowering_only: bool,
+    annotation_scope_depth: usize,
     optimization_level: OptimizationLevel,
     may_have_legacy_coroutines: bool,
     comprehension_yield_operand: bool,
@@ -1016,6 +1018,38 @@ impl<'ast, const PRUNE_STATEMENTS: bool, const FUTURE_ONLY: bool>
                     "'break', 'continue' and 'return' cannot appear in an except* block",
                     statement.range(),
                 )
+                .into(),
+            );
+        }
+    }
+
+    fn reject_reserved_type_parameter(&self, range: TextRange) {
+        if FUTURE_ONLY {
+            return;
+        }
+        let mut error = self.error.borrow_mut();
+        if error.is_none() {
+            *error = Some(
+                CompileError::invalid_syntax(
+                    "reserved name '__classdict__' cannot be used for type parameter",
+                    range,
+                )
+                .into(),
+            );
+        }
+    }
+
+    fn reject_interpolated_string_pattern(&self, range: TextRange) {
+        if FUTURE_ONLY || self.pre_lowering_only {
+            return;
+        }
+        let mut error = self.error.borrow_mut();
+        if error.is_none() {
+            *error = Some(
+                CompileError::InvalidPattern {
+                    message: "patterns may only match literals and attribute lookups".to_string(),
+                    range,
+                }
                 .into(),
             );
         }
@@ -1393,6 +1427,13 @@ impl<'ast, const PRUNE_STATEMENTS: bool, const FUTURE_ONLY: bool>
             Stmt::TypeAlias(alias) => alias.type_params.as_deref(),
             _ => None,
         };
+        if let Some(parameter) = self.checked_type_params.and_then(|parameters| {
+            parameters
+                .iter()
+                .find(|parameter| parameter.name().as_str() == "__classdict__")
+        }) {
+            self.reject_reserved_type_parameter(parameter.range());
+        }
         if let Stmt::AnnAssign(assignment) = statement
             && matches!(assignment.target.as_ref(), Expr::Name(_))
             && crate::stack::is_simple_annotation(&assignment.annotation)
@@ -2324,6 +2365,11 @@ impl<'ast, const PRUNE_STATEMENTS: bool, const FUTURE_ONLY: bool> Visitor<'ast>
     }
 
     fn visit_pattern(&mut self, pattern: &'ast Pattern) {
+        if let Pattern::MatchValue(value) = pattern
+            && matches!(value.value.as_ref(), Expr::FString(_) | Expr::TString(_))
+        {
+            self.reject_interpolated_string_pattern(pattern.range());
+        }
         if let Pattern::MatchClass(class) = pattern {
             for keyword in &class.arguments.keywords {
                 self.check_debug_write(
@@ -2353,9 +2399,12 @@ impl<'ast, const PRUNE_STATEMENTS: bool, const FUTURE_ONLY: bool> Visitor<'ast>
     }
 
     fn visit_annotation(&mut self, annotation: &'ast Expr) {
+        let annotation_scope = self.python_version >= ast::PythonVersion::PY314;
+        self.annotation_scope_depth += usize::from(annotation_scope);
         self.with_bare_starred_check(!self.future_annotations, |visitor| {
             visitor.visit_expr(annotation);
         });
+        self.annotation_scope_depth -= usize::from(annotation_scope);
     }
 
     fn visit_with_item(&mut self, item: &'ast ast::WithItem) {
@@ -2429,6 +2478,9 @@ impl<const PRUNE_STATEMENTS: bool, const FUTURE_ONLY: bool> SemanticSyntaxContex
     }
 
     fn in_async_context(&self) -> bool {
+        if self.annotation_scope_depth > 0 {
+            return false;
+        }
         self.scopes
             .iter()
             .rev()
