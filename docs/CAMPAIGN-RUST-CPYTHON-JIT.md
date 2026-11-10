@@ -730,7 +730,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | T1 thread-state, ranked by profile share (OD14) | e891 epoch M0, `S0 = 0.7748`, held-out 0.8216 |
+| J | active | T2 float and int boxing (frame push/pop, `_CHECK_VALIDITY`/`_SET_IP` and guard stripping stay in T1's backlog) | T1 thread-state landed CORRECT, timing deferred to Close (OD14) |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | active | C2 in-process `exec` | C0, marshal parity and C1 landed: census 9,102 / 9,135 exact, 0 mismatches on e891 |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -738,6 +738,13 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 **Owner queue:** R1 reference report (informational, no target change
 requested): CinderX 3.15 steady JIT uplift `S = 0.7960`, held-out 1.0621, beside
 M2 ≤ 0.48, M3 ≤ 0.38, M4 ≤ 0.25. T2 does not wait for an answer.
+
+**Owner queue:** T1 thread-state (landed, async review). Every overlay build
+now regenerates the interpreter cases from `bytecodes.c` with a 3.11+
+`PYTHON_FOR_REGEN`, checked after configure; `libpython` exports three new
+private symbols, `_PyFloat_FromDoubleTstate`, `_PyFloat_ExactDeallocTstate`,
+and `_PyLong_ExactDeallocTstate`, which `_testinternalcapi` and the stencils
+reference.
 
 **Epoch e891** (`main` `e891a911`, pinned 2026-11-10) opened at R0 on macOS
 arm64:
@@ -884,3 +891,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-02 | a1 | J | M0 | instrument | `perf-rust-jit` | — → 0.7474 | A/A max 0.19% | MEASURED | `rust-cpython/results/perf-bench/20261102T174650Z-perf-climb-ref-vs-perf-rust-jit` |
 | 2026-11-10 | e891 | J | M0 | instrument | `perf-rust-jit` | — → 0.7748 | A/A max 1.19% | MEASURED | `rust-cpython/results/perf-bench/20261110T041724Z-perf-climb-ref-vs-perf-rust-jit` |
 | 2026-11-10 | 3.15.1 | R1 | R1 | CinderX steady JIT vs off | `cinderx-e48f370d` | — → 0.7960 (held-out 1.0621) | — | MEASURED | `.work/r1` |
+| 2026-11-10 | e891 | J | T1 | thread-state: executor tstate to float/int freelists (`_tlv_get_addr` 4.61% of samples, targeted chains 1.36% → 0%) | `perf-rust-jit` | timing deferred (OD14) | — | CORRECT | `campaign/t1-tstate` |
