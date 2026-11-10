@@ -1223,7 +1223,7 @@ with `--serc-verify` that set plus `test_compile`. The in-process census
 without `PYTHONSERCVERIFY=1`. `serc_parity.py --oracle` against `perf-rust`,
 whose corpus also holds that build's overlay modules, has 9,195 cases, 9,162
 exact, 0 mismatches and 33 oracle refusals. `cargo test -p serc --lib` passes
-1,242 tests, `tests.test_perf` and `tests.test_build` pass 200, and
+1,243 tests, `tests.test_perf` and `tests.test_build` pass 200, and
 `tests/test_serc_compile.py` passes on `perf-rust-serc`.
 
 Under verify, `test_compile` still fails two tests. Both differ in layout only:
@@ -1258,9 +1258,64 @@ CPython suite and the C1 corpus; none is new after this round:
 - generated programs: async comprehensions with nameless targets and nested
   comprehensions, 65 of 1,200 differ; Boolean conditions with constant and
   chained operands, 74 of 600; `with` bodies ending in conditional exits inside
-  loops, 4 of 500. These are not yet classified. Most differ in code,
-  constants, line tables or local order, but some async-comprehension cases
-  also differ in exception tables, so wrong code is not ruled out for them.
+  loops, 4 of 500.
+
+The third round classified all 143 by running each program's top-level
+function on both stage interpreters (`stage-perf-rust` and
+`stage-perf-rust-serc`, verify unset) with an exception injected at every
+instrumented operation (attribute load/store, call, iteration, await,
+`__enter__`/`__exit__`) and comparing results, exception types and messages,
+and side-effect logs, over three truth profiles. A code difference was
+compared after collapsing `NOP`s and mapping jumps and exception ranges to
+instruction indices, so cache, line-table and NOP placement do not count as
+semantic.
+
+| family | differ | layout-only | behaviour-identical, shape/latent delta | observable |
+| --- | ---: | ---: | ---: | ---: |
+| async comprehensions | 65 | 44 | 16 | 5 |
+| Boolean statements | 74 | 34 | 40 | 0 |
+| `with` in a loop | 4 | 4 | 0 | 0 |
+
+In the exit's two classes, 5 of the 143 observe a difference and 138 are
+behaviour-identical, 82 of them pure layout.
+
+The five observable async programs all read a comprehension target whose
+binding belongs to a sibling comprehension: Serc resolved it to the enclosing
+function's fast local or cell (`LOAD_FAST_CHECK`/`LOAD_DEREF`), CPython to the
+global (`LOAD_GLOBAL`). In normal mode this is silent wrong code: the fuzzed
+programs raised `UnboundLocalError` where CPython read the global (one of them
+inside an `async with`, so the manager's `__aexit__` saw a different
+exception), and a program with a global of that name would read the wrong
+value. The minimal repro is
+`tests/fixtures/python316_parity/nested_comprehension_sibling_target.py`:
+`def f(): return [[k for i.a.b in r] for j in q if [i for i in q]]`. The
+scope analysis treated any binding found anywhere in a comprehension
+expression, including one owned by a nested comprehension, as bound in the
+enclosing comprehension, so no outside reference was recorded. The overlay
+now carries `compiler/scope.rs`; `own_bound` is the current comprehension's
+generator targets, and only those enter the seen-target set.
+
+Sixteen async programs were behaviour-identical but not layout-only; three of
+them shared the sibling-target cause and are now byte-identical. The
+remaining thirteen are latent: twelve keep an extra comprehension cell
+(`MAKE_CELL` and `co_cellvars` gain the target; some never read it, others
+read it with `LOAD_DEREF` only in a generator expression the program never
+executes) and one uses `LOAD_FAST` where CPython keeps `LOAD_FAST_CHECK`; no
+executed path observes either. The forty Boolean shape deltas come from
+CPython folding constant operands such as `1 and b` before the later jump and
+exit cleanup; Serc evaluates the constant and folds later. The differing
+instructions are constant loads, copies, jumps, pops and exits; the
+non-constant loads, calls and stores keep their order, and the harness
+observed the same effects. The four `with` cases are one `NOP` CPython keeps
+at the manager-merge label, which changes code size, jumps and the exception
+table's target offsets but no handler depth or protected instruction.
+
+Evidence: `cargo test -p serc --lib` passes 1,243 tests (the new fixture fails
+on the unpatched analysis); with the fixed Serc CLI the async corpus drops
+from 65 to 57 differing, and the five observable programs and the three latent
+sibling-target programs become exact; the C1 corpus census against
+`stage-perf-rust` is 9,195 cases, 9,162 exact, 0 mismatches, 33 oracle
+refusals.
 
 **Memory.** Peak RSS regresses on every C2 workload, and its cause is Serc's
 code size, not how it is loaded. Linking Serc grows `libpython` `__text` from
