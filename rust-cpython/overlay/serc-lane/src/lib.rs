@@ -111,7 +111,7 @@ fn compile(
     };
     let compiled = if source_is_text {
         let text = std::str::from_utf8(source).map_err(|error| {
-            CompileFailure::Refused(format!("source text is not UTF-8: {error}"))
+            CompileFailure::CpythonGrammar(format!("source text is not UTF-8: {error}"))
         })?;
         serc::compile_with_python_filename_and_integer_limits(
             text,

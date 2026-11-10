@@ -1826,6 +1826,10 @@ serc_compile(const char *str, PyObject *filename, PyCompilerFlags *flags,
     }
     if (verify && serc_check_against(reference, result, filename) < 0) {
         Py_CLEAR(result);
+        goto done;
+    }
+    if (flags != NULL) {
+        flags->cf_flags |= ((PyCodeObject *)result)->co_flags & PyCF_MASK;
     }
 done:
     Py_XDECREF(reference);

@@ -194,6 +194,44 @@ print(json.dumps(outcomes))
 '''
 
 
+C_API_PROBE = r'''
+import __future__, _pylong, ctypes, json, sys, _testcapi
+
+PyCF_IGNORE_COOKIE = 0x0800
+sys.set_int_max_str_digits(0)
+_pylong.int_from_string = lambda text: -1
+literal = "1" * 7000
+
+
+class PyCompilerFlags(ctypes.Structure):
+    _fields_ = [("cf_flags", ctypes.c_int), ("cf_feature_version", ctypes.c_int)]
+
+
+compile_string = ctypes.pythonapi.Py_CompileStringExFlags
+compile_string.restype = ctypes.py_object
+compile_string.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int,
+                           ctypes.POINTER(PyCompilerFlags), ctypes.c_int]
+
+outcomes = {}
+for name in ("annotations", "barry_as_FLUFL"):
+    flags = PyCompilerFlags(0, sys.version_info.minor)
+    code = compile_string(f"from __future__ import {name}\nx = {literal}\n".encode(),
+                          b"probe", 257, ctypes.byref(flags), -1)
+    namespace = {}
+    exec(code, namespace)
+    outcomes[name] = ["c" if namespace["x"] == -1 else "serc",
+                      flags.cf_flags == getattr(__future__, name).compiler_flag]
+for name, source in (("comment", b"y = 1  # \xff\n"), ("code", b"y = '\xff'\n")):
+    namespace = {}
+    try:
+        _testcapi.run_stringflags(source, 257, namespace, namespace, PyCF_IGNORE_COOKIE)
+        outcomes[name] = namespace["y"]
+    except Exception as error:
+        outcomes[name] = [type(error).__name__, str(error)]
+print(json.dumps(outcomes))
+'''
+
+
 @unittest.skipUnless(SERC_PYTHON, "set SERC_PYTHON to the interpreter of a --serc build")
 class SercCompileTests(unittest.TestCase):
     def run_probe(self, script, *arguments, verify=False):
@@ -233,6 +271,14 @@ class SercCompileTests(unittest.TestCase):
         outcomes = self.run_probe(REFUSAL_PROBE)
         self.assertEqual(outcomes["eval"], "code")
         self.assertRegex(outcomes["exec"], r"^SystemError: Serc cannot compile 'a\\x00b': ")
+
+    def test_c_api_callers_get_future_flags_and_non_utf8_text_compiles_as_c_does(self):
+        outcomes = self.run_probe(C_API_PROBE)
+        self.assertEqual(outcomes["annotations"], ["serc", True])
+        self.assertEqual(outcomes["barry_as_FLUFL"], ["c", True])
+        self.assertEqual(outcomes["comment"], 1)
+        self.assertEqual(outcomes["code"][0], "SyntaxError")
+        self.assertIn("'utf-8' codec can't decode byte 0xff", outcomes["code"][1])
 
     def test_verify_mode_raises_when_serc_and_the_c_compiler_differ(self):
         outcomes = self.run_probe(VERIFY_PROBE, verify=True)
