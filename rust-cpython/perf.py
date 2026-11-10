@@ -2157,6 +2157,49 @@ def _jit_stats_probe(python: Path, name: str, env: dict[str, str],
         raise LaneError(f"cannot parse jit-stats probe for {name}: {result.stdout!r}") from error
 
 
+_JIT_CODE_BYTES_PROBE = """
+import sys
+sys.path.insert(0, "rust-cpython")
+from benchmarks.workloads import jit_kernels
+
+jit_kernels.run(sys.argv[1])
+"""
+
+
+def parse_jit_map_code_bytes(jit_map: str) -> int:
+    total = 0
+    for line in jit_map.splitlines():
+        fields = line.split("\t")
+        if fields[0] == "T":
+            total += int(fields[3], 16) - int(fields[2], 16)
+    return total
+
+
+def _jit_code_bytes(side: dict[str, Any], name: str, env: dict[str, str],
+                    scratch: Path) -> int | None:
+    if lb.IS_LINUX or side["report"].get("pristine"):
+        return None
+    python = side["python"]
+    mapping = scratch / f"{name}.jit-map.tsv"
+    mapping.unlink(missing_ok=True)
+    probe_env = dict(env)
+    probe_env["TMPDIR"] = str(scratch)
+    probe_env["PYTHON_JIT_MAP"] = str(mapping)
+    result = subprocess.run(
+        [str(python), "-S", "-c", _JIT_CODE_BYTES_PROBE, name],
+        cwd=REPO, env=probe_env, capture_output=True, text=True, timeout=1800,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise LaneError(
+            f"jit-stats code-bytes run for {name} failed: "
+            f"{(result.stderr or result.stdout).strip()[-2000:]}"
+        )
+    if not mapping.is_file():
+        raise LaneError(f"jit-stats code-bytes run for {name} wrote no JIT map")
+    return parse_jit_map_code_bytes(mapping.read_text())
+
+
 def _libpython_sizes(side: dict[str, Any], toolchain) -> dict[str, Any]:
     if not lb.IS_LINUX:
         return {"status": "unavailable"}
@@ -2199,6 +2242,8 @@ def jit_stats(*, ref: str, workload: str | None, jit_set: bool) -> int:
         scratch = LANE / "work" / "tmp" / "jit-stats"
         scratch.mkdir(parents=True, exist_ok=True)
         rows = [_jit_stats_probe(side["python"], name, env, scratch) for name in names]
+        for row in rows:
+            row["code_bytes"] = _jit_code_bytes(side, row["name"], env, scratch)
         _verify_stage(side)
 
     print(f"REF   {ref} -> {side['name']}")
@@ -2207,7 +2252,8 @@ def jit_stats(*, ref: str, workload: str | None, jit_set: bool) -> int:
               f"data={sizes['data_bytes']} bytes rodata={sizes['rodata_bytes']} bytes")
     else:
         print(f"LIB   unavailable for {side['report'].get('target', 'this target')}")
-    print(f"{'workload':<30} {'maps':>5} {'rss_kib':>8} {'warmup':>7} {'ops':>10}  jit")
+    print(f"{'workload':<30} {'maps':>5} {'rss_kib':>8} {'code_b':>9} {'warmup':>7} "
+          f"{'ops':>10}  jit")
     for row in rows:
         residency = row["residency"]
         if "mappings" in residency:
@@ -2220,7 +2266,8 @@ def jit_stats(*, ref: str, workload: str | None, jit_set: bool) -> int:
         state = " ".join(
             f"{key}={str(jit[key]).lower()}" for key in ("available", "enabled", "active")
         )
-        print(f"{row['name']:<30} {maps:>5} {rss:>8} {warmup:>7} "
+        code = "unavailable" if row["code_bytes"] is None else str(row["code_bytes"])
+        print(f"{row['name']:<30} {maps:>5} {rss:>8} {code:>9} {warmup:>7} "
               f"{row['operation_count']:>10}  {state}")
     return 0
 
