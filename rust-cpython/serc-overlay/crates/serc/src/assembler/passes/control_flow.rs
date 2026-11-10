@@ -7308,6 +7308,7 @@ impl OptimizationPipeline {
         let mut previous = None;
         let mut previous_graph_block = None;
         let mut previous_position = None;
+        let mut label_since_previous = false;
         let mut removed_unpack_line_block = None;
         let mut redundant = Vec::new();
         let mut borrow_empty_nops = Vec::new();
@@ -7324,6 +7325,7 @@ impl OptimizationPipeline {
                 // Only leading labels reach this arm. Once there is an original instruction,
                 // its lookahead consumes all labels before the next one.
                 Item::Label(label) => {
+                    label_since_previous = true;
                     if track_exception_owners {
                         if track_pop_block_boundaries {
                             preceding_labels.push(*label);
@@ -7348,9 +7350,11 @@ impl OptimizationPipeline {
                 previous = Some(instruction);
                 previous_graph_block = Some(graph_block);
                 previous_position = Some(position);
+                label_since_previous = false;
                 removed_unpack_line_block = None;
                 continue;
             }
+            let follows_label = label_since_previous;
             let block = history_block;
             if track_exception_owners
                 && (instruction.opcode == NOT_TAKEN
@@ -7363,8 +7367,10 @@ impl OptimizationPipeline {
             // will be removed. The next instruction also remains the next original instruction,
             // whereas `previous` below advances only when an instruction survives.
             let mut setup_nop = false;
+            let mut label_after_current = false;
             while let Some((_, _, Item::Label(label))) = items.peek().copied() {
                 let _ = items.next();
+                label_after_current = true;
                 if track_exception_owners {
                     if track_pop_block_boundaries {
                         following_labels.push(*label);
@@ -7545,6 +7551,7 @@ impl OptimizationPipeline {
                         }))
                     || next.is_some_and(|next| next.location.line == instruction.location.line)
                     || (previous_graph_block == Some(graph_block)
+                        && !follows_label
                         && previous.is_some_and(|previous: &Instruction| {
                             previous.location.line == instruction.location.line
                                 && !previous.fusion_policy.location_from_next()
@@ -7656,8 +7663,10 @@ impl OptimizationPipeline {
                 previous = Some(instruction);
                 previous_graph_block = Some(graph_block);
                 previous_position = Some(position);
+                label_since_previous = false;
                 removed_unpack_line_block = None;
             }
+            label_since_previous |= label_after_current;
             if track_pop_block_boundaries {
                 previous_original = Some((position, instruction));
                 preceding_labels.clear();

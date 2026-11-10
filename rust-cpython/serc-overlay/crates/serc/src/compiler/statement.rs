@@ -26100,6 +26100,8 @@ impl<'source> Compiler<'source> {
                 // The eliminated loop body leaves a CFG boundary that CPython's borrowed-load
                 // optimizer does not traverse into the following block.
                 self.assembler.set_strict_owned_loads(true);
+                let header = self.assembler.label();
+                self.assembler.mark(header);
                 self.assembler
                     .set_location(self.source_location(statement.test.range()));
                 self.emit(NOP, 0, 0)?;

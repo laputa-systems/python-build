@@ -4373,3 +4373,15 @@ fn python316_marshal_matches_cpython_for_handler_declaration_cleanup() {
         include_str!("../../tests/fixtures/python316_parity/handler_declaration_cleanup.marshal.hex"),
     );
 }
+
+#[test]
+fn python316_marshal_matches_cpython_for_folded_while_header_after_annotation_setup() {
+    assert_python316_marshal(
+        include_str!(
+            "../../tests/fixtures/python316_parity/folded_while_header_after_annotation_setup.py"
+        ),
+        include_str!(
+            "../../tests/fixtures/python316_parity/folded_while_header_after_annotation_setup.marshal.hex"
+        ),
+    );
+}
