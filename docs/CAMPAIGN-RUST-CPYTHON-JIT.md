@@ -427,6 +427,25 @@ measured contribution, and a ledger row with CinderX's within-version `S`.
 The catalog's report sets that uplift beside M2-M4 in the **Owner queue**.
 Targets stand unless the owner moves them; T2 does not wait for an answer.
 
+**Setup (done 2026-11-09).** Rebuild it into `.work/r1/` when absent:
+
+- CPython 3.15.1 from the root `sources.lock.json` archive (sha256
+  `673ae723…f99b`): `./configure --prefix=$PWD/.work/r1/install
+  --with-ensurepip=install`, `make`, `make install`.
+- CinderX `e48f370dfcc045db32ac19142419043342b10cfb`: `python3 setup.py
+  bdist_wheel` with that interpreter, then install the wheel into it. Closure:
+  CinderX MIT, asmjit Zlib, and fmt, parallel-hashmap, usdt, capstone, and
+  googletest fetched by CMake; lightweight frames, parallel GC, and Static
+  Python are off on 3.15.
+- Tests: `pytest cinderx/PythonLib/test_cinderx/` (3035 passed, 566 skipped)
+  and `RuntimeTests` with the CI macOS arm64 filter (1205 passed, 7 skipped).
+- JIT off: `-X cinderx-jit-disable`. JIT on: `-X cinderx-jit-all -X
+  cinderx-jit-background-compile=0`, which compiles every function on its
+  first call. The timed runs also measure CinderX's default `cinderx.jit.auto()`
+  policy, because compile-everything inflates compile CPU and code bytes.
+- `rust-cpython/tests/cinderx_kernels.py --python <interp>` runs all 24
+  kernels in both modes; every digest matches across modes and the harness.
+
 If CinderX does not build or pass its tests on 3.15.1 within three
 root-caused attempts, R1 ends with a source-only catalog (step 3 without
 measured contributions), and T2-T4 rank by the lane's own profiles.
@@ -629,9 +648,9 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
 | J | ready | R0 | a1 epoch M0, `S0 = 0.7474`; no climb step taken |
-| R1 | ready | CinderX study | — |
+| R1 | active | step 2, timed runs | setup done: CinderX `e48f370d` on 3.15.1, tests green, 24/24 digests match |
 | C | ready | C0, then marshal parity | — |
-| Close | needs environment | Linux image absent on this host | — |
+| Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
 
 **Owner queue:** empty.
 
