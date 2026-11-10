@@ -995,7 +995,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | T1 frame push and pop pop fast-path inlining (1.3% removable), next in the re-ranked backlog | T1 `_CHECK_VALIDITY` and `_SET_IP` measured: 3.5% share is 0.0% removable on the final traces (every sampled one has an escaping/needs-IP observer or a preceding escape); upstream's removal pass already does both sound removals; dropped under P1's 1% floor |
+| J | active | T1 frame push and pop pop fast-path inlining (1.3% removable), next in the re-ranked backlog | T1 generic thread-state deallocation: fft `_tlv_get_addr` 3.68%/3.70% → 2.49%/2.84%, `float_dealloc` 3.97%/3.49% → 2.13%/2.03%, `long_dealloc` 1.16%/0.93% → 0.50%/0.51%, `PyLong_FromLong` 0.71%/1.15% → 0.08%/0.08%; CORRECT |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | active | C2 in-process `exec` | C0, marshal parity and C1 landed: census 9,102 / 9,135 exact, 0 mismatches on e891 |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -1010,6 +1010,19 @@ now regenerates the interpreter cases from `bytecodes.c` with a 3.11+
 private symbols, `_PyFloat_FromDoubleTstate`, `_PyFloat_ExactDeallocTstate`,
 and `_PyLong_ExactDeallocTstate`, which `_testinternalcapi` and the stencils
 reference.
+
+**Owner queue:** T1 generic thread-state deallocation (landed, async review).
+`libpython` exports one more private symbol, `_Py_DeallocTstate`, which
+dispatches exact floats and exact longs to `_PyFloat_ExactDeallocTstate` and
+`_PyLong_ExactDeallocTstate` and every other object to `_Py_Dealloc`. In
+`overlay/Python/bytecodes.c`, `_STORE_SUBSCR_LIST_INT` and the three
+`_STORE_ATTR_*` sites use `_Py_DECREF_TSTATE`/`_Py_XDECREF_TSTATE`; `POP_TOP`
+uses the NULL-tolerant `PyStackRef_XCLOSE_TSTATE`, because `STORE_FAST` hands
+it the old local, which is NULL on first assignment; `_ITER_NEXT_RANGE` uses
+`_PyLong_FromCompactTstate`. The inline helpers are private;
+`_Py_DeallocTstate` is the only new exported name. Independent review: one
+blocking finding (a non-X close in `POP_TOP` asserted on NULL in assert-enabled
+builds), fixed; nothing else above low.
 
 **Owner ruling (2026-11-10):** a J candidate may fail, only with the JIT,
 upstream tests whose sole failing assertion names a uop the candidate rewrites
@@ -1203,3 +1216,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-10 | e891 | J | T1 | frame push and pop: 13.0% sampled share; clear-loop slots 96.4-99.8% live on return-heavy kernels; prologue/epilogue plus NULL-slot scan 1.3% removable | `perf-jit-int-unbox` | — | — | MEASURED (above P1's 1% floor; ranked first in T1) | `rust-cpython/results/perf-profile/20261110T14*-perf-jit-int-unbox-*-sample` |
 | 2026-11-10 | e891 | J | T1 | type and version guards: 8.5% sampled share; 4.6% first checks, 3.8% on values with no trace-local fact, 0.01% provably removable (go `_CHECK_MANAGED_OBJECT_HAS_VALUES` and same-frame globals versions); code-version repeats 0.06% are not provable | `perf-jit-int-unbox` | — | — | DROPPED (under P1's 1% floor) | `rust-cpython/results/perf-profile/20261110T14*-perf-jit-int-unbox-*-sample` |
 | 2026-11-10 | e891 | J | T1 | `_CHECK_VALIDITY` and `_SET_IP`: 3.47% sampled share (2.90% + 0.57%); 0 of 227 sampled `_SET_IP` and 0 of 835 sampled `_CHECK_VALIDITY` removable, every one has a following escaping/needs-IP observer or a preceding escape; the removal pass runs before T2 unboxing, which leaves one unsampled stale pair | `perf-jit-int-unbox` | — | — | DROPPED (under P1's 1% floor) | `rust-cpython/results/perf-profile/20261110T14*-perf-jit-int-unbox-*-sample` |
+| 2026-11-10 | e891 | J | T1 | generic thread-state deallocation: `_tlv_get_addr` sampled share fft 3.68%/3.70% → 2.49%/2.84%, fannkuch 6.80% → 6.34%/5.31% (one incumbent repeat 18.52% sampling outlier), raytrace 2.70% → 2.16%, nqueens 5.25% → 5.26%, richards 0.42% → 0.63%; fft `float_dealloc` 3.97%/3.49% → 2.13%/2.03%, `long_dealloc` 1.16%/0.93% → 0.50%/0.51%, `PyLong_FromLong` 0.71%/1.15% → 0.08%/0.08%; the remaining `PyFloat_FromDouble` TLV enters through `array_subscr` | `perf-jit-int-unbox` | timing deferred (OD14) | — | CORRECT | `rust-cpython/results/perf-profile/20261110T1607*-perf-jit-{int-unbox,tlv}-{nqueens,fannkuch,scimark_fft,richards,raytrace}-sample`, repeats `20261110T1609*-...-{fannkuch,scimark_fft}-sample` |
