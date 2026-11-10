@@ -2530,6 +2530,7 @@ fn unparse_annotation_inner(expression: &Expr, source: &str) -> String {
         unpacked_keywords: Vec<&'ast ruff_python_ast::Keyword>,
         templates: Vec<&'ast ruff_python_ast::ExprTString>,
         tuple_comprehension_targets: Vec<&'ast ruff_python_ast::ExprTuple>,
+        generator_ranges: FxHashSet<(usize, usize)>,
     }
 
     impl<'ast> Visitor<'ast> for AnnotationStrings<'ast> {
@@ -2564,6 +2565,13 @@ fn unparse_annotation_inner(expression: &Expr, source: &str) -> String {
                     {
                         self.large_integer_values.push(number);
                     }
+                }
+                Expr::Generator(generator) => {
+                    self.generator_ranges.insert((
+                        usize::from(generator.start()),
+                        usize::from(generator.end()),
+                    ));
+                    walk_expr(self, expression);
                 }
                 Expr::Call(call) => {
                     self.needs_normalization |= call
@@ -2777,7 +2785,10 @@ fn unparse_annotation_inner(expression: &Expr, source: &str) -> String {
                 });
             (is_subscript
                 && closing.saturating_sub(opening) > 3
-                && parenthesis_pairs.contains(&(opening + 1, closing.saturating_sub(1))))
+                && parenthesis_pairs.contains(&(opening + 1, closing.saturating_sub(1)))
+                && !generated_strings
+                    .generator_ranges
+                    .contains(&(opening + 1, closing)))
             .then_some([opening + 1, closing - 1])
         })
         .flatten()

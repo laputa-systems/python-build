@@ -6,3 +6,6 @@ d: (j for () in y)
 e: [m for (m, n) in y for [o, p] in z]
 def f(h: {a for a, *b in c}) -> [p for p, (q, r) in s]:
     pass
+g: slice[(x for x in a)]
+h: slice[(x for x in a), (y for y in b)]
+i: d[(a, b)]
