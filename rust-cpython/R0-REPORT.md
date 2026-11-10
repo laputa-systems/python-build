@@ -158,10 +158,9 @@ behaviour of the upstream path it replaced; all three are fixed in `overlay/`.
    each member through `_new_decompressor` (now `overlay/Lib/gzip.py:800-802`)
    and `lzma.decompress` returned `_rust_lzma.decompress_xz` directly (now
    `overlay/Lib/lzma.py:412`), so the replaced factory was never constructed and
-   both `fed` counts stayed 0. `gzip.decompress` now calls the zlib factory when
-   the module attribute no longer belongs to `zlib`
-   (`gzip.py:795-798`; `zlib.decompressobj.__self__ is not zlib`), keeping the
-   Rust decoder only when the factory is untouched; `lzma.decompress` takes the
+   both `fed` counts stayed 0. `gzip.decompress` now calls `zlib.decompressobj` when it is neither the
+   C builtin nor the lane's Rust wrapper (`zlib._rust_decompressobj`), keeping
+   the Rust decoder otherwise; `lzma.decompress` takes the
    Rust fast path only while the module global is the C class
    (`lzma.py:32` imports `_lzma.LZMADecompressor`; `lzma.py:407-408` requires
    `LZMADecompressor is _CPythonLZMADecompressor`) and otherwise uses upstream's
