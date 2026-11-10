@@ -35739,11 +35739,16 @@ impl<'source> Compiler<'source> {
                             .last_instruction_location()
                             .unwrap_or(SourceLocation::NONE),
                     );
-                } else if !handler_body_has_instructions
-                    && let Some(statement) = handler.body.last()
-                {
-                    self.assembler
-                        .set_location(self.source_location(statement.range()));
+                } else if !handler_body_has_instructions && !handler.body.is_empty() {
+                    let location = handler
+                        .body
+                        .iter()
+                        .rev()
+                        .find(|statement| !is_scope_declaration(statement))
+                        .map_or(SourceLocation::NONE, |statement| {
+                            self.source_location(statement.range())
+                        });
+                    self.assembler.set_location(location);
                 // CPython leaves cleanup after these direct trailing compound joins unlocated so
                 // every incoming edge can inline its own copy with the predecessor's line.
                 } else if handler_ends_with_unlocated_cleanup {
@@ -36465,7 +36470,9 @@ impl<'source> Compiler<'source> {
             } else {
                 handler
                     .body
-                    .last()
+                    .iter()
+                    .rev()
+                    .find(|statement| !is_scope_declaration(statement))
                     .map_or(SourceLocation::NONE, |statement| {
                         self.source_location(statement.range())
                     })
@@ -54989,6 +54996,14 @@ fn condition_has_completed_set_comparison(expression: &Expr) -> bool {
         })
 }
 
+fn is_scope_declaration(statement: &Stmt) -> bool {
+    match statement {
+        Stmt::Global(declaration) => !declaration.names.is_empty(),
+        Stmt::Nonlocal(_) => true,
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod protected_iterator_erased_else_tests {
     use ruff_python_ast::Stmt;
@@ -59301,4 +59316,3 @@ mod context_tests {
         }
     }
 }
-

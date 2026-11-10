@@ -4365,3 +4365,11 @@ fn python316_marshal_matches_cpython_for_same_line_nop_after_store() {
         include_str!("../../tests/fixtures/python316_parity/same_line_nop_after_store.marshal.hex"),
     );
 }
+
+#[test]
+fn python316_marshal_matches_cpython_for_handler_declaration_cleanup() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/handler_declaration_cleanup.py"),
+        include_str!("../../tests/fixtures/python316_parity/handler_declaration_cleanup.marshal.hex"),
+    );
+}
