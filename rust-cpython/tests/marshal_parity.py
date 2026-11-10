@@ -155,6 +155,8 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--baseline", default="perf-upstream")
     parser.add_argument("--candidate", default="perf-rust")
+    parser.add_argument("--corpus", type=Path,
+                        help="probe every .py under this tree instead of the assembled Lib/")
     parser.add_argument("--emit", metavar="LIB", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if args.emit:
@@ -165,7 +167,8 @@ def main(argv: list[str] | None = None) -> int:
              for label, name in ((BASELINE_LABEL, args.baseline),
                                  (CANDIDATE_LABEL, args.candidate))}
     # Both builds assemble the same pinned source; probe one Lib/ tree.
-    lib = _source_lib(Path(sides[BASELINE_LABEL]["source"]))
+    lib = (args.corpus.resolve() if args.corpus
+           else _source_lib(Path(sides[BASELINE_LABEL]["source"])))
     results = {label: _probe(side, lib) for label, side in sides.items()}
     mismatches = (_compare("files", results[BASELINE_LABEL], results[CANDIDATE_LABEL])
                   + _compare("values", results[BASELINE_LABEL], results[CANDIDATE_LABEL]))
