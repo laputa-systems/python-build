@@ -338,15 +338,10 @@ class UUID:
         object.__setattr__(self, 'is_safe', is_safe)
 
     @classmethod
-    def _from_int(cls, value, version=None):
+    def _from_int(cls, value):
         """Create a UUID from an integer *value*. Internal use only."""
         assert 0 <= value <= _UINT_128_MAX, repr(value)
-        data = value.to_bytes(16)
-        if version is not None:
-            data = _set_version(data, version)
-        else:
-            data = _normalize(data)
-        value = int_.from_bytes(data)
+        value = int_.from_bytes(_normalize(value.to_bytes(16)))
         self = object.__new__(cls)
         object.__setattr__(self, 'int', value)
         object.__setattr__(self, 'is_safe', SafeUUID.unknown)
@@ -842,7 +837,7 @@ def uuid3(namespace, name):
 
 def uuid4():
     """Generate a random UUID."""
-    if _uuid_rs is None:
+    if _uuid_rs is None or _random_hook is not None:
         int_uuid_4 = int.from_bytes(_gen_random(16))
         int_uuid_4 &= _RFC_4122_CLEARFLAGS_MASK
         int_uuid_4 |= _RFC_4122_VERSION_4_FLAGS
@@ -896,7 +891,7 @@ def uuid6(node=None, clock_seq=None):
     int_uuid_6 |= node & 0xffff_ffff_ffff
     # by construction, the variant and version bits are already cleared
     int_uuid_6 |= _RFC_4122_VERSION_6_FLAGS
-    return UUID._from_int(int_uuid_6, version=6)
+    return UUID._from_int(int_uuid_6)
 
 
 _last_timestamp_v7 = None
@@ -968,7 +963,7 @@ def uuid7():
     int_uuid_7 |= tail
     # by construction, the variant and version bits are already cleared
     int_uuid_7 |= _RFC_4122_VERSION_7_FLAGS
-    res = UUID._from_int(int_uuid_7, version=7)
+    res = UUID._from_int(int_uuid_7)
 
     # defer global update until all computations are done
     _last_timestamp_v7 = timestamp_ms
@@ -999,7 +994,7 @@ def uuid8(a=None, b=None, c=None):
     int_uuid_8 |= c & 0x3fff_ffff_ffff_ffff
     # by construction, the variant and version bits are already cleared
     int_uuid_8 |= _RFC_4122_VERSION_8_FLAGS
-    return UUID._from_int(int_uuid_8, version=8)
+    return UUID._from_int(int_uuid_8)
 
 
 _py_uuid4 = uuid4

@@ -683,6 +683,7 @@ def copytree(src, dst, symlinks=False, ignore=None, copy_function=copy2,
     if (_shutil_rs is not None and isinstance(src, str) and isinstance(dst, str)
             and not symlinks and ignore is None and copy_function is copy2
             and not ignore_dangling_symlinks and not dirs_exist_ok
+            and copy_dir_stat
             and all(isinstance(entry, os.DirEntry) for entry in entries)):
         errors = []
 

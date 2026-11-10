@@ -75,27 +75,15 @@ from io import StringIO, TextIOWrapper
 
 
 _CSV_RS_UNSET = object()
-_csv_rs = _CSV_RS_UNSET
+try:
+    import _csv_rs
+except ModuleNotFoundError as exc:
+    if exc.name != "_csv_rs":
+        raise
+    _csv_rs = None
 _RUST_READER_INPUT_TYPES = (
     list, tuple, type(iter([])), type(iter(())), StringIO, TextIOWrapper,
 )
-
-
-def _get_csv_rs():
-    global _csv_rs
-    if _csv_rs is _CSV_RS_UNSET:
-        try:
-            import _csv_rs
-        except ImportError as exc:
-            if (
-                exc.name != "_csv_rs"
-                and not str(exc).startswith("module _csv_rs ")
-            ):
-                raise
-            _csv_rs = None
-        else:
-            globals()['_csv_rs'] = _csv_rs
-    return _csv_rs
 
 
 def _rust_excel_dialect(dialect):
@@ -173,7 +161,7 @@ class _RustReader:
     def __next__(self):
         if self._native is not None:
             return next(self._native)
-        backend = _get_csv_rs()
+        backend = _csv_rs
         if backend is None:
             self._use_native()
             return next(self._native)
@@ -237,7 +225,7 @@ class _RustWriter:
                 and not any(0xd800 <= ord(char) <= 0xdfff for char in field)
                 for field in row
             ):
-                backend = _get_csv_rs()
+                backend = _csv_rs
                 if backend is not None:
                     return self._write(backend.write_record(row))
         return self._native.writerow(row)

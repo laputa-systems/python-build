@@ -107,6 +107,9 @@ fn metadata_children(
         }
     }
 
+    found.sort_by_key(|child| child.to_lowercase());
+    found.reverse();
+
     Some(found)
 }
 

@@ -16,17 +16,17 @@ use cpython_sys::{
     PyComplex_FromDoubles, PyComplex_ImagAsDouble, PyComplex_RealAsDouble, PyComplex_Type,
     PyCode_Type, Py_DecRef, Py_IncRef, PyDict_New, PyDict_Next, PyDict_SetItem, PyDict_Type,
     PyErr_Clear, PyErr_Occurred, PyFloat_FromDouble, PyFloat_Type, PyFrozenSet_New,
-    PyFrozenSet_Type, PyIter_Next, PyList_Append, PyList_GetItem, PyList_New, PyList_SetItem,
-    PyList_Sort, PyList_Type, PyLong_AsLongLongAndOverflow, PyLong_Export, PyLong_FreeExport,
+    PyFrozenSet_Type, PyIter_Next, PyList_New, PyList_SetItem, PyList_Type,
+    PyLong_AsLongLongAndOverflow, PyLong_Export, PyLong_FreeExport,
     PyLong_FromLongLong, PyLong_GetNativeLayout, PyLong_Type, PyLongExport, PyLongWriter_Create,
     PyLongWriter_Discard, PyLongWriter_Finish, PyMem_Calloc, PyMem_Free, PyMem_Realloc, PyModule_Add,
     PyModuleDef, PyModuleDef_HEAD_INIT, PyModuleDef_Init, PyModuleDef_Slot, PyObject,
-    PyObject_GetIter, PyObject_IsTrue, PySet_Add, PySet_New, PySet_Type, PyTuple_GetItem,
-    PyTuple_New, PyTuple_SetItem, PyTuple_Type, PyTypeObject, PyUnicode_AsEncodedString,
+    PyObject_GetIter, PyObject_IsTrue, PySet_Add, PySet_New, PySet_Type, PyTuple_New, PyTuple_Type,
+    PyTypeObject, PyUnicode_AsEncodedString,
     PyUnicode_DecodeUTF8, PyUnicode_InternInPlace, PyUnicode_Type, Py_ssize_t, _Py_NoneStruct,
     _PyBytes_Resize, _object, PyFloatObject, PyListObject, PyTupleObject, PyVarObject, _longobject,
 };
-use cpython_sys::{PyBytes_AsString, PyBytes_Size, PyList_Size};
+use cpython_sys::{PyBytes_AsString, PyBytes_Size};
 
 const FLAG_REF: u8 = 0x80;
 const MAX_DEPTH: usize = 128;
@@ -39,8 +39,14 @@ const ACTIVE: u32 = 0x8000_0000;
 /// Set on a table entry and its `refs` record once the object is seen more
 /// than once. Only shared objects carry FLAG_REF in the final record.
 const SHARED: u32 = 0x4000_0000;
-/// Low bits of a table value holding the index into the `refs` array.
-const INDEX_MASK: u32 = 0x3fff_ffff;
+/// Set on a table entry whose value is an index into `ties`: the object is a
+/// set element indistinguishable from the other elements of its tie group.
+const TIED: u32 = 0x2000_0000;
+/// Low bits of a table value holding the index into the `refs` array, or into
+/// `ties` while `TIED` is set.
+const INDEX_MASK: u32 = 0x1fff_ffff;
+/// Order of a set element that has not been written yet.
+const SET_ITEM_NEW: usize = 1 << (usize::BITS - 1);
 
 /// The fixed-order fields of a code object, shared with `Python/marshal.c`.
 #[repr(C)]
@@ -164,6 +170,95 @@ struct Slot {
     value: u32,
 }
 
+/// One element of a set being written: the element itself, its standalone
+/// record, and its order among the elements with the same record.
+#[derive(Clone, Copy)]
+struct SetItem {
+    value: *mut PyObject,
+    dump: *mut PyObject,
+    dump_data: *const u8,
+    dump_len: usize,
+    order: usize,
+}
+
+/// An array of set elements in Python's allocator.  Dropping it releases the
+/// references it owns.
+struct SetItems {
+    items: *mut SetItem,
+    len: usize,
+    cap: usize,
+}
+
+impl SetItems {
+    fn new() -> Self {
+        Self {
+            items: ptr::null_mut(),
+            len: 0,
+            cap: 0,
+        }
+    }
+
+    unsafe fn push(&mut self, item: SetItem) -> Result<(), ()> {
+        if self.len == self.cap {
+            let cap = if self.cap == 0 { 16 } else { self.cap * 2 };
+            let grown = unsafe {
+                PyMem_Realloc(
+                    self.items.cast::<c_void>(),
+                    (cap * std::mem::size_of::<SetItem>()) as _,
+                )
+            }
+            .cast::<SetItem>();
+            if grown.is_null() {
+                return Err(());
+            }
+            self.items = grown;
+            self.cap = cap;
+        }
+        unsafe { *self.items.add(self.len) = item };
+        self.len += 1;
+        Ok(())
+    }
+
+    unsafe fn as_mut_slice(&mut self) -> &mut [SetItem] {
+        unsafe { slice::from_raw_parts_mut(self.items, self.len) }
+    }
+}
+
+impl Drop for SetItems {
+    fn drop(&mut self) {
+        for index in 0..self.len {
+            unsafe {
+                let item = *self.items.add(index);
+                Py_DecRef(item.value);
+                Py_DecRef(item.dump);
+            }
+        }
+        if !self.items.is_null() {
+            unsafe { PyMem_Free(self.items.cast::<c_void>()) };
+        }
+    }
+}
+
+/// `memcmp` order of the standalone records, then the order among elements
+/// with the same record.
+fn set_item_compare(left: &SetItem, right: &SetItem) -> std::cmp::Ordering {
+    let size = left.dump_len.min(right.dump_len);
+    let bytes = unsafe {
+        slice::from_raw_parts(left.dump_data, size).cmp(slice::from_raw_parts(right.dump_data, size))
+    };
+    bytes
+        .then(left.dump_len.cmp(&right.dump_len))
+        .then(left.order.cmp(&right.order))
+}
+
+fn same_dump(left: &SetItem, right: &SetItem) -> bool {
+    left.dump_len == right.dump_len
+        && unsafe {
+            slice::from_raw_parts(left.dump_data, left.dump_len)
+                == slice::from_raw_parts(right.dump_data, right.dump_len)
+        }
+}
+
 /// Writes one marshal record into a `bytes` object that grows in place.
 /// Every non-singleton object is tracked by identity, as upstream CPython's
 /// writer does: the first occurrence is written without FLAG_REF while its
@@ -188,6 +283,11 @@ struct Encoder {
     refpos: *mut usize,
     refpos_len: usize,
     refpos_cap: usize,
+    /// For each tie group, the index of the first of its interchangeable
+    /// `refs` records that a later reference has not taken yet.
+    ties: *mut usize,
+    ties_len: usize,
+    ties_cap: usize,
     allow_code: bool,
 }
 
@@ -213,6 +313,9 @@ impl Encoder {
             refpos: ptr::null_mut(),
             refpos_len: 0,
             refpos_cap: 0,
+            ties: ptr::null_mut(),
+            ties_len: 0,
+            ties_cap: 0,
             allow_code,
         })
     }
@@ -365,6 +468,29 @@ impl Encoder {
         Ok(())
     }
 
+    unsafe fn ties_push(&mut self, value: usize) -> Result<(), ()> {
+        if self.ties_len == self.ties_cap {
+            let cap = if self.ties_cap == 0 { 16 } else { self.ties_cap * 2 };
+            let grown = unsafe {
+                PyMem_Realloc(
+                    self.ties.cast::<c_void>(),
+                    (cap * std::mem::size_of::<usize>()) as _,
+                )
+            }
+            .cast::<usize>();
+            if grown.is_null() {
+                return Err(());
+            }
+            self.ties = grown;
+            self.ties_cap = cap;
+        }
+        unsafe {
+            *self.ties.add(self.ties_len) = value;
+        }
+        self.ties_len += 1;
+        Ok(())
+    }
+
     /// Flag exactly the objects seen more than once and fix up every
     /// provisional TYPE_REF argument to the reader's reference index.
     unsafe fn resolve(&mut self) -> Result<(), ()> {
@@ -425,17 +551,31 @@ impl Encoder {
         let key = object as usize;
         let slot = unsafe { self.probe(key) };
         if unsafe { (*slot).key } == key {
-            let value = unsafe { (*slot).value };
+            let mut value = unsafe { (*slot).value };
             if value & ACTIVE != 0 {
                 return Err(());
             }
-            let entry = value & INDEX_MASK;
-            unsafe {
-                (*slot).value = value | SHARED;
-                let record = self.refs.add(entry as usize);
-                *record |= 1;
+            if value & TIED != 0 {
+                let group = (value & INDEX_MASK) as usize;
+                if group >= self.ties_len {
+                    return Err(());
+                }
+                let next = unsafe { self.ties.add(group) };
+                let entry = unsafe { *next };
+                if entry >= self.refs_len {
+                    return Err(());
+                }
+                unsafe { *next = entry + 1 };
+                value = entry as u32;
             }
-            return Ok(Some(entry));
+            if value & SHARED == 0 {
+                unsafe {
+                    (*slot).value = value | SHARED;
+                    let record = self.refs.add((value & INDEX_MASK) as usize);
+                    *record |= 1;
+                }
+            }
+            return Ok(Some(value & INDEX_MASK));
         }
         if self.entries >= INDEX_MASK {
             return Err(());
@@ -754,7 +894,10 @@ impl Encoder {
     }
 
     /// Sets are ordered by each element's standalone record so the bytes do
-    /// not depend on hash randomization.
+    /// not depend on hash randomization.  Elements with the same record are
+    /// interchangeable floats or complexes: the order in which later
+    /// references take them is tied so the output does not depend on the order
+    /// of the set either.
     unsafe fn write_set(
         &mut self,
         value: *mut PyObject,
@@ -763,8 +906,7 @@ impl Encoder {
     ) -> Result<(), ()> {
         let iterator = unsafe { PyObject_GetIter(value) };
         let iterator = unsafe { PyRef::from_raw(iterator) }?;
-        let pairs = unsafe { PyList_New(0) };
-        let pairs = unsafe { PyRef::from_raw(pairs) }?;
+        let mut items = SetItems::new();
         loop {
             let item = unsafe { PyIter_Next(iterator.as_ptr()) };
             if item.is_null() {
@@ -775,37 +917,142 @@ impl Encoder {
             }
             let item = PyRef(item);
             let mut standalone = unsafe { Encoder::new(self.allow_code) }?;
-            unsafe { standalone.write_object(item.as_ptr(), 0) }?;
-            unsafe { standalone.resolve() }?;
-            let key = PyRef(unsafe { standalone.finish() }?);
-            let pair = unsafe { PyTuple_New(2) };
-            let pair = unsafe { PyRef::from_raw(pair) }?;
-            unsafe {
-                PyTuple_SetItem(pair.as_ptr(), 0, key.into_raw());
-                PyTuple_SetItem(pair.as_ptr(), 1, item.into_raw());
-                if PyList_Append(pairs.as_ptr(), pair.as_ptr()) != 0 {
-                    return Err(());
-                }
+            unsafe { standalone.write_object(item.as_ptr(), 0)? };
+            unsafe { standalone.resolve()? };
+            let dump = PyRef(unsafe { standalone.finish() }?);
+            let size = unsafe { PyBytes_Size(dump.as_ptr()) };
+            let data = unsafe { PyBytes_AsString(dump.as_ptr()) };
+            if size < 0 || data.is_null() {
+                return Err(());
             }
+            let entry = SetItem {
+                value: item.into_raw(),
+                dump: dump.into_raw(),
+                dump_data: data.cast::<u8>(),
+                dump_len: size as usize,
+                order: items.len,
+            };
+            unsafe { items.push(entry)? };
         }
-        if unsafe { PyList_Sort(pairs.as_ptr()) } != 0 {
+        let count = items.len;
+        if count > MAX_RECORD_SIZE / 4 {
             return Err(());
         }
-        let count = unsafe { PyList_Size(pairs.as_ptr()) };
-        if count < 0 || count as usize > MAX_RECORD_SIZE / 4 {
-            return Err(());
-        }
+        let elements = unsafe { items.as_mut_slice() };
+        elements.sort_unstable_by(set_item_compare);
+
         unsafe {
             self.byte(if kind == Kind::Set { b'<' } else { b'>' })?;
             self.i32(count as i32)?;
         }
-        for index in 0..count {
-            let pair = unsafe { PyList_GetItem(pairs.as_ptr(), index) };
-            let item = unsafe { PyTuple_GetItem(pair, 1) };
-            if item.is_null() {
+
+        let mut start = 0;
+        while start < count {
+            let mut stop = start + 1;
+            while stop < count && same_dump(&elements[start], &elements[stop]) {
+                stop += 1;
+            }
+            if stop - start == 1 {
+                unsafe { self.write_object(elements[start].value, depth + 1)? };
+            }
+            else {
+                unsafe { self.write_same_set_items(elements, start, stop, depth)? };
+            }
+            start = stop;
+        }
+        Ok(())
+    }
+
+    /// Write the elements of a set which have the same standalone record.
+    ///
+    /// Elements already written come first, in the order in which they were
+    /// written.  New floats and complexes keep their group's records
+    /// interchangeable; any other new elements are written in set order.
+    unsafe fn write_same_set_items(
+        &mut self,
+        elements: &mut [SetItem],
+        start: usize,
+        stop: usize,
+        depth: usize,
+    ) -> Result<(), ()> {
+        for index in start..stop {
+            let value = elements[index].value;
+            let slot = unsafe { self.probe(value as usize) };
+            if unsafe { (*slot).key } != value as usize {
+                elements[index].order = SET_ITEM_NEW + (index - start);
+                continue;
+            }
+            let entry = unsafe { (*slot).value };
+            let mut order = (entry & INDEX_MASK) as usize;
+            if entry & TIED != 0 {
+                if order >= self.ties_len {
+                    return Err(());
+                }
+                order = unsafe { *self.ties.add(order) };
+            }
+            elements[index].order = order;
+        }
+
+        let mut group = start;
+        elements[start..stop].sort_unstable_by(set_item_compare);
+        while group < stop {
+            let first = elements[group].order;
+            let mut end = group + 1;
+            let first_entry;
+            if first >= SET_ITEM_NEW {
+                first_entry = self.entries as usize;
+                let value = elements[group].value;
+                let ty = unsafe { (*value.cast::<_object>()).ob_type };
+                if ty == ptr::addr_of_mut!(PyFloat_Type)
+                    || ty == ptr::addr_of_mut!(PyComplex_Type)
+                {
+                    end = stop;
+                }
+            }
+            else {
+                first_entry = first;
+                while end < stop && elements[end].order == first {
+                    end += 1;
+                }
+            }
+            for index in group..end {
+                unsafe { self.write_object(elements[index].value, depth + 1)? };
+            }
+            if end - group > 1 {
+                unsafe { self.tie_set_items(elements, group, end, first_entry)? };
+            }
+            group = end;
+        }
+        Ok(())
+    }
+
+    /// Mark the interchangeable records of one tie group so that a later
+    /// reference to any of its elements takes the first record no reference
+    /// has taken yet.
+    unsafe fn tie_set_items(
+        &mut self,
+        elements: &[SetItem],
+        start: usize,
+        stop: usize,
+        first: usize,
+    ) -> Result<(), ()> {
+        if self.ties_len >= INDEX_MASK as usize {
+            return Err(());
+        }
+        let group = self.ties_len;
+        unsafe { self.ties_push(first)? };
+        let marker = (group as u32) | TIED;
+        for index in start..stop {
+            let value = elements[index].value;
+            let slot = unsafe { self.probe(value as usize) };
+            if unsafe { (*slot).key } != value as usize {
+                continue;
+            }
+            let entry = unsafe { (*slot).value };
+            if entry & (ACTIVE | TIED) != 0 {
                 return Err(());
             }
-            unsafe { self.write_object(item, depth + 1) }?;
+            unsafe { (*slot).value = marker };
         }
         Ok(())
     }
@@ -854,6 +1101,9 @@ impl Drop for Encoder {
             }
             if !self.refpos.is_null() {
                 PyMem_Free(self.refpos.cast::<c_void>());
+            }
+            if !self.ties.is_null() {
+                PyMem_Free(self.ties.cast::<c_void>());
             }
             if !self.bytes.is_null() {
                 Py_DecRef(self.bytes);

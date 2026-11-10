@@ -58,7 +58,92 @@ lane intent.
 - `Lib/ssl.py` and `Lib/rtls/*`: deliberately not rebased; TLS stays out per
   `docs/CAMPAIGN-RUST-CPYTHON-JIT.md` Boundary. Upstream ssl.py changes are unported.
 
-## LLVM and stencils
+## Fix A: post-rebase overlay parity (macOS arm64)
+
+Full-suite runs (`logs/perf-rust-all.log` vs `logs/perf-upstream-all.log`) gave
+five overlay-only failing suites, all attributed to the rebase of the overlay
+onto e891a911. Five root causes, all fixed in `overlay/`:
+
+1. **`test_uuid` (309 errors, 100 failures; now passes).** Upstream's new tail
+   block `from _uuid import UUID, uuid4, uuid7` rebinds the module global
+   `UUID` to the C type before the pure-Python factories run. The overlay's
+   `UUID._from_int(int_uuid_N, version=N)` calls then hit
+   `_uuid.UUID._from_int` (`METH_CLASS|METH_O`), which rejects keywords:
+   `TypeError: UUID._from_int() takes no keyword arguments` at
+   `overlay/Lib/uuid.py:966` (uuid7) and siblings. Upstream already ORs the
+   RFC version flags before the call, so the kwarg was redundant. `_from_int`
+   is back to upstream's single-argument form with the lane's `_normalize`
+   dispatch (`uuid.py:341`), and uuid6/7/8 call it positionally
+   (`uuid.py:894`, `:966`, `:997`). The 100 `test_exact_same_algo_uuid4`
+   failures had a second cause: the Rust fast path `_uuid_rs.uuid4()`
+   bypassed `_gen_random`, so `_install_py_hooks` entropy never reached
+   `_py_uuid4` while the C twin consumed the seeded C hooks. `uuid4` now uses
+   the hook-aware path whenever `_random_hook` is installed (`uuid.py:840`).
+
+2. **`test_importlib` (3 failures; now passes).** Upstream's `Lookup` now
+   walks `sorted(path.children(), key=str.lower, reverse=True)` so a path
+   with several metadata directories prefers the greater version. The Rust
+   `_metadata_rs.scan_path` returned `read_dir` order, so
+   `test_importlib.metadata.test_main.MultipleVersionsTests` failed. The Rust
+   path now sorts its matches by lowercased name descending
+   (`overlay/Modules/_metadata_rs/src/lib.rs:110`), matching upstream's
+   reverse-lexicographic preference.
+
+3. **`test_shutil` (1 error, 1 failure; now passes).** The Rust
+   `copytree` fast path always calls `copystat` on directories, so
+   `copytree(..., copy_dir_stat=False)` copied the source mode (`0o555`) and
+   the test's `rmtree` then hit `PermissionError`. The fast path is now taken
+   only when `copy_dir_stat` is true (`overlay/Lib/shutil.py:686`).
+
+4. **`test_cext` (1 error; now passes).** `test_cext` builds a venv, and the
+   bundled pip 26.3 installs an `_ImportBlocker` that rejects every import
+   after installation starts. `overlay/Lib/csv.py` imported `_csv_rs` lazily
+   on first reader use, so ensurepip failed with
+   `Blocked import of '_csv_rs' after pip install started`. `_csv_rs` is now
+   imported eagerly next to `_csv` (`overlay/Lib/csv.py:79`), as upstream does
+   for the C extension.
+
+5. **`test_marshal` (1 failure; now passes).** Upstream added deterministic
+   ordering for set elements with equal dumps (`w_set_item_compare`,
+   `w_same_set_items`, `w_tie_set_items` in `Python/marshal.c`). The overlay
+   C file already carries that code; `_marshal_rs.write_set` did not: it
+   sorted `(dump, element)` tuples with `PyList_Sort`, leaving equal-dump
+   elements in set order, so `test_nan_in_set_order` saw NaNs take reference
+   slots in address order. The Rust writer now carries upstream's tie array
+   and algorithm: `TIED`/`SET_ITEM_NEW`, a `ties` array freed with the
+   encoder, `track` taking the next interchangeable record on a later
+   reference, `write_same_set_items` ordering already-written elements first
+   and new floats/complexes as one tie group, and `tie_set_items` marking the
+   group (`overlay/Modules/_marshal_rs/src/lib.rs:44`, `:558`, `:901`, `:971`,
+   `:1032`). The stray tuple/list imports the old sort needed are gone.
+
+**Acceptance (this worktree, `TMPDIR=$PWD/.work/tmp`):**
+
+- `python3 rust-cpython/perf.py build --name perf-rust --incremental` exit 0
+  ("58 release Rust extensions verified"). A concurrent R1 measurement was
+  recorded by the lease (`WAIT host lease busy: measure cinderx steady
+  kernels`); the build waited and completed.
+- `rust-cpython/stage-perf-rust/bin/python3.16 -m test -j4 test_uuid
+  test_importlib test_shutil test_marshal test_cext` exit 0:
+  `Total tests: run=1,756 skipped=134`; `Total test files: run=5/5`;
+  `Result: SUCCESS`. All five suites OK.
+- Same command on `rust-cpython/stage-perf-upstream/bin/python3.16` exit 0:
+  `Total tests: run=1,756 skipped=134`; `Total test files: run=5/5`;
+  `Result: SUCCESS`. perf-rust fails no test perf-upstream passes.
+- `python3 rust-cpython/tests/marshal_parity.py --baseline perf-upstream
+  --candidate perf-rust` exit 0: `mismatch_count=0`, `code_items=6216`,
+  `value_items=119`, versions 0-5, `skipped_only_by_candidate=[]`.
+- Repeated runs: `test_marshal` 5/5 `Result: SUCCESS` (the NaN order test is
+  address- and hash-seed-dependent), `test_uuid` 3/3 `Result: SUCCESS`;
+  `test_csv`/`test_shutil` 2/2 OK after the eager `_csv_rs` import.
+
+**Unverified / not touched:** no full `test --all` rerun after the fixes
+(only the five suites plus `test_csv`); `perf-rust-jit` and the other builds
+were not rebuilt with these overlay changes; the Rust marshal tie port is
+validated by `test_marshal` and the parity run, not by the full corpus again;
+TLS paths were untouched.
+
+
 
 JIT used the locked LLVM 23.1.4 via `build.py:1017` (`LLVM_VERSION`, 
 `LLVM_TOOLS_INSTALL_DIR`) and `build.py:751` (archive-extracted object tools).
