@@ -124,6 +124,10 @@ sed -e 's/[ 	]*#.*//' -e '/^[ 	]*$/d' |
 	CONFIGURED=
 	MODS=
 	SHAREDMODS=
+	RUST_ABORT_PACKAGES=
+	RUST_ABORT_DEPS=
+	RUST_STD_PACKAGES=
+	RUST_STD_DEPS=
 	OBJS=
 	LIBS=
 	LOCALLIBS=
@@ -354,11 +358,25 @@ sed -e 's/[ 	]*#.*//' -e '/^[ 	]*$/d' |
 					file="$srcdir/$mod\$(EXT_SUFFIX)"
 					SHAREDMODS="$SHAREDMODS $file"
 					BUILT_SHARED="$BUILT_SHARED $mod"
-					# depends on the headers through cpython-sys
-					rule="$rust_shared: cpython-sys \$(srcdir)/Cargo.toml \$(srcdir)/Cargo.lock \$(srcdir)/$srcdir/$manifest $prefixed_srcs \$(PYTHON_HEADERS) \$(MODULE_${mods_upper}_LDEPS) \$(LIBRARY)"
-					rule="$rule; CARGO_TARGET_DIR=\$(abs_builddir)/target PYTHON_BUILD_DIR=\$(abs_builddir) PY_CC=\"\$(CC)\" PY_CPPFLAGS=\"\$(CPPFLAGS)\" PY_CFLAGS=\"\$(CFLAGS)\" LLVM_TARGET=\"\$(LLVM_TARGET)\" RUST_SHARED_BUILD=\$(PY_ENABLE_SHARED) IPHONEOS_DEPLOYMENT_TARGET=\$(IPHONEOS_DEPLOYMENT_TARGET) BLDSHARED_EXE=\"\$(BLDSHARED_EXE)\" BLDSHARED_ARGS=\"\$(BLDSHARED_ARGS)\" LIBPYTHON=\"\$(LIBPYTHON)\" \$(if \$(CARGO_TARGET_LINKER_ENV),\$(CARGO_TARGET_LINKER_ENV)=\$(CC)) \$(CARGO_HOME)/bin/cargo build -vvv --lib --locked --package ${mod} --profile \$(CARGO_PROFILE) \$(if \$(filter release,\$(CARGO_PROFILE)),-Z build-std=std -Z build-std-features=,) \$(if \$(CARGO_TARGET),--target=\$(CARGO_TARGET)) --manifest-path \$(srcdir)/Cargo.toml"
-					echo "$rule" >>$rulesf
-					echo "$file: $rust_shared; mv $rust_shared $file" >>$rulesf
+					deps="\$(srcdir)/$srcdir/$manifest $prefixed_srcs \$(MODULE_${mods_upper}_LDEPS)"
+					manifest_path="$(dirname "$config")/$manifest"
+					if ! test -f "$manifest_path"
+					then
+						echo 1>&2 "makesetup: Rust manifest $manifest_path is missing"
+						exit 1
+					fi
+					if grep -q abort-on-panic "$manifest_path"
+					then
+						RUST_ABORT_PACKAGES="$RUST_ABORT_PACKAGES --package ${mod}"
+						RUST_ABORT_DEPS="$RUST_ABORT_DEPS $deps"
+						stamp=target/rust-shared-abort.stamp
+					else
+						RUST_STD_PACKAGES="$RUST_STD_PACKAGES --package ${mod}"
+						RUST_STD_DEPS="$RUST_STD_DEPS $deps"
+						stamp=target/rust-shared-std.stamp
+					fi
+					echo "$rust_shared: $stamp ;" >>$rulesf
+					echo "$file: $rust_shared; cp $rust_shared $file" >>$rulesf
 				done
 				;;
 			yes)
@@ -371,6 +389,20 @@ sed -e 's/[ 	]*#.*//' -e '/^[ 	]*$/d' |
 			esac
 		fi
 	done
+
+	rust_shared_rule() {
+		rule="$1: cpython-sys \$(srcdir)/Cargo.toml \$(srcdir)/Cargo.lock $3 \$(PYTHON_HEADERS) \$(LIBRARY)"
+		rule="$rule; CARGO_TARGET_DIR=\$(abs_builddir)/target PYTHON_BUILD_DIR=\$(abs_builddir) PY_CC=\"\$(CC)\" PY_CPPFLAGS=\"\$(CPPFLAGS)\" PY_CFLAGS=\"\$(CFLAGS)\" LLVM_TARGET=\"\$(LLVM_TARGET)\" RUST_SHARED_BUILD=\$(PY_ENABLE_SHARED) IPHONEOS_DEPLOYMENT_TARGET=\$(IPHONEOS_DEPLOYMENT_TARGET) BLDSHARED_EXE=\"\$(BLDSHARED_EXE)\" BLDSHARED_ARGS=\"\$(BLDSHARED_ARGS)\" LIBPYTHON=\"\$(LIBPYTHON)\" \$(if \$(CARGO_TARGET_LINKER_ENV),\$(CARGO_TARGET_LINKER_ENV)=\$(CC)) \$(CARGO_HOME)/bin/cargo build -vvv --lib --locked$2 --profile \$(CARGO_PROFILE) \$(if \$(filter release,\$(CARGO_PROFILE)),-Z build-std=std -Z build-std-features=,) \$(if \$(CARGO_TARGET),--target=\$(CARGO_TARGET)) --manifest-path \$(srcdir)/Cargo.toml && touch \$@"
+		echo "$rule" >>$rulesf
+	}
+	case $RUST_ABORT_PACKAGES in
+	'')	;;
+	*)	rust_shared_rule target/rust-shared-abort.stamp "$RUST_ABORT_PACKAGES" "$RUST_ABORT_DEPS";;
+	esac
+	case $RUST_STD_PACKAGES in
+	'')	;;
+	*)	rust_shared_rule target/rust-shared-std.stamp "$RUST_STD_PACKAGES" "$RUST_STD_DEPS";;
+	esac
 
 	case $SHAREDMODS in
 	'')	;;
