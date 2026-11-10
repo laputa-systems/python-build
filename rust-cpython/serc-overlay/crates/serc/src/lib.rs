@@ -1018,6 +1018,14 @@ fn compile_normalized(
     if let Some(reason) = cpython_only::grammar(parsed.suite()) {
         return Err(CompileError::RequiresCpythonParser(reason));
     }
+    if let Some(reason) = cpython_only::unicode_name_escape(parsed.errors()) {
+        return Err(CompileError::RequiresCpythonParser(reason));
+    }
+    if indentation::cpython_layout_error(source, parsed.tokens()) {
+        return Err(CompileError::RequiresCpythonParser(
+            "CPython's tokenizer rejects this tab and space indentation",
+        ));
+    }
     // Ruff grows its parser stack for deeply nested expressions. Successful parses can
     // reuse its tokens; malformed input still uses the independent tokenizer before diagnostics.
     if let Err(error) =
@@ -1166,6 +1174,9 @@ fn compile_normalized(
     )?;
     if options.python_version >= PythonVersion::Py316 {
         compiler::static_blocks::validate(parsed.suite(), options.optimization_level)?;
+    }
+    if let Some(reason) = cpython_only::source_rules(parsed.suite(), parsed.tokens()) {
+        return Err(CompileError::RequiresCpythonParser(reason));
     }
     let mut owned_tokens = None;
     let (optimized_body, original_scopes) = if compiler::optimization::requires_optimization(

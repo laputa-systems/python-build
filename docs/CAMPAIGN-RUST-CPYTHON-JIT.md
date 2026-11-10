@@ -1129,6 +1129,21 @@ re-marshalled code or on a source C rejects. Serc's bytes load without the
 1-character objects. C2 also committed the C1 3.16 target tables that the
 root `target/` ignore rule had kept out of C1's commits.
 
+After Serc's parse, source forms Ruff accepts but CPython rejects are left to
+CPython's parser: a parenthesized assignment-expression target, a `__debug__`
+match capture, a format spec nested deeper than CPython's three replacements,
+tab/space indentation its tokenizer rejects (and any module mixing tabs with
+backslash continuations, whose continuation-line check Serc does not model),
+and a module whose estimated parser stack reaches 5,000 of CPython's 6,000
+slots. The estimate sums the module's deepest bracket nesting at 27 slots, its
+deepest block nesting at 7, and its deepest expression nesting and longest
+`if`/`elif` chain at 1 each, weights measured on the C path. A long `elif`
+chain, deeply bracketed arms and deep `def` nesting all overflow there, and
+each overflow measured raises CPython's `MemoryError` on Serc too. A `\N{...}` escape missing from
+Ruff's `unicode_names2` 1.3.0 table (23,955 of Unicode 18's 172,808 names) is
+likewise left to CPython's name table, so no name raises `SystemError` and an
+unknown name raises CPython's `SyntaxError`.
+
 Evidence at `dbacf66`: an in-process census over the C1 corpus
 (`marshal.dumps(compile())` per file and level) equals `perf-upstream` in all
 9,135 cases, with and without `PYTHONSERCVERIFY=1`; the 26 frozen modules that
@@ -1543,7 +1558,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 | --- | --- | --- | --- |
 | J | active | T3 inline-frame elision implemented and CORRECT; measured no bucket-(a) fall, dropped under P1. Next: virtual-frame inlining or T3 attribute/global caches | Inline frames: incumbent-named bucket (a) richards 24.0% → 17.2%, raytrace 11.6% → 9.6%, but including the new `_INLINE_*` call/frame uops 23.9% → 24.6% and 11.5% → 11.7%; CORRECT (5 incumbent superseded assertions; new `jit_inline_integration`), advisory 1.0123 |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
-| C | active | C2 in-process `exec`: one layout-only verify difference in `test_compile` blocks the exit; abrupt `finally` exits fixed | `campaign/c2` (base `266ae26`): `perf-rust-serc-v3` builds clean; full suite fails exactly the e891 set; `cargo test -p serc --lib` passes 1,250; `serc_parity.py --oracle perf-rust` reports 0 mismatches in 10,005 cases including a generated 270-program `try`/`finally` corpus; `crash_min.py` and `skipfin.py` match the C compiler; verify run still fails the e891 set plus only `test_condition_expression_with_redundant_comparisons_compiles` (known layout difference); memory-only bench WITHIN-BUDGET under OD15 (unchanged); independent review pending |
+| C | active | C2 in-process `exec`: one layout-only verify difference in `test_compile` blocks the exit; abrupt `finally` exits fixed | `campaign/c2` (base `b019c8f`): `perf-rust-serc-v3` builds clean; full suite fails exactly the e891 set; `cargo test -p serc --lib` passes 1,257 including new tests for every M4 class and the `\N{...}` route; `m4_check.py` reports 0 differences over 34 cases and 12 valid neighbours; `review-c2/tabs.py` prints no DIFF; `uni2.py` reports 0 of 172,808 names refused by Serc; `serc_parity.py --oracle perf-rust` reports 0 mismatches in 10,005 cases; verify run still fails the e891 set plus only `test_condition_expression_with_redundant_comparisons_compiles` (known layout difference); memory-only bench WITHIN-BUDGET under OD15 (unchanged); independent review pending |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
 
 **Owner queue:** R1 reference report (informational, no target change
