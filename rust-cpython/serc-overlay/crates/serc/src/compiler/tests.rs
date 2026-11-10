@@ -4393,3 +4393,13 @@ fn python316_marshal_matches_cpython_for_folded_while_header_after_annotation_se
         ),
     );
 }
+
+#[test]
+fn python316_marshal_matches_cpython_for_folded_constant_jump_keeps_exit() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/folded_constant_jump_keeps_exit.py"),
+        include_str!(
+            "../../tests/fixtures/python316_parity/folded_constant_jump_keeps_exit.marshal.hex"
+        ),
+    );
+}

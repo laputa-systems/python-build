@@ -10129,10 +10129,11 @@ impl Compiler<'_> {
                 self.assembler.preserve_inlined_jump_nop(exit);
                 self.assembler
                     .mark_folded_jump_borrow_fallthrough(exit, empty_folded_block);
-                if matches!(
-                    self.context.python_version,
-                    PythonVersion::Py314 | PythonVersion::Py315
-                ) && self.control.conditions.uncopied_assertion_condition_target == Some(label)
+                if self.context.python_version >= PythonVersion::Py316
+                    || matches!(
+                        self.context.python_version,
+                        PythonVersion::Py314 | PythonVersion::Py315
+                    ) && self.control.conditions.uncopied_assertion_condition_target == Some(label)
                 {
                     // This edge becomes unconditional only after CPython's early
                     // copy pass; a located assertion-condition target stays shared.
