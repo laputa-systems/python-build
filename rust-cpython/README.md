@@ -1,6 +1,15 @@
 # Rust-for-CPython research lane
 
-This isolated lane builds upstream CPython **3.16.0a1** with a Rust overlay.
+**Current JIT roadmap (2026-11-09):** [latest CPython 3.16 with a
+CinderX-informed Rust optimizer](../docs/CAMPAIGN-JIT-CINDERX-316.md).
+The next research milestone is to update to the latest verified upstream
+3.16 `main` revision (immutable SHA after qualification), preserving LLVM
+23.1.4 on macOS arm64 and 23.1.2 on Linux x86-64. CPython is the semantic
+oracle; CinderX is the external performance/optimization reference, not a
+codebase to port wholesale. Production must remain untouched.
+
+**Current implementation, pending R0 refresh:** this isolated lane builds
+upstream CPython **3.16.0a1** with a Rust overlay.
 It is not the shipping 3.15.1 product. JIT experiments run only in this lane:
 the product build keeps the JIT disabled, and `--jit` here never changes the
 product configuration. All 71 named public-behavior coverage
@@ -21,8 +30,10 @@ source record. The Rust toolchain is pinned in
 [`rust-toolchain.toml`](../rust-toolchain.toml). The private Cargo home is used
 offline after fetching. Release perf builds build std from the pinned
 `rust-src` with ThinLTO; `fetch` caches the toolchain's std crates with the
-workspace crates. Do not update the source, toolchain, or Cargo lock
-accidentally; intentional vetted crate additions update the overlay lockfile.
+workspace crates. Do not update the source, toolchain, or Cargo lock accidentally; the
+approved intentional 3.16 source refresh must follow R0 of the roadmap with
+new provenance and qualification. The LLVM toolchain pins must not change;
+intentional vetted crate additions update the overlay lockfile.
 
 The lane uses a shared `cpython-binding` layer and `cpython-deflate` engine,
 a static Rust carrier for built-in modules, a shared `_ssl_rs` extension, and

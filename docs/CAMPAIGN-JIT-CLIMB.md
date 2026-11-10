@@ -1,5 +1,19 @@
 # JIT hill-climb campaign
 
+> **2026-11-09 roadmap update:** Follow
+> [CAMPAIGN-JIT-CINDERX-316.md](CAMPAIGN-JIT-CINDERX-316.md) first.
+> **R0:** refresh the Rust research lane from its old 3.16.0a1 lock to the
+> latest verified 3.16 `python/cpython main` commit, keeping pinned LLVM
+> 23.1.4/macOS arm64 and 23.1.2/Linux x86-64 unchanged, and rebaseline.
+> **R1:** compare pinned CinderX on a *supported* CPython version as a
+> performance/optimization reference; unmodified CPython is the semantic
+> oracle. **R2:** selectively implement measured CinderX-informed mechanisms
+> in Rust, not a full CinderX translation. **R3:** optionally evaluate the
+> method-based PEP 836 frontend separately. All existing acceptance and
+> memory/code-size gates below still apply. Historical scores below are
+> valid only for their original pinned 3.16.0a1 source; do not resume the
+> hill-climb until R0 has regenerated the matched baselines.
+
 This campaign drives the `rust-cpython` lane JIT on macOS arm64 toward a
 3-4x kernel speedup over the lane's own interpreter. It runs unattended as a
 loop: measure, pick the mechanism with the largest measured ceiling, build a
@@ -13,7 +27,9 @@ attribution J3 goal ("one optimization, 10% CPU") and its OD5.
 
 ## Handoff (2026-11-02)
 
-P0 is done. The loop has not started.
+P0 was completed for the historical 3.16.0a1 source. Its metrics remain
+recorded, but R0 must refresh and requalify the latest 3.16 source and
+establish clean A/A baselines before the hill-climb loop can resume.
 
 - **Done, P0.1 (`a7d0de5`):** kernel-region CPU. Training and held-out
   kernels report `getrusage` deltas over their timed loop. Process CPU

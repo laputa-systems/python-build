@@ -33,6 +33,25 @@ doing, P4 is optional. A debt entry is not success.
 
 ## Rust-for-CPython lane
 
+Active research roadmap: [CAMPAIGN-JIT-CINDERX-316.md](CAMPAIGN-JIT-CINDERX-316.md).
+These R-series tasks are experimental and are not production-release gates:
+
+- [ ] **R0 — research rebase first.** Update the currently locked 3.16.0a1
+  overlay to the latest verified upstream CPython 3.16 `main` commit. Record
+  exact SHA/archive digest, keep macOS LLVM 23.1.4 and Linux LLVM 23.1.2
+  unchanged, pass JIT-off/on parity and differential fuzzing, and rerun
+  clean A/A, held-out and guard baselines. No production changes.
+- [ ] **R1 — external CinderX reference.** Pin CinderX on its supported
+  CPython 3.15 base, compare within-version off/on uplift, inspect HIR/LIR,
+  inline caches, deopt, typed optimizations and inlining. Rank ideas by
+  workload-specific evidence; CPython 3.16 is the semantic oracle.
+- [ ] **R2 — Rust-native selective optimizations.** Port promising mechanisms,
+  not the entire CinderX implementation. Retain current LLVM, CPython ABI,
+  unchanged test/benchmark/memory gates and the existing trace JIT by default.
+- [ ] **R3 — optional method-JIT hypothesis.** Independently evaluate the
+  withdrawn PEP 836 prototype only after source refresh and CinderX study;
+  no automatic frontend replacement or unqualified 3.16 compatibility claim.
+
 - [ ] **P2 — quiet macOS performance confirmation.** Re-run the matched a1 gate
   without host noise. The last accepted runs were `quiet=no`; the only
   rejected row was `python_startup` peak RSS at 1.027 against the 1.01 floor,
