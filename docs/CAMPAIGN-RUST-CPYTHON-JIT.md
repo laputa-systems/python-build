@@ -519,8 +519,10 @@ lane lock and the Serc test workspace from `https://index.crates.io` in the
 private Cargo home. Offline `cargo test -p serc --locked --no-fail-fast` runs
 8,624 tests on `nightly-2026-09-15` with the locked LLVM: with
 `SERC_TEST_PYTHON` naming CPython 3.14.5, 6,777 pass and the other 1,847
-fail only their oracle precondition, which demands exactly CPython 3.13.15
-or 3.15.0 (absent on this host). `psm`'s `aarch_aapcs64.o` embeds `clang
+fail only their oracle precondition: the 3.13 and 3.15 oracles must be
+exactly CPython 3.13.15 and 3.15.0rc2, named by `SERC_TEST_PYTHON_313` and
+`SERC_TEST_PYTHON_315`. With every oracle variable set, the suite is green
+(see C1). `psm`'s `aarch_aapcs64.o` embeds `clang
 version 23.1.4`. A clean `perf-rust` build on this lock fails exactly the
 e891 parity set.
 
@@ -550,11 +552,25 @@ enters `libpython`.
 **Corpus:** the epoch's `Lib/` and `Lib/test/`, plus the lane's pinned
 benchmark source trees (Django and the `compileall_source`, `pylint_source`,
 and `pycparser_source` inputs), at `-O0`, `-O1`, and `-O2`. Files that
-upstream itself refuses to compile are listed and skipped on both sides.
+upstream itself refuses to compile are listed and skipped on both sides. In
+practice the benchmark trees are the 3.16 Django closure (Django, asgiref,
+sqlparse) and the checked-in `python_corpus` fixture that `compileall_source`
+and `pylint_source` both read; `pycparser_source` reads only C inputs.
 
 **Exit:** zero mismatches and Serc's own tests green. Each distinct mismatch
 class gets three root-caused attempts; an unresolved class parks track C with
 the class, a minimal repro, and the upstream change that introduced it.
+
+**Landed (2026-11-10).** `perf-upstream` and Serc agree byte for byte on
+every case: 3,045 files, 9,135 cases, 9,102 exact, 0 mismatches, 0 Serc
+refusals. The other 33 cases are 11 files the oracle itself rejects with
+`SyntaxError`, at each level. `python3 rust-cpython/tests/serc_parity.py`
+rebuilds the CLI offline from the cached archive plus `serc-overlay/` and
+reruns the census; it exits nonzero on any mismatch. `cargo test -p serc -p
+serc-cli --locked --offline` passes with every `SERC_TEST_PYTHON*` oracle
+set, `SERC_TEST_PYTHON_316` naming `perf-upstream`. Each 3.16 codegen
+change carries a test pinning Serc's marshal bytes to oracle output in
+`serc-overlay/crates/serc/tests/fixtures/python316_parity/`.
 
 ### C2: in-process `exec` mode
 
@@ -708,7 +724,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 | --- | --- | --- | --- |
 | J | active | T1 thread-state, ranked by profile share (OD14) | e891 epoch M0, `S0 = 0.7748`, held-out 0.8216 |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
-| C | active | C1 co_code | C0 landed: Serc pinned, offline fetch and lane build green; C1 census 3,493 / 6,252 exact on e891 (`campaign/c1`) |
+| C | active | marshal parity, then C2 | C0 and C1 landed: census 9,102 / 9,135 exact, 0 mismatches on e891 |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
 
 **Owner queue:** R1 reference report (informational, no target change
