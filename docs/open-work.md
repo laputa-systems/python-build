@@ -38,11 +38,6 @@ JIT work, the 3.16 source refresh, the Serc compiler port, and the
 [rust-cpython JIT campaign](CAMPAIGN-RUST-CPYTHON-JIT.md) and is not tracked
 here. None of it gates a production release.
 
-- [ ] **P2 — quiet macOS performance confirmation.** Re-run the matched a1 gate
-  without host noise. The last accepted runs were `quiet=no`; the only
-  rejected row was `python_startup` peak RSS at 1.027 against the 1.01 floor,
-  and `django_template_realistic` CPU read 1.126 in the noisy run. Decide
-  whether the startup RSS residual is accepted or attacked.
 - [ ] **P3 — Linux timing pass.** The integrated Linux timing pass is parked.
   Run it when the host is quiet, with the same matched control.
 - [ ] **P3 — S5 route comparison on macOS.** The private compression routes were

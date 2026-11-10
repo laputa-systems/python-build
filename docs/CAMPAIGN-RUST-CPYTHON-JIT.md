@@ -1,118 +1,221 @@
 # rust-cpython JIT campaign
 
 The single campaign for the `rust-cpython/` research lane's Rust execution
-pipeline: track **J**, the tier-2 JIT, and track **C**, a Rust source-to-bytecode
-compiler ported from Serc. It replaces `CAMPAIGN-JIT.md` (J0-J9, closed 2026-11-01),
+pipeline. Track **J** builds a Rust optimizing tier on CPython 3.16's tier-2
+JIT. Track **C** ports Serc, a Rust source-to-bytecode compiler, to the same
+3.16. Lane **R1** studies CinderX as a performance reference for track J.
+
+It replaces `CAMPAIGN-JIT.md` (J0-J9, closed 2026-11-01),
 `CAMPAIGN-JIT-CLIMB.md` (hill-climb, 2026-11-02), and
-`CAMPAIGN-JIT-CINDERX-316.md` (R0-R3, 2026-11-09). Their full text is in git
-at `76de0e1`. Every rule below is written so an agent can apply it without
-asking; the owner steps in only at **Stop and escalate**.
+`CAMPAIGN-JIT-CINDERX-316.md` (R0-R3, 2026-11-09); their text is in git at
+`76de0e1`. The campaign runs unattended. Every rule below is written so an
+agent can apply it without asking; owner input is collected asynchronously
+(see **Owner queue**) and blocks only the lane that needs it.
 
 ## Goal and end state
 
 On current CPython 3.16, make the lane's tier-2 JIT four times faster than the
-lane's own interpreter on the training kernels with optimizer passes written
-in Rust (track J), and compile Python source to byte-identical bytecode
-in-process with a Rust compiler (track C), without changing Python semantics
-or the 3.15.1 product.
+lane's own interpreter on the training kernels, with optimizer passes written
+in Rust; and compile Python source in-process with a Rust compiler that is
+byte-identical to CPython's. Python semantics and the 3.15.1 product do not
+change.
 
 The campaign is **done** when all of these hold at one commit on `main`:
 
-1. The lane builds a pinned latest-3.16 `main` commit (see **Source epochs**)
-   with the unchanged LLVM pins.
-2. On macOS arm64, the incumbent meets **M4**: `S ≤ 0.25`, every training
+1. The lane builds one pinned 3.16 `main` commit (see **Source epochs**) with
+   the unchanged LLVM pins.
+2. On macOS arm64 the JIT incumbent meets **M4**: `S ≤ 0.25`, every training
    kernel ≤ 0.45, held-out geomean ≤ `S^0.5`, no guard regression, and the
    memory and code-size bars in **Targets**.
-3. Every mechanism added by the campaign passes **Per-step acceptance**, and
-   new optimizer passes live in Rust under the **Rust rule**.
-4. On Linux x86-64, the final incumbent fails exactly its JIT-off sibling's
-   failed-test set, matches every kernel digest, and passes the differential
-   fuzzer. Linux timing is reported, not gated.
-5. Track C meets **C3** on the same epoch: the `--serc` lane build compiles
-   every source-mode `exec`, `eval`, and `single` request through Serc
-   in-process, byte-identical to upstream CPython on the corpus at
-   optimization levels 0-2, with full-suite parity and an ACCEPT cold-import
-   gate.
-6. One combined build (JIT plus `--serc`) reproduces the M4 score, the C3
-   parity, and the targeted suites.
-7. The ledger has M4, C3, and closing rows naming the final `S`, the source
-   epoch, and the verdict directories.
+3. Every accepted track J step passed **J acceptance**, and new optimizer passes
+   live in Rust under the **Rust rule**.
+4. Track C meets **C3** on the same epoch: `perf-rust-serc` compiles every
+   source-mode `exec`, `eval`, and `single` request through Serc in-process,
+   byte-identical to upstream CPython on the corpus at `-O0`/`-O1`/`-O2`, with
+   full-suite parity and ACCEPT cold-import gates.
+5. The combined build `perf-rust-jit-serc` reproduces the M4 score within the
+   A/A spread, the C3 corpus parity, and the J targeted suites.
+6. On Linux x86-64, the combined build fails exactly its no-JIT, no-Serc
+   sibling's failed-test set, matches every kernel digest, and passes the
+   differential fuzzer and the C1 corpus. Linux timing is reported, not gated.
+7. The ledger has M4, C3, and closing rows.
 
-The campaign also **ends**, incomplete, when T4's backlog is empty without M4
-or when track C cannot reach C3; the closing row records how far each track
-got and why it stopped. A stopped, blocked, or host-busy run is never a met goal.
+The campaign **ends incomplete** when T4's backlog is empty without M4, or
+when track C exhausts its attempts without C3; the closing row records how
+far each track got and why. A stopped, blocked, or host-busy run is never a
+met goal.
 
-Out of scope: any change to the production 3.15.1 build, a JIT-enabled
-distribution, Linux arm64, free-threading, PGO, BOLT, and the tail-call
-interpreter. Promoting any result to production needs a separate owner
-decision and full production qualification.
+Out of scope: any change to the production 3.15.1 build, a JIT- or
+Serc-enabled distribution, Linux arm64, free-threading, PGO, BOLT, the
+tail-call interpreter, and a method-based JIT frontend (PEP 836, parked).
+
+## Execution model
+
+### Start here
+
+An agent resuming the campaign reads, in order: **Status** (which lanes are
+active, parked, or waiting), this section, the active item's section, and
+**Boundary**. It then continues every lane that is not parked. It never
+re-derives a decision recorded here.
+
+### Lanes
+
+| Lane | Items, in order | Depends on |
+| --- | --- | --- |
+| J | R0 → T1 → M1 → T2 → M2 → T3 → M3 → T4 → M4 | T2 ceilings need R1's catalog |
+| R1 | CinderX study | nothing; starts now |
+| C | C0 → marshal parity; C1 → C2 → C3 | C1 needs R0's chosen SHA, not R0's exit |
+| Close | combined build, Linux confirmation | M4 and C3 on one epoch |
+
+Each lane works in its own worktree `.work/wt/<item>` on branch
+`campaign/<item>`, created with `perf.py setup-worktree` so caches are shared.
+`TMPDIR` points at `.work/tmp`.
+
+### Integration
+
+- A lane integrates an accepted change by rebasing onto `main`, rerunning the
+  narrowest check its change affects, and fast-forwarding `main`. Only one lane
+  integrates at a time; the others rebase before their next gate.
+- Commits are Conventional Commits scoped `jit`, `serc`, `marshal`, `bench`,
+  or `docs`; the body names the item and the commands with their results.
+  Accepted steps land on `main` without owner review (OD9). Nothing is pushed.
+- After every accepted step or milestone, the lane rewrites its **Status** row
+  and adds its **Ledger** row in the same commit. Status is rewritten in
+  place, never appended.
+- Default-build changes from track C (marshal parity) land only at a J
+  milestone boundary or before R0 step 5, so they never move a J measurement
+  mid-tier. They get a ledger row; track J rebuilds its incumbent and
+  re-measures `S` after one lands.
+
+### Host
+
+- Builds, suites, and benchmarks go through `perf.py`, whose host lease lets
+  builds and tests share the host and gives a measurement exclusive use across
+  all worktrees. Work outside `perf.py` (CinderX and Serc test builds) never
+  runs while `perf.py status` shows a measurement holding the lease.
+- Gate evidence counts only when `perf-gate-ready` exits 0 immediately before
+  and `perf-gate-ready -1` exits 0 immediately after. If the gate refuses
+  three times at least 20 minutes apart, record "perf gate deferred: host
+  busy" in Status, do other non-timing work, and retry at the next
+  checkpoint. A deferred gate is never a pass.
+- Delete a rejected candidate's build (`perf.py clean --name <build>`) and
+  worktree when its ledger row lands. Keep named builds in **Builds**.
+
+### Attempts and parking
+
+- A failing item gets its root cause before any retry. An item gets at most
+  three root-caused attempts unless its section says otherwise.
+- To park an item: push nothing, keep its branch as `lane/<item>`, and record
+  in Status the cause, the evidence path, and the condition that reopens it.
+  The lane moves to its next unblocked item; if none exists, the lane is
+  parked.
+- Fix an egregious local defect met on the way (crash, wrong output, a
+  harness step twice as slow as recorded) in its own commit. Anything else
+  goes to `docs/open-work.md`.
+- The campaign session ends when every lane is parked, waiting on the owner,
+  or done. The final message lists each lane's state and the owner queue.
+
+### Owner queue
+
+Owner reviews are asynchronous. A contract change lands once it passes its
+track's acceptance, including the independent review, and is added to the
+**Owner queue** in Status. If the owner rejects it later, it is reverted and
+the affected steps are re-gated. Only these items block, and only their own
+lane: **Overfit review**, a lock or production change outside **Boundary**,
+and an LLVM incompatibility that patching `Tools/jit` cannot fix.
 
 ## Boundary
 
 - **Production is frozen.** No edits to root `build.py`, `buildsys/`,
-  `backend/`, `patches/`, `sources.lock.json`, `release-budgets.json`, or CI.
+  `backend/`, `patches/`, `sources.lock.json`, `bootstrap.lock.json`,
+  `release-budgets.json`, or CI. Reading them, or building a production input
+  archive into `.work/`, is allowed.
 - **LLVM is fixed (OD1).** Stencils use the locked LLVM: 23.1.4 on macOS arm64
   (`bootstrap.lock.json`) and 23.1.2 on Linux x86-64
   (`rust-cpython/linux-toolchain.lock.json`), through configure's
   `LLVM_VERSION` and `LLVM_TOOLS_INSTALL_DIR`. Upstream's "LLVM 21" warning is
-  accepted. No other LLVM, system clang, runtime LLVM, asmjit, or GCC.
-  Spikes may extract further members of the same locked archive into
-  `.work/`. If 23.x breaks stencils, patch `Tools/jit` through the overlay;
-  if that fails, escalate.
-- **Locks.** Only a **Source epochs** refresh and C0's Serc source record edit
-  `rust-cpython/sources.lock.json`. Vetted Rust crates for the **Rust rule**
-  and track C update the overlay `Cargo.lock` with their licenses recorded. Every other
-  lock, `rust-toolchain.toml`, and the vendored benchmark wheels stay as is.
-- **Frozen harness.** A climb step whose diff touches `benchmarks/`,
-  `perf_verdict.py`, or the fuzzer's comparison logic is rejected.
-  `climb-step` enforces this. Thresholds never change.
-- **Hosts.** Performance runs on macOS arm64. Linux x86-64 runs correctness
-  in the local `rust-cpython-linux:20260401` image (see **Lane host**); no
-  image build, pull, or prune. If the image is missing, Linux items park as
-  "needs environment" and done-criterion 4 stays open.
+  accepted. No other LLVM, system clang, runtime LLVM, asmjit, or GCC enters a
+  lane build. Spikes may extract further members of the locked archive into
+  `.work/`. R1's CinderX build is scratch and may use the toolchain CinderX
+  documents; nothing it builds enters the lane.
+- **Locks.** R0 and later epoch refreshes edit the CPython record in
+  `rust-cpython/sources.lock.json`; C0 adds the Serc record. Vetted crates for
+  the **Rust rule** and track C update the overlay `Cargo.lock` with their
+  licenses recorded. Every other lock, `rust-toolchain.toml`, and the vendored
+  benchmark wheels stay as they are.
+- **Frozen harness.** From M0 on, a J step whose diff touches `benchmarks/`,
+  `perf_verdict.py`, or the fuzzer's comparison logic is rejected
+  (`climb-step` enforces this). R0 may repair the harness for 3.16 before M0.
+  Track C may add new workloads outside the J training, held-out, and guard
+  sets, never edit existing ones. Thresholds never change.
 - **TLS stays out.** `_ssl_rs`, `_hashlib_rs`, RTLS/Graviola, and trust-store
-  code are untouched by both tracks. Serc's SipHash use for `.pyc` source
-  hashes is independent of them.
-- **Remote.** No pushes, PRs, issues, or comments unless the owner asks,
-  including upstream Serc or CPython.
+  code are untouched. Serc's SipHash `.pyc` source hashing is unrelated.
+- **Hosts.** Performance runs on macOS arm64. Linux x86-64 correctness runs in
+  the local image `rust-cpython-linux:20260401` (see **Lane host**); no image
+  build, pull, or prune. Where the image is absent, Linux items park as "needs
+  environment" and the rest continues.
+- **Network.** Allowed reads: lane `fetch` and `perf.py fetch` of locked
+  inputs, `git ls-remote`/archive downloads of `python/cpython`, and clones of
+  pinned CinderX and Serc commits into `.work/`. No pushes, PRs, issues, or
+  comments anywhere, including upstream Serc, CinderX, or CPython.
 
 ## Reference roles
 
 | Role | What | Used for |
 | --- | --- | --- |
-| Semantic oracle | Unmodified CPython at the same pinned 3.16 commit, JIT off, with an upstream JIT-on control | Python semantics, C-API, refcount ownership, tracing and monitoring, deopt, introspection, GC, threads, subinterpreters |
-| Parity reference | The candidate's own JIT-off sibling: same overlay commit, same flags but the JIT | Failed-test sets and workload digests (PD8) |
-| Performance reference | Pinned [CinderX](https://github.com/facebookincubator/cinderx) on stock CPython 3.15.1, its supported range (`>=3.14.5,<3.16`) | Which mechanisms pay off and by how much; never semantics |
-| Implementation target | `rust-cpython/overlay/` on the pinned 3.16 tier-2 pipeline | Where mechanisms land |
-| Compiler oracle | Upstream CPython's C compiler and marshal at the epoch commit (`perf-upstream`) | Byte-identical code objects and `.pyc` bytes for track C |
-| Compiler starting point | Pinned [Serc](https://github.com/astral-experiments/serc) (MIT OR Apache-2.0), newest target 3.15.0rc2 | The 3.16 port begins from its compiler and marshal writer |
+| Semantic oracle | `perf-upstream`, `perf-upstream-jit`: unmodified CPython at the epoch commit | Python semantics, upstream-red attribution |
+| Parity reference | The candidate's sibling: same overlay commit, same flags minus the feature under test | Failed-test sets and workload digests |
+| Performance reference | Pinned [CinderX](https://github.com/facebookincubator/cinderx) on stock CPython 3.15.1, inside its supported range `>=3.14.5,<3.16` | Which mechanisms pay off and by how much; never semantics |
+| Compiler oracle | `perf-upstream` compiling and marshalling the same file | Byte-identical code objects for track C |
+| Compiler starting point | Pinned [Serc](https://github.com/astral-experiments/serc), MIT OR Apache-2.0, newest target 3.15.0rc2 | Track C's compiler and marshal writer |
 
 CinderX numbers are within-version uplifts (3.15 JIT over 3.15 no-JIT),
-reported beside, never against, the lane's 3.16 uplift.
+reported beside the lane's 3.16 uplift, never against it.
 
 ## Rust rule
 
 New optimizer passes (analysis, unboxing decisions, inline-cache
 specialization, inlining, allocation removal, register allocation) are written
-in Rust in an overlay crate and called from the tier-2 pipeline. C stays only
-where the code must be C: stencil templates compiled by the locked clang,
-the existing hooks in `overlay/Python/optimizer.c` and `jit.c`, and the
-smallest glue between them and the Rust passes. No handwritten assembly
-(ENGINEERING rule 9).
+in Rust in one overlay crate, `rust-cpython/overlay/Modules/_jit_opt_rs/`, and
+called from the tier-2 pipeline. C stays only where it must: stencil
+templates compiled by the locked clang, the existing hooks in
+`overlay/Python/optimizer.c` and `jit.c`, and the smallest glue between them
+and the crate. No handwritten assembly (ENGINEERING rule 9). T1's runtime
+fixes are changes to existing C paths and are exempt.
 
-Adding the Rust optimizer crate and its tier-2 hook is a contract change. The
-first candidate that needs it stops for one owner review of the crate
-boundary; later passes inside that crate do not.
+The crate and its hook are a contract change: the first candidate that adds
+them goes to the **Owner queue**.
+
+## Builds
+
+| Build | `perf.py build` flags | Role |
+| --- | --- | --- |
+| `perf-upstream` | `--empty-overlay` | semantic and compiler oracle |
+| `perf-upstream-jit` | `--empty-overlay --jit` | upstream JIT control |
+| `perf-rust` | — | no-JIT sibling, track C baseline |
+| `perf-rust-jit` | `--jit` | J incumbent (`@incumbent-jit`) |
+| `perf-rust-jit-aa` | `--jit` | A/A twin, built at M0 only |
+| `perf-climb-ref` | — | frozen no-JIT reference for the epoch |
+| `perf-jit-<mechanism>` | `--jit` | J candidate or probe |
+| `perf-rust-serc` | `--serc` | C incumbent |
+| `perf-serc-<item>` | `--serc` | C candidate |
+| `perf-rust-jit-serc` | `--jit --serc` | combined build at Close |
+
+`--serc` does not exist yet; C2 adds it to `perf.py build` and
+`rust-cpython/build.py build`. Serc is linked only into `--serc` builds.
+"Rebuild clean" means `perf.py clean --name <build>` then `perf.py build`
+with the table's flags at `main`'s head.
 
 ## Definitions
 
-- **Training set:** 16 kernels from the pinned pyperformance 1.14.0 wheel:
-  `richards`, `scimark_sor`, `nbody`, `scimark_lu`, `spectral_norm`,
-  `scimark_fft`, `scimark_sparse_mat_mult`, `scimark_monte_carlo`, `float`,
-  `deltablue`, `fannkuch`, `chaos`, `nqueens`, `go`, `hexiom`, `raytrace`.
+- **Training set:** 16 kernels from the pinned pyperformance 1.14.0 wheel
+  (`benchmarks/workloads/jit_kernels.py`): `richards`, `scimark_sor`,
+  `nbody`, `scimark_lu`, `spectral_norm`, `scimark_fft`,
+  `scimark_sparse_mat_mult`, `scimark_monte_carlo`, `float`, `deltablue`,
+  `fannkuch`, `chaos`, `nqueens`, `go`, `hexiom`, `raytrace`.
 - **Held-out set:** `barnes_hut`, `pidigits`, `pyflate`, `coroutines`,
   `generators`, `comprehensions`, `richards_super`, `meteor_contest`. Run with
-  `perf.py bench --jit-heldout`; `perf.py profile` refuses them.
+  `--jit-heldout`; `perf.py profile` refuses them.
 - **Guard set:** the non-kernel workloads in `--jit-set --gate`
   (`django_template_realistic`, `django_wsgi_request`, `import_django`,
   `python_startup`, `serialization_roundtrip`, `zlib_decode_1m`,
@@ -120,18 +223,18 @@ boundary; later passes inside that crate do not.
 - **Kernel CPU (OD8):** user plus system `getrusage` over each kernel's timed
   region, including compilation and warmup inside it. Wall and process CPU
   stay recorded.
-- **`climb-ref`:** a clean no-JIT build of the epoch's first commit, frozen
-  for the epoch.
 - **Score `S`:** geometric mean over the training set of the pooled median
-  kernel-CPU ratio, candidate over `climb-ref`, from `perf.py bench --baseline
-  climb-ref --candidate C --jit-set --runs 5`.
-- **Incumbent:** the latest accepted JIT build, rebuilt clean after each
-  acceptance.
+  kernel-CPU ratio, from `perf.py bench --baseline perf-climb-ref --candidate
+  perf-rust-jit --jit-set --runs 5`.
+- **Held-out score:** the same over the held-out set, with `--jit-heldout`.
+- **JIT code bytes:** per kernel, the summed executor code size in the
+  `PYTHON_JIT_MAP` output of one registry-size run. R0 adds this to
+  `perf.py` before M0 if no command reports it.
 
 ## Targets
 
 Fixed; only the owner changes them. A missed milestone is recorded with its
-`S` and the climb moves to the next tier.
+`S`, and the lane moves to the next tier.
 
 | Milestone | `S` | Subset bar | Tier |
 | --- | ---: | --- | --- |
@@ -141,295 +244,330 @@ Fixed; only the owner changes them. A missed milestone is recorded with its
 | M3 | ≤ 0.38 | object geomean (richards, deltablue, go, chaos, raytrace, hexiom, nqueens, fannkuch) ≤ 0.50 | T3 inlining and allocation removal |
 | M4 | ≤ 0.25 | every training kernel ≤ 0.45 | T4 backend |
 
-Every milestone also requires:
+**Milestone gate.** With `perf-rust-jit` rebuilt clean, run the `S` command,
+the held-out command, and `perf.py bench --baseline perf-climb-ref
+--candidate perf-rust-jit --jit-set --gate --runs 5`, each between
+`perf-gate-ready` checks, and measure JIT code bytes. The milestone is met
+when all of these hold:
 
-- **Held-out:** geomean over `climb-ref` ≤ `S^0.5`. A miss triggers
-  **Overfit review**.
-- **Guard:** no workload regresses under the unchanged gate policy.
-- **Memory (OD4):** each kernel's peak RSS within +8% of `climb-ref`; JIT
-  code bytes per kernel within 2x the epoch's M0 incumbent.
+- `S` and the subset bar meet the row.
+- **Held-out:** held-out score ≤ `S^0.5`. A miss is **Overfit review**: the
+  J lane parks and the owner decides which steps since the last milestone
+  stay.
+- **Guard:** no guard workload regresses under the unchanged gate policy.
+- **Memory (OD4):** each kernel's peak RSS within +8% of `perf-climb-ref`;
+  JIT code bytes per kernel within 2x the epoch's M0 incumbent.
 
-## Sequence
-
-```text
-J   R0 pin ── R0 port + M0 ── T1 ── M1 ──┬── T2 ── M2 ── T3 ── M3 ── T4 ── M4 ──┐
-R1  CinderX study on stock 3.15.1 ───────┘ (catalog before T2 ceilings)        ├── close
-C   C0 vet ──┬── marshal parity ───────────────────────────────────────────────┤
-             └── (after R0 pin) C1 port ── C2 in-process exec ── C3 all modes ─┘
-```
-
-Three lanes run in parallel, each in its own `.work/wt/<item>` worktree:
-track J; R1, which needs nothing from R0 and starts now; and track C, whose C0
-and marshal parity start now and whose C1 waits only for R0 step 1's pin, not
-R0's exit. Builds and suites may overlap; timing gates do not, because each
-needs `perf-gate-ready` on a quiet host. JIT climb builds stay without
-`--serc` until C3, and track C builds stay without the JIT, so neither track's
-candidates move the other's measurements.
+## Track J
 
 ### R0: refresh to latest 3.16 and rebaseline
 
-1. Resolve upstream `python/cpython` `main`, pin the commit with archive
-   SHA-256 and size in `rust-cpython/sources.lock.json`. Never build a
-   floating ref.
-2. Port the overlay deliberately: bytecodes and uops, optimizer, stencil
-   layout, runtime helpers, frames, C-API, Rust bindings.
-3. Confirm the locked LLVMs regenerate stencils, link, and produce ThinLTO
-   output on both hosts. A failure is reported with evidence, then
-   escalated; never fixed by changing a lock.
-4. Build clean upstream and overlay siblings, JIT off and on, per host. Run
-   the targeted suites, the broad lane suites, pydebug, and the fuzzer.
-   Recheck the 3.16.0a1 upstream findings against the new source:
+1. Resolve `python/cpython` `main` with `git ls-remote`, download its archive,
+   and record the SHA, SHA-256, and size in Status. Work in
+   `.work/wt/r0`; the lock change lands on `main` with R0's exit.
+2. Port the overlay: bytecodes and uops, optimizer, stencil layout, runtime
+   helpers, frames, C-API, Rust bindings, Rust modules.
+3. Confirm the locked LLVM regenerates stencils, links, and produces ThinLTO
+   output. If it fails and an overlay patch to `Tools/jit` cannot fix it in
+   three attempts, park the J lane (owner-blocking).
+4. Build `perf-upstream`, `perf-upstream-jit`, `perf-rust`, and
+   `perf-rust-jit`. Run `perf.py test --all` on each, the targeted suites,
+   pydebug, and the fuzzer at 2,000 programs for seeds 0-2. **Parity:** each
+   overlay build fails no test that its upstream counterpart passes; tests red
+   on upstream are recorded as upstream-red with the upstream build's
+   evidence. Recheck these 3.16.0a1 upstream findings and record each as
+   fixed or still present:
    - a function that started function-entry tracing then runs under
      `sys.settrace` leaked one block per function with the JIT on;
    - `test_capi.test_opt` and `test_monitoring` failed from the second `-R`
      repetition because the GC invalidates cold executors;
    - `test_optimizer` leaked 6 references per run with or without the JIT.
    Keep the overlay's `effective_trace_length` pystats fix only if upstream
-   still needs it.
-5. Build `climb-ref`, the incumbent, and a second clean incumbent. Run the
-   A/A gate, record its spread, and measure `S0` and the held-out and guard
-   baselines.
+   still needs it. A parity failure gets three root-caused attempts per
+   failing test file, then the J lane parks.
+5. Repair `benchmarks/`, the fuzzer, or `climb-step` only where 3.16 broke
+   them, and add the JIT code bytes measurement. The harness is frozen after
+   this step.
+6. Build `perf-climb-ref` and `perf-rust-jit-aa`. Run the A/A gate
+   (`perf-rust-jit` against `perf-rust-jit-aa`, `--jit-set --gate --runs 5`),
+   then the **Milestone gate** commands to measure `S0` and the held-out and
+   guard baselines.
 
-**Exit:** M0 ledger row for the new epoch. If parity fails, keep the previous
-epoch's lock and stop.
-
-### R1: CinderX reference study
-
-1. Source-build pinned CinderX on stock CPython 3.15.1 in `.work/`. Run its
-   tests. Record source, ABI, dependency, and license closure. CinderX never
-   enters the overlay, a lock, or the product.
-2. Measure its JIT-off and JIT-on uplift on the training and held-out
-   kernels, with code bytes, warmup, compile CPU, and peak RSS.
-3. Read `Jit/hir/`, `Jit/lir/`, `Jit/codegen/`, `Jit/inline_cache.cpp`,
-   guard invalidation, type feedback, inlining, and deopt. For each
-   mechanism record its source, version assumptions, the semantics it must
-   preserve, its measured uplift on our kernels, and the tier it belongs to.
-4. Do not adopt its runtime, Static Python, lightweight frames, parallel GC,
-   or build system. Copying code needs a license and attribution review;
-   prefer an independent Rust implementation.
-
-**Exit:** a mechanism catalog committed as a section of this document, ranked
-by measured uplift, feeding the T2-T4 ceilings. This is an owner checkpoint:
-the report sets CinderX's measured uplift beside M2-M4, and the owner
-reaffirms or moves those targets before T2 starts.
+**Exit:** the lock change and M0 ledger row land on `main`. Linux x86-64 parity
+for step 4 runs where the image exists; otherwise it parks under Close and
+does not block M0.
 
 ### P1: ceilings (start of each tier)
 
-For each mechanism, build a throwaway probe that removes the cost unsafely
-while keeping training digests, and gate it against the incumbent. Its ratio
-is the ceiling. Rank the backlog by ceiling; drop a mechanism under 1% unless
-it unblocks a later tier. Re-profile all 16 kernels with `perf.py profile
---tool sample --jit-map` first.
+Re-profile all 16 kernels with `perf.py profile --tool sample --jit-map`. For
+each mechanism in the tier, build a throwaway probe `perf-jit-probe-<name>`
+that removes the cost unsafely while keeping training digests, and gate it
+against the incumbent with `climb-step --candidate`. Its ratio is the
+mechanism's ceiling; record it in the ledger with verdict PROBE. Rank the
+backlog by ceiling, and drop a mechanism under 1% unless it unblocks a later
+tier. Costs that the profile shows as newly dominant join the backlog.
 
-| Tier | Mechanism | Probe |
+| Tier | Mechanism | Probe or ceiling source |
 | --- | --- | --- |
 | T1 | Thread-state lookup (`_tlv_get_addr`, 16.1% sampled on a1) | `_PyThreadState_GET` reads a plain global |
 | T1 | Frame push and pop (`_PyFrame_ClearExceptCode`, `_PyEval_FrameClearAndPop`) | skip clearing frames that own no cells or escaping locals |
 | T1 | `_CHECK_VALIDITY` and `_SET_IP` | strip both |
 | T1 | Proven type and version guards | strip them |
-| T2 | Float and int boxing | summed sampled share of allocation, dealloc, refcount, and type guards on numeric kernels |
+| T2 | Float and int boxing | summed sampled share of allocation, dealloc, refcount, and type guards on numeric kernels, with R1's measured uplift |
 | T3 | Python-to-Python calls | sampled share of frame and call uops |
-| T3 | Short-lived allocations, attribute and global inline caches | sampled share of allocation and lookup; R1 uplift |
+| T3 | Short-lived allocations; attribute and global inline caches | sampled share of allocation and lookup, with R1's measured uplift |
 | T4 | Spills, reloads, stencil glue | sampled share of `_SPILL_OR_RELOAD` and inter-stencil moves after T3 |
 
 ### T1: runtime overheads, toward M1
 
-Attack only costs the new epoch's profile still shows. The thread-state fix is
-systemic: pass `tstate` or the interpreter through the freelist, allocation,
-and frame paths, correct under threads and subinterpreters; add
-`test_threading` and `test_interpreters` to its targeted suites.
+Attack only costs the new epoch's profile still shows. Per-call-site patches
+bought about 1% each on a1, so the thread-state fix is systemic: pass `tstate`
+or the interpreter through the freelist, allocation, and frame paths, correct
+under threads and subinterpreters. Add `test_threading` and
+`test_interpreters` to its targeted suites.
 
 ### T2: unboxing, toward M2
 
 Keep exact floats and compact ints as machine values between uops; box only at
 side exits, calls, heap stores, and trace end. Deopt rebuilds boxed values on
-every introspection path the fuzzer covers. Each is its own candidate:
-float unboxing across binary ops and compares, int unboxing with overflow
-guards, then unboxed loop-carried locals.
+every introspection path the fuzzer covers. Candidates, in order: float
+unboxing across binary ops and compares; int unboxing with overflow guards;
+unboxed loop-carried locals.
 
 ### T3: inlining and allocation removal, toward M3
 
 Inline Python-to-Python calls with lazy frame materialization on deopt. Add
-CinderX-informed attribute and global inline caches with invalidation that
-honours descriptors, mutation, inheritance, lazy imports, and
-subinterpreters. Remove non-escaping allocations. Lengthen traces with loop
-peeling and invariant-guard hoisting.
+attribute and global inline caches whose invalidation honours descriptors,
+mutation, inheritance, lazy imports, and subinterpreters. Remove non-escaping
+allocations. Lengthen traces with loop peeling and invariant-guard hoisting.
 
 ### T4: backend, toward M4
 
-Revisit whole-trace register allocation once T1-T3 shrink other costs (the
-a1 attempt cut spills 8% for no measurable gain), then reduce stencil glue.
+Revisit whole-trace register allocation (the a1 attempt cut spills 8% for no
+measurable gain), then reduce stencil glue.
 
-## Track C: Rust source compiler (Serc on 3.16)
+### J acceptance
 
-Serc compiles Python source to CPython bytecode; it does not make execution
-faster. Its value here is cold imports, `compile()`, and `exec()` of uncached
-source (the product ships without `.pyc` caches), plus a byte-exact marshal
-writer. Only the port to the pinned 3.16 epoch is in scope; there is no 3.15
-host-tool step.
+A candidate replaces the incumbent only when all hold:
 
-### C0: vet and pin
-
-1. Pin a Serc commit (head `bc563167`, release 0.1.11, on 2026-11-09) as a
-   second source record in `rust-cpython/sources.lock.json` with archive
-   SHA-256 and size. Lane changes live in an overlay over that archive, as for
-   CPython; no copied tree without its record.
-2. Pin the `serc` crate's non-dev dependencies exactly in the overlay
-   `Cargo.lock` with licenses, including the Ruff parser crates at the git
-   revision Serc pins and `stacker`, whose `psm` dependency compiles C and
-   assembly through `cc`: that must use the locked clang, never GCC. Extend
-   lane `fetch` for the git dependency so builds stay offline. Leave out the
-   CLI, benchmark crates, `mimalloc`, and `rayon`.
-3. Record the dependency closure and the `libpython` text-size delta of
-   linking the bare compiler.
-
-### Marshal parity (starts now)
-
-`_marshal_rs` writes valid bytes that differ from CPython's reference
-selection, so `compileall_source` is excluded from control comparisons
-(`KNOWN_CONTROL_MISMATCHES` in `rust-cpython/perf.py`). Make `_marshal_rs`
-byte-identical to upstream `marshal.dumps`, using Serc's writer as the guide,
-and remove the exclusion. Gate: byte-identical output on the C1 corpus, the
-marshal and importlib suites, and the existing marshal route verdicts.
-
-### C1: port Serc to the epoch's 3.16
-
-Add a 3.16 target for the epoch commit: opcodes, code-object layout,
-exception and line tables, marshal rules, parser features, and compiler
-passes. The oracle is upstream CPython at the same commit compiling the same
-file. **Corpus:** the epoch's `Lib/` and `Lib/test/`, plus the lane's pinned
-benchmark source trees (Django and the `compileall_source`, `pylint_source`,
-and `pycparser_source` inputs), at `-O0`, `-O1`, and `-O2`.
-
-**Exit (C1):** zero byte mismatches on the corpus, with Serc's own tests
-green. A mismatch blocks until fixed; a file is never excluded to pass.
-
-### C2: in-process `exec` mode
-
-Add an opt-in `--serc` lane build flavor in which source-mode `exec`
-compilation (imports, `compile(..., "exec")`, `exec(str)`) goes through
-Serc. `eval`, `single`, and AST-object input go to the C compiler by mode,
-by design. A Serc error raises; it is never retried on the C compiler. A
-verify switch compiles with both and raises on any difference; the full suite
-runs once under it.
-
-**Exit (C2):** the `--serc` build fails exactly its sibling's failed-test set,
-the verify run reports no difference, and a cold-import gate (`-B`, empty
-caches; `python_startup`, `import_django`, `import_app_stack`,
-`compileall_source`) against the sibling is ACCEPT under the unchanged
-verdict and memory policy. Cold-import workloads may be added to the registry
-outside the JIT training, held-out, and guard sets; existing workloads are not
-changed.
-
-### C3: all source modes
-
-Extend the Serc path to `eval` and `single` with the same oracle and gates.
-AST-object input (`compile(ast_obj, ...)`) stays on the C compiler: Serc
-consumes Ruff's AST, and converting CPython's is out of scope.
-
-**Exit (C3):** done-criterion 5.
-
-## Close
-
-Build the combined JIT plus `--serc` incumbent, run done-criteria 4 and 6,
-write the closing ledger row, and replace **Status** with the final state.
-
-## Source epochs
-
-An epoch is one pinned 3.16 commit with its own `climb-ref`, incumbent, A/A
-spread, and `S0`. Scores compare only within an epoch.
-
-- Refresh only between milestones, never mid-tier. Refresh when the owner
-  asks or when upstream tags a 3.16 pre-release and the current tier has
-  closed.
-- A refresh reruns R0 on the accepted incumbent's code. The ledger opens the
-  new epoch with its M0 row; milestones met in an earlier epoch are re-gated
-  in the new one before the climb continues.
-- If the refresh fails parity, the campaign continues on the previous epoch
-  and the refresh is retried at the next milestone.
-- Track C re-ports Serc to each new epoch and reruns C1's corpus before its
-  next gate. Track J never waits for it; track C's milestones count only on
-  the epoch they were measured on.
-
-## Per-step acceptance
-
-A candidate becomes the incumbent only when all hold:
-
-1. **Gate:** `perf.py bench --baseline <incumbent> --candidate C --jit-set
+1. **Gate:** `perf.py bench --baseline @incumbent-jit --candidate C --jit-set
    --gate --runs 5` returns ACCEPT under the unchanged `perf_verdict.py`
-   policy (1% floor, 95% bootstrap). `perf-gate-ready` exits 0 before and
-   `perf-gate-ready -1` exits 0 after; a busy host means wait, never pass.
+   policy (1% floor, 95% bootstrap), between `perf-gate-ready` checks.
 2. **No kernel regression:** no training kernel's pooled kernel-CPU CI95
    lower bound exceeds 1.02 against the incumbent.
 3. **Digests:** every training, held-out, and guard digest matches.
 4. **Differential fuzz:** 2,000 programs from `rust-cpython/tests/jit_fuzz.py`
    give identical output, exceptions, and reference-tracer counts with the JIT
    on and off.
-5. **Targeted suites:** the same failed-test set as the JIT-off sibling for
+5. **Targeted suites:** the same failed-test set as `perf-rust` for
    `test_capi.test_opt`, `test_jit*`, `test_float`, `test_long`,
    `test_sys_settrace`, `test_monitoring`, `test_generators`, `test_frame`,
-   `test_gc`, `test_weakref`.
-6. **Independent review:** a reviewer who did not write the change approves
-   any change to reference ownership, deopt, frame materialization, or
-   executor invalidation. A demonstrated defect blocks.
+   `test_gc`, `test_weakref`, plus any suites the item adds.
+6. **Independent review:** a reviewer agent that did not write the change and
+   has no access to the author's reasoning reads the diff. Its approval is
+   required for any change to reference ownership, deopt, frame
+   materialization, or executor invalidation; a demonstrated defect blocks.
 7. **Clean rebuild:** a clean build of C reproduces the gate direction in a
    two-run check.
 
-`perf.py climb-step --candidate <name>` runs steps 1-5; `--screen` first runs
-one training pass and gates only at a point estimate ≤ 0.99.
+`perf.py climb-step --candidate C` runs steps 1-5 and prints one JSON verdict;
+`--screen` first runs one training pass and gates only at a point estimate
+≤ 0.99.
 
 **Stacking.** An INCONCLUSIVE candidate with point estimate ≤ 0.995, no
 regressed kernel, and steps 3-6 passed is tagged `stack/<mechanism>`. Two or
-more stackable candidates that compose cleanly are gated as one.
+more stackable candidates that compose cleanly are gated as one candidate.
 
-## Loop
+### J loop
 
-1. If the tier has no ceilings, run P1.
-2. Take the top unparked mechanism; write it in `.work/wt/<mechanism>`, at
-   most two design variants.
-3. `perf.py build --incremental`, then `climb-step --screen`. No win: discard
-   and record why.
-4. Gate, then run **Per-step acceptance**.
-5. Accepted: commit to `main` with its ledger row, rebuild the incumbent
-   clean, update `S`. Rejected: ledger row, discard. Stackable: tag and
-   ledger row.
-6. When the tier's backlog is empty, gate its milestone and record it, met or
-   missed; consider a **Source epochs** refresh; move to the next tier.
+1. If the tier has no ceilings, run P1. T2 waits for R1's catalog.
+2. Take the top unparked mechanism. Write it in `.work/wt/<mechanism>`, at
+   most two design variants per mechanism.
+3. `perf.py build --name perf-jit-<mechanism> --jit --incremental`, then
+   `climb-step --screen`. No win: discard and record why.
+4. Run **J acceptance**.
+5. Accepted: integrate, rebuild `perf-rust-jit` and `perf-rust` clean, update
+   `S`. Rejected: ledger row, discard. Stackable: tag and ledger row.
+6. When the backlog is empty, run the **Milestone gate** and record it, met or
+   missed. Then consider a **Source epochs** refresh and move to the next
+   tier.
 
-## Stop and escalate
+**J stop rules.**
 
-The loop stops for the owner when:
+- After eight consecutive gated candidates fail, re-profile and re-rank once.
+  If the next four also fail, the tier closes with its milestone recorded as
+  missed, and the lane moves to the next tier. Closing T4 this way ends
+  track J incomplete.
+- A correctness failure that reproduces on the incumbent becomes the lane's
+  top item: root-cause it, fix it under **J acceptance** steps 3-7, and add a
+  fuzzer seed or test that catches it. Three failed attempts park the lane.
 
-- a milestone's held-out check fails (**Overfit review**: the owner decides
-  whether steps since the last milestone stay);
-- eight consecutive gated candidates fail; re-profile once and stop if the
-  next four also fail;
-- a correctness failure reproduces on the incumbent;
-- the locked LLVM cannot build a refreshed source;
-- a step needs the Rust crate boundary review, the C2 compile-path hook
-  (it changes CPython's compile entry points, a contract change), a new
-  overlay file under `overlay/Python/`, a lock change outside **Boundary**,
-  or a production change;
-- R1 lands its catalog (the target checkpoint);
-- the campaign reaches its end state.
+## R1: CinderX reference study
+
+1. Build stock CPython 3.15.1 from the production source lock's archive into
+   `.work/r1/`, and source-build CinderX at its latest `main` commit, recorded
+   in Status, against it. Run CinderX's tests. Record source, ABI, dependency,
+   and license closure.
+2. Run the training and held-out kernels from
+   `benchmarks/workloads/jit_kernels.py` with CinderX's JIT off and on, five
+   interleaved runs each, while holding the host lease. Record kernel CPU,
+   digests, code bytes, warmup, compile CPU, and peak RSS.
+3. Read `Jit/hir/`, `Jit/lir/`, `Jit/codegen/`, `Jit/inline_cache.cpp`, guard
+   invalidation, type feedback, inlining, and deopt. For each mechanism
+   record its source, version assumptions, the semantics it must preserve,
+   its contribution on our kernels (by disabling it through CinderX's own
+   switches where they exist), and the tier it belongs to.
+4. Do not adopt CinderX's runtime, Static Python, lightweight frames,
+   parallel GC, or build system. Copying code requires a license and
+   attribution review in the **Owner queue**; prefer an independent Rust
+   implementation.
+
+**Exit:** a **CinderX catalog** section added below **Status**, ranked by
+measured contribution, and a ledger row with CinderX's within-version `S`.
+The catalog's report sets that uplift beside M2-M4 in the **Owner queue**.
+Targets stand unless the owner moves them; T2 does not wait for an answer.
+
+If CinderX does not build or pass its tests on 3.15.1 within three
+root-caused attempts, R1 ends with a source-only catalog (step 3 without
+measured contributions), and T2-T4 rank by the lane's own profiles.
+
+## Track C: Rust source compiler (Serc on 3.16)
+
+Serc compiles Python source to CPython bytecode; it does not make execution
+faster. It targets cold imports, `compile()`, and `exec()` of uncached source
+(the product ships no `.pyc`), and provides a byte-exact marshal writer. Only
+the port to the pinned 3.16 epoch is in scope.
+
+### C0: vet and pin
+
+1. Pin Serc `bc563167` (release 0.1.11) as a second source record in
+   `rust-cpython/sources.lock.json` with archive SHA-256 and size. Lane changes
+   live in `rust-cpython/serc-overlay/`, mirroring the archive's paths.
+2. Pin the `serc` crate's non-dev dependencies exactly in the overlay
+   `Cargo.lock` with licenses, including the Ruff parser crates at the git
+   revision Serc pins, and `stacker`, whose `psm` dependency compiles C and
+   assembly through `cc` with the locked clang, never GCC. Extend lane
+   `fetch` to cache the git dependency so builds stay offline. Exclude the
+   CLI, benchmark crates, `mimalloc`, and `rayon` from the lane workspace.
+3. Record the dependency closure and the `libpython` text-size delta of
+   linking the bare compiler into a scratch `--serc` prototype.
+
+**Exit:** the source record and lock entries land; Serc's own tests pass on
+the pinned toolchain.
+
+### Marshal parity
+
+`_marshal_rs` writes valid bytes that differ from CPython's reference
+selection, so `compileall_source` is excluded from control comparisons
+(`KNOWN_CONTROL_MISMATCHES` in `rust-cpython/perf.py`). Make `_marshal_rs`
+byte-identical to upstream `marshal.dumps`, using Serc's writer as the guide,
+and remove the exclusion.
+
+**Exit:** byte-identical `marshal.dumps` against `perf-upstream` over every
+code object from the C1 corpus, `test_marshal` and `test_importlib` failing
+the same tests as `perf-upstream`, and the marshal route verdicts unchanged.
+Lands under the default-build rule in **Integration**.
+
+### C1: port Serc to the epoch's 3.16
+
+Add a 3.16 target for the epoch commit: opcodes, code-object layout,
+exception and line tables, marshal rules, parser features, and compiler
+passes. Add `rust-cpython/tests/serc_parity.py`: for each corpus file and
+optimization level it compiles with `perf-upstream` (`compile()` then
+`marshal.dumps`) and with Serc's CLI built in `.work/` from the pinned archive
+plus `serc-overlay/`, and reports every byte mismatch as JSON. The CLI never
+enters `libpython`.
+
+**Corpus:** the epoch's `Lib/` and `Lib/test/`, plus the lane's pinned
+benchmark source trees (Django and the `compileall_source`, `pylint_source`,
+and `pycparser_source` inputs), at `-O0`, `-O1`, and `-O2`. Files that
+upstream itself refuses to compile are listed and skipped on both sides.
+
+**Exit:** zero mismatches and Serc's own tests green. Each distinct mismatch
+class gets three root-caused attempts; an unresolved class parks track C with
+the class, a minimal repro, and the upstream change that introduced it.
+
+### C2: in-process `exec` mode
+
+Add `--serc`. In `--serc` builds, source-mode `exec` compilation (imports,
+`compile(..., "exec")`, `exec(str)`) calls Serc through a C entry point in the
+overlay compile path. `eval`, `single`, and AST-object input go to the C
+compiler by mode. A Serc error raises; it is never retried on the C compiler.
+`PYTHONSERCVERIFY=1` compiles with both and raises on any difference.
+
+Add three registry workloads, `cold_python_startup`, `cold_import_django`, and
+`cold_import_app_stack`, that run with `-B` and a fresh empty
+`PYTHONPYCACHEPREFIX`, so every module, stdlib included, compiles from source.
+
+**Exit:** `perf-rust-serc` fails exactly `perf-rust`'s `perf.py test --all`
+set; one full-suite run under `PYTHONSERCVERIFY=1` reports no difference; and
+`perf.py bench --baseline perf-rust --candidate perf-rust-serc --workload
+cold_python_startup --workload cold_import_django --workload
+cold_import_app_stack --workload compileall_source --gate --runs 5` is ACCEPT
+under the unchanged verdict and memory policy. A REJECT gets profiling and
+three optimization attempts; if all fail, track C ends incomplete with the
+measured loss.
+
+The hook, the `--serc` flags, and the new workloads go to the **Owner queue**.
+
+### C3: all source modes
+
+Extend the Serc path to `eval` and `single`, with C1's oracle extended to those
+modes and C2's exit rerun. AST-object input (`compile(ast_obj, ...)`) stays on
+the C compiler: Serc consumes Ruff's AST, and converting CPython's is out of
+scope.
+
+**Exit:** done-criterion 4 and a C3 ledger row.
+
+### C acceptance
+
+A track C change lands only when, on `perf-serc-<item>`: the C1 corpus has zero
+mismatches; `perf.py test --all` fails exactly `perf-rust`'s set; from C2 on,
+the full-suite verify run reports no difference; and an independent reviewer
+approves any change to FFI, ownership, or the compile hook. Timing gates run
+only at the C2 and C3 exits.
+
+## Close
+
+When M4 and C3 hold on one epoch: build `perf-rust-jit-serc`, gate it with the
+**Milestone gate** commands, rerun the C1 corpus and the J targeted suites on
+it, then run done-criterion 6 on Linux x86-64. Write the closing ledger row,
+rewrite **Status** with the final state, and clear resolved Owner queue
+entries.
+
+## Source epochs
+
+An epoch is one pinned 3.16 commit with its own `perf-climb-ref`, incumbents,
+A/A spread, and `S0`. Scores compare only within an epoch.
+
+- A refresh happens only at a J milestone boundary, when the owner asks or
+  when upstream has tagged a 3.16 pre-release since the current pin.
+- A refresh reruns R0 on `main`'s code. The new epoch opens with an M0 row;
+  milestones met earlier are re-gated before track J continues.
+- If the refresh fails parity, the campaign stays on the previous epoch and
+  retries at the next milestone boundary.
+- Track C re-ports Serc to the new epoch and reruns C1's corpus before its next
+  item. Track J never waits for it; C milestones count only on the epoch they
+  were measured on.
 
 ## Owner decisions
 
 - **OD1 (2026-11-01):** keep the pinned LLVM; see **Boundary**.
-- **OD4:** memory gates stay as written; JIT against no-JIT keeps its peak
-  RSS REJECT as a recorded cost.
+- **OD4:** memory gates stay as written; JIT against no-JIT keeps its peak RSS
+  REJECT as a recorded cost.
 - **OD7 (2026-11-02):** unboxing, escape analysis, inlining, and longer or
   speculative traces are in scope. Production stays JIT-disabled.
 - **OD8 (2026-11-02):** fitness is kernel CPU.
 - **OD9 (2026-11-02):** accepted steps land on `main` without owner review.
 - **OD10 (2026-11-09):** track latest 3.16 `main` through **Source epochs**;
-  use CinderX as a performance reference only; new optimizer passes are Rust.
+  CinderX is a performance reference only; new optimizer passes are Rust.
 - **OD11 (2026-11-09):** track C ports Serc to the pinned 3.16 epoch only,
   runs in parallel with track J, and leaves TLS code untouched. The product
   compiler is not replaced.
-- **Parked hypothesis:** a method-based frontend (withdrawn PEP 836
-  prototype, observed head `04a79098`) is not on the path to the end state
-  and opens only by owner decision.
+- **OD12 (2026-11-09):** M4 stays the end goal. The campaign runs unattended;
+  owner reviews are asynchronous except those listed in **Owner queue**.
+- **Parked:** a method-based frontend (withdrawn PEP 836 prototype, observed
+  head `04a79098`) opens only by owner decision.
 
 ## Lane host
 
@@ -443,11 +581,12 @@ docker run --rm --security-opt seccomp=unconfined --security-opt apparmor=unconf
   rust-cpython-linux:20260401 <command>
 ```
 
-Builds and `test --all` outlast 10 minutes; run them in the background.
+Builds and `test --all` outlast 10 minutes; run them in the background. The
+image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 ## Debugging methods
 
-1. **Compare against the JIT-off sibling.** `PYTHON_JIT=0` skips every
+1. **Compare against the sibling build.** `PYTHON_JIT=0` skips every
    `requires_jit_enabled` test, so it proves nothing for tier-2 tests.
    `python -I` implies `-E` and silently drops `PYTHON_JIT`.
 2. **Shrink to pure Python first.** `sys.getallocatedblocks()` deltas over
@@ -467,15 +606,19 @@ Builds and `test --all` outlast 10 minutes; run them in the background.
    `_PyUop_Caching`; keep `-1` default entries in the table parse.
 6. **Uop share is not CPU.** Check stencil body sizes in
    `jit_stencils-<triple>.h` before ranking a cost.
-7. **pystats:** build `--jit --pystats`; per kernel, `sys._stats_clear()`,
-   run, `sys._stats_off()`, `sys._stats_dump()` into an existing stats
-   directory; summarize with the build's `Tools/scripts/summarize_stats.py`.
+7. **pystats:** `perf.py build --jit --pystats`; per kernel,
+   `sys._stats_clear()`, run, `sys._stats_off()`, `sys._stats_dump()` into an
+   existing stats directory; summarize with the build's
+   `Tools/scripts/summarize_stats.py`.
 8. **Look in the locked LLVM archive, not the prefix,** for `opt`,
    `llvm-config`, `llvm-symbolizer`, headers, and the ASan runtime.
 9. **Monitoring:** the JIT reports LINE events only at side exits, upstream
-   included, so line sets are compared only between JIT-off runs. Event
-   counts at `set_events` boundaries vary between identical runs.
-10. **Harness traps:** two containers in one directory collide on
+   included, so line sets are compared only between JIT-off runs. Event counts
+   at `set_events` boundaries vary between identical runs.
+10. **Bytecode mismatches:** diff `dis.dis(code, show_caches=True)` and the
+    `co_linetable`/`co_exceptiontable` bytes before reading marshal output;
+    most mismatches are in a table, not an instruction.
+11. **Harness traps:** two containers in one directory collide on
     `test_python_<pid>`; a crashed test leaves mode-000 directories that break
     the next clean build (`chmod -R u+rwx`); delete a dropped `core`; never run
     bare `make` in a perf build directory; `rc=2` right after a crash is
@@ -483,31 +626,35 @@ Builds and `test --all` outlast 10 minutes; run them in the background.
 
 ## Status
 
-- **Epoch a1** (`v3.16.0a1`, `22d79d98`): P0 tooling done and frozen
-  (kernel-region CPU, held-out set, differential fuzzer, `climb-step`). M0
-  measured `S0 = 0.7474`, A/A max 0.19%. No climb step was taken. The a1
-  epoch closes at R0; its numbers do not carry over.
-- **Track C:** not started.
-- **Next, in parallel:** R0 on the latest 3.16 `main`; R1 on stock 3.15.1;
-  C0 and marshal parity. C1 starts once R0 pins the epoch.
+| Lane | State | Current item | Last result |
+| --- | --- | --- | --- |
+| J | ready | R0 | a1 epoch M0, `S0 = 0.7474`; no climb step taken |
+| R1 | ready | CinderX study | — |
+| C | ready | C0, then marshal parity | — |
+| Close | needs environment | Linux image absent on this host | — |
 
-Prior a1 evidence that shapes the backlog:
+**Owner queue:** empty.
+
+**Epoch a1** (`v3.16.0a1`, `22d79d98`) closes at R0; its numbers do not carry
+over. The P0 tooling it built stays: kernel-region CPU, the held-out set, the
+differential fuzzer, and `climb-step`. Evidence from a1 that shapes the
+backlog:
 
 - Sampled cost ranking over 16 kernels: `_tlv_get_addr` 16.1%,
-  `_PyFrame_ClearExceptCode` 3.2%, `PyFloat_FromDouble` 2.8%, `_POP_TOP`
-  2.3%. Executed-uop shares (Linux pystats): type guards 10.5%, `_SET_IP`
-  9.6%, `_CHECK_VALIDITY` 8.1%, `_SPILL_OR_RELOAD` 7.5%.
+  `_PyFrame_ClearExceptCode` 3.2%, `PyFloat_FromDouble` 2.8%, `_POP_TOP` 2.3%.
+  Executed-uop shares (Linux pystats): type guards 10.5%, `_SET_IP` 9.6%,
+  `_CHECK_VALIDITY` 8.1%, `_SPILL_OR_RELOAD` 7.5%.
 - Rejected one-site fixes: generic exact-float pop (REJECT, stencil 56 to 156
   bytes), outlined and inlined boxed-float reuse (INCONCLUSIVE and REJECT;
   parked at `lane/jit-boxed-float-reuse`), compact-int fast path
-  (INCONCLUSIVE), whole-trace register cache (INCONCLUSIVE, 0.9993). Lesson:
-  per-call-site patches buy about 1%; T1 must be systemic.
+  (INCONCLUSIVE), whole-trace register cache (INCONCLUSIVE, 0.9993).
 - Hybrid DynASM backend (python/cpython#146235): closed, not ported.
 
 ## Ledger
 
-Track C rows use the same columns, with the gate's headline ratio in `S`.
+Track C and R1 rows use the same columns, with the gate's headline ratio in
+`S`.
 
-| Date | Epoch | Step | Mechanism | Ref | `S` before → after | Moved >1% | Verdict | Directory |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026-11-02 | a1 | M0 | instrument | `perf-rust-jit` | — → 0.7474 | A/A max 0.19% | MEASURED | `rust-cpython/results/perf-bench/20261102T174650Z-perf-climb-ref-vs-perf-rust-jit` |
+| Date | Epoch | Lane | Step | Mechanism | Ref | `S` before → after | Moved >1% | Verdict | Directory |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-11-02 | a1 | J | M0 | instrument | `perf-rust-jit` | — → 0.7474 | A/A max 0.19% | MEASURED | `rust-cpython/results/perf-bench/20261102T174650Z-perf-climb-ref-vs-perf-rust-jit` |
