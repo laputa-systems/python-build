@@ -21171,6 +21171,10 @@ impl<'source> Compiler<'source> {
     }
 
     fn add_control_flow_region_exclusion(&mut self, start: Label, end: Label) {
+        if self.context.python_version >= crate::PythonVersion::Py316 {
+            // CPython 3.16 gives threaded and normalized jumps an explicit exception handler.
+            return;
+        }
         if self.control.generators.generator_region_start.is_some() {
             self.control
                 .generators
@@ -23270,7 +23274,7 @@ impl<'source> Compiler<'source> {
             self.assembler.mark(end);
             if has_control_region {
                 self.add_control_flow_region_exclusion(start, end);
-            } else {
+            } else if self.context.python_version < crate::PythonVersion::Py316 {
                 self.control
                     .generators
                     .generator_region_exclusions
@@ -25734,7 +25738,7 @@ impl<'source> Compiler<'source> {
         if let Some((control_start, control_end)) = control_region {
             self.assembler.mark(control_end);
             self.add_control_flow_region_exclusion(control_start, control_end);
-            if condition_tail == 2 {
+            if condition_tail == 2 && self.context.python_version < crate::PythonVersion::Py316 {
                 for exclusions in &mut self
                     .control
                     .exceptions
@@ -25744,7 +25748,9 @@ impl<'source> Compiler<'source> {
                 }
             }
         }
-        if let Some(exclusion_start) = generator_exclusion {
+        if let Some(exclusion_start) = generator_exclusion
+            && self.context.python_version < crate::PythonVersion::Py316
+        {
             self.control
                 .generators
                 .generator_region_exclusions

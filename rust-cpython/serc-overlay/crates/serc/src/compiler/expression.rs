@@ -6407,10 +6407,12 @@ impl Compiler<'_> {
             self.emit_jump_backward(JUMP_BACKWARD, restart, 0)?;
             let exclusion_end = self.assembler.label();
             self.assembler.mark(exclusion_end);
-            self.control
-                .generators
-                .generator_region_exclusions
-                .push((exclusion_start, exclusion_end));
+            if self.context.python_version < PythonVersion::Py316 {
+                self.control
+                    .generators
+                    .generator_region_exclusions
+                    .push((exclusion_start, exclusion_end));
+            }
             return Ok(());
         }
         self.with_control_override(
@@ -6430,10 +6432,12 @@ impl Compiler<'_> {
         self.emit_jump_backward(JUMP_BACKWARD, restart, 0)?;
         let exclusion_end = self.assembler.label();
         self.assembler.mark(exclusion_end);
-        self.control
-            .generators
-            .generator_region_exclusions
-            .push((exclusion_start, exclusion_end));
+        if self.context.python_version < PythonVersion::Py316 {
+            self.control
+                .generators
+                .generator_region_exclusions
+                .push((exclusion_start, exclusion_end));
+        }
         Ok(())
     }
 
@@ -6788,6 +6792,10 @@ impl Compiler<'_> {
         include_comprehension_cleanup: bool,
         include_protected_region_exclusion: bool,
     ) {
+        if self.context.python_version >= PythonVersion::Py316 {
+            // CPython 3.16 gives the normalized filter-rejection jump its conditional's handler.
+            return;
+        }
         self.control
             .generators
             .generator_region_exclusions

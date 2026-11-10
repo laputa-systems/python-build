@@ -3871,3 +3871,102 @@ async def drained(gen):
         ])
     );
 }
+
+#[test]
+fn python316_threaded_and_normalized_jumps_keep_their_exception_handlers() {
+    fn find<'a>(code: &'a CodeObject, qualified_name: &str) -> Option<&'a CodeObject> {
+        if code.qualified_name == qualified_name {
+            return Some(code);
+        }
+        code.constants.iter().find_map(|constant| match constant {
+            Constant::Code(child) => find(child, qualified_name),
+            _ => None,
+        })
+    }
+
+    let source = "def nested_while(s):
+    try:
+        for line in s:
+            while line:
+                line = g(line)
+    except E:
+        pass
+
+
+def filtered(xs):
+    return [x for x in xs if x]
+
+
+def generated(xs):
+    return (x for x in xs if x)
+";
+    type Entry = (u32, u32, u32, u32, bool);
+    let cases: [(crate::PythonVersion, [(&str, &[Entry]); 3]); 2] = [
+        (
+            crate::PythonVersion::Py315,
+            [
+                (
+                    "nested_while",
+                    &[
+                        (3, 14, 36, 0, false),
+                        (19, 34, 36, 0, false),
+                        (36, 45, 51, 1, true),
+                        (46, 47, 51, 1, true),
+                        (50, 51, 51, 1, true),
+                    ],
+                ),
+                ("filtered", &[(5, 16, 30, 2, false), (21, 27, 30, 2, false)]),
+                (
+                    "generated.<locals>.<genexpr>",
+                    &[(7, 16, 32, 2, true), (21, 32, 32, 2, true)],
+                ),
+            ],
+        ),
+        (
+            crate::PythonVersion::Py316,
+            [
+                (
+                    "nested_while",
+                    &[
+                        (3, 34, 36, 0, false),
+                        (36, 47, 51, 1, true),
+                        (50, 51, 51, 1, true),
+                    ],
+                ),
+                ("filtered", &[(5, 28, 31, 2, false)]),
+                ("generated.<locals>.<genexpr>", &[(7, 33, 33, 2, true)]),
+            ],
+        ),
+    ];
+    for (python_version, expected) in cases {
+        let module = crate::compile_with_options(
+            source,
+            "handlers.py",
+            &crate::CompileOptions {
+                python_version,
+                ..crate::CompileOptions::default()
+            },
+        )
+        .unwrap();
+        for (name, entries) in expected {
+            let code = find(&module.code, name)
+                .unwrap_or_else(|| panic!("module should contain {name}"));
+            let mut decoded = Vec::new();
+            let mut index = 0;
+            while index < code.exception_table.len() {
+                let start = read_exception_varint(&code.exception_table, &mut index);
+                let length = read_exception_varint(&code.exception_table, &mut index);
+                let target = read_exception_varint(&code.exception_table, &mut index);
+                let depth_lasti = read_exception_varint(&code.exception_table, &mut index);
+                decoded.push((
+                    start,
+                    start + length,
+                    target,
+                    depth_lasti >> 1,
+                    depth_lasti & 1 != 0,
+                ));
+            }
+            assert_eq!(decoded, entries, "{python_version:?} {name}");
+        }
+    }
+}

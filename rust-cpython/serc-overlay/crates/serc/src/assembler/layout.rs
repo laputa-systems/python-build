@@ -231,7 +231,11 @@ impl LayoutAssembler {
             })
             .collect::<Result<Vec<_>, CompileError>>()?;
         let mut late_exception_exclusions = Vec::new();
-        let dynamic_exception_owners = self.dynamic_exception_owners();
+        let dynamic_exception_owners = if self.python_version >= crate::PythonVersion::Py316 {
+            super::exception_owners::DynamicExceptionOwners::default()
+        } else {
+            self.dynamic_exception_owners()
+        };
         let needs_late_owner_replay = self
             .items
             .iter()
@@ -365,10 +369,16 @@ impl LayoutAssembler {
                     {
                         late_source_exception_owners.push((position, end, region));
                     } else {
+                        // Python 3.16 assigns every jump created after exception labeling an
+                        // explicit handler, so no jump keeps a vacated slot's missing owner.
+                        let explicit_jump_handler = self.python_version
+                            >= crate::PythonVersion::Py316
+                            && instruction.opcode.has_jump_for(self.python_version);
                         if instruction
                             .exception_policy()
                             .exclusion()
                             .applies(width(instruction_index))
+                            && !explicit_jump_handler
                         {
                             late_exception_exclusions.push((position, end));
                         }
