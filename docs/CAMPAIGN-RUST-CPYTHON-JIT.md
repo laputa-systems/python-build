@@ -204,8 +204,8 @@ them goes to the **Owner queue**.
 | `perf-serc-<item>` | `--serc` | C candidate |
 | `perf-rust-jit-serc` | `--jit --serc` | combined build at Close |
 
-`--serc` does not exist yet; C2 adds it to `perf.py build` and
-`rust-cpython/build.py build`. Serc is linked only into `--serc` builds.
+C2 added `--serc` to `perf.py build` and `rust-cpython/build.py build`.
+Serc is linked only into `--serc` builds.
 "Rebuild clean" means `perf.py clean --name <build>` then `perf.py build`
 with the table's flags at `main`'s head.
 
@@ -1105,6 +1105,85 @@ measured loss.
 
 The hook, the `--serc` flags, and the new workloads go to the **Owner queue**.
 
+**Implemented; exit not met (2026-11-10).** `perf.py build --serc` and
+`build.py build --serc` define `Py_SERC` and make the static carrier's
+optional `serc` feature a default, linking `overlay/serc-lane` (the C entry
+points) and Serc into `libpython`. A default build is unaffected: at the C2
+head every `libpython` section, rebase/bind/export table, and non-debug
+symbol equals a `perf-rust` built before C2 (only the debug-map UUID differs),
+and `libcpython_rust_staticlib.a` is byte-identical.
+`overlay/Python/pythonrun.c` routes source-mode `exec` requests to Serc by the
+rule in `rust-cpython/README.md` (In-process Serc): string or bytes input,
+flags limited to the source-form bits, an exact `str` filename, bytes that
+CPython decodes as UTF-8 without the codec registry, and no grammar only
+CPython's parser defines (the `barry_as_FLUFL` future, or nesting deeper than
+200). `eval`, `single`, AST, `FILE *`, flagged and inherited-future requests
+stay on the C compiler. The C compiler is the diagnostic authority: on a Serc
+refusal it runs only to raise CPython's exception, and the hook raises
+`SystemError` instead of returning C's code when C accepts; when Serc's scan
+finds a construct CPython may warn about, C runs for its warnings and its
+code is discarded. `PYTHONSERCVERIFY=1` (and `perf.py test --serc-verify`)
+compiles every Serc request with both and raises on any difference in the
+re-marshalled code or on a source C rejects. Serc's bytes load without the
+`marshal.loads` audit event and with CPython's object identity for 1-byte and
+1-character objects. C2 also committed the C1 3.16 target tables that the
+root `target/` ignore rule had kept out of C1's commits.
+
+Evidence at `dbacf66`: an in-process census over the C1 corpus
+(`marshal.dumps(compile())` per file and level) equals `perf-upstream` in all
+9,135 cases, with and without `PYTHONSERCVERIFY=1`; the 26 frozen modules that
+`_freeze_module` compiles through Serc equal the default build's;
+`tests/test_serc_compile.py` passes on `perf-rust-serc`. `cold_python_startup`,
+`cold_import_django`, and `cold_import_app_stack` exist (run only when named,
+`-B -X frozen_modules=off` and a fresh empty `PYTHONPYCACHEPREFIX`, each child
+checking that only the import bootstrap is frozen and nothing came from a
+cache); `cold_import_app_stack` is unavailable like `import_app_stack`, so the
+exit's gate command must drop it until that closure is locked.
+
+The exit is not met. From an empty bytecode cache, `perf.py test --all` on
+`perf-rust-serc` fails `perf-rust`'s e891 set plus six files that are Serc 3.16
+compiler defects outside the C1 corpus (the two runs also each hit one load
+flake, `test_os.test_os` and `test_httplib`, that passes in isolation on both):
+
+- `test_compile` (`test_slice_strings`): slice constant strings are not
+  interned (`x['abc':'xyz']`; CPython interns them since gh-129724).
+- `test_future_stmt.test_future`: annotation text for comprehension tuple
+  targets is `for (i, _) in`, CPython writes `for i, _ in`.
+- `test_patma`: `case f"":` compiles; CPython rejects f- and t-string patterns.
+- `test_syntax`: `too many statically nested blocks` (20 `with` items, nested
+  inlined comprehensions, named `except` blocks, deep blocks) and the reserved
+  type-parameter name `__classdict__` are not rejected.
+- `test_type_annotations`: async comprehensions in annotations of a
+  non-async function are not rejected, and a comprehension in a module
+  `__annotate__` scope compiles to code that raises `UnboundLocalError`.
+- `test_type_params`: a comprehension in a generic class base or type alias
+  fails with `internal compiler error: expression changed stack depth`.
+
+The one full-suite run under `perf.py test --serc-verify` fails the same set
+plus `test_dis` and `test_grammar`, whose differences are two more classes
+that normal mode hides behind identical-looking results:
+
+- a numeric literal directly followed by a keyword (`9and x`, `0xfor x`,
+  `1.and x`, `1jor x`) compiles to different code (140 marshal bytes against
+  CPython's 106 for `test_grammar`'s case);
+- `try: pass\nexcept* Exception: x` compiles differently (`test_dis`).
+
+`PYTHONSERCVERIFY=1` also reports the slice, annotation-text, pattern,
+async-comprehension and `__annotate__` repros above as differences. Each class
+still has its three root-caused attempts. Linking Serc grows `libpython`
+`__text` from 3,037,336 to 11,015,088 bytes (+7.6 MiB), `__TEXT` from
+5,079,040 to 14,532,608, `__DATA_CONST` from 311,296 to 540,672, and the file
+from 7,348,672 to 21,931,648; `__DATA` is unchanged. The memory bar fails:
+`perf.py bench --baseline perf-rust --candidate perf-rust-serc --memory-only
+--matched-prefix` over `python_startup`, `cold_python_startup`,
+`cold_import_django`, and `compileall_source` is REJECT on peak RSS, with
+matching digests. `python_startup` peak RSS goes from 13.68 to 16.82 MiB
+(1.229, CI95 1.225-1.233, two runs) while its physical footprint moves only
+5.85 to 6.06 MiB; one run each puts `cold_python_startup` at 1.327,
+`cold_import_django` at 1.171, and `compileall_source` at 1.286. The growth is
+`libpython` pages, so the next attempt is a smaller or separately loaded Serc
+image, measured first.
+
 ### C3: all source modes
 
 Extend the Serc path to `eval` and `single`, with C1's oracle extended to those
@@ -1234,7 +1313,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 | --- | --- | --- | --- |
 | J | active | T3 inline-frame elision implemented and CORRECT; measured no bucket-(a) fall, dropped under P1. Next: virtual-frame inlining or T3 attribute/global caches | Inline frames: incumbent-named bucket (a) richards 24.0% → 17.2%, raytrace 11.6% → 9.6%, but including the new `_INLINE_*` call/frame uops 23.9% → 24.6% and 11.5% → 11.7%; CORRECT (5 incumbent superseded assertions; new `jit_inline_integration`), advisory 1.0123 |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
-| C | active | C2 in-process `exec` | C0, marshal parity and C1 landed: census 9,102 / 9,135 exact, 0 mismatches on e891 |
+| C | active | C2 in-process `exec`: eight Serc 3.16 defect classes block the exit | C2 hook on `campaign/c2` (`dbacf66`): in-process census 9,135 / 9,135 equal to `perf-upstream`; suite fails e891 set + 6 Serc-defect files, verify run + 2 more; independent review pending |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
 
 **Owner queue:** R1 reference report (informational, no target change
@@ -1323,6 +1402,25 @@ opcodes `BINARY_OP_SUBSCR_ARRAY_D`/`_I`; new uops
 `_PyArray_GetSpecializationKind`, `_PyArray_ReadDoubleItem` and
 `_PyArray_ReadIntItem`, defined in `Python/specialize.c`. The
 `BINARY_OP` cache carries the recorded type version in `external_cache[0..1]`.
+**Owner queue (C2 contract changes, on `campaign/c2`, not yet on `main`):**
+
+- The compile hook in `overlay/Python/pythonrun.c` and `marshal.c` (compiled
+  only under `Py_SERC`), the `serc-lane` C ABI, and its routing rule. Parent readings,
+  in force pending owner review: "A Serc error raises; it is never retried on the C
+  compiler" is implemented with the C compiler as the diagnostic authority (it
+  runs on a Serc refusal only to raise CPython's exception, and its code is
+  never returned), and sources with the `barry_as_FLUFL` future or nesting
+  deeper than 200 go to the C compiler by rule after Serc parses them.
+- `--serc` on `perf.py build` and `build.py build`, and `perf.py test
+  --serc-verify`.
+- `cold_python_startup`, `cold_import_django`, `cold_import_app_stack`: they
+  add `-X frozen_modules=off` to the doc's `-B` and fresh empty
+  `PYTHONPYCACHEPREFIX`, so the frozen startup modules compile too, and they
+  stay out of the default realworld and full suites.
+- Serc API additions in `serc-overlay`: filenames as `surrogatepass` bytes,
+  `decodes_as_utf8`, `CompiledModule::may_warn`, and `RequiresCpythonParser`.
+- Code size: `libpython` `__text` +7.6 MiB on `--serc` builds.
+- C acceptance's independent review of the FFI and compile hook has not run.
 
 **Epoch e891** (`main` `e891a911`, pinned 2026-11-10) opened at R0 on macOS
 arm64:
