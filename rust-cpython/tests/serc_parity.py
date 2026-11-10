@@ -186,17 +186,21 @@ def start_index_proxy():
 
 
 def assemble(archive: Path, overlay: Path, source: Path) -> None:
-    if source.exists():
-        shutil.rmtree(source)
-    source.mkdir(parents=True)
-    with tarfile.open(archive, "r:gz") as tar:
-        tar.extractall(source, filter="data")
-    roots = [entry for entry in source.iterdir() if entry.is_dir()]
-    if len(roots) != 1:
-        raise SystemExit(f"unexpected archive layout in {source}")
-    for entry in roots[0].iterdir():
-        shutil.move(str(entry), str(source / entry.name))
-    roots[0].rmdir()
+    marker = source / ".serc-assembled"
+    stamp = f"{archive.stat().st_size}:{archive.stat().st_mtime_ns}"
+    if not marker.is_file() or marker.read_text() != stamp:
+        if source.exists():
+            shutil.rmtree(source)
+        source.mkdir(parents=True)
+        with tarfile.open(archive, "r:gz") as tar:
+            tar.extractall(source, filter="data")
+        roots = [entry for entry in source.iterdir() if entry.is_dir()]
+        if len(roots) != 1:
+            raise SystemExit(f"unexpected archive layout in {source}")
+        for entry in roots[0].iterdir():
+            shutil.move(str(entry), str(source / entry.name))
+        roots[0].rmdir()
+        marker.write_text(stamp)
     for path in sorted(overlay.rglob("*")):
         if path.is_file():
             target = source / path.relative_to(overlay)
@@ -205,12 +209,16 @@ def assemble(archive: Path, overlay: Path, source: Path) -> None:
 
 
 def build_environment(cargo_home: Path, llvm: Path, work: Path) -> dict:
+    work = work.resolve()
+    cargo_home = cargo_home.resolve()
+    llvm = llvm.resolve()
     llvm_bin = llvm / "bin"
     env = dict(os.environ)
     env.update(
         {
             "RUSTUP_TOOLCHAIN": "nightly-2026-09-15",
             "CARGO_HOME": str(cargo_home),
+            "CARGO_TARGET_DIR": str(work / "cargo-target"),
             "TMPDIR": str(work / "tmp"),
             "CC": str(llvm_bin / "clang"),
             "CXX": str(llvm_bin / "clang++"),
@@ -252,7 +260,7 @@ def build_cli(source: Path, env: dict, work: Path) -> Path:
         finally:
             if server is not None:
                 server.shutdown()
-    binary = source / "target" / "release" / "serc"
+    binary = Path(env["CARGO_TARGET_DIR"]) / "release" / "serc"
     if not binary.exists():
         raise SystemExit(f"Serc CLI missing at {binary}")
     return binary
@@ -407,7 +415,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    work = args.work
+    work = args.work.resolve()
     work.mkdir(parents=True, exist_ok=True)
     if not args.cargo_home.exists():
         shutil.copytree(args.cargo_home, work / "cargo-home")

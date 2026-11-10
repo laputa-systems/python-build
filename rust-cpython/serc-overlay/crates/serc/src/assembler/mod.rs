@@ -20688,6 +20688,29 @@ impl Assembler {
         explicitly_owned: bool,
         exception_policy: ExceptionPolicy,
     ) -> EmittedInstruction {
+        // CPython 3.16 removed DELETE_NAME and DELETE_GLOBAL in favor of writing
+        // NULL through the matching store (pycore_magic_number.h 3702-3703).
+        let opcode = if self.python_version >= crate::PythonVersion::Py316
+            && matches!(
+                opcode,
+                crate::target::opcodes::DELETE_NAME | crate::target::opcodes::DELETE_GLOBAL
+            )
+        {
+            let store = if opcode == crate::target::opcodes::DELETE_NAME {
+                STORE_NAME
+            } else {
+                STORE_GLOBAL
+            };
+            self.push_linear_item(Item::Instruction(Instruction::new(
+                crate::target::opcodes::PUSH_NULL,
+                Operand::Value(0),
+                self.location,
+                depth_after.map(|depth| depth + 1),
+            )));
+            store
+        } else {
+            opcode
+        };
         // These guards model Python 3.14's borrowed-load traversal stopping at
         // eliminated CFG blocks. Python 3.15 visits their normal successors;
         // its final stack analysis decides whether each load can be borrowed.
