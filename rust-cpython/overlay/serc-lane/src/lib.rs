@@ -21,6 +21,9 @@ pub const COMPILED: c_int = 0;
 pub const COMPILED_MAY_WARN: c_int = 1;
 /// Serc refused the source; the buffer holds its UTF-8 reason.
 pub const REFUSED: c_int = 2;
+/// The source uses grammar only CPython's parser defines, so the C compiler compiles it; the
+/// buffer holds the UTF-8 reason.
+pub const CPYTHON_GRAMMAR: c_int = 3;
 
 /// Compile one module for CPython 3.16 into `output`, returning one of the status codes.
 ///
@@ -62,7 +65,8 @@ pub unsafe extern "C" fn _PySerc_CompileModule(
             },
             module.marshal(),
         ),
-        Err(reason) => (REFUSED, reason.into_bytes()),
+        Err(CompileFailure::CpythonGrammar(reason)) => (CPYTHON_GRAMMAR, reason.into_bytes()),
+        Err(CompileFailure::Refused(reason)) => (REFUSED, reason.into_bytes()),
     };
     let bytes = bytes.into_boxed_slice();
     let size = bytes.len();
@@ -75,28 +79,40 @@ pub unsafe extern "C" fn _PySerc_CompileModule(
     status
 }
 
+enum CompileFailure {
+    CpythonGrammar(String),
+    Refused(String),
+}
+
 fn compile(
     source: &[u8],
     source_is_text: bool,
     filename: &[u8],
     optimization_level: c_int,
     int_max_str_digits: c_int,
-) -> Result<serc::CompiledModule, String> {
+) -> Result<serc::CompiledModule, CompileFailure> {
     let optimization_level = match optimization_level {
         0 => OptimizationLevel::Zero,
         1 => OptimizationLevel::One,
         2 => OptimizationLevel::Two,
-        level => return Err(format!("invalid optimization level {level}")),
+        level => {
+            return Err(CompileFailure::Refused(format!(
+                "invalid optimization level {level}"
+            )));
+        }
     };
-    let limit = u32::try_from(int_max_str_digits)
-        .map_err(|_| format!("invalid integer string limit {int_max_str_digits}"))?;
+    let limit = u32::try_from(int_max_str_digits).map_err(|_| {
+        CompileFailure::Refused(format!("invalid integer string limit {int_max_str_digits}"))
+    })?;
     let options = CompileOptions {
         python_version: PythonVersion::Py316,
         optimization_level,
         ..CompileOptions::default()
     };
     let compiled = if source_is_text {
-        let text = std::str::from_utf8(source).map_err(|error| format!("source text is not UTF-8: {error}"))?;
+        let text = std::str::from_utf8(source).map_err(|error| {
+            CompileFailure::Refused(format!("source text is not UTF-8: {error}"))
+        })?;
         serc::compile_with_python_filename_and_integer_limits(
             text,
             filename,
@@ -113,7 +129,10 @@ fn compile(
             Some(limit),
         )
     };
-    compiled.map_err(|error| error.to_string())
+    compiled.map_err(|error| match error {
+        serc::CompileError::RequiresCpythonParser(_) => CompileFailure::CpythonGrammar(error.to_string()),
+        error => CompileFailure::Refused(error.to_string()),
+    })
 }
 
 /// Report whether CPython decodes this undecoded source as UTF-8 without its codec registry.

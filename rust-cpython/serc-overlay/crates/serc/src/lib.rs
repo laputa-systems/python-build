@@ -8,6 +8,7 @@ mod assembler;
 mod code_object;
 mod compiler;
 mod config;
+mod cpython_only;
 mod decimal_literals;
 mod delimiter_nesting;
 mod indentation;
@@ -230,6 +231,8 @@ pub enum CompileError {
         /// The string whose prior canonical identity is unknown.
         value: String,
     },
+    /// The source uses grammar that only CPython's own parser defines for it.
+    RequiresCpythonParser(&'static str),
     /// The compiler violated one of its own invariants.
     Internal(String),
 }
@@ -249,6 +252,7 @@ impl CompileError {
             | Self::IntegerStringConversionLimit { .. }
             | Self::UnresolvedIntegerStringLimit
             | Self::UnresolvedInternState { .. }
+            | Self::RequiresCpythonParser(_)
             | Self::Internal(_) => None,
         }
     }
@@ -288,6 +292,9 @@ impl fmt::Display for CompileError {
             Self::UnresolvedInternState { value } => {
                 write!(formatter, "unresolved initial intern state for {value:?}")
             }
+            Self::RequiresCpythonParser(reason) => {
+                write!(formatter, "this source requires CPython's parser: {reason}")
+            }
             Self::Internal(message) => write!(formatter, "internal compiler error: {message}"),
         }
     }
@@ -307,6 +314,7 @@ impl Error for CompileError {
             | Self::IntegerStringConversionLimit { .. }
             | Self::UnresolvedIntegerStringLimit
             | Self::UnresolvedInternState { .. }
+            | Self::RequiresCpythonParser(_)
             | Self::Internal(_) => None,
         }
     }
@@ -1007,6 +1015,9 @@ fn compile_normalized(
         .parsed
         .as_ref()
         .expect("parsed module is present");
+    if let Some(reason) = cpython_only::grammar(parsed.suite()) {
+        return Err(CompileError::RequiresCpythonParser(reason));
+    }
     // Ruff grows its parser stack for deeply nested expressions. Successful parses can
     // reuse its tokens; malformed input still uses the independent tokenizer before diagnostics.
     if let Err(error) =

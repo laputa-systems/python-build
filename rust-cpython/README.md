@@ -203,11 +203,21 @@ hold, and every other request to the C compiler:
 - the source is text, or bytes that CPython decodes as UTF-8 without its codec
   registry: no encoding cookie, or one that CPython's tokenizer maps to
   `utf-8`. Any other cookie goes through `codecs.lookup`, which Serc cannot
-  call.
+  call;
+- the source uses no grammar that only CPython's parser defines: Serc parses
+  it first and hands it to the C compiler if it imports the `barry_as_FLUFL`
+  future or nests more than 200 statements and expressions deep, where
+  CPython's parser recursion limit (as low as 747 nested lambda defaults)
+  begins to matter.
 
 `optimize=-1` resolves to the interpreter's `-O` level, and Serc receives the
 current `sys.get_int_max_str_digits()` limit. Serc's marshal bytes are loaded
-without the `marshal.loads` audit event.
+without the `marshal.loads` audit event and with the C compiler's object
+identity: marshal normally returns the shared singleton for a 1-byte bytes
+object or a 1-character Latin-1 string, but CPython gives each code object its
+own 1-byte `co_localspluskinds` and `co_linetable` and can produce
+non-interned 1-character constants, so `marshal.dumps(compile(...))` matches
+the C compiler's bytes.
 
 The C compiler stays the diagnostic authority. When Serc refuses a source, the
 hook compiles it with the C compiler only to raise CPython's exception; if the

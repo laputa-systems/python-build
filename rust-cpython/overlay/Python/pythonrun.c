@@ -70,6 +70,7 @@ enum {
     _PySerc_COMPILED = 0,
     _PySerc_COMPILED_MAY_WARN = 1,
     _PySerc_REFUSED = 2,
+    _PySerc_CPYTHON_GRAMMAR = 3,
 };
 
 extern int _PySerc_CompileModule(const char *source, size_t source_size,
@@ -1689,7 +1690,8 @@ done:
 /* Serc compiles source-mode "exec" requests whose flags carry nothing beyond
    the source-form bits, for an exact str filename, from text or from bytes that
    CPython itself would decode as UTF-8. Every other request, and every FILE *
-   or AST input, is compiled by the C compiler. */
+   or AST input, is compiled by the C compiler, as is a source whose grammar
+   only CPython's parser defines (_PySerc_CPYTHON_GRAMMAR). */
 static int
 serc_routes(int start, const char *str, PyObject *filename,
             PyCompilerFlags *flags)
@@ -1782,6 +1784,11 @@ serc_compile(const char *str, PyObject *filename, PyCompilerFlags *flags,
 
     PyObject *result = NULL;
     PyObject *reference = NULL;
+    if (status == _PySerc_CPYTHON_GRAMMAR) {
+        result = c_compile_string(str, filename, Py_file_input, flags,
+                                  optimize, module);
+        goto done;
+    }
     int verify = serc_verify_requested();
     if (status != _PySerc_COMPILED || verify) {
         reference = c_compile_string(str, filename, Py_file_input, flags,

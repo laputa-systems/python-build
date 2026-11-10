@@ -93,6 +93,8 @@ print(json.dumps({
     "latin-1 cookie": run(compile(b"# coding: latin-1\n" + source.encode(), "probe", "exec")),
     "utf8 alias cookie": run(compile(b"# coding: utf8\n" + source.encode(), "probe", "exec")),
     "str subclass filename": run(compile(source, Filename("probe"), "exec")),
+    "barry_as_FLUFL future": run(compile("from __future__ import barry_as_FLUFL\n" + source, "probe", "exec")),
+    "nesting deeper than Serc models": run(compile("x = " + "-" * 202 + literal, "probe", "exec")),
 }))
 '''
 
@@ -139,6 +141,8 @@ INVALID_SOURCES = [
     "def f():\n    yield = 1\n",
     "f(**x, *y)\n",
     "match x:\n    case {1: a, 1: b}:\n        pass\n",
+    "x = " + "-" * 100000 + "1\n",
+    "x = " + "lambda a=" * 1000 + "0" + ": 0" * 1000 + "\n",
 ]
 
 WARNING_SOURCES = [
