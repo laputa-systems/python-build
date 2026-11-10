@@ -619,6 +619,47 @@ the early-reject pass reached are +2.0% to +3.6%. Stores (`array_ass_subscr`)
 stay generic at 1.3-2.2% of fft/lu samples and were not specialized. Timing is
 deferred under OD14.
 
+**Generic `_BINARY_OP` specialization (CORRECT, 2026-11-10).** On
+`perf-jit-array` (`b356e9f`), generic `_BINARY_OP` with its callees is 9.6% of
+samples on `scimark_monte_carlo` (374/3912; the 19.9% backlog number predates
+the array-load slice) and 11.6% on `nbody` (482/4162). The monte_carlo site is
+`Random.nextDouble`'s `k += self.m1`: exact float plus the exact int `2**31-1`,
+which is not compact. The nbody site is `advance`'s `(...) ** (-1.5)` and
+`report_energy`'s `** 0.5`: exact float ** exact float; the exponents are
+float constants, not ints. `_Py_Specialize_BinaryOp` now selects
+`BINARY_OP_ADD_FLOAT_INT` for `NB_ADD`/`NB_INPLACE_ADD` when it first sees
+that non-compact shape (a site first seen with a compact int takes the existing
+`BINARY_OP_EXTEND` float-long descriptors; a site already specialized here
+also accepts compact ints) and `BINARY_OP_POWER_FLOAT` for
+`NB_POWER`/`NB_INPLACE_POWER` on two exact floats, unless the operands seen
+are a negative base and a fractional exponent, which stay generic. The uops use `_GUARD_NOS_FLOAT` with `_GUARD_TOS_EXACT_INT`,
+and `_GUARD_TOS_FLOAT` with `_GUARD_NOS_FLOAT`; the add converts through
+`_Py_convert_int_to_double` and boxes with `_PyFloat_FromDoubleTstate`; the pow
+calls `_PyFloat_PowExactTstate`, which mirrors `float_pow` case for case, boxes
+with `_PyFloat_FromDoubleTstate`, and signals a deopt for the negative-base
+non-integral-exponent complex result, so every success result is a unique
+float. Neither uop is `pure`, since both can raise. Both helpers are in `NON_ESCAPING_FUNCTIONS`;
+`_PyFloat_PowExactTstate` and `_Py_convert_int_to_double` are exported because
+`_testinternalcapi` compiles the uop executor. Generic `_BINARY_OP` with
+callees falls 9.6% → 0.0% on monte_carlo, replaced by
+`_BINARY_OP_ADD_FLOAT_INT` at 8.8% (344/3900), and 11.6% → 0.0% on nbody,
+replaced by `_BINARY_OP_POWER_FLOAT` at 6.4% (269/4211). `climb-step
+--correctness` against `perf-jit-array` is CORRECT (advisory 0.9992): training
+and held-out digests match, 2,000 fuzz programs give 0 mismatches at 97.45% JIT
+coverage, and the suites differ only by the five incumbent superseded
+`test_capi.test_opt` uop assertions. `jit_genops_integration.py` compares
+`operator.add`/`float.__pow__` references and JIT-on/off, and checks bit-exact
+expected values through sites it first confirms are specialized (literal
+operands are constant-folded and never reach `BINARY_OP`). An independent
+review found no correctness defect over 608 add and 17,424 pow operand pairs
+against the unspecialized build; its low findings (the folded literal checks,
+an off-by-one masked by a converging reference, and churn on always-complex
+sites) are fixed. JIT
+code bytes are at most 1.303x M0 (raytrace, 457,068); monte_carlo is 66,156
+and nbody 39,416. Peak RSS is 0.989-0.995x the incumbent on all 16 training
+kernels. `perf-climb-ref` is absent, so the OD4 reference comparison is
+unverified. Timing is deferred under OD14.
+
 **Unboxed loop-carried locals (dropped 2026-11-10: 0.0% achievable).** Any uop
 that can run arbitrary code can observe a local through `frame.f_locals`,
 `locals()`, tracing, monitoring, tracebacks, or the GC's frame traversal. A raw
@@ -1138,7 +1179,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | T2 `array` subscript loads landed; next: monte_carlo generic ops (19.9% peak), nbody `**` (8.9% peak), T3 inlining | T2 array subscript loads: generic `_BINARY_OP` + `array_subscr` sparse 62.4% → 0.0%, fft 27.8% → 4.8%, lu 20.5% → 0.0%; CORRECT (5 incumbent superseded assertions) |
+| J | active | T2 generic `_BINARY_OP` specialization landed; next: T3 inlining | T2 generic ops: monte_carlo `float += 2**31-1` 9.6% → 0.0% (new `_BINARY_OP_ADD_FLOAT_INT` 8.8%), nbody `float ** float` 11.6% → 0.0% (new `_BINARY_OP_POWER_FLOAT` 6.4%); CORRECT (5 incumbent superseded assertions), advisory 0.9992 |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | active | C2 in-process `exec` | C0, marshal parity and C1 landed: census 9,102 / 9,135 exact, 0 mismatches on e891 |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -1385,3 +1426,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-10 | e891 | J | T1 | frame pop fast-path inlining: `_PyEval_FrameClearAndPop` + `_PyThreadState_PopFrame` self richards 7.85% → 0.00%, raytrace 5.24% → 0.00%, deltablue 5.48% → 0.00%, sor 4.89% → 0.00%; `_RETURN_VALUE_r11` stencil 60 → 192 bytes | `perf-jit-tlv` | timing deferred (OD14) | — | CORRECT (clean build; independent review clean) | `campaign/t1-popinline` |
 | 2026-11-10 | e891 | J | T1 | generic thread-state deallocation: `_tlv_get_addr` sampled share fft 3.68%/3.70% → 2.49%/2.84%, fannkuch 6.80% → 6.34%/5.31% (one incumbent repeat 18.52% sampling outlier), raytrace 2.70% → 2.16%, nqueens 5.25% → 5.26%, richards 0.42% → 0.63%; fft `float_dealloc` 3.97%/3.49% → 2.13%/2.03%, `long_dealloc` 1.16%/0.93% → 0.50%/0.51%, `PyLong_FromLong` 0.71%/1.15% → 0.08%/0.08%; the remaining `PyFloat_FromDouble` TLV enters through `array_subscr` | `perf-jit-int-unbox` | timing deferred (OD14) | — | CORRECT | `rust-cpython/results/perf-profile/20261110T1607*-perf-jit-{int-unbox,tlv}-{nqueens,fannkuch,scimark_fft,richards,raytrace}-sample`, repeats `20261110T1609*-...-{fannkuch,scimark_fft}-sample` |
 | 2026-11-10 | e891 | J | T2 | `array.array` `d`/`i` subscript loads: generic `_BINARY_OP` with callees plus the `array_subscr` subtree sparse 54.2% + 8.2% → 0.0%, fft 25.2% + 2.6% → 4.8%, lu 18.1% + 2.4% → 0.0%, replaced by `_BINARY_OP_SUBSCR_ARRAY_D/I` at 29.2%, 9.2% and 9.1%; JIT code bytes ≤1.30x M0, peak RSS 0.997-1.008x incumbent | `perf-jit-popinline` | timing deferred (OD14); advisory 0.9277 | sparse generic `_BINARY_OP` 54.2% → 0.0%, fft 25.2% → 4.8%, lu 18.1% → 0.0% of samples | CORRECT (5 incumbent superseded `test_capi.test_opt` uop assertions; differential array test) | `rust-cpython/results/perf-bench/20261110T184902Z-perf-jit-popinline-vs-perf-jit-array`, `rust-cpython/results/perf-profile/20261110T1851*-perf-jit-{popinline,array}-scimark_{sparse_mat_mult,fft,lu}-sample` |
+| 2026-11-10 | e891 | J | T2 | generic `_BINARY_OP` specialization: monte_carlo `float += 2**31-1` 9.6% → 0.0% (replaced by `_BINARY_OP_ADD_FLOAT_INT` 8.8%), nbody `float ** float` 11.6% → 0.0% (replaced by `_BINARY_OP_POWER_FLOAT` 6.4%); JIT code bytes ≤1.303x M0, peak RSS 0.989-0.995x incumbent | `perf-jit-array` | timing deferred (OD14); advisory 0.9992 | monte_carlo generic `_BINARY_OP` 9.6% → 0.0%, nbody 11.6% → 0.0% of samples | CORRECT (5 incumbent superseded `test_capi.test_opt` uop assertions; genops integration test) | `rust-cpython/results/perf-bench/20261110T204736Z-perf-jit-array-vs-perf-jit-genops`, `rust-cpython/results/perf-profile/20261110T2021*-perf-jit-array-{scimark_monte_carlo,nbody}-sample`, `20261110T2046*-perf-jit-genops-{scimark_monte_carlo,nbody}-sample`, `20261110T205313Z-perf-jit-array-vs-perf-jit-genops` |

@@ -21,6 +21,8 @@ extern void _PyFloat_FiniType(PyInterpreterState *);
 PyAPI_FUNC(void) _PyFloat_ExactDealloc(PyObject *op);
 PyAPI_FUNC(void) _PyFloat_ExactDeallocTstate(PyThreadState *tstate, PyObject *op);
 PyAPI_FUNC(PyObject *) _PyFloat_FromDoubleTstate(PyThreadState *tstate, double fval);
+PyAPI_FUNC(int) _PyFloat_PowExactTstate(PyThreadState *tstate, PyObject *v,
+                                        PyObject *w, PyObject **result);
 
 
 extern void _PyFloat_DebugMallocStats(FILE* out);
@@ -41,7 +43,7 @@ extern PyObject* _Py_string_to_number_with_underscores(
 
 extern double _Py_parse_inf_or_nan(const char *p, char **endptr);
 
-extern int _Py_convert_int_to_double(PyObject **v, double *dbl);
+PyAPI_FUNC(int) _Py_convert_int_to_double(PyObject **v, double *dbl);
 
 /* Should match endianness of the platform in most (all?) cases. */
 

@@ -2354,6 +2354,12 @@ _Py_Specialize_BinaryOp(_PyStackRef lhs_st, _PyStackRef rhs_st, _Py_CODEUNIT *in
     switch (oparg) {
         case NB_ADD:
         case NB_INPLACE_ADD:
+            if (PyFloat_CheckExact(lhs) && PyLong_CheckExact(rhs) &&
+                !_PyLong_IsCompact((PyLongObject *)rhs))
+            {
+                specialize(instr, BINARY_OP_ADD_FLOAT_INT);
+                return;
+            }
             if (!Py_IS_TYPE(lhs, Py_TYPE(rhs))) {
                 break;
             }
@@ -2401,6 +2407,18 @@ _Py_Specialize_BinaryOp(_PyStackRef lhs_st, _PyStackRef rhs_st, _Py_CODEUNIT *in
             }
             if (PyFloat_CheckExact(lhs)) {
                 specialize(instr, BINARY_OP_SUBTRACT_FLOAT);
+                return;
+            }
+            break;
+        case NB_POWER:
+        case NB_INPLACE_POWER:
+            /* A negative base with a fractional exponent is complex and
+               would deopt on every execution, so leave such sites generic. */
+            if (PyFloat_CheckExact(lhs) && PyFloat_CheckExact(rhs) &&
+                !(PyFloat_AS_DOUBLE(lhs) < 0.0 &&
+                  PyFloat_AS_DOUBLE(rhs) != floor(PyFloat_AS_DOUBLE(rhs))))
+            {
+                specialize(instr, BINARY_OP_POWER_FLOAT);
                 return;
             }
             break;

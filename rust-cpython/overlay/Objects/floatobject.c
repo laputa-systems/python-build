@@ -825,6 +825,96 @@ float_pow(PyObject *v, PyObject *w, PyObject *z)
     return PyFloat_FromDouble(ix);
 }
 
+/* Exact float ** float for BINARY_OP_POWER_FLOAT.  Mirrors float_pow case
+   for case, but boxes with the executor's thread state and signals a deopt
+   instead of building a complex result.  Returns 0 with *result set, 1 when
+   the exact result is not a float, and -1 with an exception set. */
+int
+_PyFloat_PowExactTstate(PyThreadState *tstate, PyObject *v, PyObject *w,
+                        PyObject **result)
+{
+    double iv = PyFloat_AS_DOUBLE(v);
+    double iw = PyFloat_AS_DOUBLE(w);
+    double out;
+    int negate_result = 0;
+
+    assert(PyFloat_CheckExact(v));
+    assert(PyFloat_CheckExact(w));
+
+    if (iw == 0) {
+        out = 1.0;
+        goto done;
+    }
+    if (isnan(iv)) {
+        out = iv;
+        goto done;
+    }
+    if (isnan(iw)) {
+        out = iv == 1.0 ? 1.0 : iw;
+        goto done;
+    }
+    if (isinf(iw)) {
+        double abs_iv = fabs(iv);
+        if (abs_iv == 1.0) {
+            out = 1.0;
+        }
+        else if ((iw > 0.0) == (abs_iv > 1.0)) {
+            out = fabs(iw);
+        }
+        else {
+            out = 0.0;
+        }
+        goto done;
+    }
+    if (isinf(iv)) {
+        int iw_is_odd = DOUBLE_IS_ODD_INTEGER(iw);
+        if (iw > 0.0) {
+            out = iw_is_odd ? iv : fabs(iv);
+        }
+        else {
+            out = iw_is_odd ? copysign(0.0, iv) : 0.0;
+        }
+        goto done;
+    }
+    if (iv == 0.0) {
+        int iw_is_odd = DOUBLE_IS_ODD_INTEGER(iw);
+        if (iw < 0.0) {
+            PyErr_SetString(PyExc_ZeroDivisionError,
+                            "zero to a negative power");
+            return -1;
+        }
+        out = iw_is_odd ? iv : 0.0;
+        goto done;
+    }
+    if (iv < 0.0) {
+        if (iw != floor(iw)) {
+            return 1;
+        }
+        iv = -iv;
+        negate_result = DOUBLE_IS_ODD_INTEGER(iw);
+    }
+    if (iv == 1.0) {
+        out = negate_result ? -1.0 : 1.0;
+        goto done;
+    }
+
+    errno = 0;
+    out = pow(iv, iw);
+    _Py_ADJUST_ERANGE1(out);
+    if (negate_result) {
+        out = -out;
+    }
+    if (errno != 0) {
+        PyErr_SetFromErrno(errno == ERANGE ? PyExc_OverflowError :
+                             PyExc_ValueError);
+        return -1;
+    }
+
+done:
+    *result = _PyFloat_FromDoubleTstate(tstate, out);
+    return *result == NULL ? -1 : 0;
+}
+
 #undef DOUBLE_IS_ODD_INTEGER
 
 static PyObject *

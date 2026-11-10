@@ -450,6 +450,12 @@ dummy_func(void) {
         res = PyJitRef_MakeUnique(sym_new_type(ctx, &PyFloat_Type));
     }
 
+    op(_BINARY_OP_ADD_FLOAT_INT, (left, right -- res, l, r)) {
+        res = PyJitRef_MakeUnique(sym_new_type(ctx, &PyFloat_Type));
+        l = left;
+        r = right;
+    }
+
     op(_BINARY_OP_SUBTRACT_FLOAT, (left, right -- res, l, r)) {
         if (PyJitRef_IsUnique(left)) {
             ADD_OP(_BINARY_OP_SUBTRACT_FLOAT_INPLACE, 0, 0);
@@ -484,6 +490,12 @@ dummy_func(void) {
             r = right;
         }
         res = PyJitRef_MakeUnique(sym_new_type(ctx, &PyFloat_Type));
+    }
+
+    op(_BINARY_OP_POWER_FLOAT, (left, right -- res, l, r)) {
+        res = PyJitRef_MakeUnique(sym_new_type(ctx, &PyFloat_Type));
+        l = left;
+        r = right;
     }
 
     op(_BINARY_OP_ADD_UNICODE, (left, right -- res, l, r)) {

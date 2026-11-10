@@ -622,7 +622,9 @@ dummy_func(
             BINARY_OP_SUBTRACT_INT,
             BINARY_OP_MULTIPLY_FLOAT,
             BINARY_OP_ADD_FLOAT,
+            BINARY_OP_ADD_FLOAT_INT,
             BINARY_OP_SUBTRACT_FLOAT,
+            BINARY_OP_POWER_FLOAT,
             BINARY_OP_ADD_UNICODE,
             BINARY_OP_SUBSCR_LIST_INT,
             BINARY_OP_SUBSCR_ARRAY_D,
@@ -845,12 +847,58 @@ dummy_func(
             INPUTS_DEAD();
         }
 
+        op(_BINARY_OP_ADD_FLOAT_INT, (left, right -- res, l, r)) {
+            PyObject *left_o = PyStackRef_AsPyObjectBorrow(left);
+            PyObject *right_o = PyStackRef_AsPyObjectBorrow(right);
+            assert(PyFloat_CheckExact(left_o));
+            assert(PyLong_CheckExact(right_o));
+
+            double right_val;
+            PyObject *right_obj = right_o;
+            if (_Py_convert_int_to_double(&right_obj, &right_val) < 0) {
+                ERROR_NO_POP();
+            }
+            STAT_INC(BINARY_OP, hit);
+            double dres = ((PyFloatObject *)left_o)->ob_fval + right_val;
+            PyObject *d = _PyFloat_FromDoubleTstate(tstate, dres);
+            if (d == NULL) {
+                ERROR_NO_POP();
+            }
+            res = PyStackRef_FromPyObjectSteal(d);
+            l = left;
+            r = right;
+            INPUTS_DEAD();
+        }
+
+        op(_BINARY_OP_POWER_FLOAT, (left, right -- res, l, r)) {
+            PyObject *left_o = PyStackRef_AsPyObjectBorrow(left);
+            PyObject *right_o = PyStackRef_AsPyObjectBorrow(right);
+            assert(PyFloat_CheckExact(left_o));
+            assert(PyFloat_CheckExact(right_o));
+
+            PyObject *result;
+            int status = _PyFloat_PowExactTstate(tstate, left_o, right_o, &result);
+            EXIT_IF(status == 1);
+            if (status < 0) {
+                ERROR_NO_POP();
+            }
+            STAT_INC(BINARY_OP, hit);
+            res = PyStackRef_FromPyObjectSteal(result);
+            l = left;
+            r = right;
+            INPUTS_DEAD();
+        }
+
         macro(BINARY_OP_MULTIPLY_FLOAT) =
             _GUARD_TOS_FLOAT + _GUARD_NOS_FLOAT + unused/5 + _BINARY_OP_MULTIPLY_FLOAT + _POP_TOP_FLOAT + _POP_TOP_FLOAT;
         macro(BINARY_OP_ADD_FLOAT) =
             _GUARD_TOS_FLOAT + _GUARD_NOS_FLOAT + unused/5 + _BINARY_OP_ADD_FLOAT + _POP_TOP_FLOAT + _POP_TOP_FLOAT;
         macro(BINARY_OP_SUBTRACT_FLOAT) =
             _GUARD_TOS_FLOAT + _GUARD_NOS_FLOAT + unused/5 + _BINARY_OP_SUBTRACT_FLOAT + _POP_TOP_FLOAT + _POP_TOP_FLOAT;
+        macro(BINARY_OP_ADD_FLOAT_INT) =
+            _GUARD_TOS_EXACT_INT + _GUARD_NOS_FLOAT + unused/5 + _BINARY_OP_ADD_FLOAT_INT + _POP_TOP_INT + _POP_TOP_FLOAT;
+        macro(BINARY_OP_POWER_FLOAT) =
+            _GUARD_TOS_FLOAT + _GUARD_NOS_FLOAT + unused/5 + _BINARY_OP_POWER_FLOAT + _POP_TOP_FLOAT + _POP_TOP_FLOAT;
 
         // Inplace float ops: mutate the uniquely-referenced left operand
         // instead of allocating a new float. Tier 2 only.
