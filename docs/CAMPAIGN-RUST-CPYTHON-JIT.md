@@ -582,8 +582,8 @@ and C3 exits are met without their timing gates, which run at **Close**.
 ## Close
 
 Close first runs every timing gate OD14 deferred, on a quiet host: the
-**Milestone gate** for the stacked J incumbent, the C2 and C3 cold-import
-gates, and R1's remaining timed runs. A J regression found here is bisected
+**Milestone gate** for the stacked J incumbent and the C2 and C3 cold-import
+gates. A J regression found here is bisected
 over the landed J steps and the offending steps reverted or fixed. Then, when
 M4 and C3 hold on one epoch: build `perf-rust-jit-serc`, gate it with the
 **Milestone gate** commands, rerun the C1 corpus and the J targeted suites on
@@ -689,12 +689,14 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | ready | T1 thread-state, ranked by profile share (OD14) | e891 epoch M0, `S0 = 0.7748`, held-out 0.8216 |
-| R1 | ready | step 2, timed runs (WIP `campaign/r1` `4dcc3ed`) | setup done: CinderX `e48f370d` on 3.15.1, tests green, 24/24 digests match |
+| J | active | T1 thread-state, ranked by profile share (OD14) | e891 epoch M0, `S0 = 0.7748`, held-out 0.8216 |
+| R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | active | C0 lock entries, then C1 co_code | C1 census 3,493 / 6,252 exact on e891 (`campaign/c1`) |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
 
-**Owner queue:** empty.
+**Owner queue:** R1 reference report (informational, no target change
+requested): CinderX 3.15 steady JIT uplift `S = 0.7960`, held-out 1.0621, beside
+M2 ≤ 0.48, M3 ≤ 0.38, M4 ≤ 0.25. T2 does not wait for an answer.
 
 **Epoch e891** (`main` `e891a911`, pinned 2026-11-10) opened at R0 on macOS
 arm64:
@@ -737,6 +739,100 @@ backlog:
   (INCONCLUSIVE), whole-trace register cache (INCONCLUSIVE, 0.9993).
 - Hybrid DynASM backend (python/cpython#146235): closed, not ported.
 
+## CinderX catalog
+
+CinderX `e48f370dfcc045db32ac19142419043342b10cfb` (MIT) on stock CPython
+3.15.1, macOS arm64. Every number is a within-version 3.15 uplift (CinderX JIT
+over `-X cinderx-jit-disable`) and is never compared with the lane's 3.16
+numbers.
+
+**Steady-state score.** Profile-guided steady mode is `cinderx.jit.auto()` with
+`-X cinderx-jit-background-compile=0 -X cinderx-jit-recompile-threshold=2`: hot
+functions compile only after the interpreter has specialized their bytecode, so
+the JIT's inline-cache profile can drive a recompile. The harness reuses cached
+code objects, warms up until compiled-function count, summed code size, and
+compilation time stop changing, then times 10 further passes. Five interleaved
+runs over all 24 kernels, 24/24 digests matching the harness, `perf-gate-ready`
+exit 0 before and after, no retried attempts:
+
+- **`S` = 0.7960** over the 16 training kernels; held-out **1.0621**.
+- Per kernel the JIT compiled 7-58 functions summing to 80-198 KB of code,
+  compilation took 0.19-0.74 s, warmup 0.09-1.36 s, and peak RSS was 76-132 MB.
+  Timed kernel CPU excludes warmup and compilation.
+- Context, with compilation inside the timed region and no profile: default
+  `auto()` is 1.031 training / 1.026 held-out, and compile-all
+  (`-X cinderx-jit-all -X cinderx-jit-background-compile=0`) is 1.188 / 1.119.
+  Compile-everything runs before the specializing adaptive interpreter has
+  produced a profile, so it takes generic paths and is not a stand-in for
+  steady state.
+
+**Ablation.** One `-X` switch per variant, appended to the steady flags,
+5 interleaved runs over the 16 training kernels; 16/16 digests match across all
+18 modes, gates exit 0 before and after, no retries. Contribution is
+`disabled / steady - 1`: positive means removing the mechanism slowed the run.
+Two identical steady runs moved individual kernel medians by up to ~6% and the
+training geomean by 0.04%, so treat `|Δ|` below ~2% as unresolved.
+
+| # | Mechanism | Switch | Δ | Source | Semantics it must preserve | Tier |
+| ---: | --- | --- | ---: | --- | --- | --- |
+| 1 | Specialized-opcode consumption | `specialized-opcodes=0` | **+21.0%** | `Jit/hir/builder.cpp:1467`, `:2196`, `:2818`; `Jit/config.h:229` | use a specialized form only where the interpreter's cache guarantees its types, else emit the generic form; `FOR_ITER_RANGE` | T2 |
+| 2 | Attribute inline caches | `attr-caches=0` | **+18.9%** | `Jit/lir/generator.cpp:3677`; `Jit/inline_cache.h:505`, `:664`; `Jit/inline_cache.cpp:35`, `:1212` | descriptors, class and instance dicts, inheritance, `__getattr__`/`__getattribute__`, immutable types left unwatched, `PyType_Modified` invalidation | T3 |
+| 3 | HIR simplify and type specialization | `simplify=0` | **+16.9%** | `Jit/hir/simplify.cpp:514`, `:719`, `:1302`, `:1515`; `Jit/compiler.cpp:152` | exact-float and compact-int forms, overflow/NaN/zero-division guards, guards implied by dataflow | T2 |
+| 4 | Global and import caches | `global-caches=0` | **+6.0%** | `Jit/global_cache.cpp:110`, `:300`; `Jit/hir/preload.cpp:639` | globals and builtins rebinding, dict update/clear/unwatch, lazy imports, subinterpreters | T3 |
+| 5 | Sink primitive box | `sink-primitive-box=0` | +2.3% | `Jit/hir/sink_primitive_box.cpp:102` | delay boxing without moving allocation visibility or reference counts | T2 |
+| 6 | Guard-type removal | `guard-type-removal=0` | +2.2% | `Jit/hir/guard_removal.cpp:86` | remove only guards implied by dataflow; keep mutation-sensitive guards | T1 |
+| 7 | BeginInlinedFunction elimination | `begin-inlined-function-elim=0` | +1.8% | `Jit/hir/inliner.cpp:1149` | remove bookkeeping only; keep deopt metadata for inlined callers | T3 |
+| 8 | HIR inliner | `enable-hir-inliner=0` | +1.0% | `Jit/hir/inliner.cpp:948`, `:956`, `:964`; `Jit/config.h:60` | traceback and frame materialization, lazy inlined frames, generator refusal, cost/depth/cold-call limits | T3 |
+| 9 | Dead code elimination | `dead-code-elim=0` | +0.7% | `Jit/hir/dead_code_elimination.cpp:19` | side-effect model; keep reference-count and deopt-relevant instructions | T3 |
+| 10 | Builtin LoadMethod elimination | `builtin-load-method-elim=0` | +0.4% | `Jit/hir/load_method_elimination.cpp:316` | descriptor semantics, bound-method identity, allocation visibility | T3 |
+| 11 | Common-subexpression elimination | `common-subexpression-elim=0` | +0.2% | `Jit/hir/common_subexpression_elimination.cpp:243`; `Jit/compiler.cpp:177` | never CSE across borrows, mutation, or refcount insertion | T3 |
+| 12 | Clean CFG | `clean-cfg=0` | +0.0% | `Jit/hir/clean_cfg.cpp:9` | exception edges and deopt targets | T4 |
+| 13 | TLS thread-state load | `tls-thread-state=0` | -0.1% | `Jit/codegen/tls.cpp:236`; `Jit/config.h:220` | correct tstate under threads and subinterpreters; verified offset or fallback | T1 |
+| 14 | Phi elimination | `phi-elim=0` | -0.1% | `Jit/hir/phi_elimination.cpp:9` | parallel-copy and refcount ownership on edges | T4 |
+| 15 | Dynamic comparison elimination | `dynamic-comparison-elim=0` | -0.7% | `Jit/hir/dynamic_comparison_elimination.cpp:50` | specialize only behind a guard; preserve rich-comparison semantics | T3 |
+| 16 | Binary-op inline caches (default off) | `binary-caches=1` | -0.8% | `Jit/config.h:224`; `Jit/lir/generator.cpp:3884`; `Jit/inline_cache.h:1029` | operand and result typing, deopt on unsupported operands | T3 |
+
+Row 16 is the one enable variant, so its table entry is headroom (`1 - enabled /
+steady`): enabling the caches costs 0.8%, i.e. no headroom on these kernels.
+
+Mechanisms without an isolating switch, read from source only: float/int
+unboxing (`Jit/hir/simplify.cpp:514`, `:719`, `:1302`, `:1515`; measured only
+through row 3), refcount insertion and elision
+(`Jit/hir/refcount_insertion.cpp:1270`), type and `__code__` watcher
+invalidation (`Jit/context.cpp:582` type, `:664` function;
+`Jit/inline_cache.cpp:1212`), type feedback and recompilation
+(`Jit/profile.h:228`, `Jit/profile.cpp:149`, stale-profile drop
+`Jit/context.cpp:465`), deopt metadata and frame materialization
+(`Jit/deopt.h:306`, `:323`, `:343`; `Jit/codegen/gen_asm.cpp:187`), LIR
+rewrite/post-allocation/DCE (`Jit/lir/rewrite.cpp:32`, `Jit/lir/dce.cpp:39`),
+native code emission (`Jit/codegen/gen_asm.cpp`, `Jit/codegen/arch/aarch64.cpp`),
+and linear-scan register allocation (`Jit/lir/linear_scan.cpp:369`; deopt
+spill rule `:662`). The alternate allocator was not measured: the earlier
+attempt aborted, and it was not rerun. Their tiers are T2 (unboxing), T3
+(refcount, watchers, profile), and T4 (LIR, codegen, registers).
+
+**Version assumptions.** CinderX declares `>=3.14.5,<3.16`; this build targets
+3.15.1 and is the GIL build. `Jit/hir/builder.cpp` selects opcodes by
+`PY_VERSION_HEX`, `Common/opcode_stubs.h` makes other versions' opcodes
+unreachable, and the caches assume 3.15's type watcher and adaptive bytecode.
+Lightweight frames, parallel GC, and Static Python are off on 3.15, so deopt and
+frame observations are for stock frames; free-threaded-only passes
+(`CallSiteLiveValues`, `MaterializeSteals`) are compiled out and refcount
+elision assumes the GIL. A 3.16 port re-derives the builder, frame, and watcher
+contracts: these mechanisms are design references, not transplantable code.
+
+**Reading for the lane.** The three dominant mechanisms are the numeric path
+(specialized opcodes and simplify, together 38%) and attribute caches (19%).
+Global caches add 6%; the inliner adds 1%; TLS and the backend passes are at or
+below the resolution. That ranks T2 unboxing and T3 attribute caches ahead of
+inlining and backend work on this reference, but CinderX's own steady mode is
+slower than its interpreter on several kernels (`generators` 2.55x, `richards`
+1.40x, `richards_super` 1.31x, `comprehensions` 1.21x, `raytrace` 1.18x), so a
+JIT reference does not imply every kernel wins. Raw records:
+`.work/r1/steady-24-20261110T045247Z.json`,
+`.work/r1/steady-ablation-20261110T045945Z.json`, and
+`.work/r1/timed-24-20261110T053554Z.json`.
+
 ## Ledger
 
 Track C and R1 rows use the same columns, with the gate's headline ratio in
@@ -746,3 +842,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-11-02 | a1 | J | M0 | instrument | `perf-rust-jit` | — → 0.7474 | A/A max 0.19% | MEASURED | `rust-cpython/results/perf-bench/20261102T174650Z-perf-climb-ref-vs-perf-rust-jit` |
 | 2026-11-10 | e891 | J | M0 | instrument | `perf-rust-jit` | — → 0.7748 | A/A max 1.19% | MEASURED | `rust-cpython/results/perf-bench/20261110T041724Z-perf-climb-ref-vs-perf-rust-jit` |
+| 2026-11-10 | 3.15.1 | R1 | R1 | CinderX steady JIT vs off | `cinderx-e48f370d` | — → 0.7960 (held-out 1.0621) | — | MEASURED | `.work/r1` |
