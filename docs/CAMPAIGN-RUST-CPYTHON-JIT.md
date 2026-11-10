@@ -337,7 +337,7 @@ every introspection path the fuzzer covers. Candidates, in order: float
 unboxing across binary ops and compares; int unboxing with overflow guards;
 unboxed loop-carried locals.
 
-**Float unboxing candidate (2026-11-10, waiting on the owner).** Branch
+**Float unboxing (landed 2026-11-10, CORRECT).** Branch
 `campaign/t2-unbox` at `aadaf25`. A Rust pass in `overlay/Modules/_jit_opt_rs`
 runs in `uop_optimize` after the optimizer and before register allocation. It
 keeps a float temporary as raw double bits in its stack slot when its only
@@ -364,9 +364,10 @@ branch.
 
 `climb-step --correctness` against a same-worktree `perf-rust-jit` at
 `6040917`: training and held-out digests match, 2,000 fuzz programs give 0
-mismatches at 97.5% JIT coverage, and 8 of the 9 targeted suites match. The
-verdict is REJECT because four `test_capi.test_opt` tests fail only with the
-JIT: `test_float_add_chain_both_unique`,
+mismatches at 97.5% JIT coverage, and 8 of the 9 targeted suites match.
+Four `test_capi.test_opt` tests fail only with the JIT, and under the owner's
+ruling (below) they are the candidate's named superseded uop assertions in
+`perf.CLIMB_SUPERSEDED_UOP_ASSERTIONS`, which makes the verdict CORRECT: `test_float_add_chain_both_unique`,
 `test_float_inplace_chain_propagation`, `test_float_truediv_inplace_unique_lhs`
 and `test_float_truediv_unique_result_enables_inplace`. Each asserts that a
 `_BINARY_OP_*_FLOAT_INPLACE*` uop appears in a trace that the rewrite fully
@@ -381,6 +382,14 @@ bytes are at most 1.17x M0 (raytrace, +16.5% over the incumbent from boxing
 exit stubs). Peak RSS is +0.3% to +2.0% over the incumbent and at most +6.1%
 (go) over the no-JIT sibling `perf-rust` at `aadaf25`, against +4.9% (hexiom)
 for the incumbent. `libpython` `__text` grows by 27,328 bytes.
+
+The independent review found nothing above low severity. Its low findings are
+T2's next items: the FFI wrapper's `from_raw_parts_mut` over an uninitialized
+`PyMem_RawMalloc` buffer; the unboxed stackref helpers missing under
+`Py_STACKREF_DEBUG`, and `PYTHON_LLTRACE>=4` reading unboxed slots as objects
+in `Py_DEBUG` tier-2 builds; the integration test measuring only borrowed
+operands' refcounts; and the verifier's `Py_FatalError` where a rejected plan
+could instead skip the rewrite.
 
 ### T3: inlining and allocation removal, toward M3
 
@@ -775,7 +784,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | waiting on owner | T2 float unboxing (`campaign/t2-unbox`, not landed; int unboxing and loop-carried locals follow; frame push/pop, `_CHECK_VALIDITY`/`_SET_IP` and guard stripping stay in T1's backlog) | float unboxing climb-step REJECT on four upstream `test_capi.test_opt` inplace-uop assertions; digests, 2,000 fuzz programs and the other eight suites match |
+| J | active | T2 int unboxing and loop-carried locals, after the float review's low findings (frame push/pop, `_CHECK_VALIDITY`/`_SET_IP` and guard stripping stay in T1's backlog) | T2 float unboxing landed CORRECT with 4 named superseded uop assertions; timing deferred to Close (OD14) |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | active | C2 in-process `exec` | C0, marshal parity and C1 landed: census 9,102 / 9,135 exact, 0 mismatches on e891 |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -791,7 +800,12 @@ private symbols, `_PyFloat_FromDoubleTstate`, `_PyFloat_ExactDeallocTstate`,
 and `_PyLong_ExactDeallocTstate`, which `_testinternalcapi` and the stencils
 reference.
 
-**Owner queue:** T2 float unboxing (blocking T2, decision needed). Four
+**Owner ruling (2026-11-10):** a J candidate may fail, only with the JIT,
+upstream tests whose sole failing assertion names a uop the candidate rewrites
+away, when each test is listed by ID in `perf.CLIMB_SUPERSEDED_UOP_ASSERTIONS`
+and its numeric checks still pass. `climb-step` compares suites per test from
+regrtest's junit report, so any other failure in the same module still
+rejects. Original question, for the record: four
 upstream `test_capi.test_opt` tests assert that upstream's inplace float uops
 appear in traces whose temporaries unboxing removes, so any T2 candidate that
 unboxes a merge of two temporaries fails J acceptance step 5; int unboxing will
@@ -800,9 +814,9 @@ superseded implementation assertions may differ with the JIT. The overlay
 cannot patch `Lib/test/`, and keeping the inplace uops would forfeit the merges
 this candidate exists for. Options: accept a named JIT-only failure list for
 superseded uop-name assertions whose numeric results pass, recorded per
-candidate (recommended); or allow an overlay patch to those tests.
+candidate (chosen); or allow an overlay patch to those tests.
 
-**Owner queue:** T2 float unboxing contract (with the decision above). New
+**Owner queue:** T2 float unboxing contract (landed, async review). New
 overlay crate `Modules/_jit_opt_rs` (no dependencies, linked into `libpython`
 through `cpython-rust-staticlib`, exporting `_PyJitOpt_PlanFloatUnboxing`); its
 hook in `uop_optimize` and the unboxed-slot stubs in `prepare_for_execution`;
@@ -959,4 +973,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-10 | e891 | J | M0 | instrument | `perf-rust-jit` | — → 0.7748 | A/A max 1.19% | MEASURED | `rust-cpython/results/perf-bench/20261110T041724Z-perf-climb-ref-vs-perf-rust-jit` |
 | 2026-11-10 | 3.15.1 | R1 | R1 | CinderX steady JIT vs off | `cinderx-e48f370d` | — → 0.7960 (held-out 1.0621) | — | MEASURED | `.work/r1` |
 | 2026-11-10 | e891 | J | T1 | thread-state: executor tstate to float/int freelists (`_tlv_get_addr` 4.61% of samples, targeted chains 1.36% → 0%) | `perf-rust-jit` | timing deferred (OD14) | — | CORRECT | `campaign/t1-tstate` |
-| 2026-11-10 | e891 | J | T2 | float unboxing across binary ops and compares (float boxing 8.9-38.6% of samples; float-op chains nbody 27.5% → 26.3%, fft 11.4% → 9.5%) | `perf-rust-jit` | timing deferred (OD14); advisory 0.9962 | — | REJECT (owner queue: 4 `test_capi.test_opt` inplace-uop assertions) | `campaign/t2-unbox` |
+| 2026-11-10 | e891 | J | T2 | float unboxing across binary ops and compares (float boxing 8.9-38.6% of samples; float-op chains nbody 27.5% → 26.3%, fft 11.4% → 9.5%) | `perf-rust-jit` | timing deferred (OD14); advisory 0.9962 | — | CORRECT (4 named superseded `test_capi.test_opt` uop assertions, owner ruling) | `aadaf25` |
