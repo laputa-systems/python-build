@@ -4347,3 +4347,13 @@ fn python316_marshal_matches_cpython_for_async_comprehension_terminal_assignment
         ),
     );
 }
+
+#[test]
+fn python316_marshal_matches_cpython_for_exceptional_finally_nested_pass_try() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/exceptional_finally_nested_pass_try.py"),
+        include_str!(
+            "../../tests/fixtures/python316_parity/exceptional_finally_nested_pass_try.marshal.hex"
+        ),
+    );
+}

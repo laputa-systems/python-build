@@ -3062,7 +3062,14 @@ impl<'source> Compiler<'source> {
                 // An authored continuation keeps this Pass in its protected original array.
                 // At a true suite end, normal cleanup can still absorb the omitted marker.
                 && (self.control.exceptions.active_exception_region_exclusions.is_empty()
-                    || self.control.finally.active_finally_end_blocks > 0
+                    || self.control.finally.finally_end_region_indices.last().is_some_and(|index| {
+                        index + 1
+                            == self
+                                .control
+                                .exceptions
+                                .active_exception_region_exclusions
+                                .len()
+                    })
                     // Both paths through the conditional reach the authored Pass
                     // before the manager runs its normal exit.
                     || (self.context.python_version >= crate::PythonVersion::Py314
