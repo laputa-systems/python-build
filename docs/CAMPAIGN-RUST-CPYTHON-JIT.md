@@ -1140,8 +1140,9 @@ checking that only the import bootstrap is frozen and nothing came from a
 cache); `cold_import_app_stack` is unavailable like `import_app_stack`, so the
 exit's gate command must drop it until that closure is locked.
 
-The exit is still not met (`campaign/c2` at `740287c`): the verify run adds two
-files to the e891 set, and the memory bar fails.
+The exit is still not met (`campaign/c2` at `52091c9`): the verify run adds
+`test_compile` (two tests, below) to the e891 set. The memory bar is met under
+OD15.
 
 **Parity.** The eight Serc 3.16 defect classes the first full-suite runs found
 are fixed in `serc-overlay`, each pinned by a Serc test against
@@ -1176,61 +1177,95 @@ refusal tests in `compiler/tests.rs`):
   class epilogue its class location (`test_ignore_non_simple_annotations`
   under verify).
 
-Evidence at `740287c`, from an empty bytecode cache on macOS arm64:
-`perf.py test --name perf-rust --all` and `perf.py test --name perf-rust-serc
---all` both fail exactly the e891 set (`test_asyncio.test_sendfile`,
-`test_asyncio.test_sslproto`, `test_multiprocessing_forkserver.test_misc`,
-`test_ssl`, `test_support`); an earlier serc run's `test_mailbox`
-(`test_clean`, an mtime check under load) passed alone. The in-process census
-(`marshal.dumps(compile())` per C1 corpus file and level) equals
-`perf-upstream` in all 9,135 cases, with and without `PYTHONSERCVERIFY=1`.
-`cargo test -p serc --lib` passes 1,232 tests, `tests.test_perf` and
-`tests.test_build` pass 190, and `tests/test_serc_compile.py` passes on
-`perf-rust-serc`.
+A second round fixed the remaining verify-only classes but two, the open
+fuzzing defects, and one more that fuzzing found, each pinned by a marshal
+fixture from `perf-rust` (the C compiler, same source):
 
-`perf.py test --name perf-rust-serc --all --serc-verify` still adds two files
-to the e891 set (`test_os.test_os`, a `utime` flake in the same run, passed
-alone under verify). `test_compile` and `test_type_annotations` failed in
-normal mode before, which hid these verify-only differences; each repro
-also differs with the Serc CLI built from the overlay as this run found it:
+- wrong code: an inlined async comprehension excluded everything from its
+  `CLEANUP_THROW` to its `END_ASYNC_FOR` from the coroutine's
+  `StopIteration` region, and in emission order that span holds the loop
+  body. With a target that binds no name (`[1 async for o.a in r()]`) no
+  restore handler covered the body, so a `StopIteration` from the store
+  escaped the coroutine instead of becoming `RuntimeError`. Only
+  `CLEANUP_THROW` is excluded now;
+- wrong code: a comprehension filter's rejection jump was excluded from an
+  enclosing `with` on the same assumption, so with a nameless target an
+  exception at that back edge's eval-breaker check (a signal, an async
+  exception) skipped `__exit__`;
+- `expression changed stack depth`: an assignment's deferred restore applied
+  to every async comprehension compiled under it; only the stored one defers
+  now. Its removed `SWAP` counts toward CPython's four-instruction exit-copy
+  limit, so a terminal `y = [... async for ...]` keeps CPython's
+  `JUMP_FORWARD` (the multi-line async list comprehension in `test_compile`);
+- a `try`/`finally` whose body is only `pass`, nested in an exceptional
+  `finally` copy, leaves its surviving marker without an exception owner;
+- a NOP whose block predecessor has its line is dropped, as
+  `basicblock_remove_redundant_nops` does, unless a label separates them, and
+  a folded `while False:` marks its loop header. This removes the NOP after
+  the module's deferred-annotation setup (`test_type_annotations`). The rule
+  brings `assembler/passes/control_flow.rs` into the overlay, otherwise
+  unchanged;
+- `global` and `nonlocal`, which emit nothing, no longer locate an `except` or
+  `except*` handler's normal cleanup;
+- a `with` body ending in `if`/`elif`/`else` whose other arms leave by
+  `break`, `continue`, `return` or `raise` keeps its `POP_BLOCK` marker with
+  the remaining arm's line, also in a loop with an `else` suite;
+- a folded constant jump is never a small-exit copy site on 3.16, since
+  CPython folds it after `inline_small_or_no_lineno_blocks` has run.
 
-- `test_compile`: `try: pass` whose `finally` holds another `try`/`finally`
-  (exception table); a `for` loop over a `with` whose `if`/`elif`/`else`
-  breaks and continues, with a loop `else` (code and exception table);
-  `while a <= b > c:` around `try`/`except`/`finally` (code and exception
-  table); `if 9<9<9and 9or 9:9` (code); `try`/`except`(`*`)/`else` with a
-  `global` in the handler (line table); a multi-line async list comprehension
-  assigned as a function's last statement (layout);
-- `test_type_annotations` (`test_simple_if`, `test_nesting_outer`,
-  `test_nesting_override`, `test_blocks`, `test_complex_comprehension_inlining`):
-  module-level conditional annotations whose first statement emits no code
-  on line 1 (`if True:`, `0[0]: ...`) keep a `NOP` after the annotation
-  prologue that the C compiler removes.
+Evidence at `52091c9`, from an empty bytecode cache on macOS arm64:
+`perf.py test --name perf-rust-serc --all` fails exactly the e891 set
+(`test_asyncio.test_sendfile`, `test_asyncio.test_sslproto`,
+`test_multiprocessing_forkserver.test_misc`, `test_ssl`, `test_support`), and
+with `--serc-verify` that set plus `test_compile`. The in-process census
+(`marshal.dumps(compile())` per C1 corpus file and level) equals `perf-rust`
+(the C compiler, same source) and `perf-upstream` in all 9,135 cases, with and
+without `PYTHONSERCVERIFY=1`. `serc_parity.py --oracle` against `perf-rust`,
+whose corpus also holds that build's overlay modules, has 9,195 cases, 9,162
+exact, 0 mismatches and 33 oracle refusals. `cargo test -p serc --lib` passes
+1,242 tests, `tests.test_perf` and `tests.test_build` pass 200, and
+`tests/test_serc_compile.py` passes on `perf-rust-serc`.
 
-Normal mode returns Serc's code for these, so the exception-table cases may
-differ in behavior, not only in bytes; none occurs in the C1 corpus.
+Under verify, `test_compile` still fails two tests. Both differ in layout only:
+the same instructions keep the same handlers, and normal mode returns Serc's
+code for them.
 
-Differential fuzzing (300 deep-nesting programs, and 120 Boolean statements,
-against `perf-upstream`) agrees on every static-block refusal and found three
-pre-existing Serc defects outside the C1 corpus and the CPython suite, still
-open:
+- `test_try_except_in_while_with_chained_condition_compiles`
+  (`while name_3 <= name_2 > name_1:` around `try: raise` with `except` and
+  `finally`): CPython's first loop-body block (two `SETUP_FINALLY`, the `try`
+  NOP and `RAISE_VARARGS`) is a small exit, so
+  `inline_small_or_no_lineno_blocks` copies it into the chained comparison's
+  `JUMP end` and the comparison cleanup lands after the raise. Serc does not
+  count the setup pseudo-instructions toward that block, so it jumps over the
+  cleanup instead.
+- `test_condition_expression_with_redundant_comparisons_compiles`
+  (`if 9<9<9and 9or 9:9` and its longer forms): CPython threads the comparison's
+  jump through the folded `and 9` jump, drops that now unreachable block, and
+  then removes the cleanup's jump to the block that follows. Serc removes
+  redundant forward jumps before the unreachable block disappears, so a
+  zero-length `JUMP_FORWARD` stays after the cleanup's `POP_TOP`.
 
-- wrong code: an inlined async comprehension whose target binds no name
-  (`[1 async for o.a in r()]`) leaves its body outside the coroutine's
-  `StopIteration` handler, so a `StopIteration` from the attribute store
-  escapes the coroutine instead of becoming `RuntimeError("coroutine raised
-  StopIteration")`; a terminal `x = [i async for i in r]` differs from
-  CPython only in block layout;
-- async comprehensions nested inside other comprehensions deep in a function
-  can fail with `internal compiler error: expression changed stack depth`, a
-  `SystemError` in-process;
-- Boolean expression statements whose last operand is a constant or a nested
-  Boolean expression with constant operands (`9 and True`, `x or 0 and y`)
-  differ in layout or constants.
+Earlier differential fuzzing (300 deep-nesting programs and 120 Boolean
+statements against `perf-upstream`) agreed on every static-block refusal.
+Fuzzing against `perf-rust` still finds pre-existing differences outside the
+CPython suite and the C1 corpus; none is new after this round:
 
-**Memory.** The REJECT stands, and its cause is Serc's code size, not how it is
-loaded. Linking Serc grows `libpython` `__text` from 3,037,592 to 11,040,560
-bytes (+7.6 MiB) and the file from 7,349,056 to 21,965,984 bytes. Peak RSS on
+- Boolean expression statements whose last operand folds to a constant
+  (`9 and True`: CPython keeps `LOAD_CONST True; POP_TOP` because the Boolean's
+  end label stops its pair removal, Serc drops both) or ends in a nested
+  deciding constant (`x or 0 and y`: Serc leaves the fallthrough exit copy
+  unlocated) differ in code or line table;
+- generated programs: async comprehensions with nameless targets and nested
+  comprehensions, 65 of 1,200 differ; Boolean conditions with constant and
+  chained operands, 74 of 600; `with` bodies ending in conditional exits inside
+  loops, 4 of 500. These are not yet classified. Most differ in code,
+  constants, line tables or local order, but some async-comprehension cases
+  also differ in exception tables, so wrong code is not ruled out for them.
+
+**Memory.** Peak RSS regresses on every C2 workload, and its cause is Serc's
+code size, not how it is loaded. Linking Serc grows `libpython` `__text` from
+3,037,592 to 11,040,560 bytes (+7.6 MiB) and the file from 7,349,056 to
+21,965,984 bytes. Peak RSS on
 macOS counts clean text pages, so each process pays for every Serc page it
 executes while its physical footprint barely moves. Page residency (each
 16 KiB page of `libpython`'s `__TEXT` split into its own map entry by
@@ -1257,18 +1292,18 @@ stdlib (one noisy pair of runs). Halved, a cold startup would still carry about
 The bar cannot be met while Serc runs in the measured processes, so this run
 changes neither the loading model nor the build profile.
 
-At `740287c`, `perf.py bench --baseline perf-rust --candidate perf-rust-serc
---memory-only --matched-prefix --workload python_startup --workload
-cold_python_startup --workload cold_import_django --workload compileall_source
---runs 2` is REJECT with matching digests: `python_startup` peak RSS goes from
-13.77 to 16.87 MiB (1.226, CI95 1.225-1.227, both runs) while its physical
-footprint moves 1.039. The bench stops after that regression, so the first
-run alone puts `cold_python_startup` at 1.322 (footprint 1.010),
-`cold_import_django` at 1.171 (0.987) and `compileall_source` at 1.287
-(1.044). The owner decides whether peak RSS on `--serc` builds becomes a
-recorded cost as OD4 makes it for the JIT, whether another memory metric
-gates C2, or whether track C ends incomplete with this loss (see the Owner
-queue).
+OD15 makes that peak RSS a recorded cost and gates physical footprint
+within +8% (`memory-only-serc-cost` in `perf_verdict.py`). With clean builds of
+`perf-rust-serc` at `52091c9` and `perf-rust` at `7492896` (the same `overlay/`),
+`perf.py bench --baseline perf-rust --candidate perf-rust-serc --memory-only
+--matched-prefix --workload python_startup --workload cold_python_startup
+--workload cold_import_django --workload compileall_source --runs 2` is
+WITHIN-BUDGET under that policy with matching digests. Physical footprint:
+`python_startup` 1.046 (CI95 1.041-1.060), `cold_python_startup` 1.035
+(1.021-1.059), `cold_import_django` 0.979 (0.969-0.998), `compileall_source`
+1.058 (1.041-1.063). Recorded peak RSS cost: 1.236, 1.345, 1.164 and 1.295.
+An earlier pair at `7492896` read the same within noise (footprint
+0.980-1.058).
 
 ### C3: all source modes
 
@@ -1335,6 +1370,10 @@ A/A spread, and `S0`. Scores compare only within an epoch.
 - **OD14 (2026-11-10):** feature completeness first. Timing gates are waived
   until **Close**; correctness, parity, memory, and code-size checks still
   gate every landing.
+- **OD15 (2026-11-10):** peak RSS on `--serc` builds against a non-Serc
+  baseline is a recorded known cost, as OD4 makes it for the JIT; a
+  memory-only comparison of that pair gates physical footprint within +8%
+  (`memory-only-serc-cost`).
 - **Parked:** a method-based frontend (withdrawn PEP 836 prototype, observed
   head `04a79098`) opens only by owner decision.
 
@@ -1399,7 +1438,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 | --- | --- | --- | --- |
 | J | active | T3 inline-frame elision implemented and CORRECT; measured no bucket-(a) fall, dropped under P1. Next: virtual-frame inlining or T3 attribute/global caches | Inline frames: incumbent-named bucket (a) richards 24.0% → 17.2%, raytrace 11.6% → 9.6%, but including the new `_INLINE_*` call/frame uops 23.9% → 24.6% and 11.5% → 11.7%; CORRECT (5 incumbent superseded assertions; new `jit_inline_integration`), advisory 1.0123 |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
-| C | active | C2 in-process `exec`: the memory bar (owner decision) and seven verify-only Serc difference classes block the exit | `campaign/c2` (`740287c`): the eight suite defect classes are fixed; suite fails exactly the e891 set; verify run adds `test_compile` and `test_type_annotations`; census 9,135 / 9,135; memory-only bench REJECT (`python_startup` peak RSS 1.226); independent review pending |
+| C | active | C2 in-process `exec`: two layout-only verify differences in `test_compile` block the exit | `campaign/c2` (`52091c9`): suite fails exactly the e891 set; verify run adds only `test_compile` (2 tests); census 9,135 / 9,135 with and without verify; two fuzz-found wrong-code defects fixed; memory-only bench WITHIN-BUDGET under OD15; independent review pending |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
 
 **Owner queue:** R1 reference report (informational, no target change
@@ -1510,12 +1549,11 @@ opcodes `BINARY_OP_SUBSCR_ARRAY_D`/`_I`; new uops
 - Serc now refuses sources with more than 21 statically nested blocks
   (`compiler/static_blocks.rs`); the hook then raises CPython's
   `SyntaxError` through the C compiler, as for every refusal.
-- Decision needed (memory): the peak-RSS bar fails on every C2 workload
-  because each process executes Serc's 7.6 MiB of code; no loading-model,
-  layout or optimization-level change brings it within the 1% floor (see C2).
-  Options: record peak RSS on `--serc` builds as a cost (as OD4 does for the
-  JIT) and gate physical footprint instead, or end track C incomplete with
-  the measured loss. No loading-model change was made.
+- Memory (OD15, owner ruling 2026-11-10): peak RSS on `--serc` builds
+  against a non-Serc baseline is a recorded known cost, and physical footprint
+  gates within +8% (`memory-only-serc-cost`, `dabf1bf`). The C2 memory-only
+  bench is WITHIN-BUDGET at `52091c9` (footprint 0.979-1.058, peak RSS
+  1.164-1.345 recorded); no loading-model change was made (see C2).
 - C acceptance's independent review of the FFI and compile hook has not run.
 
 **Epoch e891** (`main` `e891a911`, pinned 2026-11-10) opened at R0 on macOS
