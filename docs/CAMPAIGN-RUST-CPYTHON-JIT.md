@@ -398,6 +398,50 @@ dumps and `guard_redundancy.py` under `.work/tmp`. It reopens if upstream stops
 proving the guards it removes today, or if T3 gives attribute loads a
 trace-local dict fact.
 
+**`_CHECK_VALIDITY` and `_SET_IP` (measured 2026-11-10: 0.0% removable, dropped).**
+The backlog's 3.5% mean is what upstream's `remove_unneeded_uops` already
+leaves: it nops every `_SET_IP` and restores only the last one before the next
+uop with `HAS_ESCAPES_FLAG` or `_PUSH_FRAME`/`_YIELD_VALUE`/`_DYNAMIC_EXIT`/
+`_EXIT_TRACE`, and it nops every `_CHECK_VALIDITY` unless an escaping uop ran
+since the previous check (`Python/optimizer_analysis.c:724-799`, `:708-713`).
+The saved 16 `perf.py profile --tool sample --jit-map` runs on
+`perf-jit-int-unbox` give 3.47% mean, 3.18% over the numeric kernels (richards
+4.71%, nbody 4.86%): 2.90% `_CHECK_VALIDITY` and 0.57% `_SET_IP` over 227
+sampled `_SET_IP` and 835 sampled `_CHECK_VALIDITY` occurrences. Matching each
+trace to its executor dump, every sampled `_SET_IP` is followed before the next
+`_SET_IP` or trace exit by an escaping uop or a needs-IP uop, and every sampled
+`_CHECK_VALIDITY` has an escaping uop since the previous check, so 0 sampled
+occurrences are removable. The predicates make both necessary: an escaping uop
+can run arbitrary code, which reads `frame->instr_ptr` through `sys._getframe`,
+tracebacks, and monitoring, and can invalidate the running executor through the
+globals and type watchers (`Python/optimizer_analysis.c:147`, `:156`),
+instrumentation (`Python/instrumentation.c:1828`, `:2071`, `:2159`, `:2504`),
+function modification (`Objects/funcobject.c:73`), frame-locals proxies
+(`Objects/frameobject.c:283`), or `_testinternalcapi.invalidate_executors`
+(`Modules/_testinternalcapi.c:1962`); `HAS_ESCAPES_FLAG` comes from a dealloc
+outside `NON_ESCAPING_DEALLOCS` (`Tools/cases_generator/generators_common.py:98-104`, `:417`)
+or another escaping call (`Tools/cases_generator/analyzer.py:942`). The
+pointer is read directly by `_GUARD_IP__PUSH_FRAME`, `_GUARD_IP_YIELD_VALUE`,
+and `_GUARD_IP_RETURN_VALUE/GENERATOR` (`executor_cases.c.h:25901`, `:25987`,
+`:26077`, `:26167`), `_YIELD_VALUE` (`:10710`), `_DYNAMIC_EXIT` (`:24509`), and
+`_COLD_DYNAMIC_EXIT` (`:25521`); `_ERROR_POP_N` writes it (`:25130`), and
+`_RETURN_VALUE` uses the caller's value as the return-address base
+(`Python/bytecodes.c:1693`, `:6228-6235`; `Python/ceval_macros.h:442`). The
+one sampled cluster whose escape can continue, `_GUARD_IS_NOT_NONE_POP`
+(richards 0.20%), closes a possibly owned value before continuing
+(`Python/bytecodes.c:6209-6213`), so its check is needed too. T2 unboxing runs
+after the removal pass and rewrites an escaping `_BINARY_OP_TRUEDIV_FLOAT` to
+the non-escaping `_BINARY_OP_TRUEDIV_FLOAT_UNBOXED`
+(`overlay/Python/bytecodes.c:991-999`); the saved dumps then hold one stale
+`_SET_IP` and one stale `_CHECK_VALIDITY`, both unsampled, so a second removal
+pass after unboxing has 0.00% sampled share. The sound share is 0.00% mean,
+under P1's 1% floor: dropped. Evidence:
+`rust-cpython/results/perf-profile/20261110T14*-perf-jit-int-unbox-*-sample`,
+dumps and `validity_split.py`/`validity_verdict.py` under `.work/tmp`. It
+reopens if a later trace rewrite replaces escaping uops in a sampled trace
+without re-running the removal pass, or if an escape is narrowed to a dealloc
+that cannot run code.
+
 ### T2: unboxing, toward M2
 
 Keep exact floats and compact ints as machine values between uops; box only at
@@ -547,7 +591,7 @@ and the eight object kernels:
 | ---: | --- | --- | ---: | ---: | ---: | --- |
 | 1 | Frame push and pop: `_RETURN_VALUE` with its frame clear and pop (6.0% of samples alone), `_INIT_CALL_PY_EXACT_ARGS_*`, `_PUSH_FRAME`, `_TIER2_RESUME_CHECK`, `_CHECK_STACK_SPACE*`, `_CREATE_INIT_FRAME` (measured 2026-11-10: 1.3% removable as pop fast-path inlining, see **T1**) | T1 | 13.0% | 7.9% | 18.1% | richards 35.3%, raytrace 31.6%, deltablue 25.7%, sor 21.3% |
 | 2 | Type and version guards, all of them; upstream's optimizer has already removed those it proves (measured 2026-11-10: 0.01% removable under trace-local facts, dropped under P1's 1% floor, see **T1**) | T1 | 8.5% | 6.4% | 10.7% | richards 18.9%, go 17.7% |
-| 3 | `_CHECK_VALIDITY` and `_SET_IP` | T1 | 3.5% | 3.2% | 3.8% | nbody 4.9% |
+| 3 | `_CHECK_VALIDITY` and `_SET_IP` (measured 2026-11-10: 0.0% removable; upstream's removal pass already keeps only observers and post-escape checks, see **T1**; dropped under P1's 1% floor) | T1 | 3.5% | 3.2% | 3.8% | nbody 4.9% |
 | 4 | Residual `_tlv_get_addr`, from `float_dealloc`, `PyFloat_FromDouble`, `PyLong_FromLong`, and `long_dealloc` on generic paths | T1 | 3.0% | 3.2% | 2.9% | nqueens 6.8%, fannkuch 5.8%, fft 5.7% |
 | 5 | Unboxed loop-carried locals (above) | T2 | 0.0% | 0.0% | 0.0% | ceiling nbody 15.0% |
 
@@ -951,7 +995,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | T1 frame push and pop pop fast-path inlining (1.3% removable), next in the re-ranked backlog | T1 type and version guards measured: 8.5% share is 0.01% removable under trace-local facts (0.06% with code-version repeats, which do not identify a call site); dropped under P1's 1% floor |
+| J | active | T1 frame push and pop pop fast-path inlining (1.3% removable), next in the re-ranked backlog | T1 `_CHECK_VALIDITY` and `_SET_IP` measured: 3.5% share is 0.0% removable on the final traces (every sampled one has an escaping/needs-IP observer or a preceding escape); upstream's removal pass already does both sound removals; dropped under P1's 1% floor |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | active | C2 in-process `exec` | C0, marshal parity and C1 landed: census 9,102 / 9,135 exact, 0 mismatches on e891 |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -1158,3 +1202,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-10 | e891 | J | T2 | unboxed loop-carried locals (float-local stores 3.1% of numeric samples, int 0.7%; 0.0% with no barrier between store and next store) | `perf-jit-int-unbox` | — | — | DROPPED (under P1's 1% floor) | `rust-cpython/results/perf-profile/20261110T14*-perf-jit-int-unbox-*-sample` |
 | 2026-11-10 | e891 | J | T1 | frame push and pop: 13.0% sampled share; clear-loop slots 96.4-99.8% live on return-heavy kernels; prologue/epilogue plus NULL-slot scan 1.3% removable | `perf-jit-int-unbox` | — | — | MEASURED (above P1's 1% floor; ranked first in T1) | `rust-cpython/results/perf-profile/20261110T14*-perf-jit-int-unbox-*-sample` |
 | 2026-11-10 | e891 | J | T1 | type and version guards: 8.5% sampled share; 4.6% first checks, 3.8% on values with no trace-local fact, 0.01% provably removable (go `_CHECK_MANAGED_OBJECT_HAS_VALUES` and same-frame globals versions); code-version repeats 0.06% are not provable | `perf-jit-int-unbox` | — | — | DROPPED (under P1's 1% floor) | `rust-cpython/results/perf-profile/20261110T14*-perf-jit-int-unbox-*-sample` |
+| 2026-11-10 | e891 | J | T1 | `_CHECK_VALIDITY` and `_SET_IP`: 3.47% sampled share (2.90% + 0.57%); 0 of 227 sampled `_SET_IP` and 0 of 835 sampled `_CHECK_VALIDITY` removable, every one has a following escaping/needs-IP observer or a preceding escape; the removal pass runs before T2 unboxing, which leaves one unsampled stale pair | `perf-jit-int-unbox` | — | — | DROPPED (under P1's 1% floor) | `rust-cpython/results/perf-profile/20261110T14*-perf-jit-int-unbox-*-sample` |
