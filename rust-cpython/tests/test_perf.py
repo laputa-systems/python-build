@@ -902,6 +902,81 @@ class MemoryOnlyTests(unittest.TestCase):
                 self.assertTrue(call.call_args.kwargs["memory_only"])
 
 
+class SercMemoryPolicyTests(unittest.TestCase):
+    baseline_bytes = 100_000_000
+
+    def workload(self, footprint_ratio, *, rounds=2):
+        memory = {"peak_rss": {"ratio_candidate_over_baseline": 1.25,
+                               "absolute_change": 25_000_000, "noise_allowance": 1_000_000,
+                               "baseline": {"median": self.baseline_bytes}, "status": "fail"}}
+
+        def side(value):
+            return {"memory": {"rounds": [{"peak_phys_footprint": value} for _ in range(rounds)]}}
+
+        return {"comparison": {"memory": {"metrics": memory}},
+                "baseline": side(self.baseline_bytes),
+                "candidate": side(int(self.baseline_bytes * footprint_ratio))}
+
+    def entity(self, footprint_ratio, *, serc_pair=True):
+        observation = pv.run_observation(self.workload(footprint_ratio),
+                                         memory_only=True, serc_pair=serc_pair)
+        return observation, pv.entity_verdict([observation, observation])
+
+    def decision(self, entity, *, serc_pair=True):
+        return pv.decide({"python_startup": entity}, targets=["python_startup"], runs=2,
+                         quiet=False, gate=True, memory_only=True, serc_pair=serc_pair)
+
+    def test_peak_rss_is_a_recorded_cost_when_footprint_stays_within_allowance(self):
+        observation, entity = self.entity(1.04)
+        self.assertEqual(observation["metrics"]["peak_rss"]["class"], "regressed")
+        self.assertEqual(entity["metrics"]["peak_phys_footprint"]["verdict"], "within budget")
+        decision = self.decision(entity)
+        self.assertEqual(decision["decision"], pv.WITHIN_BUDGET)
+        self.assertEqual(decision["regressions"], [])
+        self.assertEqual(decision["recorded_costs"], ["peak_rss"])
+        self.assertEqual(decision["acceptance_policy"], "memory-only-serc-cost")
+        rendered = pv.render({"python_startup": entity}, decision)
+        self.assertIn("peak_rss", rendered)
+        self.assertIn("recorded cost", rendered)
+        self.assertIn("physical footprint rejects above +8%", rendered)
+
+    def test_footprint_above_eight_percent_rejects(self):
+        _, entity = self.entity(1.09)
+        decision = self.decision(entity)
+        self.assertEqual(decision["decision"], pv.REJECT)
+        self.assertEqual(decision["regressions"], ["python_startup peak_phys_footprint"])
+
+    def test_footprint_at_eight_percent_is_within_allowance(self):
+        _, entity = self.entity(1.08)
+        self.assertEqual(self.decision(entity)["decision"], pv.WITHIN_BUDGET)
+
+    def test_non_serc_pair_still_rejects_peak_rss_as_before(self):
+        observation, entity = self.entity(1.04, serc_pair=False)
+        self.assertNotIn("peak_phys_footprint", observation["metrics"])
+        decision = self.decision(entity, serc_pair=False)
+        self.assertEqual(decision["decision"], pv.REJECT)
+        self.assertEqual(decision["regressions"], ["python_startup peak_rss"])
+        self.assertEqual(decision["recorded_costs"], [])
+        self.assertEqual(decision["acceptance_policy"], "memory-only")
+
+    def test_missing_footprint_on_serc_pair_is_inconclusive(self):
+        workload = self.workload(1.04)
+        workload["candidate"] = {"memory": {"rounds": []}}
+        observation = pv.run_observation(workload, memory_only=True, serc_pair=True)
+        entity = pv.entity_verdict([observation, observation])
+        self.assertEqual(self.decision(entity)["decision"], pv.INCONCLUSIVE)
+
+    def test_only_a_serc_candidate_over_a_non_serc_baseline_is_special(self):
+        serc = {"report": {"serc": True}}
+        plain = {"report": {}}
+        self.assertTrue(perf._serc_candidate_pair(plain, serc, memory_only=True, self_compare=False))
+        self.assertFalse(perf._serc_candidate_pair(serc, plain, memory_only=True, self_compare=False))
+        self.assertFalse(perf._serc_candidate_pair(serc, serc, memory_only=True, self_compare=False))
+        self.assertFalse(perf._serc_candidate_pair(plain, plain, memory_only=True, self_compare=False))
+        self.assertFalse(perf._serc_candidate_pair(plain, serc, memory_only=False, self_compare=False))
+        self.assertFalse(perf._serc_candidate_pair(plain, serc, memory_only=True, self_compare=True))
+
+
 class IncrementalPlanTests(unittest.TestCase):
     def test_changed_removed_and_clean_only(self):
         plan = perf.incremental_plan(

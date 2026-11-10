@@ -1471,6 +1471,13 @@ def _gate_checks(baseline: dict[str, Any], candidate: dict[str, Any]) -> None:
                             "rebase on the incumbent commit and rebuild")
 
 
+def _serc_candidate_pair(baseline: dict[str, Any], candidate: dict[str, Any], *,
+                         memory_only: bool, self_compare: bool) -> bool:
+    return (memory_only and not self_compare
+            and bool(candidate["report"].get("serc"))
+            and not bool(baseline["report"].get("serc")))
+
+
 def eligible_workloads() -> list[str]:
     from benchmarks.workloads.registry import JIT_KERNELS, WORKLOADS
 
@@ -1641,6 +1648,7 @@ def _measure(*, baseline_ref: str, candidate_ref: str, workloads: list[str], mod
     early_rejection = (memory_only and not gate and not self_compare and not record_baselines
                        and not slug_prefix and runs >= 2)
     stopped_after: dict[str, Any] | None = None
+    serc_pair = False
 
     def replicated_regression(name: str) -> bool:
         # Only completed replication can make the remaining samples unnecessary.
@@ -1649,7 +1657,8 @@ def _measure(*, baseline_ref: str, candidate_ref: str, workloads: list[str], mod
             return False
         entity = perf_verdict.entity_verdict(observations[name])
         decision = perf_verdict.decide({name: entity}, targets=[name], runs=runs,
-                                       quiet=None, gate=False, memory_only=True)
+                                       quiet=None, gate=False, memory_only=True,
+                                       serc_pair=serc_pair)
         return bool(decision["regressions"])
 
     started = time.monotonic()
@@ -1666,6 +1675,8 @@ def _measure(*, baseline_ref: str, candidate_ref: str, workloads: list[str], mod
         # replace a stage between this check and the last measurement.
         baseline = resolve(baseline_ref)
         candidate = baseline if self_compare else resolve(candidate_ref)
+        serc_pair = _serc_candidate_pair(baseline, candidate, memory_only=memory_only,
+                                         self_compare=self_compare)
         if not self_compare and baseline["stage"] == candidate["stage"]:
             raise LaneError("baseline and candidate are the same stage; use `perf.py calibrate`")
         if gate:
@@ -1738,7 +1749,8 @@ def _measure(*, baseline_ref: str, candidate_ref: str, workloads: list[str], mod
                     phase_seconds["workload_runs"] += time.monotonic() - phase_started
                     observations[workload].append(perf_verdict.mismatch_observation("workload")
                                                   if summary is None else perf_verdict.run_observation(
-                                                      summary, memory_only=memory_only))
+                                                      summary, memory_only=memory_only,
+                                                      serc_pair=serc_pair))
                     if replicated_regression(workload):
                         stopped_after = {"run": run, "entity": workload}
                         break
@@ -1788,7 +1800,8 @@ def _measure(*, baseline_ref: str, candidate_ref: str, workloads: list[str], mod
                                             memory_only=memory_only)
     else:
         decision = perf_verdict.decide(decision_entities, targets=targets, runs=runs, quiet=quiet, gate=gate,
-                                       known_mismatches=known, memory_only=memory_only)
+                                       known_mismatches=known, memory_only=memory_only,
+                                       serc_pair=serc_pair)
     goals = ({name: perf_verdict.goal_status(entities[name], memory_only=memory_only)
               for name in evaluated_modules if name in entities}
              if baseline["ref"] == "@control" and not self_compare else {})
