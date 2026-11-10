@@ -5730,6 +5730,58 @@ impl OptimizationPipeline {
         breaks
     }
 
+    /// Repeats CPython's redundant-jump scan after final linear NOP cleanup.
+    pub(in crate::assembler) fn remove_redundant_linear_forward_jumps(items: &mut Vec<Item>) {
+        let mut index = 0;
+        while index < items.len() {
+            let Item::Instruction(instruction) = items[index] else {
+                index += 1;
+                continue;
+            };
+            if instruction.opcode != JUMP_FORWARD
+                || instruction.jump_policy.always_retains_nop()
+                || instruction.jump_policy.defers_redundant_removal()
+                || instruction.jump_policy.borrow_empty_block()
+            {
+                index += 1;
+                continue;
+            }
+            let Some(target) = instruction.forward_target() else {
+                index += 1;
+                continue;
+            };
+            let mut next = index + 1;
+            let mut target_is_next = false;
+            while next < items.len() {
+                match items[next] {
+                    Item::Label(label) => {
+                        target_is_next |= label == target;
+                        next += 1;
+                    }
+                    Item::Instruction(_) => break,
+                }
+            }
+            if !target_is_next {
+                index += 1;
+                continue;
+            }
+            let next_line = items
+                .get(next)
+                .and_then(Item::as_instruction)
+                .map(|next| next.location.line);
+            let previous_line = items[..index]
+                .iter()
+                .rev()
+                .find_map(|item| item.as_instruction().map(|previous| previous.location.line));
+            let line = instruction.location.line;
+            if line >= 0 && (previous_line == Some(line) || next_line == Some(line)) {
+                items.remove(index);
+            } else {
+                index += 1;
+            }
+        }
+    }
+
     pub(in crate::assembler) fn remove_redundant_forward_jumps(
         &mut self,
         finalize_borrow_empty_blocks: bool,

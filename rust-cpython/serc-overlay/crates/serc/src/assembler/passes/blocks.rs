@@ -4395,8 +4395,12 @@ impl OptimizationPipeline {
                     index += 1;
                 }
                 let end = if index < region_order.len() {
-                    block_labels[region_order[index].index()]
-                        .expect("cold-block pass should label every ordered block")
+                    if graph.label_block(region.end) == Some(region_order[index]) {
+                        region.end
+                    } else {
+                        block_labels[region_order[index].index()]
+                            .expect("cold-block pass should label every ordered block")
+                    }
                 } else if let Some(label) = final_label {
                     label
                 } else {
@@ -10591,17 +10595,32 @@ impl OptimizationPipeline {
                 continue;
             }
             let target_position = positions[target.index()];
-            let predecessor = if target_position > 0
-                && block_has_fallthrough(graph[order[target_position - 1]].items())
-            {
-                Some(order[target_position - 1])
-            } else {
+            let fallthrough_source = (target_position > 0)
+                .then(|| {
+                    order[..target_position]
+                        .iter()
+                        .rposition(|block| graph[*block].last_instruction().is_some())
+                })
+                .flatten()
+                .filter(|position| {
+                    order[*position + 1..target_position]
+                        .iter()
+                        .all(|block| {
+                            graph[*block]
+                                .items()
+                                .iter()
+                                .all(|item| matches!(item, Item::Label(_)))
+                        })
+                        && block_has_fallthrough(graph[order[*position]].items())
+                })
+                .map(|position| order[position]);
+            let predecessor = fallthrough_source.or_else(|| {
                 jump_sources[target.index()].iter().copied().find(|source| {
                     block_jump_target(graph[*source].items())
                         .and_then(|label| graph.label_block(label))
                         == Some(target)
                 })
-            };
+            });
             let Some(location) = predecessor.and_then(|source| {
                 if remaining_predecessors[target.index()] == 1
                     && predecessors[target.index()] > 1
@@ -10701,7 +10720,10 @@ impl OptimizationPipeline {
                 continue;
             };
             if let Some(instruction) = graph.instructions_mut(target).next()
-                && !instruction.no_location_policy.preserves_location()
+                && (!instruction.no_location_policy.preserves_location()
+                    || instruction
+                        .no_location_policy
+                        .copy_inherits_shared_predecessor())
             {
                 instruction.location = location;
             }

@@ -1550,6 +1550,7 @@ impl OptimizationPipeline {
             );
             Self::remove_borrow_empty_block_markers(&mut items);
         }
+        Self::remove_redundant_linear_forward_jumps(&mut items);
         #[cfg(any(test, debug_assertions))]
         validate_structure(
             &items,

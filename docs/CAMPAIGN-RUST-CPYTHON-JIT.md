@@ -1258,16 +1258,16 @@ exact, 0 mismatches and 33 oracle refusals. `cargo test -p serc --lib` passes
 1,243 tests, `tests.test_perf` and `tests.test_build` pass 200, and
 `tests/test_serc_compile.py` passes on `perf-rust-serc`.
 
-Under verify, `test_compile` still fails one test. It differs in layout only:
-the same instructions keep the same handlers, and normal mode returns Serc's
-code for it.
-
-- `test_condition_expression_with_redundant_comparisons_compiles`
-  (`if 9<9<9and 9or 9:9` and its longer forms): CPython threads the comparison's
-  jump through the folded `and 9` jump, drops that now unreachable block, and
-  then removes the cleanup's jump to the block that follows. Serc removes
-  redundant forward jumps before the unreachable block disappears, so a
-  zero-length `JUMP_FORWARD` stays after the cleanup's `POP_TOP`.
+Under verify, `test_compile` now matches the C compiler.
+`test_condition_expression_with_redundant_comparisons_compiles` (`if 9<9<9and
+9or 9:9` and its longer forms) is fixed: CPython threads the comparison's jump
+through the folded `and 9` jump, drops that now unreachable block, and then
+removes the cleanup's jump to the block that follows. Serc removed redundant
+forward jumps before the folded jump's retained NOP was compacted, so a
+zero-length `JUMP_FORWARD` stayed after the cleanup's `POP_TOP`. The linear
+pipeline now repeats the redundant-jump scan after the final NOP and borrow
+marker compaction. `tests/fixtures/python316_parity/redundant_comparison_condition.py`
+pins the comparison forms and `x or 0 and y`.
 
 `test_try_except_in_while_with_chained_condition_compiles`
 (`while name_3 <= name_2 > name_1:` around `try: raise` with `except` and
@@ -1290,25 +1290,38 @@ code for it.
 it fails on the unpatched assembly (exit 101, `co_code` and both tables differ)
 and passes with these changes.
 
-Evidence for this round, on macOS arm64 from an empty bytecode cache.
+Evidence for the small-exit round, on macOS arm64 from an empty bytecode cache.
 `perf.py build --name perf-rust-serc-v3 --serc` exits 0 (58 release Rust
 extensions verified). `perf.py test --name perf-rust-serc-v3 --suite
-test_compile --serc-verify` leaves exactly the four
+test_compile --serc-verify` left exactly the four
 `test_condition_expression_with_redundant_comparisons_compiles` subtests.
 `perf.py test --name perf-rust-serc-v3 --all --serc-verify` fails six files:
 the e891 set plus `test_compile` only (456 OK, 52,102 tests, 2,877 skipped).
 `serc_parity.py --oracle stage-perf-rust/bin/python3.16` reports 9,195 cases,
 9,162 exact, **0 mismatches** and 33 oracle refusals, exit 0.
 
-Three classes stay open. `test_condition_expression_with_redundant_comparisons_compiles`
-keeps Serc's extra zero-length `JUMP_FORWARD` after the comparison cleanup's
-`POP_TOP`. Three attempts on it (allow the comparison exit to inline; retain its
-NOP instead; completed NOP-round fixpoint in the late stage, matching
-`remove_redundant_nops_and_jumps`) all left the difference, so it is parked
-here. A Boolean statement ending in a constant (`9 and True`) or in a nested
-deciding constant (`x or 0 and y`) still differs in the line table; neither was
-attempted this round. The review-relevant bytes are in
-`rust-cpython/serc-overlay` only.
+The three verify classes are fixed. A statement-level Boolean that folds to a
+constant (`9 and True`) keeps CPython's end boundary between the selected
+constant and the discard; a terminal Boolean ending in a nested deciding
+operand (`x or 0 and y`) lays its fallthrough and short-circuit joins out
+separately, and the folded operand's location remains the fallthrough donor.
+`tests/fixtures/python316_parity/folded_boolean_statement.py` and
+`redundant_comparison_condition.py` pin them. An abrupt `return` in a nested
+finalizer (`try: pass` / `finally: try: return finally: pass`) keeps the outer
+handler region through the `FINALLY_END` `POP_TOP`: the cold-block pass now
+keeps a region end at its exact boundary label instead of the containing
+block's first label. `tests/fixtures/python316_parity/nested_finally_return_in_finally.py`
+pins it. The review-relevant bytes are in `rust-cpython/serc-overlay` only.
+
+Evidence for this round, on macOS arm64 from an empty bytecode cache.
+`perf.py build --name perf-rust-serc-v3 --serc` exits 0 (58 release Rust
+extensions verified, 374s). `cargo test -p serc --lib` passes 1,260, including
+the three new marshal fixtures. `PYTHONSERCVERIFY=1` compiles each repro
+(`l7src.py`, `r_or.py`, `r_9andtrue.py`) with `same`. `python -m test
+test_compile test_grammar test_syntax test_patma test_exceptions` under verify
+reports `Result: SUCCESS` (857 tests, 5 skipped). `serc_parity.py --oracle
+stage-perf-rust/bin/python3.16` reports 10,005 cases, 9,972 exact, **0
+mismatches** and 33 oracle refusals, exit 0.
 
 Earlier differential fuzzing (300 deep-nesting programs and 120 Boolean
 statements against `perf-upstream`) agreed on every static-block refusal.
@@ -1558,7 +1571,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 | --- | --- | --- | --- |
 | J | active | T3 inline-frame elision implemented and CORRECT; measured no bucket-(a) fall, dropped under P1. Next: virtual-frame inlining or T3 attribute/global caches | Inline frames: incumbent-named bucket (a) richards 24.0% → 17.2%, raytrace 11.6% → 9.6%, but including the new `_INLINE_*` call/frame uops 23.9% → 24.6% and 11.5% → 11.7%; CORRECT (5 incumbent superseded assertions; new `jit_inline_integration`), advisory 1.0123 |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
-| C | active | C2 in-process `exec`: one layout-only verify difference in `test_compile` blocks the exit; abrupt `finally` exits fixed | `campaign/c2` (base `b019c8f`): `perf-rust-serc-v3` builds clean; full suite fails exactly the e891 set; `cargo test -p serc --lib` passes 1,257 including new tests for every M4 class and the `\N{...}` route; `m4_check.py` reports 0 differences over 34 cases and 12 valid neighbours; `review-c2/tabs.py` prints no DIFF; `uni2.py` reports 0 of 172,808 names refused by Serc; `serc_parity.py --oracle perf-rust` reports 0 mismatches in 10,005 cases; verify run still fails the e891 set plus only `test_condition_expression_with_redundant_comparisons_compiles` (known layout difference); memory-only bench WITHIN-BUDGET under OD15 (unchanged); independent review pending |
+| C | active | C2 in-process `exec`: the verify layout classes are fixed and pinned; the e891 suite set and independent review remain | `campaign/c2-layout` (base `21ab98d`): `perf-rust-serc-v3` builds clean (58 release Rust extensions verified, 374s); `cargo test -p serc --lib` passes 1,260 including the three new marshal fixtures; verify compiles each repro with `same`; `test_compile test_grammar test_syntax test_patma test_exceptions` under verify reports `Result: SUCCESS` (857 tests, 5 skipped); `serc_parity.py --oracle perf-rust` reports 0 mismatches in 10,005 cases; independent review pending |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
 
 **Owner queue:** R1 reference report (informational, no target change

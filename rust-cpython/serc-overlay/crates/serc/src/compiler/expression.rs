@@ -2859,16 +2859,22 @@ impl Compiler<'_> {
             }
             self.assembler.set_location(origin_location);
             self.emit_folded_constant(origin, constant)?;
+            if boolean
+                .values
+                .first()
+                .is_some_and(|first| first.range() == origin.range())
+                && boolean.values.len() > 1
+                && expression_location.line == folded_location.line
+            {
+                // CPython resolves lines while the folded conditional jump still
+                // separates the selected operand from the following join.
+                self.assembler.set_location(expression_location);
+                self.emit(NOP, 0, 0)?;
+            }
             for value in operands {
                 self.pre_register_short_circuited_operand(value)?;
             }
-            if boolean.values.len() > 1
-                && (boolean.values.len() > 2
-                    || boolean
-                        .values
-                        .first()
-                        .is_some_and(|first| first.range() == origin.range()))
-            {
+            if boolean.values.len() > 1 {
                 // A decisive first operand or an intermediate folded operand leaves
                 // an empty original block before the join. Keep pending call inputs
                 // in the preceding block, but let independent outer jumps reach the join.

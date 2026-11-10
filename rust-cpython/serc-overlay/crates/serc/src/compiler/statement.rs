@@ -7327,18 +7327,9 @@ impl<'source> Compiler<'source> {
                     if self.context.python_version >= crate::PythonVersion::Py314
                         && !self.control.statements.context.has_following
                         && matches!(expression.value.as_ref(), Expr::BoolOp(_))
-                        && (self.control.finally.active_normal_finally_bodies > 0
-                            || self.control.finally.active_copied_finally_bodies > 0
-                            || self.control.finally.active_finally_end_blocks > 0
-                            || self.control.in_exception_handler()
-                            || !self
-                                .control
-                                .exceptions
-                                .active_exception_region_exclusions
-                                .is_empty())
                     {
-                        // Copies of a protected discard inherit their own Boolean
-                        // operand's line. The original shared POP_TOP stays unlocated.
+                        // A terminal Boolean discard is the only exit of both its
+                        // fallthrough and each short-circuit jump.
                         self.assembler
                             .make_last_no_location_copy_inherit_shared_predecessor();
                     }
