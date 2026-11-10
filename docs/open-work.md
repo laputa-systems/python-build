@@ -33,24 +33,9 @@ doing, P4 is optional. A debt entry is not success.
 
 ## Rust-for-CPython lane
 
-Active research roadmap: [CAMPAIGN-JIT-CINDERX-316.md](CAMPAIGN-JIT-CINDERX-316.md).
-These R-series tasks are experimental and are not production-release gates:
-
-- [ ] **R0 — research rebase first.** Update the currently locked 3.16.0a1
-  overlay to the latest verified upstream CPython 3.16 `main` commit. Record
-  exact SHA/archive digest, keep macOS LLVM 23.1.4 and Linux LLVM 23.1.2
-  unchanged, pass JIT-off/on parity and differential fuzzing, and rerun
-  clean A/A, held-out and guard baselines. No production changes.
-- [ ] **R1 — external CinderX reference.** Pin CinderX on its supported
-  CPython 3.15 base, compare within-version off/on uplift, inspect HIR/LIR,
-  inline caches, deopt, typed optimizations and inlining. Rank ideas by
-  workload-specific evidence; CPython 3.16 is the semantic oracle.
-- [ ] **R2 — Rust-native selective optimizations.** Port promising mechanisms,
-  not the entire CinderX implementation. Retain current LLVM, CPython ABI,
-  unchanged test/benchmark/memory gates and the existing trace JIT by default.
-- [ ] **R3 — optional method-JIT hypothesis.** Independently evaluate the
-  withdrawn PEP 836 prototype only after source refresh and CinderX study;
-  no automatic frontend replacement or unqualified 3.16 compatibility claim.
+JIT work, including the 3.16 source refresh, belongs to the
+[rust-cpython JIT campaign](CAMPAIGN-RUST-CPYTHON-JIT.md) and is not tracked
+here. None of it gates a production release.
 
 - [ ] **P2 — quiet macOS performance confirmation.** Re-run the matched a1 gate
   without host noise. The last accepted runs were `quiet=no`; the only
@@ -75,22 +60,10 @@ These R-series tasks are experimental and are not production-release gates:
   code size; revisit only with a different, streaming mechanism.
 - [ ] **P3 — `compileall_source`.** Its output still differs from control, so it
   is not timed. Fix the difference before using it.
-- [ ] **P3 — upstream tier-2 findings on 3.16.0a1.** A function that started
-  function-entry tracing and then runs under `sys.settrace` leaks one allocator
-  block per function with the JIT on (repro: `def f(): return 1`, 8 calls,
-  `settrace`). `test_capi.test_opt` and `test_monitoring` fail from the second
-  `-R` repetition because the GC invalidates cold executors. `test_optimizer`
-  leaks 6 references per run with or without the JIT. All reproduce without
-  the Rust overlay. The pystats abort in `effective_trace_length` is fixed in
-  `overlay/Python/optimizer.c`.
 - [ ] **P3 — JIT sanitizer coverage.** ASan plus the JIT builds from the locked
-  archive's runtime and passes 15 of 16 test files (`docs/CAMPAIGN-JIT.md`
-  "Debugging methods"). Run the wider suites and the pydebug `-R` files under
-  ASan, and add UBSan, if the JIT is ever promoted past the lane.
-- [ ] **P4 — beyond the first assignment.** A speculative or optimizing tier,
-  unboxed floats and ints in traces, and escape analysis were out of scope.
-  The cost table in `docs/CAMPAIGN-JIT.md` ranks type guards (10.5% of
-  executed uops), `_SET_IP` (9.6%), and `_CHECK_VALIDITY` (8.1%) first.
+  archive's runtime and passes 15 of 16 test files on 3.16.0a1. Run the wider
+  suites and the pydebug `-R` files under ASan, and add UBSan, if the JIT is
+  ever promoted past the lane.
 
 Linux arm64 is not implemented in the lane and must not be described as
 qualified. PGO stays deferred. Do not relax suite or benchmark thresholds to

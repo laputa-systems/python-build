@@ -104,7 +104,7 @@ differently under calibration.
   wall regressed in all five runs, REJECT. The guarded path and differential
   probe remain parked. Neither candidate is clean gate evidence. Detailed
   commands, intervals, correctness checks, and limits are in
-  [the campaign report](../docs/CAMPAIGN-JIT.md#macos-float-reuse-experiments).
+  `docs/CAMPAIGN-JIT.md` at `76de0e1`.
 - `_bz2_rs` once gave a codec a `&mut [u8]` over uninitialized `bytes`
   storage; the shared writer wrapper replaced it.
 

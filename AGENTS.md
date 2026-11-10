@@ -6,12 +6,11 @@ arm64 and Linux x86-64/arm64. Windows, Intel macOS, other Linux
 architectures, and every other target are unsupported. No glibc enters any
 artifact.
 
-`rust-cpython/` is a separate CPython 3.16 Rust research lane. The
-next research milestone is to pin the latest verified upstream 3.16 `main`
-commit while retaining the existing LLVM 23.1.4/macOS arm64 and
-23.1.2/Linux x86-64 toolchains. See the [JIT modernization roadmap](docs/CAMPAIGN-JIT-CINDERX-316.md).
-Neither its source pin nor results affect production targets; Linux arm64
-is not implemented in the research lane.
+The 3.15.1 product is stable and is not modified for lane work.
+`rust-cpython/` is a separate CPython 3.16 Rust research lane whose frontier
+is the Rust JIT: one campaign, [rust-cpython JIT](docs/CAMPAIGN-RUST-CPYTHON-JIT.md),
+owns its goal, end state, and gates. Neither the lane's source pin nor its
+results affect production targets; Linux arm64 is not implemented there.
 
 ## Commands
 
@@ -60,8 +59,7 @@ python3 build/mirror_inputs.py [--check]
 | Qualification, packaging, reproduction | [docs/qualification-and-packaging.md](docs/qualification-and-packaging.md) |
 | CI and releases | [docs/ci-and-releases.md](docs/ci-and-releases.md) |
 | Remaining production and lane work | [docs/open-work.md](docs/open-work.md) |
-| Latest 3.16 / CinderX-informed Rust JIT roadmap | [docs/CAMPAIGN-JIT-CINDERX-316.md](docs/CAMPAIGN-JIT-CINDERX-316.md) |
-| JIT hill-climb gates and historical results | [docs/CAMPAIGN-JIT-CLIMB.md](docs/CAMPAIGN-JIT-CLIMB.md) |
+| rust-cpython JIT campaign: goal, gates, ledger | [docs/CAMPAIGN-RUST-CPYTHON-JIT.md](docs/CAMPAIGN-RUST-CPYTHON-JIT.md) |
 | RTLS backend | [backend/README.md](backend/README.md) |
 | Rust lane build and harness | [rust-cpython/README.md](rust-cpython/README.md) |
 | Rust lane contract and verdicts | [rust-cpython/ENGINEERING.md](rust-cpython/ENGINEERING.md) |
