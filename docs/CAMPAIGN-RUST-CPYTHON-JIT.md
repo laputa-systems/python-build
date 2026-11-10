@@ -440,9 +440,54 @@ candidate and on a debug uop-interpreter build of it. JIT code bytes are at
 most 1.24x M0 (raytrace, +5.8% over the float incumbent; spectral_norm +19.1%).
 Peak RSS is within 0.995-1.005x the float incumbent and +1.1% to +5.7% (go)
 over the no-JIT sibling `perf-rust`. `libpython` `__text` grows by 9,664
-bytes. The independent review (J acceptance step 6) has not run; the candidate
-does not land on `main` before it approves the reference-ownership and deopt
-changes.
+bytes. The independent review found nothing above low severity, and it landed
+as `60e3a7b`. Its follow-up, `06a636c`, pins the offset of every field of
+`_PyJitOptUop` and `_PyJitOptStep` in `optimizer.c` and in the crate's layout
+test, so reordering two same-sized C fields no longer compiles.
+
+**Unboxed loop-carried locals (dropped 2026-11-10: 0.0% achievable).** Any uop
+that can run arbitrary code can observe a local through `frame.f_locals`,
+`locals()`, tracing, monitoring, tracebacks, or the GC's frame traversal. A raw
+float or int in a local must therefore be boxed at every barrier between its
+store and the next store of that local, across the backedge when the value is
+loop-carried. The store's allocation and the free of the value it replaces are
+saved only when that interval has no barrier. Profiles of all 16 kernels on
+`perf-jit-int-unbox` (`perf.py profile --tool sample --jit-map`, about 8 s
+each) were matched to executor dumps that carry opargs. Float results stored
+to locals, plus the frees of the values they replace, are 15.0% of samples on
+nbody, 3.3% on spectral_norm, 3.1% on fft, 2.4% on sparse, and 0.7% on
+monte_carlo: 3.1% mean over the eight numeric kernels. Int stores are 3.5% on
+fft and 2.1% on monte_carlo, 0.7% mean. Under the planner's barrier rules, no
+such interval on any kernel is barrier-free, so 0.0% is achievable. Three
+waivers still leave 0.0%: treating `_CHECK_PERIODIC` as a boxing exit, and
+treating both the generic `_POP_TOP` of replaced values and the list subscript
+load and store as non-escaping. Reaching 2.2% (numeric mean; nbody 13.1%) also
+needs generic `_BINARY_OP` (nbody's `**`, `array` subscripts in fft and
+sparse), `_UNPACK_SEQUENCE_*`, `_ITER_NEXT_LIST_TIER_TWO`, and generic
+`_STORE_SUBSCR` to stop escaping. Even `for i in range(n): s = s * 0.5 + x`
+keeps `s` boxed, because the loop head does not know the type of the replaced
+`i`, so its generic `_POP_TOP` escapes. The mechanism falls under P1's 1% floor
+and is dropped. It reopens once those barriers are gone.
+
+**Backlog re-rank (2026-11-10).** These shares come from the same 16 profiles.
+Each counts the samples whose innermost JIT frame is in the item's uops,
+callees included. Means are over all 16 kernels, the eight numeric kernels,
+and the eight object kernels:
+
+| Rank | Item | Tier | Mean | Numeric | Object | Peak |
+| ---: | --- | --- | ---: | ---: | ---: | --- |
+| 1 | Frame push and pop: `_RETURN_VALUE` with its frame clear and pop (6.0% of samples alone), `_INIT_CALL_PY_EXACT_ARGS_*`, `_PUSH_FRAME`, `_TIER2_RESUME_CHECK`, `_CHECK_STACK_SPACE*`, `_CREATE_INIT_FRAME` | T1 | 13.0% | 7.9% | 18.1% | richards 35.3%, raytrace 31.6%, deltablue 25.7%, sor 21.3% |
+| 2 | Type and version guards, all of them; upstream's optimizer has already removed those it proves | T1 | 8.5% | 6.4% | 10.7% | richards 18.9%, go 18.0% |
+| 3 | `_CHECK_VALIDITY` and `_SET_IP` | T1 | 3.5% | 3.2% | 3.8% | nbody 4.9% |
+| 4 | Residual `_tlv_get_addr`, from `float_dealloc`, `PyFloat_FromDouble`, `PyLong_FromLong`, and `long_dealloc` on generic paths | T1 | 3.0% | 3.2% | 2.9% | nqueens 6.8%, fannkuch 5.8%, fft 5.7% |
+| 5 | Unboxed loop-carried locals (above) | T2 | 0.0% | 0.0% | 0.0% | ceiling nbody 15.0% |
+
+Two newly dominant costs join the backlog under P1. Generic `_BINARY_OP` is
+11.4% mean and 18.2% numeric: `array` subscripts are 53.3% on sparse, 26.2% on
+fft, and 17.0% on lu, monte_carlo's generic ops are 19.9%, and nbody's `**` is
+8.9%. Specializing these is T2. Generic decref pops are 8.5% mean (nbody 24.3%,
+mostly replaced locals of unknown type). Typing those values across the
+backedge needs T3's loop peeling.
 
 ### T3: inlining and allocation removal, toward M3
 
@@ -837,7 +882,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | T2 unboxed loop-carried locals (frame push/pop, `_CHECK_VALIDITY`/`_SET_IP` and guard stripping stay in T1's backlog) | T2 int unboxing landed CORRECT with 5 named superseded uop assertions; independent review clean; timing deferred to Close (OD14) |
+| J | active | T1 frame push and pop, top of the T1/T2 backlog re-rank in **T2** (13.0% mean sampled share) | T2 unboxed loop-carried locals dropped: float-local stores are 3.1% of numeric samples, 0.0% barrier-free; FFI field offsets pinned (`06a636c`) |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | active | C2 in-process `exec` | C0, marshal parity and C1 landed: census 9,102 / 9,135 exact, 0 mismatches on e891 |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -1041,3 +1086,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-10 | e891 | J | T1 | thread-state: executor tstate to float/int freelists (`_tlv_get_addr` 4.61% of samples, targeted chains 1.36% → 0%) | `perf-rust-jit` | timing deferred (OD14) | — | CORRECT | `campaign/t1-tstate` |
 | 2026-11-10 | e891 | J | T2 | float unboxing across binary ops and compares (float boxing 8.9-38.6% of samples; float-op chains nbody 27.5% → 26.3%, fft 11.4% → 9.5%) | `perf-rust-jit` | timing deferred (OD14); advisory 0.9962 | — | CORRECT (4 named superseded `test_capi.test_opt` uop assertions, owner ruling) | `aadaf25` |
 | 2026-11-10 | e891 | J | T2 | compact-int unboxing across binary ops and compares (int uops 29.6% of samples on spectral_norm, 8.2% mean; spectral_norm 29.6% → 27.0%, int runtime calls 17.0% → 12.0%) | `perf-jit-unbox` | timing deferred (OD14); advisory 0.9939 | — | CORRECT (5 named superseded `test_capi.test_opt` uop assertions); independent review clean | `60e3a7b` |
+| 2026-11-10 | e891 | J | T2 | unboxed loop-carried locals (float-local stores 3.1% of numeric samples, int 0.7%; 0.0% with no barrier between store and next store) | `perf-jit-int-unbox` | — | — | DROPPED (under P1's 1% floor) | `rust-cpython/results/perf-profile/20261110T14*-perf-jit-int-unbox-*-sample` |
