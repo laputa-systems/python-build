@@ -4403,3 +4403,15 @@ fn python316_marshal_matches_cpython_for_folded_constant_jump_keeps_exit() {
         ),
     );
 }
+
+#[test]
+fn python316_marshal_matches_cpython_for_with_filtered_comprehension_unbound_target() {
+    assert_python316_marshal(
+        include_str!(
+            "../../tests/fixtures/python316_parity/with_filtered_comprehension_unbound_target.py"
+        ),
+        include_str!(
+            "../../tests/fixtures/python316_parity/with_filtered_comprehension_unbound_target.marshal.hex"
+        ),
+    );
+}

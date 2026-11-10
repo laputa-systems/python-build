@@ -7186,6 +7186,11 @@ impl Compiler<'_> {
                 include_protected_region_exclusion,
             );
             if include_with_region_exclusion
+                && !self
+                    .control
+                    .comprehensions
+                    .active_comprehension_cleanups
+                    .is_empty()
                 && self
                     .control
                     .exceptions
@@ -7234,6 +7239,11 @@ impl Compiler<'_> {
             include_protected_region_exclusion,
         );
         if include_with_region_exclusion
+            && !self
+                .control
+                .comprehensions
+                .active_comprehension_cleanups
+                .is_empty()
             && self
                 .control
                 .exceptions
