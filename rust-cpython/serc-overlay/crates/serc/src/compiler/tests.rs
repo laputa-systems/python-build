@@ -4319,3 +4319,31 @@ fn python316_marshal_matches_cpython_for_class_unstored_annotation() {
         include_str!("../../tests/fixtures/python316_parity/class_unstored_annotation.marshal.hex"),
     );
 }
+
+#[test]
+fn python316_marshal_matches_cpython_for_async_comprehension_unbound_target() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/async_comprehension_unbound_target.py"),
+        include_str!(
+            "../../tests/fixtures/python316_parity/async_comprehension_unbound_target.marshal.hex"
+        ),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_async_comprehension_nested() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/async_comprehension_nested.py"),
+        include_str!("../../tests/fixtures/python316_parity/async_comprehension_nested.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_async_comprehension_terminal_assignment() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/async_comprehension_terminal_assignment.py"),
+        include_str!(
+            "../../tests/fixtures/python316_parity/async_comprehension_terminal_assignment.marshal.hex"
+        ),
+    );
+}

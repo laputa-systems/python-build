@@ -824,7 +824,7 @@ impl Compiler<'_> {
             }
             let last_restore = last_restore.expect("pending restores should not be empty");
             // The SWAP/STORE_FAST_MAYBE_NULL restore contracts by one CFG slot.
-            self.assembler.add_last_hidden_exception_owner_slots(1);
+            self.assembler.add_last_constant_fold_slots(1);
             // CPython before 3.16 converts STORE_FAST_MAYBE_NULL only after inserting
             // superinstructions.
             if !restores_fuse {

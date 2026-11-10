@@ -4795,6 +4795,33 @@ impl Compiler<'_> {
                 discard_result,
             );
         }
+        let defers_restore = std::mem::take(
+            &mut self
+                .control
+                .comprehensions
+                .defer_async_comprehension_restore,
+        );
+        let result = self.compile_inlined_comprehension(
+            generators,
+            (key, value),
+            (build_opcode, add_opcode),
+            discard_result,
+            defers_restore,
+        );
+        self.control
+            .comprehensions
+            .defer_async_comprehension_restore = defers_restore;
+        result
+    }
+
+    fn compile_inlined_comprehension(
+        &mut self,
+        generators: &[ruff_python_ast::Comprehension],
+        (key, value): (Option<&Expr>, &Expr),
+        (build_opcode, add_opcode): (Opcode, Opcode),
+        discard_result: bool,
+        defers_restore: bool,
+    ) -> Result<(), CompileError> {
         let comprehension_cell_names = if self.unit.header_symbol_names_are_final {
             comprehension_cell_names_with_mangler(generators, key, value, &|name| {
                 self.symbol_analysis_name(name)
@@ -5350,11 +5377,8 @@ impl Compiler<'_> {
         }
         self.assembler.mark(normal_cleanup);
 
-        let deferred_normal_restore = self
-            .control
-            .comprehensions
-            .defer_async_comprehension_restore
-            && generators.iter().any(|generator| generator.is_async);
+        let deferred_normal_restore =
+            defers_restore && generators.iter().any(|generator| generator.is_async);
         self.set_depth(base_depth + i32::try_from(temporary_names.len()).unwrap() + 1);
         self.assembler.set_location(comprehension_location);
         if deferred_normal_restore {
@@ -7657,12 +7681,10 @@ impl Compiler<'_> {
         } else {
             self.assembler.emit_backward(END_ASYNC_FOR, send);
         }
-        let async_cleanup_end = self.assembler.label();
-        self.assembler.mark(async_cleanup_end);
         self.control
             .generators
             .generator_region_exclusions
-            .push((cleanup_throw, async_cleanup_end));
+            .push((cleanup_throw, cleanup_throw_end));
         self.assembler.add_exception_region(
             protected_start,
             protected_before_cleanup_end,
