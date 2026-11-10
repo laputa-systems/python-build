@@ -474,6 +474,26 @@ the port to the pinned 3.16 epoch is in scope.
 **Exit:** the source record and lock entries land; Serc's own tests pass on
 the pinned toolchain.
 
+**Vetting result (2026-11-10).** Archive sha256
+`4db43e58bd6f3b7e46728f686c7482d4404b61fe5143371642e1940041d3e84b`, 3,445,293
+bytes. `cargo test -p serc --locked` passes 8,624 tests on `nightly-2026-09-15`
+with the locked clang 23.1.4, against CPython 3.12-3.15 oracles. The non-dev
+closure is 97 crates, all permissive (MIT, Apache-2.0, BSD, Unicode, Zlib,
+Unlicense), plus `ruff_python_parser` at git `9d0f58b1`. Three constraints
+follow:
+
+- The repo's `.cargo/config.toml` replaces crates-io with the `stuff` mirror,
+  which lacks 47 of the crates (every `ruff_*` 0.0.15, `psm`, `stacker`,
+  `cc`, `dashu-int`). Scratch builds use the official crates.io index with
+  `--locked`; the lock entries cannot land until the mirror carries them.
+- cc-rs prefers `HOST_CC` over `CC`, and the host cargo config sets
+  `HOST_CC="kache clang"`, so `psm` silently compiles with Apple clang. Every
+  build that compiles Serc exports `HOST_CC`, `HOST_CXX`, and `HOST_AR` as the
+  locked LLVM tools.
+- A binary that calls the compiler gains about 9.2 MB of text (staticlib
+  probe, ThinLTO, prebuilt std), against about 3.3 MB of `libpython` text. C2's
+  memory gate is the likely failure; C2 measures it first.
+
 ### Marshal parity
 
 `_marshal_rs` writes valid bytes that differ from CPython's reference
@@ -649,10 +669,14 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 | --- | --- | --- | --- |
 | J | ready | R0 | a1 epoch M0, `S0 = 0.7474`; no climb step taken |
 | R1 | active | step 2, timed runs | setup done: CinderX `e48f370d` on 3.15.1, tests green, 24/24 digests match |
-| C | ready | C0, then marshal parity | — |
+| C | active | C1 first slice; marshal parity running | C0 vetted; lock entries wait for the `stuff` mirror |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
 
-**Owner queue:** empty.
+**Owner queue:**
+
+- Publish Serc's 47 missing crates (list in the C0 vetting result) to the
+  `stuff` crates-io mirror, or allow the lane to fetch them from crates.io.
+  Blocks only C0's lock entries and C2.
 
 **Epoch a1** (`v3.16.0a1`, `22d79d98`) closes at R0; its numbers do not carry
 over. The P0 tooling it built stays: kernel-region CPU, the held-out set, the
