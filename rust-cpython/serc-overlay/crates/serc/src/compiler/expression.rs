@@ -2888,7 +2888,7 @@ impl Compiler<'_> {
                         == Operator::Add
                         && matches!(binary.left.as_ref(), Expr::Name(_))
                         && matches!(binary.right.as_ref(), Expr::Call(call)
-                                if matches!(optimized_generator_callable_for_target(call, self.context.python_version), Some("tuple" | "list" | "set")));
+                                if matches!(optimized_generator_callable_for_target(call, self.context.python_version), Some("tuple" | "list" | "set" | "frozenset")));
                     self.with_control_override(
                         |control| {
                             &mut control
@@ -3665,6 +3665,9 @@ impl Compiler<'_> {
         {
             return self.compile_optimized_generator_call(call, callable);
         }
+        if self.context.python_version >= PythonVersion::Py316 && is_frozenset_display_call(call) {
+            return self.compile_optimized_frozenset_display_call(call);
+        }
 
         let call_location = self.assembler.location();
         debug_assert_eq!(call_location, self.source_location(call.range()));
@@ -3930,8 +3933,14 @@ impl Compiler<'_> {
                 false,
                 true,
             ),
+            "frozenset" => (
+                crate::target::operands316::CommonConstant::BUILTIN_FROZENSET.argument(),
+                false,
+                true,
+            ),
             _ => unreachable!("optimized generator call must use a supported builtin"),
         };
+        let collects_set = matches!(callable, "set" | "frozenset");
         let callable_location = self.source_location(call.func.range());
         let base_depth = self.control.stack.depth;
         let fallback = self.assembler.label();
@@ -3982,19 +3991,11 @@ impl Compiler<'_> {
         self.emit(POP_TOP, 0, -1)?;
 
         if collect_collection {
-            self.emit(
-                if callable == "set" {
-                    BUILD_SET
-                } else {
-                    BUILD_LIST
-                },
-                0,
-                1,
-            )?;
+            self.emit(if collects_set { BUILD_SET } else { BUILD_LIST }, 0, 1)?;
         }
         self.compile_expression(&call.arguments.args[0])?;
 
-        if self.context.python_version == PythonVersion::Py315 {
+        if self.context.python_version >= PythonVersion::Py315 {
             self.assembler.set_location(callable_location);
             self.emit(PUSH_NULL, 0, 1)?;
         }
@@ -4006,11 +4007,7 @@ impl Compiler<'_> {
         self.emit_jump_forward(FOR_ITER, exhausted, 1)?;
         if collect_collection {
             self.emit(
-                if callable == "set" {
-                    SET_ADD
-                } else {
-                    LIST_APPEND
-                },
+                if collects_set { SET_ADD } else { LIST_APPEND },
                 1 + self.iterator_slots().cast_unsigned(),
                 -1,
             )?;
@@ -4051,6 +4048,8 @@ impl Compiler<'_> {
         self.assembler.set_location(callable_location);
         if callable == "tuple" {
             self.emit_unary_intrinsic(UnaryIntrinsic::LIST_TO_TUPLE)?;
+        } else if callable == "frozenset" {
+            self.emit_build_frozenset_intrinsic()?;
         } else if !collect_collection {
             let result = self.add_constant(Constant::Bool(initial_result))?;
             self.emit(LOAD_CONST, result, 1)?;
@@ -4072,6 +4071,46 @@ impl Compiler<'_> {
         // Both optimized and fallback calls enter a new original CFG array here.
         // A later conditional cannot reuse slots removed from either call's block.
         self.assembler.record_exception_owner_block_boundary(end);
+        self.assembler.mark(end);
+        self.set_depth(base_depth + 1);
+        Ok(())
+    }
+
+    /// Builds a set display directly into a frozenset when the name is the builtin.
+    fn compile_optimized_frozenset_display_call(
+        &mut self,
+        call: &ruff_python_ast::ExprCall,
+    ) -> Result<(), CompileError> {
+        let callable_location = self.source_location(call.func.range());
+        let base_depth = self.control.stack.depth;
+        let fallback = self.assembler.label();
+        let end = self.assembler.label();
+
+        self.compile_expression(&call.func)?;
+        self.assembler.set_location(callable_location);
+        self.emit(COPY, 1, 1)?;
+        self.emit(
+            LOAD_COMMON_CONSTANT,
+            crate::target::operands316::CommonConstant::BUILTIN_FROZENSET.argument(),
+            1,
+        )?;
+        self.emit(IS_OP, 0, -1)?;
+        self.emit_jump_forward(POP_JUMP_IF_FALSE, fallback, -1)?;
+        self.emit(NOT_TAKEN, 0, 0)?;
+        self.emit(POP_TOP, 0, -1)?;
+        self.compile_expression(&call.arguments.args[0])?;
+        self.assembler.set_location(callable_location);
+        self.emit_build_frozenset_intrinsic()?;
+        self.emit_jump_forward(JUMP_FORWARD, end, 0)?;
+
+        self.assembler.mark(fallback);
+        self.set_depth(base_depth + 1);
+        self.assembler.set_location(callable_location);
+        self.emit(PUSH_NULL, 0, 1)?;
+        self.compile_expression(&call.arguments.args[0])?;
+        self.assembler.set_location(self.call_opcode_location(call));
+        self.emit(CALL, 1, -2)?;
+
         self.assembler.mark(end);
         self.set_depth(base_depth + 1);
         Ok(())
@@ -4722,6 +4761,10 @@ impl Compiler<'_> {
             .with_aliases_from(&self.symbols.cell_names);
         let base_depth = self.control.stack.depth;
         let comprehension_location = self.assembler.location();
+        let avoids_creation = discard_result
+            && build_opcode == BUILD_LIST
+            && self.context.python_version >= PythonVersion::Py316;
+        let add_opcode = if avoids_creation { POP_TOP } else { add_opcode };
         // Legacy AST folding applies to every comprehension iterable, including
         // async clauses; ordinary async-for statements follow a different rule.
         if (generators[0].is_async && self.context.python_version >= PythonVersion::Py314)
@@ -5044,8 +5087,12 @@ impl Compiler<'_> {
             }
         }
         self.assembler.mark(protected_start);
-        self.emit(build_opcode, 0, 1)?;
-        self.emit(SWAP, 2, 0)?;
+        if avoids_creation {
+            self.emit(COPY, 1, 1)?;
+        } else {
+            self.emit(build_opcode, 0, 1)?;
+            self.emit(SWAP, 2, 0)?;
+        }
         let cleanup_depth =
             (base_depth + i32::try_from(temporary_names.len()).unwrap() + 1).cast_unsigned();
         // CPython's method-call optimization reads `DEF_IMPORT` from the mutable module
@@ -5947,7 +5994,7 @@ impl Compiler<'_> {
             .record_exception_setup(protected_start, false);
         self.assembler.mark(protected_start);
         self.emit(GET_ANEXT, 0, 1)?;
-        if self.context.python_version == PythonVersion::Py315 {
+        if self.context.python_version >= PythonVersion::Py315 {
             self.emit(PUSH_NULL, 0, 1)?;
         }
         let none = self.add_constant(Constant::None)?;
@@ -7200,7 +7247,7 @@ impl Compiler<'_> {
                 self.source_location(element_range),
                 accepted,
                 filter_cleanup,
-                add_opcode == LIST_APPEND,
+                matches!(add_opcode, LIST_APPEND | POP_TOP),
                 true,
             )?;
             self.assembler.mark(accepted);
@@ -7274,7 +7321,7 @@ impl Compiler<'_> {
                         self.source_location(key.unwrap_or(value).range()),
                         accepted,
                         loop_context.restart,
-                        add_opcode == LIST_APPEND,
+                        matches!(add_opcode, LIST_APPEND | POP_TOP),
                         true,
                     )?;
                     self.assembler.mark(accepted);
@@ -7310,7 +7357,10 @@ impl Compiler<'_> {
             self.assembler
                 .set_location(self.source_location(key.unwrap_or(value).range()));
         } else {
-            let (element, add_opcode) = if self.context.python_version == PythonVersion::Py315 {
+            if add_opcode == POP_TOP {
+                return self.compile_discarded_comprehension_element(value);
+            }
+            let (element, add_opcode) = if self.context.python_version >= PythonVersion::Py315 {
                 match (add_opcode, value) {
                     (LIST_APPEND, Expr::Starred(starred)) => (starred.value.as_ref(), LIST_EXTEND),
                     (SET_ADD, Expr::Starred(starred)) => (starred.value.as_ref(), SET_UPDATE),
@@ -7334,6 +7384,30 @@ impl Compiler<'_> {
             )?;
         }
         Ok(())
+    }
+
+    /// Evaluates a discarded list element, iterating an unpacked element to exhaustion.
+    fn compile_discarded_comprehension_element(&mut self, value: &Expr) -> Result<(), CompileError> {
+        let location = self.source_location(value.range());
+        let Expr::Starred(starred) = value else {
+            self.compile_comprehension_element(None, value)?;
+            self.assembler.set_location(location);
+            return self.emit(POP_TOP, 0, -1);
+        };
+        self.compile_comprehension_element(None, &starred.value)?;
+        self.assembler.set_location(location);
+        self.emit(GET_ITER, 0, self.iterator_extra_slots())?;
+        let start = self.assembler.label();
+        let end = self.assembler.label();
+        let iterator_depth = self.control.stack.depth;
+        self.assembler.mark(start);
+        self.emit_jump_forward(FOR_ITER, end, 1)?;
+        self.emit(POP_TOP, 0, -1)?;
+        self.assembler.set_location(SourceLocation::NONE);
+        self.emit_jump_backward(JUMP_BACKWARD, start, 0)?;
+        self.assembler.mark(end);
+        self.set_depth(iterator_depth + 1);
+        self.emit_end_for_cleanup()
     }
 
     fn compile_comprehension_element(
@@ -7382,7 +7456,7 @@ impl Compiler<'_> {
     ) -> Result<(), CompileError> {
         let generator = &generators[index];
         let cleanup_location = self.assembler.location();
-        if index == 0 && self.context.python_version == PythonVersion::Py315 {
+        if index == 0 && self.context.python_version >= PythonVersion::Py315 {
             self.assembler
                 .set_location(self.source_location(generator.iter.range()));
             self.emit_comprehension_iterator(true)?;
@@ -7412,7 +7486,7 @@ impl Compiler<'_> {
             .record_exception_setup(protected_start, false);
         self.assembler.mark(protected_start);
         self.emit(GET_ANEXT, 0, 1)?;
-        if self.context.python_version == PythonVersion::Py315 {
+        if self.context.python_version >= PythonVersion::Py315 {
             self.emit(PUSH_NULL, 0, 1)?;
         }
         let none = self.add_constant(Constant::None)?;
@@ -7453,7 +7527,7 @@ impl Compiler<'_> {
                 self.source_location(element_range),
                 accepted,
                 filter_cleanup,
-                add_opcode == LIST_APPEND,
+                matches!(add_opcode, LIST_APPEND | POP_TOP),
                 true,
             )?;
             self.assembler.mark(accepted);
@@ -8343,7 +8417,7 @@ impl Compiler<'_> {
             false
         };
         let optimized_tuple_join = matches!(expression.body.as_ref(), Expr::Call(call)
-            if matches!(optimized_generator_callable_for_target(call, self.context.python_version), Some("tuple" | "list" | "set")))
+            if matches!(optimized_generator_callable_for_target(call, self.context.python_version), Some("tuple" | "list" | "set" | "frozenset")))
             && self.assembler.at_jump_target();
         if self.context.python_version >= PythonVersion::Py314
             && self.control.finally.active_finally_end_blocks > 0
@@ -10825,7 +10899,8 @@ pub(super) fn optimized_generator_callable_for_target(
         return None;
     };
     if !(matches!(name.id.as_str(), "all" | "any" | "tuple")
-        || (python_version == PythonVersion::Py315 && matches!(name.id.as_str(), "list" | "set")))
+        || (python_version >= PythonVersion::Py315 && matches!(name.id.as_str(), "list" | "set"))
+        || (python_version >= PythonVersion::Py316 && name.id.as_str() == "frozenset"))
         || !matches!(call.arguments.args.as_ref(), [Expr::Generator(generator)]
             if !generator_is_async(generator))
         || !call.arguments.keywords.is_empty()
@@ -10833,6 +10908,12 @@ pub(super) fn optimized_generator_callable_for_target(
         return None;
     }
     Some(name.id.as_str())
+}
+
+fn is_frozenset_display_call(call: &ruff_python_ast::ExprCall) -> bool {
+    matches!(call.func.as_ref(), Expr::Name(name) if name.id.as_str() == "frozenset")
+        && matches!(call.arguments.args.as_ref(), [Expr::Set(_) | Expr::SetComp(_)])
+        && call.arguments.keywords.is_empty()
 }
 
 pub(super) fn expression_suspends_current_scope(expression: &Expr) -> bool {

@@ -6891,7 +6891,7 @@ impl<'source> Compiler<'source> {
         })?;
         if direct_else_name {
             self.assembler.prevent_last_instruction_fusion();
-            if self.context.python_version == crate::PythonVersion::Py315 {
+            if self.context.python_version >= crate::PythonVersion::Py315 {
                 // The copied store tail retains its original fallthrough join.
                 // The selected value crosses that block boundary, while the
                 // target receiver is loaded and consumed inside the tail.
@@ -27601,7 +27601,7 @@ impl<'source> Compiler<'source> {
             .record_exception_setup(protected_start, false);
         self.assembler.mark(protected_start);
         self.emit(GET_ANEXT, 0, 1)?;
-        if self.context.python_version == crate::PythonVersion::Py315 {
+        if self.context.python_version >= crate::PythonVersion::Py315 {
             self.emit(PUSH_NULL, 0, 1)?;
         }
         let none = self.add_constant(Constant::None)?;

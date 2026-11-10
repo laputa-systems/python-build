@@ -2317,7 +2317,7 @@ impl Compiler<'_> {
             return Ok(());
         }
         let emitted = self.emit_instruction(crate::target::opcodes::NOT_TAKEN, 0)?;
-        if self.assembler.python_version() == crate::PythonVersion::Py315 {
+        if self.assembler.python_version() >= crate::PythonVersion::Py315 {
             self.assembler.mark_authored_branch_marker(emitted);
         }
         Ok(())
@@ -2416,6 +2416,14 @@ impl Compiler<'_> {
         intrinsic: UnaryIntrinsic,
     ) -> Result<(), CompileError> {
         self.emit(CALL_INTRINSIC_1, intrinsic.argument(), 0)
+    }
+
+    pub(super) fn emit_build_frozenset_intrinsic(&mut self) -> Result<(), CompileError> {
+        self.emit(
+            CALL_INTRINSIC_1,
+            crate::target::operands316::UnaryIntrinsic::BUILD_FROZENSET.argument(),
+            0,
+        )
     }
 
     pub(super) fn emit_binary_intrinsic(

@@ -3678,3 +3678,196 @@ def guarded_call(a, b):
         );
     }
 }
+
+#[test]
+fn python316_specializes_builtin_calls_and_discarded_comprehensions() {
+    use crate::target::opcodes::{
+        BUILD_SET, CACHE, CALL, CALL_INTRINSIC_1, CLEANUP_THROW, COPY, END_ASYNC_FOR, END_FOR,
+        END_SEND, FOR_ITER, GET_AITER, GET_ANEXT, GET_ITER, IS_OP, JUMP_BACKWARD,
+        JUMP_BACKWARD_NO_INTERRUPT, LOAD_COMMON_CONSTANT, LOAD_FAST, LOAD_FAST_AND_CLEAR,
+        LOAD_FAST_BORROW, LOAD_FAST_BORROW_LOAD_FAST_BORROW, LOAD_GLOBAL, MAKE_FUNCTION,
+        POP_ITER, POP_JUMP_IF_FALSE, POP_JUMP_IF_TRUE, POP_TOP, PUSH_NULL, RESUME,
+        RETURN_GENERATOR, SEND, SET_ADD, STORE_FAST, SWAP, TO_BOOL, YIELD_VALUE,
+    };
+
+    let python_version = crate::PythonVersion::Py316;
+    let source = "def any_true(xs):
+    return any(x for x in xs)
+
+
+def frozen(xs):
+    return frozenset(x for x in xs)
+
+
+def frozen_display(a, b):
+    return frozenset({a, b})
+
+
+def discarded(xs):
+    [g(x) for x in xs]
+
+
+async def drained(gen):
+    async for item in gen:
+        pass
+";
+    let module = crate::compile_with_options(
+        source,
+        "builtins.py",
+        &crate::CompileOptions {
+            python_version,
+            ..crate::CompileOptions::default()
+        },
+    )
+    .unwrap();
+    let opcodes = |name: &str| {
+        let code = module
+            .code
+            .constants
+            .iter()
+            .find_map(|constant| match constant {
+                Constant::Code(code) if code.name == name => Some(code),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("module should contain {name}"));
+        code.bytecode
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|unit| unit[0])
+            .filter(|&opcode| opcode != CACHE.code_for(python_version))
+            .collect::<Vec<_>>()
+    };
+    let encoded = |sequence: &[crate::target::Opcode]| {
+        sequence
+            .iter()
+            .map(|opcode| opcode.code_for(python_version))
+            .collect::<Vec<_>>()
+    };
+    let guard = [COPY, LOAD_COMMON_CONSTANT, IS_OP, POP_JUMP_IF_FALSE, NOT_TAKEN, POP_TOP];
+    let generator = [LOAD_CONST, MAKE_FUNCTION, LOAD_FAST_BORROW, CALL];
+    let fallback = [PUSH_NULL, LOAD_CONST, MAKE_FUNCTION, LOAD_FAST_BORROW, CALL, CALL];
+
+    let any_true = [
+        &[RESUME, LOAD_GLOBAL][..],
+        &guard,
+        &generator,
+        &[
+            PUSH_NULL,
+            FOR_ITER,
+            TO_BOOL,
+            POP_JUMP_IF_TRUE,
+            NOT_TAKEN,
+            JUMP_BACKWARD,
+            POP_ITER,
+            LOAD_COMMON_CONSTANT,
+            RETURN_VALUE,
+            END_FOR,
+            POP_ITER,
+            LOAD_COMMON_CONSTANT,
+            RETURN_VALUE,
+        ],
+        &fallback,
+        &[RETURN_VALUE],
+    ]
+    .concat();
+    assert_eq!(opcodes("any_true"), encoded(&any_true));
+
+    let frozen = [
+        &[RESUME, LOAD_GLOBAL][..],
+        &guard,
+        &[BUILD_SET],
+        &generator,
+        &[
+            PUSH_NULL,
+            FOR_ITER,
+            SET_ADD,
+            JUMP_BACKWARD,
+            END_FOR,
+            POP_ITER,
+            CALL_INTRINSIC_1,
+            RETURN_VALUE,
+        ],
+        &fallback,
+        &[RETURN_VALUE],
+    ]
+    .concat();
+    assert_eq!(opcodes("frozen"), encoded(&frozen));
+
+    let frozen_display = [
+        &[RESUME, LOAD_GLOBAL][..],
+        &guard,
+        &[
+            LOAD_FAST_BORROW_LOAD_FAST_BORROW,
+            BUILD_SET,
+            CALL_INTRINSIC_1,
+            RETURN_VALUE,
+            PUSH_NULL,
+            LOAD_FAST_BORROW_LOAD_FAST_BORROW,
+            BUILD_SET,
+            CALL,
+            RETURN_VALUE,
+        ],
+    ]
+    .concat();
+    assert_eq!(opcodes("frozen_display"), encoded(&frozen_display));
+
+    assert_eq!(
+        opcodes("discarded"),
+        encoded(&[
+            RESUME,
+            LOAD_FAST,
+            LOAD_FAST_AND_CLEAR,
+            SWAP,
+            COPY,
+            GET_ITER,
+            FOR_ITER,
+            STORE_FAST,
+            LOAD_GLOBAL,
+            LOAD_FAST_BORROW,
+            CALL,
+            POP_TOP,
+            JUMP_BACKWARD,
+            END_FOR,
+            POP_ITER,
+            POP_TOP,
+            STORE_FAST,
+            LOAD_COMMON_CONSTANT,
+            RETURN_VALUE,
+            SWAP,
+            POP_TOP,
+            SWAP,
+            STORE_FAST,
+            RERAISE,
+        ])
+    );
+
+    assert_eq!(
+        opcodes("drained"),
+        encoded(&[
+            RETURN_GENERATOR,
+            POP_TOP,
+            RESUME,
+            LOAD_FAST_BORROW,
+            GET_AITER,
+            GET_ANEXT,
+            PUSH_NULL,
+            LOAD_COMMON_CONSTANT,
+            SEND,
+            YIELD_VALUE,
+            RESUME,
+            JUMP_BACKWARD_NO_INTERRUPT,
+            END_SEND,
+            NOT_TAKEN,
+            STORE_FAST,
+            JUMP_BACKWARD,
+            CLEANUP_THROW,
+            JUMP_BACKWARD_NO_INTERRUPT,
+            END_ASYNC_FOR,
+            LOAD_COMMON_CONSTANT,
+            RETURN_VALUE,
+            CALL_INTRINSIC_1,
+            RERAISE,
+        ])
+    );
+}
