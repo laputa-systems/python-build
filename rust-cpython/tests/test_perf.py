@@ -2162,6 +2162,8 @@ class JitStatsTests(unittest.TestCase):
                 "name": "nbody", "passes": [0.2, 0.1, 0.1], "warmup": 2.0,
                 "residency": {"mappings": 3, "rss_kib": 12}, "operation_count": 20000,
                 "jit": {"available": True, "enabled": True, "active": True}}))
+            patches.enter_context(mock.patch.object(perf, "_jit_code_bytes",
+                                                    return_value=40961))
             patches.enter_context(mock.patch.object(perf, "LANE", Path(temp)))
             patches.enter_context(mock.patch.object(
                 perf.lb, "_toolchain", return_value=(mock.Mock(), None)))
@@ -2172,6 +2174,7 @@ class JitStatsTests(unittest.TestCase):
             rendered = output.getvalue()
             self.assertIn("nbody", rendered)
             self.assertIn("rss_kib", rendered)
+            self.assertIn("40961", rendered)
             self.assertIn("available=true enabled=true active=true", rendered)
             self.assertIn("text=1234 bytes data=56 bytes", rendered)
 
