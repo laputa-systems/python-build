@@ -10353,7 +10353,10 @@ impl Compiler<'_> {
                 // neighboring terminal exit is copied through the optimized CFG.
                 self.assembler.preserve_inlined_jump_nop(comparison_exit);
             } else if !jump_on {
-                self.assembler.prevent_jump_inlining(comparison_exit);
+                // A non-jumping final comparison still ends its block with an
+                // unconditional jump, so a small exit is copied onto it exactly as
+                // `inline_small_or_no_lineno_blocks` does, leaving the jump a NOP.
+                self.assembler.preserve_inlined_jump_nop(comparison_exit);
             }
 
             self.assembler.mark(cleanup);

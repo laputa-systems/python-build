@@ -4015,6 +4015,14 @@ fn python316_marshal_matches_cpython_for_nested_comprehension() {
 }
 
 #[test]
+fn python316_marshal_matches_cpython_for_while_chained_try_finally() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/while_chained_try_finally.py"),
+        include_str!("../../tests/fixtures/python316_parity/while_chained_try_finally.marshal.hex"),
+    );
+}
+
+#[test]
 fn python316_marshal_matches_cpython_for_nested_comprehension_sibling_target() {
     assert_python316_marshal(
         include_str!(

@@ -42151,15 +42151,15 @@ impl<'source> Compiler<'source> {
         } else {
             None
         };
+        let pop_donor = folded_try_body_handler_exit_range(self, statement)
+            .or_else(|| sole_handler_normal_exit_range(self, statement))
+            .map(|range| self.source_location(range));
         self.assembler.set_location(
             sole_else_pop_location
                 .or(while_else_pop_location)
                 .or(handler_else_pop_location)
                 .or(body_pass_pop_location)
-                .or_else(|| {
-                    folded_try_body_handler_exit_range(self, statement)
-                        .map(|range| self.source_location(range))
-                })
+                .or(pop_donor)
                 .or(comprehension_store_location)
                 .unwrap_or(SourceLocation::NONE),
         );
@@ -47325,6 +47325,38 @@ fn if_contains_copied_nested_handler_exit(
                     })
             )
         })
+}
+
+/// Finds the sole handler donating the finalizer's `POP_BLOCK` line when the body always exits.
+fn sole_handler_normal_exit_range(
+    compiler: &Compiler<'_>,
+    statement: &ruff_python_ast::StmtTry,
+) -> Option<TextRange> {
+    if compiler.context.python_version < crate::PythonVersion::Py313
+        || statement.is_star
+        || !statement.orelse.is_empty()
+        || statement.handlers.is_empty()
+    {
+        return None;
+    }
+    let (abrupt, _prefix) = statement.body.split_last()?;
+    if !matches!(
+        abrupt,
+        Stmt::Break(_) | Stmt::Continue(_) | Stmt::Raise(_) | Stmt::Return(_)
+    ) {
+        return None;
+    }
+    let mut continuing = statement
+        .handlers
+        .iter()
+        .filter_map(ruff_python_ast::ExceptHandler::as_except_handler)
+        .filter(|handler| !suite_terminates_before_constant_folding(&handler.body));
+    let last = continuing.next()?.body.last()?;
+    (continuing.next().is_none()
+        && (matches!(last, Stmt::Pass(_) | Stmt::Assign(_))
+            || matches!(last, Stmt::Expr(expression)
+                if matches!(expression.value.as_ref(), Expr::Call(_) | Expr::Await(_)))))
+    .then(|| implicit_return_range(compiler, last))
 }
 
 /// Finds the sole handler donating the finalizer's `POP_BLOCK` line when folding hides an exit.

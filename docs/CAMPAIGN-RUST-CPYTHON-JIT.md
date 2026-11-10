@@ -1226,24 +1226,57 @@ exact, 0 mismatches and 33 oracle refusals. `cargo test -p serc --lib` passes
 1,243 tests, `tests.test_perf` and `tests.test_build` pass 200, and
 `tests/test_serc_compile.py` passes on `perf-rust-serc`.
 
-Under verify, `test_compile` still fails two tests. Both differ in layout only:
+Under verify, `test_compile` still fails one test. It differs in layout only:
 the same instructions keep the same handlers, and normal mode returns Serc's
-code for them.
+code for it.
 
-- `test_try_except_in_while_with_chained_condition_compiles`
-  (`while name_3 <= name_2 > name_1:` around `try: raise` with `except` and
-  `finally`): CPython's first loop-body block (two `SETUP_FINALLY`, the `try`
-  NOP and `RAISE_VARARGS`) is a small exit, so
-  `inline_small_or_no_lineno_blocks` copies it into the chained comparison's
-  `JUMP end` and the comparison cleanup lands after the raise. Serc does not
-  count the setup pseudo-instructions toward that block, so it jumps over the
-  cleanup instead.
 - `test_condition_expression_with_redundant_comparisons_compiles`
   (`if 9<9<9and 9or 9:9` and its longer forms): CPython threads the comparison's
   jump through the folded `and 9` jump, drops that now unreachable block, and
   then removes the cleanup's jump to the block that follows. Serc removes
   redundant forward jumps before the unreachable block disappears, so a
   zero-length `JUMP_FORWARD` stays after the cleanup's `POP_TOP`.
+
+`test_try_except_in_while_with_chained_condition_compiles`
+(`while name_3 <= name_2 > name_1:` around `try: raise` with `except` and
+`finally`) now matches. Two causes, both in the small-exit copy:
+
+- CPython's first loop-body block (the two try-setup records, the `try` NOP and
+  `RAISE_VARARGS`) is a small exit, so `inline_small_or_no_lineno_blocks` copies
+  it onto the chained comparison's `JUMP end` and the comparison cleanup lands
+  after the raise. Serc marked every non-jumping final comparison's fallthrough
+  jump as ineligible (`prevent_jump_inlining`), so it jumped over the cleanup.
+  That jump now carries the retained-NOP policy the copy needs, and the copy
+  leaves the jump a NOP, as CPython's does.
+- The finalizer's converted `POP_BLOCK` had no line. Its sole normal
+  predecessor is the handler's implicit return, which neither the folded-exit
+  donor (which requires a terminating prefix, absent for a bare `raise`) nor any
+  other donor covered. `sole_handler_normal_exit_range` supplies that handler
+  tail's line.
+
+`tests/fixtures/python316_parity/while_chained_try_finally.py` pins the result;
+it fails on the unpatched assembly (exit 101, `co_code` and both tables differ)
+and passes with these changes.
+
+Evidence for this round, on macOS arm64 from an empty bytecode cache.
+`perf.py build --name perf-rust-serc-v3 --serc` exits 0 (58 release Rust
+extensions verified). `perf.py test --name perf-rust-serc-v3 --suite
+test_compile --serc-verify` leaves exactly the four
+`test_condition_expression_with_redundant_comparisons_compiles` subtests.
+`perf.py test --name perf-rust-serc-v3 --all --serc-verify` fails six files:
+the e891 set plus `test_compile` only (456 OK, 52,102 tests, 2,877 skipped).
+`serc_parity.py --oracle stage-perf-rust/bin/python3.16` reports 9,195 cases,
+9,162 exact, **0 mismatches** and 33 oracle refusals, exit 0.
+
+Three classes stay open. `test_condition_expression_with_redundant_comparisons_compiles`
+keeps Serc's extra zero-length `JUMP_FORWARD` after the comparison cleanup's
+`POP_TOP`. Three attempts on it (allow the comparison exit to inline; retain its
+NOP instead; completed NOP-round fixpoint in the late stage, matching
+`remove_redundant_nops_and_jumps`) all left the difference, so it is parked
+here. A Boolean statement ending in a constant (`9 and True`) or in a nested
+deciding constant (`x or 0 and y`) still differs in the line table; neither was
+attempted this round. The review-relevant bytes are in
+`rust-cpython/serc-overlay` only.
 
 Earlier differential fuzzing (300 deep-nesting programs and 120 Boolean
 statements against `perf-upstream`) agreed on every static-block refusal.
@@ -1493,7 +1526,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 | --- | --- | --- | --- |
 | J | active | T3 inline-frame elision implemented and CORRECT; measured no bucket-(a) fall, dropped under P1. Next: virtual-frame inlining or T3 attribute/global caches | Inline frames: incumbent-named bucket (a) richards 24.0% → 17.2%, raytrace 11.6% → 9.6%, but including the new `_INLINE_*` call/frame uops 23.9% → 24.6% and 11.5% → 11.7%; CORRECT (5 incumbent superseded assertions; new `jit_inline_integration`), advisory 1.0123 |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
-| C | active | C2 in-process `exec`: two layout-only verify differences in `test_compile` block the exit | `campaign/c2` (`52091c9`): suite fails exactly the e891 set; verify run adds only `test_compile` (2 tests); census 9,135 / 9,135 with and without verify; two fuzz-found wrong-code defects fixed; memory-only bench WITHIN-BUDGET under OD15; independent review pending |
+| C | active | C2 in-process `exec`: one layout-only verify difference in `test_compile` blocks the exit | `campaign/c2` (base `19a75b1`): `perf-rust-serc-v3` builds clean; verify run fails the e891 set plus only `test_condition_expression_with_redundant_comparisons_compiles` (4 subtests; `test_try_except_in_while_with_chained_condition_compiles` now matches, pinned by a marshal fixture that fails unpatched); `cargo test -p serc --lib` passes 1,244; the Boolean-statement and redundant-jump classes stay open; memory-only bench WITHIN-BUDGET under OD15; independent review pending |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
 
 **Owner queue:** R1 reference report (informational, no target change
