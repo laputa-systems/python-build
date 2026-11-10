@@ -1963,6 +1963,11 @@ impl Compiler<'_> {
                 || "__annotate__".to_string(),
                 |(parent, _)| format!("{parent}.__annotate__"),
             )
+        } else if self.context.python_version == PythonVersion::Py316 {
+            format!(
+                "{}.__annotate__",
+                self.annotation_child_qualified_name(definition.name.as_str())
+            )
         } else {
             self.child_qualified_name("__annotate__")
         };

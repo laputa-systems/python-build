@@ -3582,7 +3582,7 @@ impl Compiler<'_> {
         let base_depth = self.control.stack.depth - 1;
         let cleanup_location = self.assembler.location();
         self.emit(GET_AWAITABLE, get_awaitable_argument, 0)?;
-        if self.context.python_version == PythonVersion::Py315 {
+        if self.context.python_version >= PythonVersion::Py315 {
             self.emit(PUSH_NULL, 0, 1)?;
         }
         let none = self.add_constant(Constant::None)?;
@@ -7142,7 +7142,7 @@ impl Compiler<'_> {
         }
         let comprehension_location = self.assembler.location();
         if self.context.python_version == PythonVersion::Py313
-            || (index == 0 && self.context.python_version == PythonVersion::Py315)
+            || (index == 0 && self.context.python_version >= PythonVersion::Py315)
         {
             self.assembler
                 .set_location(self.source_location(generator.iter.range()));

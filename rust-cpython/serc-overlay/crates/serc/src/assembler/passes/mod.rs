@@ -1667,6 +1667,9 @@ impl LayoutAssembler {
                     }
                 } else if self.python_version == crate::PythonVersion::Py312 {
                     argument & 3
+                } else if self.python_version == crate::PythonVersion::Py316 {
+                    let depth_one = argument & 4 != 0;
+                    (argument & 3) | if depth_one { 8 } else { 0 }
                 } else {
                     argument
                 };

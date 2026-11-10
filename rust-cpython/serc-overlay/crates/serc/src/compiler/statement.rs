@@ -8,7 +8,7 @@ use ruff_text_size::{Ranged, TextRange};
 
 use super::{
     BEFORE_ASYNC_WITH, BEFORE_WITH, BINARY_SLICE, BUILD_LIST, BUILD_MAP, BUILD_SET, BUILD_TUPLE,
-    CALL, CHECK_EG_MATCH, CHECK_EXC_MATCH, CLEANUP_THROW, COPY, END_ASYNC_FOR, END_SEND, FOR_ITER,
+    CALL, CALL_INTRINSIC_2, CHECK_EG_MATCH, CHECK_EXC_MATCH, CLEANUP_THROW, COPY, END_ASYNC_FOR, END_SEND, FOR_ITER,
     GET_AITER, GET_ANEXT, GET_ITER, IMPORT_FROM, IMPORT_NAME, JUMP_BACKWARD,
     JUMP_BACKWARD_NO_INTERRUPT, JUMP_FORWARD, LIST_APPEND, LOAD_ATTR, LOAD_CONST, LOAD_DEREF,
     LOAD_FAST_AND_CLEAR, LOAD_GLOBAL, LOAD_NAME, MAP_ADD, NOP, NOT_TAKEN, POP_EXCEPT,
@@ -27990,6 +27990,16 @@ impl<'source> Compiler<'source> {
         Ok(())
     }
 
+    fn emit_conditional_annotation_registration(&mut self) -> Result<(), CompileError> {
+        if self.context.python_version == crate::PythonVersion::Py316 {
+            let intrinsic =
+                crate::target::operands316::BinaryIntrinsic::ADD_CONDITIONAL_ANNOTATION.argument();
+            self.emit(CALL_INTRINSIC_2, intrinsic, -1)
+        } else {
+            self.emit(SET_ADD, 1, -1)
+        }
+    }
+
     fn compile_annotated_assignment(
         &mut self,
         assignment: &ruff_python_ast::StmtAnnAssign,
@@ -28015,7 +28025,7 @@ impl<'source> Compiler<'source> {
                 let cell = self.closure_index("__conditional_annotations__")?;
                 self.emit(LOAD_DEREF, cell, 1)?;
                 self.emit_unsigned_constant(index)?;
-                self.emit(SET_ADD, 1, -1)?;
+                self.emit_conditional_annotation_registration()?;
                 self.emit(POP_TOP, 0, -1)?;
             }
             return Ok(());
@@ -28069,7 +28079,7 @@ impl<'source> Compiler<'source> {
                     .set_location(self.source_location(assignment.range));
                 self.load_name("__conditional_annotations__")?;
                 self.emit_unsigned_constant(index)?;
-                self.emit(SET_ADD, 1, -1)?;
+                self.emit_conditional_annotation_registration()?;
                 self.emit(POP_TOP, 0, -1)?;
             }
             return Ok(());

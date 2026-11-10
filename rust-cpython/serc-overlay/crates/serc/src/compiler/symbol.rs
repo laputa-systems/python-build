@@ -776,8 +776,10 @@ impl Compiler<'_> {
             // loads for initialization and after forming superinstructions.
             self.assembler
                 .mark_load_fast_as_post_analysis_closure(emitted);
-            self.assembler
-                .prevent_instruction_fusion_with_previous(emitted);
+            if self.context.python_version < PythonVersion::Py316 {
+                self.assembler
+                    .prevent_instruction_fusion_with_previous(emitted);
+            }
         }
         self.emit_build(BUILD_TUPLE, indices.len())
     }
