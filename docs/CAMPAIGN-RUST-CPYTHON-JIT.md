@@ -93,6 +93,9 @@ Each lane works in its own worktree `.work/wt/<item>` on branch
   builds and tests share the host and gives a measurement exclusive use across
   all worktrees. Work outside `perf.py` (CinderX and Serc test builds) never
   runs while `perf.py status` shows a measurement holding the lease.
+- Until **Close**, timing gates are waived (OD14): no step waits for a quiet
+  host or a `perf-gate-ready` window, and no step lands or is rejected on a
+  timing result. The rules below apply to the timing gates **Close** runs.
 - Gate evidence counts only when `perf-gate-ready` exits 0 immediately before
   and `perf-gate-ready -1` exits 0 immediately after. If the gate refuses
   three times at least 20 minutes apart, record "perf gate deferred: host
@@ -348,7 +351,14 @@ measurable gain), then reduce stencil glue.
 
 ### J acceptance
 
-A candidate replaces the incumbent only when all hold:
+Under OD14 a candidate lands on steps 3-6 alone, plus the memory and
+code-size bars from **Targets** measured on any host. Steps 1, 2, and 7 and
+the **Milestone gate** run at **Close** for the stacked result. A
+`climb-step --screen` number on whatever host is free is recorded in the
+ledger as advisory, verdict SCREEN; it never blocks. Mechanisms rank by
+sampled profile share from `perf.py profile`, not by P1 probes.
+
+After OD14 lifts, a candidate replaces the incumbent only when all hold:
 
 1. **Gate:** `perf.py bench --baseline @incumbent-jit --candidate C --jit-set
    --gate --runs 5` returns ACCEPT under the unchanged `perf_verdict.py`
@@ -565,12 +575,16 @@ scope.
 A track C change lands only when, on `perf-serc-<item>`: the C1 corpus has zero
 mismatches; `perf.py test --all` fails exactly `perf-rust`'s set; from C2 on,
 the full-suite verify run reports no difference; and an independent reviewer
-approves any change to FFI, ownership, or the compile hook. Timing gates run
-only at the C2 and C3 exits.
+approves any change to FFI, ownership, or the compile hook. Under OD14 the C2
+and C3 exits are met without their timing gates, which run at **Close**.
 
 ## Close
 
-When M4 and C3 hold on one epoch: build `perf-rust-jit-serc`, gate it with the
+Close first runs every timing gate OD14 deferred, on a quiet host: the
+**Milestone gate** for the stacked J incumbent, the C2 and C3 cold-import
+gates, and R1's remaining timed runs. A J regression found here is bisected
+over the landed J steps and the offending steps reverted or fixed. Then, when
+M4 and C3 hold on one epoch: build `perf-rust-jit-serc`, gate it with the
 **Milestone gate** commands, rerun the C1 corpus and the J targeted suites on
 it, then run done-criterion 6 on Linux x86-64. Write the closing ledger row,
 rewrite **Status** with the final state, and clear resolved Owner queue
@@ -609,6 +623,9 @@ A/A spread, and `S0`. Scores compare only within an epoch.
   owner reviews are asynchronous except those listed in **Owner queue**.
 - **OD13 (2026-11-10):** Serc's crate dependencies are fetched from crates.io,
   not the `stuff` mirror.
+- **OD14 (2026-11-10):** feature completeness first. Timing gates are waived
+  until **Close**; correctness, parity, memory, and code-size checks still
+  gate every landing.
 - **Parked:** a method-based frontend (withdrawn PEP 836 prototype, observed
   head `04a79098`) opens only by owner decision.
 
@@ -671,7 +688,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | ready | P1 ceilings, then T1 | e891 epoch M0, `S0 = 0.7748`, held-out 0.8216 |
+| J | ready | T1 thread-state, ranked by profile share (OD14) | e891 epoch M0, `S0 = 0.7748`, held-out 0.8216 |
 | R1 | ready | step 2, timed runs (WIP `campaign/r1` `4dcc3ed`) | setup done: CinderX `e48f370d` on 3.15.1, tests green, 24/24 digests match |
 | C | active | C0 lock entries, then C1 co_code | C1 census 3,493 / 6,252 exact on e891 (`campaign/c1`) |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
