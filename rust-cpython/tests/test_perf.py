@@ -2002,6 +2002,18 @@ class JitSelectionTests(unittest.TestCase):
         self.assertNotIn("jit", perf._label({"name": "perf-rust", "report": {
             "git": {"commit": "0123456789abcdef"}}}))
 
+    def test_incremental_header_change_regenerates_jit_stencils(self):
+        with tempfile.TemporaryDirectory() as temp:
+            build = Path(temp)
+            stale = [build / ".jit-stamp", build / "jit_stencils-aarch64-apple-darwin.h"]
+            for path in stale:
+                path.write_text("old")
+            perf._invalidate_jit_stencils(build, {"changed": ["Python/ceval.c"]})
+            self.assertTrue(all(path.exists() for path in stale))
+            perf._invalidate_jit_stencils(
+                build, {"changed": ["Include/internal/pycore_interpframe.h"]})
+            self.assertFalse(any(path.exists() for path in stale))
+
     def test_incremental_refuses_a_jit_flag_change(self):
         for previous, requested in ((False, True), (True, False)):
             with self.subTest(previous=previous), tempfile.TemporaryDirectory() as temp, \

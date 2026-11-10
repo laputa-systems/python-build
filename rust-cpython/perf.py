@@ -924,6 +924,13 @@ def _copy_changed_overlay(paths: dict[str, Path], source: Path, changes: dict[st
     print(f"OK    incremental overlay sync: {len(changes['changed'])} changed file(s)")
 
 
+def _invalidate_jit_stencils(build: Path, changes: dict[str, list[str]]) -> None:
+    if not any(item.endswith(".h") for item in changes["changed"]):
+        return
+    for stale in [build / ".jit-stamp", *build.glob("jit_stencils*.h")]:
+        stale.unlink(missing_ok=True)
+
+
 def _remove_tree(path: Path) -> None:
     try:
         shutil.rmtree(path)
@@ -1111,6 +1118,8 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
             _write_json(paths["report"], {"status": "building", "name": _tag(name),
                                           "pristine": False, "configured": False})
         _copy_changed_overlay(paths, source, changes)
+        if jit:
+            _invalidate_jit_stencils(paths["build"], changes)
         lb._apply_serc_source(source)
     else:
         source = lb._extract_fresh(paths["source_parent"], apply_serc=not empty_overlay)
