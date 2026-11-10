@@ -46,6 +46,10 @@ exports `HOST_CC`, `HOST_CXX`, and `HOST_AR` as the locked LLVM tools because
 cc-rs prefers them over `CC`; `psm` compiles its assembly through that clang.
 `cargo test -p serc --locked` runs offline in the assembled archive tree
 (`work/source/serc` after a build) on `nightly-2026-09-15`.
+`python3 tests/serc_parity.py` builds Serc's CLI from the same archive and
+overlay under `work/serc-census/` and compares its 3.16 bytecode with
+`stage-perf-upstream` over the stdlib, the Django closure and the tooling
+fixture; `--oracle` names another 3.16 interpreter.
 
 The lane uses a shared `cpython-binding` layer and `cpython-deflate` engine,
 a static Rust carrier for built-in modules, a shared `_ssl_rs` extension, and

@@ -5,37 +5,29 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
-import http.server
 import json
 import os
 import shutil
 import subprocess
 import sys
-import tarfile
-import threading
-import urllib.error
-import urllib.request
 from collections import Counter
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-DEFAULT_ARCHIVE = Path(
-    "/Users/josh/d/python-build/.work/wt/c0/.work/c0/archive/serc-bc563167.tar.gz"
+sys.path[:0] = [str(REPO), str(REPO / "rust-cpython")]
+
+import perf
+from benchmarks.harness.inputs import (
+    LINUX_CP316_LOCK_PATH,
+    MACOS_CP316_LOCK_PATH,
+    load_lock,
+    prepare_site,
 )
-DEFAULT_ORACLE = Path(
-    "/Users/josh/d/python-build/.work/wt/r0/rust-cpython/stage-perf-upstream/bin/python3.16"
-)
-DEFAULT_LLVM = Path("/Users/josh/d/python-build/.work/wt/c0/.work/c0/llvm/prefix")
-DEFAULT_CARGO_HOME = Path("/Users/josh/d/python-build/.work/wt/c0/.work/c0/cargo-home")
+
+lb = perf.lb
+TOOLING_CORPUS = REPO / "benchmarks" / "workloads" / "fixtures" / "tooling" / "python_corpus"
+DEFAULT_ORACLE = lb.LANE / f"stage-{perf.CONTROL}" / "bin" / "python3.16"
 OPT_LEVELS = (0, 1, 2)
-INDEX_PORT = 18736
-INDEX_SOURCE = f"sparse+http://127.0.0.1:{INDEX_PORT}/"
-CARGO_SOURCE_ARGS = [
-    "--config",
-    'source.crates-io.replace-with="local"',
-    "--config",
-    f'source.local.registry="{INDEX_SOURCE}"',
-]
 
 ORACLE_SCRIPT = r'''
 import json
@@ -151,116 +143,20 @@ if __name__ == "__main__":
 '''
 
 
-class IndexHandler(http.server.BaseHTTPRequestHandler):
-    upstream = "https://index.crates.io/"
-
-    def do_GET(self):
-        url = self.upstream + self.path.lstrip("/")
-        try:
-            with urllib.request.urlopen(url, timeout=60) as response:
-                body = response.read()
-                self.send_response(response.status)
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-        except urllib.error.HTTPError as error:
-            self.send_response(error.code)
-            self.send_header("Content-Length", "0")
-            self.end_headers()
-        except Exception:
-            self.send_response(502)
-            self.send_header("Content-Length", "0")
-            self.end_headers()
-
-    def log_message(self, *args):
-        pass
-
-
-def start_index_proxy():
-    try:
-        server = http.server.ThreadingHTTPServer(("127.0.0.1", INDEX_PORT), IndexHandler)
-    except OSError:
-        return None
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    return server
-
-
-def assemble(archive: Path, overlay: Path, source: Path) -> None:
-    marker = source / ".serc-assembled"
-    stamp = f"{archive.stat().st_size}:{archive.stat().st_mtime_ns}"
-    if not marker.is_file() or marker.read_text() != stamp:
-        if source.exists():
-            shutil.rmtree(source)
-        source.mkdir(parents=True)
-        with tarfile.open(archive, "r:gz") as tar:
-            tar.extractall(source, filter="data")
-        roots = [entry for entry in source.iterdir() if entry.is_dir()]
-        if len(roots) != 1:
-            raise SystemExit(f"unexpected archive layout in {source}")
-        for entry in roots[0].iterdir():
-            shutil.move(str(entry), str(source / entry.name))
-        roots[0].rmdir()
-        marker.write_text(stamp)
-    for path in sorted(overlay.rglob("*")):
-        if path.is_file():
-            target = source / path.relative_to(overlay)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(path, target)
-
-
-def build_environment(cargo_home: Path, llvm: Path, work: Path) -> dict:
-    work = work.resolve()
-    cargo_home = cargo_home.resolve()
-    llvm = llvm.resolve()
-    llvm_bin = llvm / "bin"
-    env = dict(os.environ)
-    env.update(
-        {
-            "RUSTUP_TOOLCHAIN": "nightly-2026-09-15",
-            "CARGO_HOME": str(cargo_home),
-            "CARGO_TARGET_DIR": str(work / "cargo-target"),
-            "TMPDIR": str(work / "tmp"),
-            "CC": str(llvm_bin / "clang"),
-            "CXX": str(llvm_bin / "clang++"),
-            "AR": str(llvm_bin / "llvm-ar"),
-            "RANLIB": str(llvm_bin / "llvm-ranlib"),
-            "HOST_CC": str(llvm_bin / "clang"),
-            "HOST_CXX": str(llvm_bin / "clang++"),
-            "HOST_AR": str(llvm_bin / "llvm-ar"),
-        }
+def build_cli(work: Path) -> Path:
+    source = work / "source"
+    source.mkdir(parents=True, exist_ok=True)
+    lb._apply_serc_source(source)
+    toolchain, _target = lb._toolchain()
+    env = lb._environment(toolchain, offline=True, build_dir=work)
+    command = [
+        str(lb.CARGO_HOME / "bin" / "cargo"), "build", "--release", "--locked", "--offline",
+        "-p", "serc-cli", "--manifest-path", str(source / "serc" / "Cargo.toml"),
+        *lb.LANE_CARGO_SOURCE_ARGS,
+    ]
+    lb._require_command(
+        command, cwd=lb.CARGO_CONFIG_ISOLATED_CWD, env=env, log=work / "cargo-build.log"
     )
-    sdk = subprocess.run(
-        ["xcrun", "--show-sdk-path"], capture_output=True, text=True, check=False
-    ).stdout.strip()
-    if sdk:
-        env["SDKROOT"] = sdk
-    (work / "tmp").mkdir(parents=True, exist_ok=True)
-    return env
-
-
-def cargo(source: Path, env: dict, args: list[str], log: Path, offline: bool) -> int:
-    command = ["cargo", *args, *CARGO_SOURCE_ARGS]
-    if offline:
-        command.append("--offline")
-    result = subprocess.run(command, cwd=source, env=env, capture_output=True, text=True)
-    log.write_text(result.stdout + result.stderr)
-    return result.returncode
-
-
-def build_cli(source: Path, env: dict, work: Path) -> Path:
-    log = work / "cargo-build.log"
-    build = ["build", "--release", "-p", "serc-cli", "--locked"]
-    if cargo(source, env, build, log, offline=True) != 0:
-        server = start_index_proxy()
-        try:
-            if cargo(source, env, ["fetch", "--locked"], work / "cargo-fetch.log", offline=False) != 0:
-                raise SystemExit(f"Serc fetch failed; see {work / 'cargo-fetch.log'}")
-            if cargo(source, env, build, log, offline=True) != 0:
-                raise SystemExit(f"Serc build failed; see {log}")
-        finally:
-            if server is not None:
-                server.shutdown()
     binary = Path(env["CARGO_TARGET_DIR"]) / "release" / "serc"
     if not binary.exists():
         raise SystemExit(f"Serc CLI missing at {binary}")
@@ -273,12 +169,11 @@ def prepare_corpus(oracle: Path, corpus: Path) -> Path:
         raise SystemExit(f"oracle stdlib missing at {stdlib}")
     if corpus.exists():
         shutil.rmtree(corpus)
-    shutil.copytree(
-        stdlib,
-        corpus,
-        symlinks=True,
-        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-    )
+    ignore = shutil.ignore_patterns("__pycache__", "*.pyc")
+    shutil.copytree(stdlib, corpus / "stdlib", symlinks=True, ignore=ignore)
+    lock = LINUX_CP316_LOCK_PATH if lb.IS_LINUX else MACOS_CP316_LOCK_PATH
+    prepare_site(oracle, corpus / "site", groups={"django"}, lock=load_lock(lock))
+    shutil.copytree(TOOLING_CORPUS, corpus / "tooling", ignore=ignore)
     return corpus
 
 
@@ -481,39 +376,19 @@ def census(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--archive",
-        type=Path,
-        default=DEFAULT_ARCHIVE,
-        help="pinned Serc archive",
-    )
     parser.add_argument("--oracle", type=Path, default=DEFAULT_ORACLE)
-    parser.add_argument("--llvm", type=Path, default=DEFAULT_LLVM)
-    parser.add_argument("--cargo-home", type=Path, default=DEFAULT_CARGO_HOME)
-    parser.add_argument("--work", type=Path, default=REPO / ".work" / "c1")
+    parser.add_argument("--work", type=Path, default=lb.WORK / "serc-census")
     parser.add_argument("--json", type=Path, help="write the census JSON here")
-    parser.add_argument(
-        "--overlay", type=Path, default=REPO / "rust-cpython" / "serc-overlay"
-    )
     args = parser.parse_args()
 
     work = args.work.resolve()
     work.mkdir(parents=True, exist_ok=True)
-    if not args.cargo_home.exists():
-        shutil.copytree(args.cargo_home, work / "cargo-home")
-    cargo_home = work / "cargo-home" if (work / "cargo-home").exists() else args.cargo_home
-    source = work / "serc-src"
-
     if not args.oracle.exists():
         raise SystemExit(f"oracle interpreter missing at {args.oracle}")
-    sys.path.insert(0, str(REPO / "rust-cpython"))
-    import perf
 
     with perf.host_lease("build", "serc census"):
-        assemble(args.archive, args.overlay, source)
-        env = build_environment(cargo_home, args.llvm, work)
-        binary = build_cli(source, env, work)
-        corpus = prepare_corpus(args.oracle, work / "corpus" / "lib" / "python3.16")
+        binary = build_cli(work)
+        corpus = prepare_corpus(args.oracle, work / "corpus")
         files = sorted(path for path in corpus.rglob("*.py") if path.is_file())
         runs, outcomes = run_serc(binary, corpus, files, work)
         records = run_oracle(args.oracle, corpus, files, work)
