@@ -8,8 +8,9 @@ artifact.
 
 The 3.15.1 product is stable and is not modified for lane work.
 `rust-cpython/` is a separate CPython 3.16 Rust research lane whose frontier
-is the Rust JIT: one campaign, [rust-cpython JIT](docs/CAMPAIGN-RUST-CPYTHON-JIT.md),
-owns its goal, end state, and gates. Neither the lane's source pin nor its
+is the Rust JIT and a Rust source compiler ported from Serc: one campaign,
+[rust-cpython JIT](docs/CAMPAIGN-RUST-CPYTHON-JIT.md), owns their goal, end
+state, and gates. Neither the lane's source pin nor its
 results affect production targets; Linux arm64 is not implemented there.
 
 ## Commands

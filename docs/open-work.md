@@ -33,7 +33,8 @@ doing, P4 is optional. A debt entry is not success.
 
 ## Rust-for-CPython lane
 
-JIT work, including the 3.16 source refresh, belongs to the
+JIT work, the 3.16 source refresh, the Serc compiler port, and the
+`compileall_source` marshal mismatch belong to the
 [rust-cpython JIT campaign](CAMPAIGN-RUST-CPYTHON-JIT.md) and is not tracked
 here. None of it gates a production release.
 
@@ -58,8 +59,6 @@ here. None of it gates a production release.
   production build's own gates apply.
 - [ ] **P3 — source TOML pilot.** The deser pilot lost on peak RSS and private
   code size; revisit only with a different, streaming mechanism.
-- [ ] **P3 — `compileall_source`.** Its output still differs from control, so it
-  is not timed. Fix the difference before using it.
 - [ ] **P3 — JIT sanitizer coverage.** ASan plus the JIT builds from the locked
   archive's runtime and passes 15 of 16 test files on 3.16.0a1. Run the wider
   suites and the pydebug `-R` files under ASan, and add UBSan, if the JIT is
