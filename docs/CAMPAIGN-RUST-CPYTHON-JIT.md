@@ -337,6 +337,51 @@ every introspection path the fuzzer covers. Candidates, in order: float
 unboxing across binary ops and compares; int unboxing with overflow guards;
 unboxed loop-carried locals.
 
+**Float unboxing candidate (2026-11-10, waiting on the owner).** Branch
+`campaign/t2-unbox` at `aadaf25`. A Rust pass in `overlay/Modules/_jit_opt_rs`
+runs in `uop_optimize` after the optimizer and before register allocation. It
+keeps a float temporary as raw double bits in its stack slot when its only
+consumer is another float binary op or compare, nothing else reads it, it stays
+within 32 slots of the top, and no escaping, frame-switching, periodic,
+variable-shape, or unmodelled failing uop runs while it is live. A chain is
+rewritten only when it removes more allocations and frees than the boxing it
+adds. A verifier replays the rewritten trace and records the unboxed slots at
+every exit and error: exit stubs box them (`_BOX_FLOAT_STACK`; if boxing fails
+the slots are cleared and MemoryError is raised), error stubs clear them
+(`_CLEAR_FLOAT_STACK`), and a zero divisor deopts so tier 1 raises.
+
+Float allocation, deallocation, guards and pops are 8.9-38.6% of sampled time
+on the eight numeric kernels (nbody 38.6%, sparse 24.9%, fft 23.5%). In the
+hottest traces the rewrite removes 2 of 15 allocation sites and 2 of 10 frees on
+nbody, 2 of 8 and 2 of 6 on fft, and 2 of 6 and 2 of 11 on monte_carlo. The
+share of samples in float-op uops and the allocations they call drops from
+27.5% to 26.3% (nbody), 11.4% to 9.5% (fft), 6.2% to 5.1% (spectral_norm) and
+6.4% to 5.8% (monte_carlo). Most float allocations on these kernels feed stores
+to locals or lists, which stay boxed until the loop-carried-locals candidate.
+Temporaries also cannot live across a list subscript, because the cases
+analyzer marks `_BINARY_OP_SUBSCR_LIST_INT` escaping for its free-threaded
+branch.
+
+`climb-step --correctness` against a same-worktree `perf-rust-jit` at
+`6040917`: training and held-out digests match, 2,000 fuzz programs give 0
+mismatches at 97.5% JIT coverage, and 8 of the 9 targeted suites match. The
+verdict is REJECT because four `test_capi.test_opt` tests fail only with the
+JIT: `test_float_add_chain_both_unique`,
+`test_float_inplace_chain_propagation`, `test_float_truediv_inplace_unique_lhs`
+and `test_float_truediv_unique_result_enables_inplace`. Each asserts that a
+`_BINARY_OP_*_FLOAT_INPLACE*` uop appears in a trace that the rewrite fully
+unboxes; their numeric results pass. `rust-cpython/tests/jit_unbox_integration.py`
+compares JIT-on and JIT-off results, finalizers, refcounts, trace and
+monitoring lines over chains that side-exit, deopt into a raised
+ZeroDivisionError, trace, monitor, collect, yield and run in a thread, and
+checks that each kernel ran unboxed. It fails on the incumbent, whose tier-2
+float division raises `float division by zero` where tier 1 raises `division
+by zero`; the unboxed division deopts and matches tier 1. JIT code
+bytes are at most 1.17x M0 (raytrace, +16.5% over the incumbent from boxing
+exit stubs). Peak RSS is +0.3% to +2.0% over the incumbent and at most +6.1%
+(go) over the no-JIT sibling `perf-rust` at `aadaf25`, against +4.9% (hexiom)
+for the incumbent. `libpython` `__text` grows by 27,328 bytes.
+
 ### T3: inlining and allocation removal, toward M3
 
 Inline Python-to-Python calls with lazy frame materialization on deopt. Add
@@ -730,7 +775,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | T2 float and int boxing (frame push/pop, `_CHECK_VALIDITY`/`_SET_IP` and guard stripping stay in T1's backlog) | T1 thread-state landed CORRECT, timing deferred to Close (OD14) |
+| J | waiting on owner | T2 float unboxing (`campaign/t2-unbox`, not landed; int unboxing and loop-carried locals follow; frame push/pop, `_CHECK_VALIDITY`/`_SET_IP` and guard stripping stay in T1's backlog) | float unboxing climb-step REJECT on four upstream `test_capi.test_opt` inplace-uop assertions; digests, 2,000 fuzz programs and the other eight suites match |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | active | C2 in-process `exec` | C0, marshal parity and C1 landed: census 9,102 / 9,135 exact, 0 mismatches on e891 |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -745,6 +790,28 @@ now regenerates the interpreter cases from `bytecodes.c` with a 3.11+
 private symbols, `_PyFloat_FromDoubleTstate`, `_PyFloat_ExactDeallocTstate`,
 and `_PyLong_ExactDeallocTstate`, which `_testinternalcapi` and the stencils
 reference.
+
+**Owner queue:** T2 float unboxing (blocking T2, decision needed). Four
+upstream `test_capi.test_opt` tests assert that upstream's inplace float uops
+appear in traces whose temporaries unboxing removes, so any T2 candidate that
+unboxes a merge of two temporaries fails J acceptance step 5; int unboxing will
+meet the same with the int inplace tests. The doc does not say whether such
+superseded implementation assertions may differ with the JIT. The overlay
+cannot patch `Lib/test/`, and keeping the inplace uops would forfeit the merges
+this candidate exists for. Options: accept a named JIT-only failure list for
+superseded uop-name assertions whose numeric results pass, recorded per
+candidate (recommended); or allow an overlay patch to those tests.
+
+**Owner queue:** T2 float unboxing contract (with the decision above). New
+overlay crate `Modules/_jit_opt_rs` (no dependencies, linked into `libpython`
+through `cpython-rust-staticlib`, exporting `_PyJitOpt_PlanFloatUnboxing`); its
+hook in `uop_optimize` and the unboxed-slot stubs in `prepare_for_execution`;
+the generated `_PyUop_StackShape` table from an overlaid
+`uop_metadata_generator.py`; ten tier-2 uops (`_UNBOX_FLOAT_TOS/NOS`,
+`_BINARY_OP_{ADD,SUBTRACT,MULTIPLY,TRUEDIV}_FLOAT_UNBOXED`,
+`_COMPARE_OP_FLOAT_UNBOXED`, `_BOX_FLOAT`, `_BOX_FLOAT_STACK`,
+`_CLEAR_FLOAT_STACK`); `PyStackRef_FromUnboxedFloat`/`AsUnboxedFloat`; and the
+overlay `Cargo.lock` digest in `rust-cpython/sources.lock.json`.
 
 **Epoch e891** (`main` `e891a911`, pinned 2026-11-10) opened at R0 on macOS
 arm64:
@@ -892,3 +959,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-10 | e891 | J | M0 | instrument | `perf-rust-jit` | — → 0.7748 | A/A max 1.19% | MEASURED | `rust-cpython/results/perf-bench/20261110T041724Z-perf-climb-ref-vs-perf-rust-jit` |
 | 2026-11-10 | 3.15.1 | R1 | R1 | CinderX steady JIT vs off | `cinderx-e48f370d` | — → 0.7960 (held-out 1.0621) | — | MEASURED | `.work/r1` |
 | 2026-11-10 | e891 | J | T1 | thread-state: executor tstate to float/int freelists (`_tlv_get_addr` 4.61% of samples, targeted chains 1.36% → 0%) | `perf-rust-jit` | timing deferred (OD14) | — | CORRECT | `campaign/t1-tstate` |
+| 2026-11-10 | e891 | J | T2 | float unboxing across binary ops and compares (float boxing 8.9-38.6% of samples; float-op chains nbody 27.5% → 26.3%, fft 11.4% → 9.5%) | `perf-rust-jit` | timing deferred (OD14); advisory 0.9962 | — | REJECT (owner queue: 4 `test_capi.test_opt` inplace-uop assertions) | `campaign/t2-unbox` |
