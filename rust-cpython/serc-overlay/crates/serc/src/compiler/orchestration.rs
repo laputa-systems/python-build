@@ -1179,7 +1179,8 @@ impl<'source> Compiler<'source> {
             if !matches!(statement, Stmt::Global(_) | Stmt::Nonlocal(_))
                 && !matches!(
                     statement,
-                    Stmt::AnnAssign(annotation) if annotation.simple && annotation.value.is_none()
+                    Stmt::AnnAssign(annotation)
+                        if annotation.value.is_none() && annotation.target.is_name_expr()
                 )
             {
                 self.assembler

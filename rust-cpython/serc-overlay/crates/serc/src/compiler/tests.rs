@@ -4311,3 +4311,11 @@ fn python316_marshal_matches_cpython_for_except_star_same_line_pass() {
         include_str!("../../tests/fixtures/python316_parity/except_star_same_line_pass.marshal.hex"),
     );
 }
+
+#[test]
+fn python316_marshal_matches_cpython_for_class_unstored_annotation() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/class_unstored_annotation.py"),
+        include_str!("../../tests/fixtures/python316_parity/class_unstored_annotation.marshal.hex"),
+    );
+}
