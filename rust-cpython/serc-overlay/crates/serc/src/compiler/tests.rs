@@ -4375,6 +4375,14 @@ fn python316_marshal_matches_cpython_for_handler_declaration_cleanup() {
 }
 
 #[test]
+fn python316_marshal_matches_cpython_for_with_chained_arms_in_loop() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/with_chained_arms_in_loop.py"),
+        include_str!("../../tests/fixtures/python316_parity/with_chained_arms_in_loop.marshal.hex"),
+    );
+}
+
+#[test]
 fn python316_marshal_matches_cpython_for_folded_while_header_after_annotation_setup() {
     assert_python316_marshal(
         include_str!(

@@ -45491,7 +45491,6 @@ impl<'source> Compiler<'source> {
                     if !remaining.is_empty()
                         || self.unit.flags & (CO_GENERATOR | CO_COROUTINE | CO_ASYNC_GENERATOR) != 0
                         || !shares_loop_cleanup
-                        || context.has_orelse
                         || context.break_policy != LoopBreakPolicy::Jump
                         || !self.control.exceptions.active_exception_handlers.is_empty()
                         || self.control.finally.active_normal_finally_bodies != 0
@@ -48399,11 +48398,19 @@ fn with_chained_manager_exit_location(
     {
         return None;
     }
+    let runtime_tests = condition_has_only_runtime_tests(&statement.test)
+        && statement.elif_else_clauses.iter().all(|clause| {
+            clause
+                .test
+                .as_ref()
+                .is_none_or(condition_has_only_runtime_tests)
+        });
     let mut location = None;
     for arm in if_suites(statement) {
         if suite_terminates(arm) {
             if !(matches!(arm.last(), Some(Stmt::Return(_) | Stmt::Raise(_)))
-                || allow_break && matches!(arm.last(), Some(Stmt::Break(_))))
+                || allow_break && matches!(arm.last(), Some(Stmt::Break(_)))
+                || runtime_tests && matches!(arm.last(), Some(Stmt::Continue(_))))
             {
                 return None;
             }
@@ -48420,15 +48427,9 @@ fn with_chained_manager_exit_location(
                 manager.items[0].context_expr.range()
             }
             fallthrough @ (Stmt::Expr(_) | Stmt::Assign(_) | Stmt::Delete(_) | Stmt::Pass(_))
-                if condition_has_only_runtime_tests(&statement.test)
-                    && statement.elif_else_clauses.iter().all(|clause| {
-                        clause
-                            .test
-                            .as_ref()
-                            .is_none_or(condition_has_only_runtime_tests)
-                    })
+                if runtime_tests
                     && (matches!(fallthrough, Stmt::Expr(expression)
-                        if matches!(expression.value.as_ref(), Expr::Call(_)))
+                        if matches!(expression.value.as_ref(), Expr::Call(_) | Expr::Name(_)))
                         || matches!(fallthrough, Stmt::Assign(_) | Stmt::Delete(_))
                         || (compiler.context.python_version >= crate::PythonVersion::Py314
                             && matches!(fallthrough, Stmt::Pass(_)))) =>
