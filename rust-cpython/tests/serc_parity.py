@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import http.server
 import json
 import os
@@ -294,31 +295,68 @@ def pyc_path(source: Path, optimize: int) -> Path:
     return source.parent / "__pycache__" / f"{stem}.{suffix}"
 
 
-def run_serc(binary: Path, corpus: Path, files: list[Path], work: Path) -> dict:
-    runs = {}
+def classify_serc(returncode: int, stderr: str, relative: Path) -> tuple[str, str]:
+    """Classify one file's Serc invocation: compiled, refused, or a harness failure."""
+    if returncode == 0:
+        return "compiled", ""
+    if returncode == 101 or "panicked at" in stderr:
+        panic = next(
+            (line for line in stderr.splitlines() if "panicked at" in line or "panicked" in line),
+            "serc panicked",
+        )
+        return "panic", panic.strip()
+    markers = (f"failed to compile {relative}: ", f"failed to decode {relative}: ")
+    for line in stderr.splitlines():
+        for marker in markers:
+            index = line.find(marker)
+            if index >= 0:
+                return "refused", line[index + len(marker) :].strip()
+    detail = next((line for line in reversed(stderr.splitlines()) if line.strip()), "")
+    return "refused", f"serc exited {returncode}: {detail.strip()}"
+
+
+def run_serc(binary: Path, corpus: Path, files: list[Path], work: Path) -> tuple[dict, dict]:
+    """Compile every file in its own process so a refusal cannot abort the census."""
+    outcomes: dict[tuple[str, int], tuple[str, str]] = {}
+    summary = {}
+    workers = min(16, os.cpu_count() or 1)
     for optimize in OPT_LEVELS:
-        manifest = work / f"manifest-{optimize}.txt"
-        manifest.write_bytes(b"\0".join(str(path).encode() for path in files) + b"\0")
         log = work / f"serc-{optimize}.log"
-        command = [
-            str(binary),
-            "compile",
-            "--files-from",
-            str(manifest),
-            "--null",
-            "--python-version",
-            "3.16",
-            "--optimize",
-            str(optimize),
-            "--force",
-            "--quiet",
-            "--jobs",
-            str(os.cpu_count() or 1),
-        ]
-        result = subprocess.run(command, cwd=corpus, capture_output=True, text=True)
-        log.write_text(result.stdout + result.stderr)
-        runs[str(optimize)] = result.returncode
-    return runs
+        lines: list[str] = []
+
+        def compile_one(path: Path) -> tuple[Path, str, str]:
+            relative = path.relative_to(corpus)
+            command = [
+                str(binary),
+                "compile",
+                str(relative),
+                "--python-version",
+                "3.16",
+                "--optimize",
+                str(optimize),
+                "--force",
+                "--quiet",
+            ]
+            result = subprocess.run(
+                command, cwd=corpus, capture_output=True, text=True
+            )
+            return (relative, *classify_serc(result.returncode, result.stderr, relative))
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            for relative, status, reason in pool.map(compile_one, files):
+                outcomes[(str(relative), optimize)] = (status, reason)
+                if status != "compiled":
+                    lines.append(f"{status}\t{relative}\t{reason}")
+        log.write_text("\n".join(sorted(lines)) + ("\n" if lines else ""))
+        counts = Counter(
+            status for (_, level), (status, _) in outcomes.items() if level == optimize
+        )
+        summary[str(optimize)] = {
+            "exit": counts["panic"],
+            "refused": counts["refused"],
+            "compiled": counts["compiled"],
+        }
+    return summary, outcomes
 
 
 def run_oracle(oracle: Path, corpus: Path, files: list[Path], work: Path) -> dict:
@@ -350,24 +388,57 @@ def run_oracle(oracle: Path, corpus: Path, files: list[Path], work: Path) -> dic
     return json.loads(results.read_text())
 
 
-def census(records: list[dict], files: list[Path], runs: dict) -> dict:
+def census(
+    records: list[dict],
+    files: list[Path],
+    runs: dict,
+    outcomes: dict[tuple[str, int], tuple[str, str]],
+) -> dict:
     classes = Counter()
     per_optimize = {
-        str(level): {"total": 0, "exact": 0, "mismatch": 0, "refused": 0, "no_output": 0}
+        str(level): {
+            "total": 0,
+            "exact": 0,
+            "mismatch": 0,
+            "refused": 0,
+            "serc_refused": 0,
+            "serc_error": 0,
+            "no_output": 0,
+        }
         for level in OPT_LEVELS
     }
     mismatches = []
     refused = {}
+    serc_refused = Counter()
+    serc_failures = []
     for record in records:
         level = str(record["optimize"])
         bucket = per_optimize[level]
         bucket["total"] += 1
         status = record["status"]
-        if status == "match":
-            bucket["exact"] += 1
-        elif status == "refused":
+        if status == "refused":
             bucket["refused"] += 1
             refused.setdefault(record["file"], record["error"])
+            continue
+        serc_status, serc_reason = outcomes.get(
+            (record["file"], record["optimize"]), ("compiled", "")
+        )
+        if serc_status != "compiled":
+            bucket["serc_refused" if serc_status == "refused" else "serc_error"] += 1
+            if serc_status == "refused":
+                serc_refused[serc_reason] += 1
+            else:
+                serc_failures.append(
+                    {
+                        "file": record["file"],
+                        "optimize": record["optimize"],
+                        "status": serc_status,
+                        "reason": serc_reason,
+                    }
+                )
+            continue
+        if status == "match":
+            bucket["exact"] += 1
         else:
             bucket["mismatch" if status == "mismatch" else "no_output"] += 1
             name = record.get("class", "no_output")
@@ -392,8 +463,19 @@ def census(records: list[dict], files: list[Path], runs: dict) -> dict:
             "count": len(refused),
             "files": [{"file": name, "error": error} for name, error in sorted(refused.items())],
         },
+        "serc_refused": {
+            "count": sum(
+                bucket["serc_refused"] for bucket in per_optimize.values()
+            ),
+            "reasons": [
+                {"reason": reason, "count": count}
+                for reason, count in sorted(serc_refused.items())
+            ],
+        },
+        "serc_errors": serc_failures,
         "mismatches": mismatches,
-        "serc_exit": runs,
+        "serc_exit": {level: summary["exit"] for level, summary in runs.items()},
+        "serc_status": runs,
     }
 
 
@@ -430,9 +512,9 @@ def main() -> int:
         raise SystemExit(f"oracle interpreter missing at {args.oracle}")
     corpus = prepare_corpus(args.oracle, work / "corpus" / "lib" / "python3.16")
     files = sorted(path for path in corpus.rglob("*.py") if path.is_file())
-    runs = run_serc(binary, corpus, files, work)
+    runs, outcomes = run_serc(binary, corpus, files, work)
     records = run_oracle(args.oracle, corpus, files, work)
-    result = census(records, files, runs)
+    result = census(records, files, runs, outcomes)
     result["oracle"] = str(args.oracle)
     result["corpus"] = str(corpus)
     result["serc"] = str(binary)
@@ -442,7 +524,7 @@ def main() -> int:
         args.json.write_text(text)
     print(json.dumps({key: result[key] for key in (
         "total_files", "total_cases", "exact_matches", "mismatch_total",
-        "classes", "per_optimize", "serc_exit",
+        "classes", "per_optimize", "serc_refused", "serc_exit",
     )}, indent=2))
     return 0 if result["mismatch_total"] == 0 else 1
 

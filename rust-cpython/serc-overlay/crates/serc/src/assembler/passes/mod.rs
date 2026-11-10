@@ -1649,11 +1649,22 @@ impl LayoutAssembler {
 
         let operand = instruction.operand();
         if self.python_version != crate::PythonVersion::Py315 {
+            if self.python_version == crate::PythonVersion::Py316
+                && instruction.opcode == GET_YIELD_FROM_ITER
+            {
+                return Ok(Operand::Value(
+                    crate::target::operands316::IteratorMode::YIELD_FROM_CORO_CHECK.argument(),
+                ));
+            }
             if instruction.opcode == RESUME
                 && let Operand::Value(argument) = operand
             {
                 let argument = if argument == GENEXPR_RESUME_ARGUMENT {
-                    0
+                    if self.python_version == crate::PythonVersion::Py316 {
+                        crate::target::operands316::ResumeLocation::AT_GEN_EXPR_START.argument()
+                    } else {
+                        0
+                    }
                 } else if self.python_version == crate::PythonVersion::Py312 {
                     argument & 3
                 } else {
@@ -1712,6 +1723,20 @@ impl LayoutAssembler {
     }
 
     fn finish(mut self, first_line_number: u32) -> Result<AssembledCode, CompileError> {
+        if self.python_version == crate::PythonVersion::Py316 {
+            for item in &self.items {
+                let Item::Instruction(instruction) = *item else {
+                    continue;
+                };
+                if !crate::target::is_encoded_for(self.python_version, instruction.opcode) {
+                    return Err(CompileError::Unsupported(format!(
+                        "CPython 3.16 has no encoding for opcode {} (IR {})",
+                        instruction.opcode.name(),
+                        instruction.opcode.code()
+                    )));
+                }
+            }
+        }
         if self.has_next_location {
             self.resolve_next_locations();
         }
