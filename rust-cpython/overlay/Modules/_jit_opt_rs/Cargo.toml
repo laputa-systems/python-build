@@ -1,0 +1,9 @@
+[package]
+name = "_jit_opt_rs"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+
+[lib]
+name = "_jit_opt_rs"
+crate-type = ["rlib"]

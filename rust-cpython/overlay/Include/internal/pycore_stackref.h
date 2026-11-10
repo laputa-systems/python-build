@@ -430,6 +430,24 @@ PyStackRef_Unwrap(_PyStackRef ref)
 #endif
 }
 
+static_assert(sizeof(double) == sizeof(uintptr_t), "an unboxed float fills one stack ref");
+
+static inline _PyStackRef
+PyStackRef_FromUnboxedFloat(double value)
+{
+    _PyStackRef ref;
+    memcpy(&ref.bits, &value, sizeof(value));
+    return ref;
+}
+
+static inline double
+PyStackRef_AsUnboxedFloat(_PyStackRef ref)
+{
+    double value;
+    memcpy(&value, &ref.bits, sizeof(value));
+    return value;
+}
+
 static inline bool
 PyStackRef_IsError(_PyStackRef ref)
 {

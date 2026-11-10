@@ -14,6 +14,7 @@ _contextlib_rs = { path = "../_contextlib_rs" }
 _heapq_rs = { path = "../_heapq_rs" }
 _html_parser_rs = { path = "../_html_parser_rs" }
 _itertools_rs = { path = "../_itertools_rs" }
+_jit_opt_rs = { path = "../_jit_opt_rs" }
 _posixpath_rs = { path = "../_posixpath_rs" }
 _random_rs = { path = "../_random_rs", default-features = false }
 _tempfile_rs = { path = "../_tempfile_rs" }

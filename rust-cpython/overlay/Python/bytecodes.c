@@ -949,6 +949,61 @@ dummy_func(
             INPUTS_DEAD();
         }
 
+        tier2 op(_UNBOX_FLOAT_TOS, (value -- unboxed)) {
+            PyObject *value_o = PyStackRef_AsPyObjectBorrow(value);
+            assert(PyFloat_CheckExact(value_o));
+            double dvalue = PyFloat_AS_DOUBLE(value_o);
+            PyStackRef_CLOSE_SPECIALIZED_TSTATE(tstate, value, _PyFloat_ExactDeallocTstate);
+            unboxed = PyStackRef_FromUnboxedFloat(dvalue);
+        }
+
+        tier2 op(_UNBOX_FLOAT_NOS, (value, top -- unboxed, top_out)) {
+            PyObject *value_o = PyStackRef_AsPyObjectBorrow(value);
+            assert(PyFloat_CheckExact(value_o));
+            double dvalue = PyFloat_AS_DOUBLE(value_o);
+            PyStackRef_CLOSE_SPECIALIZED_TSTATE(tstate, value, _PyFloat_ExactDeallocTstate);
+            unboxed = PyStackRef_FromUnboxedFloat(dvalue);
+            top_out = top;
+            DEAD(top);
+        }
+
+        tier2 op(_BINARY_OP_ADD_FLOAT_UNBOXED, (left, right -- res)) {
+            STAT_INC(BINARY_OP, hit);
+            double dres = PyStackRef_AsUnboxedFloat(left) + PyStackRef_AsUnboxedFloat(right);
+            INPUTS_DEAD();
+            res = PyStackRef_FromUnboxedFloat(dres);
+        }
+
+        tier2 op(_BINARY_OP_SUBTRACT_FLOAT_UNBOXED, (left, right -- res)) {
+            STAT_INC(BINARY_OP, hit);
+            double dres = PyStackRef_AsUnboxedFloat(left) - PyStackRef_AsUnboxedFloat(right);
+            INPUTS_DEAD();
+            res = PyStackRef_FromUnboxedFloat(dres);
+        }
+
+        tier2 op(_BINARY_OP_MULTIPLY_FLOAT_UNBOXED, (left, right -- res)) {
+            STAT_INC(BINARY_OP, hit);
+            double dres = PyStackRef_AsUnboxedFloat(left) * PyStackRef_AsUnboxedFloat(right);
+            INPUTS_DEAD();
+            res = PyStackRef_FromUnboxedFloat(dres);
+        }
+
+        tier2 op(_BINARY_OP_TRUEDIV_FLOAT_UNBOXED, (left, right -- res)) {
+            double divisor = PyStackRef_AsUnboxedFloat(right);
+            DEOPT_IF(divisor == 0.0);
+            STAT_INC(BINARY_OP, hit);
+            double dres = PyStackRef_AsUnboxedFloat(left) / divisor;
+            INPUTS_DEAD();
+            res = PyStackRef_FromUnboxedFloat(dres);
+        }
+
+        tier2 op(_BOX_FLOAT, (unboxed -- value)) {
+            PyObject *value_o = _PyFloat_FromDoubleTstate(tstate, PyStackRef_AsUnboxedFloat(unboxed));
+            DEAD(unboxed);
+            ERROR_IF(value_o == NULL);
+            value = PyStackRef_FromPyObjectSteal(value_o);
+        }
+
         pure op(_BINARY_OP_ADD_UNICODE, (left, right -- res, l, r)) {
             PyObject *left_o = PyStackRef_AsPyObjectBorrow(left);
             PyObject *right_o = PyStackRef_AsPyObjectBorrow(right);
@@ -3245,6 +3300,15 @@ dummy_func(
             DEAD(right);
             res = (sign_ish & oparg) ? PyStackRef_True : PyStackRef_False;
             // It's always a bool, so we don't care about oparg & 16.
+        }
+
+        tier2 op(_COMPARE_OP_FLOAT_UNBOXED, (left, right -- res)) {
+            STAT_INC(COMPARE_OP, hit);
+            double dleft = PyStackRef_AsUnboxedFloat(left);
+            double dright = PyStackRef_AsUnboxedFloat(right);
+            int sign_ish = COMPARISON_BIT(dleft, dright);
+            INPUTS_DEAD();
+            res = (sign_ish & oparg) ? PyStackRef_True : PyStackRef_False;
         }
 
         // Similar to COMPARE_OP_FLOAT
@@ -6211,6 +6275,32 @@ dummy_func(
             SYNC_SP();
             GOTO_TIER_ONE(NULL);
             Py_UNREACHABLE();
+        }
+
+        tier2 op(_BOX_FLOAT_STACK, (unboxed_mask/2, slots[oparg] -- slots[oparg])) {
+            for (int depth = 0; depth < oparg; depth++) {
+                if ((unboxed_mask >> depth) & 1) {
+                    _PyStackRef *slot = &slots[oparg - 1 - depth];
+                    PyObject *value_o = _PyFloat_FromDoubleTstate(tstate, PyStackRef_AsUnboxedFloat(*slot));
+                    if (value_o == NULL) {
+                        for (int rest = depth; rest < oparg; rest++) {
+                            if ((unboxed_mask >> rest) & 1) {
+                                slots[oparg - 1 - rest] = PyStackRef_NULL;
+                            }
+                        }
+                        ERROR_NO_POP();
+                    }
+                    *slot = PyStackRef_FromPyObjectSteal(value_o);
+                }
+            }
+        }
+
+        tier2 op(_CLEAR_FLOAT_STACK, (unboxed_mask/2, slots[oparg] -- slots[oparg])) {
+            for (int depth = 0; depth < oparg; depth++) {
+                if ((unboxed_mask >> depth) & 1) {
+                    slots[oparg - 1 - depth] = PyStackRef_NULL;
+                }
+            }
         }
 
         tier2 op(_SPILL_OR_RELOAD, (--)) {

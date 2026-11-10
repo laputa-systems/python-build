@@ -303,6 +303,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "_jit_opt_rs"
+version = "0.1.0"
+
+[[package]]
 name = "_json_rs"
 version = "0.1.0"
 dependencies = [
@@ -1110,6 +1114,7 @@ dependencies = [
  "_heapq_rs",
  "_html_parser_rs",
  "_itertools_rs",
+ "_jit_opt_rs",
  "_posixpath_rs",
  "_random_rs",
  "_tempfile_rs",

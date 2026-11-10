@@ -1329,10 +1329,53 @@ static void make_exit(_PyUOpInstruction *inst, int opcode, int target, bool is_c
 #endif
 }
 
+typedef struct {
+    uint32_t exit;
+    uint32_t error;
+} _PyUnboxedSlots;
+
+static int
+unboxed_window(uint32_t unboxed)
+{
+    assert(unboxed != 0);
+    return _Py_bit_length(unboxed);
+}
+
+static void
+make_stack_fixup(_PyUOpInstruction *inst, int opcode, uint32_t unboxed)
+{
+    make_exit(inst, opcode, 0, false);
+    inst->oparg = unboxed_window(unboxed);
+    inst->operand0 = unboxed;
+}
+
+static int
+make_boxing_exit(_PyUOpInstruction *buffer, int next_spare, int exit_depth,
+                 uint16_t base_exit_op, int32_t jump_target, bool is_control_flow,
+                 uint32_t unboxed)
+{
+    if (exit_depth != 0) {
+        make_exit(&buffer[next_spare], _PyUop_SpillsAndReloads[exit_depth][0], 0, false);
+        next_spare++;
+    }
+    _PyUOpInstruction *box = &buffer[next_spare];
+    make_stack_fixup(box, _BOX_FLOAT_STACK_r00, unboxed);
+    next_spare++;
+    make_exit(&buffer[next_spare], _PyUop_Caching[base_exit_op].entries[0].opcode,
+              jump_target, is_control_flow);
+    next_spare++;
+    make_exit(&buffer[next_spare], _ERROR_POP_N_r00, 0, false);
+    buffer[next_spare].operand0 = jump_target;
+    box->format = UOP_FORMAT_JUMP;
+    box->jump_target = 0;
+    box->error_target = next_spare;
+    return next_spare + 1;
+}
+
 /* Convert implicit exits, errors and deopts
  * into explicit ones. */
 static int
-prepare_for_execution(_PyUOpInstruction *buffer, int length)
+prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *unboxed)
 {
     int32_t current_jump = -1;
     int32_t current_jump_target = -1;
@@ -1347,13 +1390,22 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length)
         if (inst->opcode != _NOP) {
             if (copy_to != inst) {
                 *copy_to = *inst;
+                if (unboxed != NULL) {
+                    unboxed[copy_to - buffer] = unboxed[i];
+                }
             }
             copy_to++;
         }
     }
     length = (int)(copy_to - buffer);
     int next_spare = length;
+    if (unboxed != NULL && length > UOP_MAX_TRACE_LENGTH) {
+        return -1;
+    }
     for (int i = 0; i < length; i++) {
+        if (unboxed != NULL && next_spare + 6 > UOP_MAX_TRACE_LENGTH) {
+            return -1;
+        }
         _PyUOpInstruction *inst = &buffer[i];
         int base_opcode = _PyUop_Uncached[inst->opcode];
         assert(inst->opcode != _NOP);
@@ -1375,7 +1427,15 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length)
             assert(_PyUop_Caching[base_exit_op].entries[exit_depth].opcode > 0);
             int16_t exit_op = _PyUop_Caching[base_exit_op].entries[exit_depth].opcode;
             bool is_control_flow = (base_opcode == _GUARD_IS_FALSE_POP || base_opcode == _GUARD_IS_TRUE_POP || is_for_iter_test[base_opcode]);
-            if (jump_target != current_jump_target || current_exit_op != exit_op) {
+            uint32_t exit_unboxed = unboxed == NULL ? 0 : unboxed[i].exit;
+            if (exit_unboxed != 0) {
+                current_jump = next_spare;
+                next_spare = make_boxing_exit(buffer, next_spare, exit_depth, base_exit_op,
+                                              jump_target, is_control_flow, exit_unboxed);
+                current_jump_target = -1;
+                current_exit_op = -1;
+            }
+            else if (jump_target != current_jump_target || current_exit_op != exit_op) {
                 make_exit(&buffer[next_spare], exit_op, jump_target, is_control_flow);
                 current_exit_op = exit_op;
                 current_jump_target = jump_target;
@@ -1388,7 +1448,18 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length)
         if (_PyUop_Flags[base_opcode] & HAS_ERROR_FLAG) {
             int popped = (_PyUop_Flags[base_opcode] & HAS_ERROR_NO_POP_FLAG) ?
                 0 : _PyUop_num_popped(base_opcode, inst->oparg);
-            if (target != current_error_target || popped != current_popped) {
+            uint32_t error_unboxed = unboxed == NULL ? 0 : unboxed[i].error;
+            if (error_unboxed != 0) {
+                current_error = next_spare;
+                make_stack_fixup(&buffer[next_spare], _CLEAR_FLOAT_STACK_r00, error_unboxed);
+                next_spare++;
+                make_exit(&buffer[next_spare], _ERROR_POP_N_r00, 0, false);
+                buffer[next_spare].operand0 = target;
+                next_spare++;
+                current_error_target = -1;
+                current_popped = -1;
+            }
+            else if (target != current_error_target || popped != current_popped) {
                 current_popped = popped;
                 current_error = next_spare;
                 current_error_target = target;
@@ -1489,7 +1560,10 @@ sanity_check(_PyExecutorObject *executor)
             base_opcode == _HANDLE_PENDING_AND_DEOPT ||
             base_opcode == _EXIT_TRACE ||
             base_opcode == _ERROR_POP_N ||
-            base_opcode == _DYNAMIC_EXIT);
+            base_opcode == _DYNAMIC_EXIT ||
+            base_opcode == _SPILL_OR_RELOAD ||
+            base_opcode == _BOX_FLOAT_STACK ||
+            base_opcode == _CLEAR_FLOAT_STACK);
     }
 }
 
@@ -1602,7 +1676,8 @@ int effective_trace_length(_PyUOpInstruction *buffer, int length)
 
 
 static int
-stack_allocate(_PyUOpInstruction *buffer, _PyUOpInstruction *output, int length)
+stack_allocate(_PyUOpInstruction *buffer, _PyUOpInstruction *output, int length,
+               const _PyUnboxedSlots *unboxed_in, _PyUnboxedSlots *unboxed_out)
 {
     assert(buffer[0].opcode == _START_EXECUTOR);
     /* The input buffer and output buffers will overlap.
@@ -1632,10 +1707,16 @@ stack_allocate(_PyUOpInstruction *buffer, _PyUOpInstruction *output, int length)
             write->format = UOP_FORMAT_TARGET;
             write->oparg = 0;
             write->target = 0;
+            if (unboxed_out != NULL) {
+                unboxed_out[write - output] = (_PyUnboxedSlots){0, 0};
+            }
             write++;
             depth = new_depth;
         }
         *write = buffer[i];
+        if (unboxed_out != NULL) {
+            unboxed_out[write - output] = unboxed_in[i];
+        }
         uint16_t new_opcode = _PyUop_Caching[uop].entries[depth].opcode;
         assert(new_opcode != 0);
         write->opcode = new_opcode;
@@ -1643,6 +1724,200 @@ stack_allocate(_PyUOpInstruction *buffer, _PyUOpInstruction *output, int length)
         depth = _PyUop_Caching[uop].entries[depth].output;
     }
     return (int)(write - output);
+}
+
+typedef struct {
+    uint8_t kind;
+    uint8_t detail;
+    int8_t inputs;
+    int8_t popped;
+    int8_t pushed;
+    uint8_t read;
+    uint8_t effects;
+    uint8_t exit_at_end;
+} _PyJitOptUop;
+
+typedef struct {
+    uint16_t source;
+    uint8_t action;
+    uint32_t exit_unboxed;
+    uint32_t error_unboxed;
+} _PyJitOptStep;
+
+static_assert(sizeof(_PyJitOptUop) == 8, "_PyJitOptUop matches _jit_opt_rs::JitOptUop");
+static_assert(sizeof(_PyJitOptStep) == 12, "_PyJitOptStep matches _jit_opt_rs::JitOptStep");
+
+enum {
+    JIT_OPT_KIND_OTHER = 0,
+    JIT_OPT_KIND_NOP = 1,
+    JIT_OPT_KIND_POP = 2,
+    JIT_OPT_KIND_FLOAT_ARITH = 3,
+    JIT_OPT_KIND_FLOAT_COMPARE = 4,
+};
+
+enum {
+    JIT_OPT_ARITH_ADD = 0,
+    JIT_OPT_ARITH_SUBTRACT = 1,
+    JIT_OPT_ARITH_MULTIPLY = 2,
+    JIT_OPT_ARITH_TRUE_DIVIDE = 3,
+    JIT_OPT_REUSE_LEFT = 1 << 2,
+    JIT_OPT_REUSE_RIGHT = 2 << 2,
+};
+
+enum {
+    JIT_OPT_EFFECT_BARRIER = 1,
+    JIT_OPT_EFFECT_EXIT = 2,
+    JIT_OPT_EFFECT_ERROR = 4,
+    JIT_OPT_EFFECT_ERROR_NO_POP = 8,
+};
+
+enum {
+    JIT_OPT_ACTION_COPY = 0,
+    JIT_OPT_ACTION_COMPARE = 7,
+    JIT_OPT_SYNTHETIC_ACTIONS = 8,
+};
+
+extern Py_ssize_t _PyJitOpt_PlanFloatUnboxing(
+    const _PyJitOptUop *uops, size_t length, const _PyJitOptUop *synthetic,
+    _PyJitOptStep *steps, size_t capacity);
+
+static const uint16_t unboxed_action_uops[JIT_OPT_SYNTHETIC_ACTIONS] = {
+    _UNBOX_FLOAT_TOS,
+    _UNBOX_FLOAT_NOS,
+    _BINARY_OP_ADD_FLOAT_UNBOXED,
+    _BINARY_OP_SUBTRACT_FLOAT_UNBOXED,
+    _BINARY_OP_MULTIPLY_FLOAT_UNBOXED,
+    _BINARY_OP_TRUEDIV_FLOAT_UNBOXED,
+    _COMPARE_OP_FLOAT_UNBOXED,
+    _BOX_FLOAT,
+};
+
+static bool
+float_node(int opcode, uint8_t *kind, uint8_t *detail)
+{
+    *kind = JIT_OPT_KIND_FLOAT_ARITH;
+    switch (opcode) {
+        case _BINARY_OP_ADD_FLOAT: *detail = JIT_OPT_ARITH_ADD; return true;
+        case _BINARY_OP_ADD_FLOAT_INPLACE: *detail = JIT_OPT_ARITH_ADD | JIT_OPT_REUSE_LEFT; return true;
+        case _BINARY_OP_ADD_FLOAT_INPLACE_RIGHT: *detail = JIT_OPT_ARITH_ADD | JIT_OPT_REUSE_RIGHT; return true;
+        case _BINARY_OP_SUBTRACT_FLOAT: *detail = JIT_OPT_ARITH_SUBTRACT; return true;
+        case _BINARY_OP_SUBTRACT_FLOAT_INPLACE: *detail = JIT_OPT_ARITH_SUBTRACT | JIT_OPT_REUSE_LEFT; return true;
+        case _BINARY_OP_SUBTRACT_FLOAT_INPLACE_RIGHT: *detail = JIT_OPT_ARITH_SUBTRACT | JIT_OPT_REUSE_RIGHT; return true;
+        case _BINARY_OP_MULTIPLY_FLOAT: *detail = JIT_OPT_ARITH_MULTIPLY; return true;
+        case _BINARY_OP_MULTIPLY_FLOAT_INPLACE: *detail = JIT_OPT_ARITH_MULTIPLY | JIT_OPT_REUSE_LEFT; return true;
+        case _BINARY_OP_MULTIPLY_FLOAT_INPLACE_RIGHT: *detail = JIT_OPT_ARITH_MULTIPLY | JIT_OPT_REUSE_RIGHT; return true;
+        case _BINARY_OP_TRUEDIV_FLOAT: *detail = JIT_OPT_ARITH_TRUE_DIVIDE; return true;
+        case _BINARY_OP_TRUEDIV_FLOAT_INPLACE: *detail = JIT_OPT_ARITH_TRUE_DIVIDE | JIT_OPT_REUSE_LEFT; return true;
+        case _BINARY_OP_TRUEDIV_FLOAT_INPLACE_RIGHT: *detail = JIT_OPT_ARITH_TRUE_DIVIDE | JIT_OPT_REUSE_RIGHT; return true;
+        case _COMPARE_OP_FLOAT: *kind = JIT_OPT_KIND_FLOAT_COMPARE; *detail = 0; return true;
+        default: return false;
+    }
+}
+
+static _PyJitOptUop
+describe_uop(int opcode)
+{
+    const _PyUopStackShape *shape = &_PyUop_StackShape[opcode];
+    uint32_t flags = _PyUop_Flags[opcode];
+    _PyJitOptUop uop = {
+        .kind = JIT_OPT_KIND_OTHER,
+        .detail = 0,
+        .inputs = shape->inputs,
+        .popped = shape->popped,
+        .pushed = shape->pushed,
+        .read = shape->read,
+        .effects = 0,
+        .exit_at_end = shape->exit_at_end,
+    };
+    bool node = float_node(opcode, &uop.kind, &uop.detail);
+    if (!node) {
+        uop.kind = JIT_OPT_KIND_OTHER;
+        if (opcode == _NOP) {
+            uop.kind = JIT_OPT_KIND_NOP;
+        }
+        else if (opcode == _POP_TOP || opcode == _POP_TOP_NOP || opcode == _POP_TOP_INT ||
+                 opcode == _POP_TOP_FLOAT || opcode == _POP_TOP_UNICODE) {
+            uop.kind = JIT_OPT_KIND_POP;
+        }
+    }
+    bool known_error_stack = node || opcode == _BOX_FLOAT;
+    if ((flags & (HAS_ESCAPES_FLAG | HAS_SYNC_SP_FLAG | HAS_PERIODIC_FLAG | HAS_EVAL_BREAK_FLAG)) ||
+        ((flags & HAS_ERROR_FLAG) && !known_error_stack) ||
+        opcode == _START_EXECUTOR || opcode == _JUMP_TO_TOP || opcode == _EXIT_TRACE ||
+        opcode == _DEOPT || opcode == _DYNAMIC_EXIT) {
+        uop.effects |= JIT_OPT_EFFECT_BARRIER;
+    }
+    if (flags & (HAS_EXIT_FLAG | HAS_DEOPT_FLAG)) {
+        uop.effects |= JIT_OPT_EFFECT_EXIT;
+    }
+    if (flags & HAS_ERROR_FLAG) {
+        uop.effects |= JIT_OPT_EFFECT_ERROR;
+    }
+    if (flags & HAS_ERROR_NO_POP_FLAG) {
+        uop.effects |= JIT_OPT_EFFECT_ERROR_NO_POP;
+    }
+    return uop;
+}
+
+static int
+unbox_floats(_PyUOpInstruction *buffer, int length,
+             _PyUnboxedSlots **unboxed, _PyUOpInstruction **original)
+{
+    *unboxed = NULL;
+    *original = NULL;
+    size_t capacity = UOP_MAX_TRACE_LENGTH - 1;
+    _PyJitOptUop *uops = PyMem_RawMalloc(length * sizeof(_PyJitOptUop));
+    _PyJitOptStep *steps = PyMem_RawMalloc(capacity * sizeof(_PyJitOptStep));
+    if (uops == NULL || steps == NULL) {
+        PyMem_RawFree(uops);
+        PyMem_RawFree(steps);
+        PyErr_NoMemory();
+        return -1;
+    }
+    for (int i = 0; i < length; i++) {
+        uops[i] = describe_uop(buffer[i].opcode);
+    }
+    _PyJitOptUop synthetic[JIT_OPT_SYNTHETIC_ACTIONS];
+    for (int i = 0; i < JIT_OPT_SYNTHETIC_ACTIONS; i++) {
+        synthetic[i] = describe_uop(unboxed_action_uops[i]);
+    }
+    Py_ssize_t count = _PyJitOpt_PlanFloatUnboxing(uops, length, synthetic, steps, capacity);
+    PyMem_RawFree(uops);
+    if (count < 0) {
+        Py_FatalError("float unboxing plan contradicts the uop metadata");
+    }
+    if (count == 0) {
+        PyMem_RawFree(steps);
+        return length;
+    }
+    *unboxed = PyMem_RawCalloc(2 * UOP_MAX_TRACE_LENGTH, sizeof(_PyUnboxedSlots));
+    *original = PyMem_RawMalloc(length * sizeof(_PyUOpInstruction));
+    if (*unboxed == NULL || *original == NULL) {
+        PyMem_RawFree(steps);
+        PyMem_RawFree(*unboxed);
+        PyMem_RawFree(*original);
+        *unboxed = NULL;
+        *original = NULL;
+        PyErr_NoMemory();
+        return -1;
+    }
+    memcpy(*original, buffer, length * sizeof(_PyUOpInstruction));
+    _PyUnboxedSlots *slots = *unboxed + UOP_MAX_TRACE_LENGTH;
+    for (Py_ssize_t i = 0; i < count; i++) {
+        const _PyJitOptStep *step = &steps[i];
+        const _PyUOpInstruction *source = &(*original)[step->source];
+        _PyUOpInstruction *inst = &buffer[i];
+        *inst = *source;
+        if (step->action != JIT_OPT_ACTION_COPY) {
+            inst->opcode = unboxed_action_uops[step->action - 1];
+            inst->oparg = step->action == JIT_OPT_ACTION_COMPARE ? source->oparg : 0;
+            inst->operand0 = 0;
+            inst->operand1 = 0;
+        }
+        slots[i] = (_PyUnboxedSlots){step->exit_unboxed, step->error_unboxed};
+    }
+    PyMem_RawFree(steps);
+    return (int)count;
 }
 
 static int
@@ -1705,9 +1980,29 @@ uop_optimize(
 
     OPT_HIST(effective_trace_length(buffer, length), optimized_trace_length_hist);
     _PyUOpInstruction *output = &_tstate->jit_tracer_state->uop_array[0];
-    length = stack_allocate(buffer, output, length);
+    _PyUnboxedSlots *unboxed = NULL;
+    _PyUOpInstruction *original = NULL;
+    int original_length = length;
+    if (!is_noopt) {
+        length = unbox_floats(buffer, length, &unboxed, &original);
+        if (length < 0) {
+            return -1;
+        }
+    }
+    int prepared = prepare_for_execution(
+        output,
+        stack_allocate(buffer, output, length,
+                       unboxed == NULL ? NULL : unboxed + UOP_MAX_TRACE_LENGTH, unboxed),
+        unboxed);
+    if (prepared < 0) {
+        memcpy(buffer, original, original_length * sizeof(_PyUOpInstruction));
+        prepared = prepare_for_execution(
+            output, stack_allocate(buffer, output, original_length, NULL, NULL), NULL);
+    }
+    PyMem_RawFree(unboxed);
+    PyMem_RawFree(original);
     buffer = output;
-    length = prepare_for_execution(buffer, length);
+    length = prepared;
     assert(length <= UOP_MAX_TRACE_LENGTH);
     _PyExecutorObject *executor = make_executor_from_uops(
         _tstate, buffer, length, &dependencies);
