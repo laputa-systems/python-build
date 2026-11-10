@@ -504,16 +504,19 @@ def main() -> int:
     cargo_home = work / "cargo-home" if (work / "cargo-home").exists() else args.cargo_home
     source = work / "serc-src"
 
-    assemble(args.archive, args.overlay, source)
-    env = build_environment(cargo_home, args.llvm, work)
-    binary = build_cli(source, env, work)
-
     if not args.oracle.exists():
         raise SystemExit(f"oracle interpreter missing at {args.oracle}")
-    corpus = prepare_corpus(args.oracle, work / "corpus" / "lib" / "python3.16")
-    files = sorted(path for path in corpus.rglob("*.py") if path.is_file())
-    runs, outcomes = run_serc(binary, corpus, files, work)
-    records = run_oracle(args.oracle, corpus, files, work)
+    sys.path.insert(0, str(REPO / "rust-cpython"))
+    import perf
+
+    with perf.host_lease("build", "serc census"):
+        assemble(args.archive, args.overlay, source)
+        env = build_environment(cargo_home, args.llvm, work)
+        binary = build_cli(source, env, work)
+        corpus = prepare_corpus(args.oracle, work / "corpus" / "lib" / "python3.16")
+        files = sorted(path for path in corpus.rglob("*.py") if path.is_file())
+        runs, outcomes = run_serc(binary, corpus, files, work)
+        records = run_oracle(args.oracle, corpus, files, work)
     result = census(records, files, runs, outcomes)
     result["oracle"] = str(args.oracle)
     result["corpus"] = str(corpus)
