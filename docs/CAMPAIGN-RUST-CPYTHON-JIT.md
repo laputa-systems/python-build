@@ -837,7 +837,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | T2 unboxed loop-carried locals; int unboxing awaits its independent review (J acceptance step 6) before it lands (frame push/pop, `_CHECK_VALIDITY`/`_SET_IP` and guard stripping stay in T1's backlog) | T2 float review's low findings fixed; T2 int unboxing CORRECT on `campaign/t2-int` with 5 named superseded uop assertions; timing deferred to Close (OD14) |
+| J | active | T2 unboxed loop-carried locals (frame push/pop, `_CHECK_VALIDITY`/`_SET_IP` and guard stripping stay in T1's backlog) | T2 int unboxing landed CORRECT with 5 named superseded uop assertions; independent review clean; timing deferred to Close (OD14) |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | active | C2 in-process `exec` | C0, marshal parity and C1 landed: census 9,102 / 9,135 exact, 0 mismatches on e891 |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -880,7 +880,7 @@ the generated `_PyUop_StackShape` table from an overlaid
 `_CLEAR_FLOAT_STACK`); `PyStackRef_FromUnboxedFloat`/`AsUnboxedFloat`; and the
 overlay `Cargo.lock` digest in `rust-cpython/sources.lock.json`.
 
-**Owner queue:** T2 int unboxing contract (CORRECT, review pending). The crate
+**Owner queue:** T2 int unboxing contract (landed, async review). The crate
 entry point is now `_PyJitOpt_PlanUnboxing` and `JitOptStep` carries
 `exit_floats`, `exit_ints` and `error_unboxed` (16 bytes);
 `_BOX_FLOAT_STACK`/`_CLEAR_FLOAT_STACK` become
@@ -1040,4 +1040,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-10 | 3.15.1 | R1 | R1 | CinderX steady JIT vs off | `cinderx-e48f370d` | — → 0.7960 (held-out 1.0621) | — | MEASURED | `.work/r1` |
 | 2026-11-10 | e891 | J | T1 | thread-state: executor tstate to float/int freelists (`_tlv_get_addr` 4.61% of samples, targeted chains 1.36% → 0%) | `perf-rust-jit` | timing deferred (OD14) | — | CORRECT | `campaign/t1-tstate` |
 | 2026-11-10 | e891 | J | T2 | float unboxing across binary ops and compares (float boxing 8.9-38.6% of samples; float-op chains nbody 27.5% → 26.3%, fft 11.4% → 9.5%) | `perf-rust-jit` | timing deferred (OD14); advisory 0.9962 | — | CORRECT (4 named superseded `test_capi.test_opt` uop assertions, owner ruling) | `aadaf25` |
-| 2026-11-10 | e891 | J | T2 | compact-int unboxing across binary ops and compares (int uops 29.6% of samples on spectral_norm, 8.2% mean; spectral_norm 29.6% → 27.0%, int runtime calls 17.0% → 12.0%) | `perf-jit-unbox` | timing deferred (OD14); advisory 0.9939 | — | CORRECT (5 named superseded `test_capi.test_opt` uop assertions); independent review pending | `407096c` |
+| 2026-11-10 | e891 | J | T2 | compact-int unboxing across binary ops and compares (int uops 29.6% of samples on spectral_norm, 8.2% mean; spectral_norm 29.6% → 27.0%, int runtime calls 17.0% → 12.0%) | `perf-jit-unbox` | timing deferred (OD14); advisory 0.9939 | — | CORRECT (5 named superseded `test_capi.test_opt` uop assertions); independent review clean | `60e3a7b` |
