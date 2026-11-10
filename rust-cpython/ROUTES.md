@@ -159,9 +159,9 @@ example CPython's `zlibmodule.c` over the zlib-rs engine) under rule 8 of
 - [x] `marshal` — public version-6 serialization and loading of supported
   code/data records, including list and dict cycles, reach Rust (`112a4d2`).
   Immutable cycles are rejected as upstream does. Cached
-  bytecode imports stay extension-free (`1e399a2`); their valid marshal
-  bytes match public Rust output but differ from pristine CPython's
-  selective-reference output. Full `test_faulthandler`, `test_marshal`,
+  bytecode imports stay extension-free (`1e399a2`); their marshal bytes
+  match pristine CPython's over every C1 corpus code object (`660068e`).
+  Full `test_faulthandler`, `test_marshal`,
   `test_importlib`, `test_py_compile`, `test_compile`, and `test_audit`:
   1,602 run/29 skipped; integrated full suite passed.
 - [x] `html.parser` — public HTML token scanning reaches Rust (`d64846f`).

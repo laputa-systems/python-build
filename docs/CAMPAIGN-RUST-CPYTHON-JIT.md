@@ -539,6 +539,14 @@ code object from the C1 corpus, `test_marshal` and `test_importlib` failing
 the same tests as `perf-upstream`, and the marshal route verdicts unchanged.
 Lands under the default-build rule in **Integration**.
 
+**Landed (2026-11-10).** `_marshal_rs` chooses the ASCII string tag from the
+string's ascii flag as CPython does (`660068e`), and the exclusion is gone.
+`python3 rust-cpython/tests/marshal_parity.py --corpus <C1 corpus>` reports 0
+mismatches over 9,102 code items and 119 plain values at versions 0-6, with
+the same 33 oracle-refused cases skipped on both sides. `test_marshal` and
+`test_importlib` pass on both builds (1,337 run, 19 skipped), and the marshal
+route suites pass on `perf-rust` (1,660 run, 31 skipped).
+
 ### C1: port Serc to the epoch's 3.16
 
 Add a 3.16 target for the epoch commit: opcodes, code-object layout,
@@ -724,7 +732,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 | --- | --- | --- | --- |
 | J | active | T1 thread-state, ranked by profile share (OD14) | e891 epoch M0, `S0 = 0.7748`, held-out 0.8216 |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
-| C | active | marshal parity, then C2 | C0 and C1 landed: census 9,102 / 9,135 exact, 0 mismatches on e891 |
+| C | active | C2 in-process `exec` | C0, marshal parity and C1 landed: census 9,102 / 9,135 exact, 0 mismatches on e891 |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
 
 **Owner queue:** R1 reference report (informational, no target change
