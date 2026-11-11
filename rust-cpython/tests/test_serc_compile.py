@@ -232,6 +232,42 @@ print(json.dumps(outcomes))
 '''
 
 
+C_COMPILER_PROBE = r'''
+import json, sys, threading, warnings
+warnings.simplefilter("ignore")
+outcomes = {}
+
+def small_stack():
+    try:
+        compile("x = " + "(" * 150 + "1" + ")" * 150, "probe", "exec")
+        outcomes["small stack"] = "compiled"
+    except MemoryError:
+        outcomes["small stack"] = "MemoryError"
+
+threading.stack_size(1 << 16)
+thread = threading.Thread(target=small_stack)
+thread.start()
+thread.join()
+
+namespace = {}
+exec("""
+import contextlib, sys
+def main():
+    try:
+        raise KeyError("outer")
+    finally:
+        with contextlib.nullcontext():
+            try:
+                raise ValueError("inner")
+            finally:
+                return 1
+result = main(), repr(sys.exception())
+""", namespace)
+outcomes["finally return"] = list(namespace["result"])
+print(json.dumps(outcomes))
+'''
+
+
 @unittest.skipUnless(SERC_PYTHON, "set SERC_PYTHON to the interpreter of a --serc build")
 class SercCompileTests(unittest.TestCase):
     def run_probe(self, script, *arguments, verify=False):
@@ -279,6 +315,11 @@ class SercCompileTests(unittest.TestCase):
         self.assertEqual(outcomes["comment"], 1)
         self.assertEqual(outcomes["code"][0], "SyntaxError")
         self.assertIn("'utf-8' codec can't decode byte 0xff", outcomes["code"][1])
+
+    def test_the_c_compiler_handles_small_stacks_and_finally_exits(self):
+        outcomes = self.run_probe(C_COMPILER_PROBE, verify=True)
+        self.assertEqual(outcomes["small stack"], "MemoryError")
+        self.assertEqual(outcomes["finally return"], [1, "None"])
 
     def test_verify_mode_raises_when_serc_and_the_c_compiler_differ(self):
         outcomes = self.run_probe(VERIFY_PROBE, verify=True)

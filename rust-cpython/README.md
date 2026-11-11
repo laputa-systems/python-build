@@ -204,6 +204,9 @@ hold, and every other request to the C compiler:
   registry: no encoding cookie, or one that CPython's tokenizer maps to
   `utf-8`. Any other cookie goes through `codecs.lookup`, which Serc cannot
   call;
+- the thread has at least 2 MiB of C stack left: the C parser and compiler
+  stop where the C stack runs out, and every source Serc accepts compiles in
+  1 MiB;
 - the source uses nothing that only CPython's parser or compiler handles:
   Serc parses it first and hands it to the C compiler if it imports the
   `barry_as_FLUFL` future, nests more than 200 statements and expressions

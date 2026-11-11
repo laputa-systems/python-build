@@ -1687,11 +1687,19 @@ done:
 }
 
 #ifdef Py_SERC
+/* The C parser and compiler stop where the thread's C stack runs out, which
+   Serc does not model. Every source Serc accepts compiles with the C compiler
+   in 1 MiB of C stack (its longest elif chain, about 5000 arms, is the
+   deepest), so a thread with less than 2 MiB of headroom leaves every request
+   to the C compiler. */
+#define SERC_C_STACK_MARGINS ((int)(((size_t)2 << 20) / _PyOS_STACK_MARGIN_BYTES))
+
 /* Serc compiles source-mode "exec" requests whose flags carry nothing beyond
    the source-form bits, for an exact str filename, from text or from bytes that
-   CPython itself would decode as UTF-8. Every other request, and every FILE *
-   or AST input, is compiled by the C compiler, as is a source whose grammar
-   only CPython's parser defines (_PySerc_CPYTHON_GRAMMAR). */
+   CPython itself would decode as UTF-8, on a thread with enough C stack for the
+   C compiler. Every other request, and every FILE * or AST input, is compiled
+   by the C compiler, as is a source that only CPython's parser or compiler
+   handles (_PySerc_CPYTHON_GRAMMAR). */
 static int
 serc_routes(int start, const char *str, PyObject *filename,
             PyCompilerFlags *flags)
@@ -1699,7 +1707,9 @@ serc_routes(int start, const char *str, PyObject *filename,
     int cf_flags = flags == NULL ? 0 : flags->cf_flags;
     if (start != Py_file_input || !PyUnicode_CheckExact(filename)
         || (cf_flags & ~(PyCF_SOURCE_IS_UTF8 | PyCF_IGNORE_COOKIE
-                         | PyCF_MASK_OBSOLETE)))
+                         | PyCF_MASK_OBSOLETE))
+        || _Py_ReachedRecursionLimitWithMargin(_PyThreadState_GET(),
+                                               SERC_C_STACK_MARGINS))
     {
         return 0;
     }
