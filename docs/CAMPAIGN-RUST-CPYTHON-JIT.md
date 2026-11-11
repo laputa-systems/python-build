@@ -711,6 +711,59 @@ attribute and global inline caches whose invalidation honours descriptors,
 mutation, inheritance, lazy imports, and subinterpreters. Remove non-escaping
 allocations. Lengthen traces with loop peeling and invariant-guard hoisting.
 
+**Inline frames (dropped 2026-11-10, CORRECT; code parked on branch
+`campaign/t3-inline`, whose paths the citations below refer to).** A trace call site is
+elidable when `_INIT_CALL_PY_EXACT_ARGS*`, `_SAVE_RETURN_OFFSET` and
+`_PUSH_FRAME` are followed, before any terminator or nested `_PUSH_FRAME`, by
+a matching `_RETURN_VALUE` whose segment has no uop with
+`HAS_ESCAPES_FLAG`, `HAS_ERROR_FLAG`, `HAS_PERIODIC_FLAG` or
+`HAS_EVAL_BREAK_FLAG` (`overlay/Modules/_jit_opt_rs/src/inline.rs:35`,
+`:66`). `uop_optimize` runs the Rust planner on the optimized buffer before
+unboxing and rewrites the five call uops to `_INLINE_*` forms
+(`overlay/Python/optimizer.c:2133`): the callee frame is built at
+`tstate->datastack_top` with `_PyFrame_Initialize`, but datastack_top is not
+moved, `tstate->current_frame` is not changed and `py_recursion_remaining` is
+not decremented (`overlay/Python/bytecodes.c:4842`, `:4865`). The frame keeps
+the normal `localsplus`/`stackpointer`/`previous` layout, so the in-trace
+callee uops run unchanged, and `_SAVE_RETURN_OFFSET` still records the
+caller's resume offset. The stack-space check and the callee-entry resume
+check are folded into the inline init: a pending eval breaker or insufficient
+datastack space deopts at the call instruction before any frame exists
+(`:4846-4851`). Side exits, deopts and errors inside the segment materialize:
+`prepare_for_execution` inserts `_INLINE_MATERIALIZE_FRAME` before every
+exit/error stub whose uop is inside the segment, after unboxed slots are
+boxed (`overlay/Python/optimizer.c:1375`, `:1447-1518`). Materialization moves
+datastack_top past the frame, links `tstate->current_frame = frame` and
+decrements recursion; the exit stub then writes `stackpointer` and resumes
+tier 1 at `_PyFrame_GetBytecode(frame) + target`, which reconstructs IP,
+`f_lasti`, stacktop and `frame->previous`. A normal return is not linked: the
+frame is committed only for the clear, `_PyThreadState_UpdateLastProfiledFrame`
+and pop, so a finalizer sees the caller as current, exactly as after an
+upstream unlink. Anything that can observe a frame or run code is excluded
+from the segment, and tracing or monitoring enabled mid-loop changes the eval
+breaker, so the callee first deopts and runs in tier 1. Executor invalidation
+cannot occur inside a segment (no escaping or watcher-visible uop); a
+`_CHECK_VALIDITY` exit materializes before deopting, and an invalid executor
+is rejected at `_START_EXECUTOR`. The public `uop_executor` sequence aliases
+the inline names back to the upstream names and marks them in `operand0`, so
+`test_capi.test_opt` uop-shape consumers still see the upstream scaffolding
+(`overlay/Python/optimizer.c:394`). Generators, coroutines, calls inside the
+callee, raising callees and callees with a periodic check are not elided.
+On the measured pair, the incumbent's named bucket-(a) uops fall from 24.0%
+to 17.2% of samples on richards and 11.6% to 9.6% on raytrace
+(`rust-cpython/results/perf-profile/20261110T2337*-perf-jit-{genops,inline}-{richards,raytrace}-sample`),
+but counting the new `_INLINE_*` call and frame uops as the same bucket gives
+23.9% → 24.6% and 11.5% → 11.7% over two profile pairs: the argument setup,
+the return clear and its decrefs stay necessary in a concrete frame, and the
+folded checks plus the larger stencils offset the removed link/pop. The
+mechanism is correct but does not clear P1's 1% floor and is dropped; a
+virtual-frame design that maps callee locals to trace stack slots is needed
+to remove the remaining work. `rust-cpython/tests/jit_inline_integration.py`
+checks 18 absolute observations with the JIT on and off, including
+tracebacks, getframe/f_locals above and inside observers, settrace/monitoring
+enabled mid-loop, side exits, generator callers, recursion, exceptions,
+`gc.get_referrers`, and the marked executor segments.
+
 **Measured shares (2026-11-10).** All 16 `--jit-set` kernels were profiled on a
 clean `perf.py build --name perf-jit-t3m --jit` of `b356e9f`
 (`rust-cpython/results/perf-jit-t3m.json`: `commit=b356e9f5c7`, `dirty=False`,
@@ -1179,7 +1232,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | T2 generic `_BINARY_OP` specialization landed; next: T3 inlining | T2 generic ops: monte_carlo `float += 2**31-1` 9.6% → 0.0% (new `_BINARY_OP_ADD_FLOAT_INT` 8.8%), nbody `float ** float` 11.6% → 0.0% (new `_BINARY_OP_POWER_FLOAT` 6.4%); CORRECT (5 incumbent superseded assertions), advisory 0.9992 |
+| J | active | T3 inline-frame elision implemented and CORRECT; measured no bucket-(a) fall, dropped under P1. Next: virtual-frame inlining or T3 attribute/global caches | Inline frames: incumbent-named bucket (a) richards 24.0% → 17.2%, raytrace 11.6% → 9.6%, but including the new `_INLINE_*` call/frame uops 23.9% → 24.6% and 11.5% → 11.7%; CORRECT (5 incumbent superseded assertions; new `jit_inline_integration`), advisory 1.0123 |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | active | C2 in-process `exec` | C0, marshal parity and C1 landed: census 9,102 / 9,135 exact, 0 mismatches on e891 |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -1427,3 +1480,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-10 | e891 | J | T1 | generic thread-state deallocation: `_tlv_get_addr` sampled share fft 3.68%/3.70% → 2.49%/2.84%, fannkuch 6.80% → 6.34%/5.31% (one incumbent repeat 18.52% sampling outlier), raytrace 2.70% → 2.16%, nqueens 5.25% → 5.26%, richards 0.42% → 0.63%; fft `float_dealloc` 3.97%/3.49% → 2.13%/2.03%, `long_dealloc` 1.16%/0.93% → 0.50%/0.51%, `PyLong_FromLong` 0.71%/1.15% → 0.08%/0.08%; the remaining `PyFloat_FromDouble` TLV enters through `array_subscr` | `perf-jit-int-unbox` | timing deferred (OD14) | — | CORRECT | `rust-cpython/results/perf-profile/20261110T1607*-perf-jit-{int-unbox,tlv}-{nqueens,fannkuch,scimark_fft,richards,raytrace}-sample`, repeats `20261110T1609*-...-{fannkuch,scimark_fft}-sample` |
 | 2026-11-10 | e891 | J | T2 | `array.array` `d`/`i` subscript loads: generic `_BINARY_OP` with callees plus the `array_subscr` subtree sparse 54.2% + 8.2% → 0.0%, fft 25.2% + 2.6% → 4.8%, lu 18.1% + 2.4% → 0.0%, replaced by `_BINARY_OP_SUBSCR_ARRAY_D/I` at 29.2%, 9.2% and 9.1%; JIT code bytes ≤1.30x M0, peak RSS 0.997-1.008x incumbent | `perf-jit-popinline` | timing deferred (OD14); advisory 0.9277 | sparse generic `_BINARY_OP` 54.2% → 0.0%, fft 25.2% → 4.8%, lu 18.1% → 0.0% of samples | CORRECT (5 incumbent superseded `test_capi.test_opt` uop assertions; differential array test) | `rust-cpython/results/perf-bench/20261110T184902Z-perf-jit-popinline-vs-perf-jit-array`, `rust-cpython/results/perf-profile/20261110T1851*-perf-jit-{popinline,array}-scimark_{sparse_mat_mult,fft,lu}-sample` |
 | 2026-11-10 | e891 | J | T2 | generic `_BINARY_OP` specialization: monte_carlo `float += 2**31-1` 9.6% → 0.0% (replaced by `_BINARY_OP_ADD_FLOAT_INT` 8.8%), nbody `float ** float` 11.6% → 0.0% (replaced by `_BINARY_OP_POWER_FLOAT` 6.4%); JIT code bytes ≤1.303x M0, peak RSS 0.989-0.995x incumbent | `perf-jit-array` | timing deferred (OD14); advisory 0.9992 | monte_carlo generic `_BINARY_OP` 9.6% → 0.0%, nbody 11.6% → 0.0% of samples | CORRECT (5 incumbent superseded `test_capi.test_opt` uop assertions; genops integration test) | `rust-cpython/results/perf-bench/20261110T204736Z-perf-jit-array-vs-perf-jit-genops`, `rust-cpython/results/perf-profile/20261110T2021*-perf-jit-array-{scimark_monte_carlo,nbody}-sample`, `20261110T2046*-perf-jit-genops-{scimark_monte_carlo,nbody}-sample`, `20261110T205313Z-perf-jit-array-vs-perf-jit-genops` |
+| 2026-11-10 | e891 | J | T3 | Python-to-Python inline frames: eligible exact-args leaf call segments build the callee frame in datastack spare without linking it; side exits, deopts and errors materialize it before resuming; entry resume and stack-space checks fold into the call; generators, nested calls, escaping/error/periodic callees stay concrete | `perf-jit-genops` | timing deferred (OD14); advisory 1.0123 | incumbent-named bucket (a) richards 24.0% → 17.2%, raytrace 11.6% → 9.6%; including `_INLINE_*` call/frame uops 23.9% → 24.6% and 11.5% → 11.7% over two runs, so no fall; JIT code bytes ≤1.071x incumbent (sor), raytrace 457,404 (M0 457,068 at 1.30x) | DROPPED (correct; concrete-frame argument setup and refcount clear remain, under P1's 1% floor; 5 incumbent superseded `test_capi.test_opt` assertions; `jit_inline_integration.py` 18 absolute checks; lane 245/246, one pre-existing incumbent failure) | `rust-cpython/results/perf-bench/20261111T012030Z-perf-jit-genops-vs-perf-jit-inline`, `rust-cpython/results/perf-profile/20261110T2337*-perf-jit-{genops,inline}-{richards,raytrace}-sample`, repeat `20261111T0119*-...` |
