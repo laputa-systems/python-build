@@ -4042,6 +4042,22 @@ fn python316_marshal_matches_cpython_for_folded_boolean_statement() {
 }
 
 #[test]
+fn python316_marshal_matches_cpython_for_folded_boolean_discard_contexts() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/folded_boolean_discard_contexts.py"),
+        include_str!("../../tests/fixtures/python316_parity/folded_boolean_discard_contexts.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_chained_comparison_break_in_finally() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/chained_comparison_break_in_finally.py"),
+        include_str!("../../tests/fixtures/python316_parity/chained_comparison_break_in_finally.marshal.hex"),
+    );
+}
+
+#[test]
 fn python316_marshal_matches_cpython_for_nested_comprehension_sibling_target() {
     assert_python316_marshal(
         include_str!(

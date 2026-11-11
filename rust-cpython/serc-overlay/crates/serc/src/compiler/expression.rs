@@ -10349,7 +10349,11 @@ impl Compiler<'_> {
             let retained = self.control.conditions.retained_chained_comparison_exit;
             let conditional_arm = self.control.conditions.retained_conditional_comparison_arm
                 == Some(comparison.range);
-            if conditional_arm && jump_on {
+            if !jump_on
+                && self.control.conditions.iterator_break_comparison_arm == Some(comparison.range)
+            {
+                self.assembler.prevent_jump_inlining(comparison_exit);
+            } else if conditional_arm && jump_on {
                 // A true-jumping arm falls through its own join before the return
                 // is copied. Thread the join while retaining the comparison line.
                 self.assembler

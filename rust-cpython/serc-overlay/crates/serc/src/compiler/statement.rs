@@ -68,6 +68,9 @@ struct LoopContext {
     iterator_cleanup: IteratorCleanup,
     // The final AST statement whose normal exit reaches a synchronous FOR_ITER.
     iterator_body_tail: Option<TextRange>,
+    // The final AST statement of the loop body, whose fallthrough shares a block with the
+    // loop's back edge.
+    body_tail: Option<TextRange>,
     has_orelse: bool,
     prevent_break_exit_inlining: bool,
     with_depth: usize,
@@ -595,6 +598,10 @@ pub(super) struct ConditionState {
     pub(super) retained_chained_comparison_exit: Option<TextRange>,
     // The selected arm of a runtime conditional can thread its own empty join.
     pub(super) retained_conditional_comparison_arm: Option<TextRange>,
+    // The final leaf of a conditional test whose first arm only breaks out of a synchronous
+    // iterator loop. The break's NOP and two iterator pops already fill CPython's small-exit
+    // copy size, so that leaf's fallthrough jump to the arm is never inlined.
+    pub(super) iterator_break_comparison_arm: Option<TextRange>,
     // Declaration-only terminal arms retain their comparison cleanup until exit copying.
     pub(super) empty_terminal_comparison_arms: Vec<TextRange>,
     // A direct conditional-expression assertion outside an iterator loop that begins below the
@@ -1110,6 +1117,7 @@ impl<'source> Compiler<'source> {
 
     fn loop_context(
         &self,
+        body: &[Stmt],
         continue_label: Label,
         break_label: Label,
         iterator_cleanup: IteratorCleanup,
@@ -1122,6 +1130,7 @@ impl<'source> Compiler<'source> {
             break_label,
             iterator_cleanup,
             iterator_body_tail: None,
+            body_tail: body.last().map(Ranged::range),
             has_orelse: false,
             prevent_break_exit_inlining: iterator_cleanup != IteratorCleanup::None
                 && self.control.statements.context.followed_by_tuple_return,
@@ -4509,7 +4518,7 @@ impl<'source> Compiler<'source> {
             _ => LoopBreakPolicy::Return,
         };
         let context =
-            self.loop_context(start, condition_false, IteratorCleanup::None, break_policy);
+            self.loop_context(&statement.body, start, condition_false, IteratorCleanup::None, break_policy);
         let normalize_final_condition = matches!(
             statement.body.last(),
             Some(Stmt::If(tail))
@@ -4651,7 +4660,7 @@ impl<'source> Compiler<'source> {
             })
             .collect::<Result<Vec<_>, CompileError>>()?;
 
-        let context = self.loop_context(
+        let context = self.loop_context(&statement.body, 
             start,
             exits[0].1,
             IteratorCleanup::None,
@@ -7121,6 +7130,34 @@ impl<'source> Compiler<'source> {
         Ok(())
     }
 
+    fn folds_to_first_operand(&self, boolean: &ruff_python_ast::ExprBoolOp, expression: &Expr) -> bool {
+        boolean.values.len() > 1
+            && folded_bool_operand(expression, self.context.python_version)
+                .is_some_and(|(origin, _)| origin.range() == boolean.values[0].range())
+    }
+
+    fn with_iterator_break_arm<T>(
+        &mut self,
+        statement: &ruff_python_ast::StmtIf,
+        compile: impl FnOnce(&mut Self) -> Result<T, CompileError>,
+    ) -> Result<T, CompileError> {
+        let iterator_break_arm = (matches!(statement.body.as_slice(), [Stmt::Break(_)])
+            && self
+                .control
+                .loops
+                .contexts
+                .last()
+                .is_some_and(|context| context.iterator_cleanup == IteratorCleanup::Sync))
+        .then(|| final_condition_leaf(&statement.test))
+        .flatten()
+        .map(Ranged::range);
+        self.with_control_override(
+            |control| &mut control.conditions.iterator_break_comparison_arm,
+            iterator_break_arm,
+            compile,
+        )
+    }
+
     fn compile_statement(&mut self, statement: &Stmt) -> Result<(), CompileError> {
         self.compile_statement_with_return_successor(statement, None)
     }
@@ -7282,17 +7319,39 @@ impl<'source> Compiler<'source> {
                         self.assembler.set_location(discard_location);
                     }
                 }
+                // At a loop tail the discard and back edge form an unlocated eval-check block
+                // that CPython copies onto each Boolean edge. A decisive first operand folds
+                // away the fallthrough edge, so only the short-circuit jump's copy survives.
                 let loop_tail_boolean = self.control.loops.suite_fallthrough_to_loop_backedge
                     && !self.control.statements.context.has_following
                     && matches!(expression.value.as_ref(), Expr::BoolOp(_));
+                // Only a discard directly in the loop body shares a block with the back edge.
+                let unlocated_loop_tail_discard = loop_tail_boolean
+                    && matches!(expression.value.as_ref(), Expr::BoolOp(boolean)
+                        if self.folds_to_first_operand(boolean, &expression.value))
+                    && self
+                        .control
+                        .loops
+                        .contexts
+                        .last()
+                        .is_none_or(|context| context.body_tail != Some(expression.range));
                 if loop_tail_boolean
                     && let Expr::BoolOp(boolean) = expression.value.as_ref()
                     && let Some(last) = boolean.values.last()
                 {
-                    self.assembler
-                        .set_location(self.source_location(last.range()));
+                    let location = if unlocated_loop_tail_discard {
+                        SourceLocation::NONE
+                    } else if self.folds_to_first_operand(boolean, &expression.value) {
+                        self.source_location(expression.value.range())
+                    } else {
+                        self.source_location(last.range())
+                    };
+                    self.assembler.set_location(location);
                 }
                 self.emit(POP_TOP, 0, -1)?;
+                if unlocated_loop_tail_discard {
+                    self.assembler.preserve_last_no_location();
+                }
                 if self.context.python_version >= crate::PythonVersion::Py314
                     && !self.control.statements.context.has_following
                     && self
@@ -7338,7 +7397,9 @@ impl<'source> Compiler<'source> {
             Stmt::Pass(statement) => self
                 .assembler
                 .record_omitted_nop_targets(self.source_location(statement.range)),
-            Stmt::If(statement) => self.compile_if(statement)?,
+            Stmt::If(statement) => self.with_iterator_break_arm(statement, |compiler| {
+                compiler.compile_if(statement)
+            })?,
             Stmt::While(statement) => self.compile_while(statement)?,
             Stmt::For(statement) if statement.is_async => self.compile_async_for(statement)?,
             Stmt::For(statement) => self.compile_for(statement, None)?,
@@ -21050,13 +21111,15 @@ impl<'source> Compiler<'source> {
                     },
                 )?;
                 let start = self.assembler.item_count();
-                let tail = self.compile_loop_tail_if(
-                    statement,
-                    restart,
-                    split_short_circuit,
-                    mode,
-                    leading,
-                )?;
+                let tail = self.with_iterator_break_arm(statement, |compiler| {
+                    compiler.compile_loop_tail_if(
+                        statement,
+                        restart,
+                        split_short_circuit,
+                        mode,
+                        leading,
+                    )
+                })?;
                 if self.context.python_version == crate::PythonVersion::Py314
                     && statement.elif_else_clauses.is_empty()
                 {
@@ -22903,7 +22966,7 @@ impl<'source> Compiler<'source> {
             )?;
 
             let context =
-                self.loop_context(start, restart, IteratorCleanup::None, LoopBreakPolicy::Jump);
+                self.loop_context(&statement.body, start, restart, IteratorCleanup::None, LoopBreakPolicy::Jump);
             let body_start = self.assembler.instruction_count();
             let tail_jumps = self.with_loop_context(context, |compiler| {
                 compiler.compile_while_tail_suite(&statement.body, start)
@@ -22959,7 +23022,7 @@ impl<'source> Compiler<'source> {
 
         self.assembler.mark(body_label);
         self.set_depth(base_depth);
-        let context = self.loop_context(
+        let context = self.loop_context(&statement.body, 
             start,
             break_exit.unwrap_or(restart),
             IteratorCleanup::None,
@@ -25987,7 +26050,7 @@ impl<'source> Compiler<'source> {
         }
         self.compile_jump_if(&statement.test, false, anchor)?;
         self.assembler.mark(body);
-        let context = self.loop_context(
+        let context = self.loop_context(&statement.body, 
             start,
             end,
             IteratorCleanup::None,
@@ -26165,7 +26228,7 @@ impl<'source> Compiler<'source> {
             // including CPython's shadowed index for IMPORT_FROM and similar opcodes.
             self.assembler.record_borrow_analysis_block_boundary(body);
             self.assembler.mark(body);
-            let mut context = self.loop_context(
+            let mut context = self.loop_context(&statement.body, 
                 start,
                 end,
                 IteratorCleanup::None,
@@ -26960,7 +27023,7 @@ impl<'source> Compiler<'source> {
         }
         // The loop condition's fallthrough begins a separate original body array.
         self.assembler.record_short_circuit_owner_continuation();
-        let mut context = self.loop_context(
+        let mut context = self.loop_context(&statement.body, 
             start,
             end,
             IteratorCleanup::None,
@@ -27288,7 +27351,7 @@ impl<'source> Compiler<'source> {
         self.bind_native_source_label(NativeRole::ForEnd(statement.range), end);
         self.assembler.record_for_target_owner_prefix(body);
 
-        let mut context = self.loop_context(
+        let mut context = self.loop_context(&statement.body, 
             start,
             end,
             IteratorCleanup::Sync,
@@ -27686,7 +27749,7 @@ impl<'source> Compiler<'source> {
         self.assembler
             .add_hidden_exception_owner_slots_at(target_start, 1);
 
-        let mut context = self.loop_context(
+        let mut context = self.loop_context(&statement.body, 
             start,
             end,
             IteratorCleanup::Async,
@@ -44511,7 +44574,7 @@ impl<'source> Compiler<'source> {
             .exceptions
             .active_exception_region_exclusions
             .push(Vec::new());
-        let handler_end = self.with_native_finally_copy(
+        self.with_native_finally_copy(
             statement.range,
             FinallyCopy::Exceptional,
             |compiler| {
@@ -49790,6 +49853,15 @@ fn terminal_while_break_exit_range(statement: &ruff_python_ast::StmtWhile) -> Op
     match body.last()? {
         Stmt::Break(statement) => Some(statement.range),
         _ => None,
+    }
+}
+
+/// The last operand a condition evaluates before falling through to its first arm.
+fn final_condition_leaf(test: &Expr) -> Option<&Expr> {
+    match test {
+        Expr::BoolOp(boolean) => final_condition_leaf(boolean.values.last()?),
+        Expr::UnaryOp(unary) if unary.op == ruff_python_ast::UnaryOp::Not => None,
+        leaf => Some(leaf),
     }
 }
 

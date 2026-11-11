@@ -364,6 +364,27 @@ fn has_jump_eval_check(instruction: &Instruction) -> bool {
         || (is_unconditional_jump(instruction.opcode) && instruction.jump_policy.is_interruptible())
 }
 
+/// Whether CPython copies this original array for each predecessor while resolving line
+/// numbers: every instruction is unlocated and the array leaves the scope or checks the eval
+/// breaker. Exception-table splits do not end an original array.
+fn is_unlocated_exit_or_eval_check(graph: &BlockGraph, blocks: &[BasicBlockId]) -> bool {
+    let mut eval_check = false;
+    let mut last = None;
+    for instruction in blocks
+        .iter()
+        .flat_map(|&block| graph[block].items())
+        .filter_map(Item::as_instruction)
+    {
+        if instruction.location.line >= 0 {
+            return false;
+        }
+        eval_check |= has_jump_eval_check(instruction)
+            || instruction.no_location_policy.is_artificial_eval_break();
+        last = Some(instruction);
+    }
+    last.is_some_and(|instruction| eval_check || ends_scope(instruction.opcode))
+}
+
 /// Propagates lines through copied records in the same original instruction array.
 fn propagate_planned_array_locations(
     graph: &mut BlockGraph,
@@ -10719,11 +10740,22 @@ impl OptimizationPipeline {
             }) else {
                 continue;
             };
+            let unlocated_exit_or_eval_check = is_unlocated_exit_or_eval_check(
+                graph,
+                metadata_split_exit_chain(
+                    graph,
+                    &order,
+                    target_position,
+                    &predecessors,
+                    &exception_split_labels,
+                ),
+            );
             if let Some(instruction) = graph.instructions_mut(target).next()
                 && (!instruction.no_location_policy.preserves_location()
-                    || instruction
+                    || (instruction
                         .no_location_policy
-                        .copy_inherits_shared_predecessor())
+                        .copy_inherits_shared_predecessor()
+                        && unlocated_exit_or_eval_check))
             {
                 instruction.location = location;
             }
