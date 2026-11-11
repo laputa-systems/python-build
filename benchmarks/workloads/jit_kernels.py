@@ -27,7 +27,7 @@ from benchmarks.workloads.registry import BY_NAME
 
 VENDOR = Path(__file__).resolve().parents[1] / "vendor"
 PYPERFORMANCE_WHEEL = VENDOR / "pyperformance-1.14.0-py3-none-any.whl"
-PYPERF_WHEEL = VENDOR / "pyperf-2.10.0-py3-none-any.whl"
+PYPERF_WHEEL = VENDOR / "pyperf-2.11.0-py3-none-any.whl"
 SHA256SUMS = VENDOR / "SHA256SUMS"
 
 

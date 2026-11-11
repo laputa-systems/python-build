@@ -6,7 +6,7 @@ rust-version.workspace = true
 
 [dependencies]
 cpython-binding = { path = "../cpython-binding" }
-uuid = { version = "=1.26.1", default-features = false, features = ["std", "v3", "v4", "v5"] }
+uuid = { version = "=1.29.2", default-features = false, features = ["std", "v3", "v4", "v5"] }
 
 [build-dependencies]
 cpython-build-helper = { path = "../cpython-build-helper" }

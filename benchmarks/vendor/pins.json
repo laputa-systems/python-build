@@ -1,6 +1,6 @@
 {
-  "psutil-7.2.2-cp36-abi3-musllinux_1_2_x86_64.whl": "b58fabe35e80b264a4e3bb23e6b96f9e45a3df7fb7eed419ac0e5947c61e47cc",
   "packaging-26.3-py3-none-any.whl": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
-  "pyperf-2.10.0-py3-none-any.whl": "79196bc4a11e3c926dd4c6b14c80136c6b37f884fe913cbc57037f37636e9841",
+  "psutil-7.2.2-cp36-abi3-musllinux_1_2_x86_64.whl": "b58fabe35e80b264a4e3bb23e6b96f9e45a3df7fb7eed419ac0e5947c61e47cc",
+  "pyperf-2.11.0-py3-none-any.whl": "11c0034bb29a79796417a6e5a7852ff4814a33cce24aeb6d268676c3a52dfda6",
   "pyperformance-1.14.0-py3-none-any.whl": "94068ac2935b6952ccb5e8a302eb9cebc26e82454494bef6e53822738adf0049"
 }

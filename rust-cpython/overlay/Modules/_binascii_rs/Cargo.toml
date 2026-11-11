@@ -9,7 +9,7 @@ license = "PSF-2.0"
 cpython-binding = { path = "../cpython-binding" }
 cpython-sys = { path = "../cpython-sys" }
 _base64 = { path = "../_base64" }
-crc32fast = "=1.5.2" # MIT OR Apache-2.0
+crc32fast = "=1.5.5" # MIT OR Apache-2.0
 
 [build-dependencies]
 cpython-build-helper = { path = "../cpython-build-helper" }

@@ -6,7 +6,7 @@ rust-version.workspace = true
 
 [dependencies]
 cpython-binding = { path = "../cpython-binding" }
-mail-parser = { version = "=0.11.9", default-features = false }
+mail-parser = { version = "=1.0.1", default-features = false }
 
 [build-dependencies]
 cpython-build-helper = { path = "../cpython-build-helper" }

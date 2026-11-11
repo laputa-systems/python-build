@@ -31,7 +31,7 @@ dependency sources include the applicable license texts.
 | `salsa20` | 0.11.0 | MIT OR Apache-2.0 |
 | `scrypt` | 0.12.0 | MIT OR Apache-2.0 |
 | `sha1` | 0.11.0 | MIT OR Apache-2.0 |
-| `sha2` | 0.11.0 | MIT OR Apache-2.0 |
+| `sha2` | 0.11.1 | MIT OR Apache-2.0 |
 | `sha3` | 0.12.0 | MIT OR Apache-2.0 |
 | `sm3` | 0.5.0 | MIT OR Apache-2.0 |
 | `sponge-cursor` | 0.1.0 | MIT OR Apache-2.0 |

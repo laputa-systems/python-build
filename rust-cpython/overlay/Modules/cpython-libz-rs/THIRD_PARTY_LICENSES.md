@@ -7,7 +7,7 @@ is:
 
 | Crate | Version | Declared license |
 | --- | --- | --- |
-| `libz-rs-sys` | 0.6.7 | Zlib |
+| `libz-rs-sys` | 0.6.8 | Zlib |
 | `zlib-rs` | 0.6.8 | Zlib |
 
 Every crate version and registry checksum is pinned in the overlay

@@ -68,16 +68,16 @@ fn parse_header_fields(raw: &[u8]) -> Option<Vec<&[u8]>> {
     }
     let field_count = valid_header_block(raw)?;
     let message = MessageParser::default().parse_headers(raw)?;
-    let part = message.parts.first()?;
-    if part.headers.len() != field_count {
+    let headers = message.headers();
+    if headers.len() != field_count {
         return None;
     }
 
     let mut fields = Vec::with_capacity(field_count);
     let mut previous_end = 0;
-    for header in &part.headers {
-        let start = header.offset_field as usize;
-        let end = header.offset_end as usize;
+    for header in headers {
+        let start = header.offset_field() as usize;
+        let end = header.offset_end() as usize;
         if start != previous_end || end < start || end > raw.len() {
             return None;
         }

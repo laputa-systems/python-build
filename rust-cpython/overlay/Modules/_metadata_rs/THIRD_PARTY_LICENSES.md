@@ -4,7 +4,7 @@ The parser dependency closure is pinned in the overlay `Cargo.lock`.
 
 | Crate | Version | Declared license |
 | --- | --- | --- |
-| `mailparse` | `0.17.0` | 0BSD |
+| `mailparse` | `0.18.0` | 0BSD |
 | `charset` | `0.1.5` | Apache-2.0 OR MIT |
 | `base64` | `0.22.1` | MIT OR Apache-2.0 |
 | `encoding_rs` | `0.8.42` | (Apache-2.0 OR MIT) AND BSD-3-Clause |
@@ -15,7 +15,7 @@ The parser dependency closure is pinned in the overlay `Cargo.lock`.
 | `rustversion` | `1.0.23` | MIT OR Apache-2.0 |
 | `simdutf8` | `0.1.5` | MIT OR Apache-2.0 |
 | `quoted_printable` | `0.5.2` | 0BSD |
-| `data-encoding` | `2.9.0` | MIT |
+| `data-encoding` | `2.11.1` | MIT |
 
 The license declarations come from the corresponding crates.io packages.
 These licenses are compatible with the lane's PSF-2.0 CPython base. Crate

@@ -5,7 +5,7 @@ edition = "2024"
 rust-version.workspace = true
 
 [dependencies]
-libbz2-rs-sys = { version = "=0.2.5", default-features = false, features = ["std", "export-symbols"] }
+libbz2-rs-sys = { version = "=0.2.6", default-features = false, features = ["std", "export-symbols"] }
 
 [lib]
 name = "cpython_libbz2_rs"

@@ -2,4 +2,4 @@
 
 | Crate | Version | License | Metadata |
 | --- | --- | --- | --- |
-| `typed-path` | 0.12.3 | MIT OR Apache-2.0 | <https://crates.io/crates/typed-path/0.12.3> |
+| `typed-path` | 0.13.0 | MIT OR Apache-2.0 | <https://crates.io/crates/typed-path/0.13.0> |

@@ -1,6 +1,6 @@
 # Reproduce the hashing tests
 
-Run the experiment on native Apple Silicon macOS with Rust 1.85 or newer,
+Run the experiment on native Apple Silicon macOS with Rust 1.88 or newer,
 `kache`, Cargo, and a CPython 3.15.1 candidate that has `_ssl` and the native
 `_hashlib` extension disabled. Keep the candidate prefix under the repository's
 `.work/` directory. A Python `_ssl.py` marker shim is allowed, but compiled

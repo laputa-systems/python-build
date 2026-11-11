@@ -7,7 +7,7 @@ rust-version.workspace = true
 [dependencies]
 cpython-sys = { path = "../cpython-sys" }
 # typed-path 0.12.3 is dual-licensed MIT OR Apache-2.0.
-typed-path = { version = "=0.12.3" }
+typed-path = { version = "=0.13.0" }
 
 [build-dependencies]
 cpython-build-helper = { path = "../cpython-build-helper" }

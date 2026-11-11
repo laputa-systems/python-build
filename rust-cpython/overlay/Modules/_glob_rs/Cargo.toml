@@ -7,7 +7,7 @@ license = "PSF-2.0"
 
 [dependencies]
 cpython-binding = { path = "../cpython-binding", features = ["abort-on-panic"] }
-libc = { version = "=0.2.189", default-features = false } # MIT OR Apache-2.0
+libc = { version = "=0.2.191", default-features = false } # MIT OR Apache-2.0
 
 [build-dependencies]
 cpython-build-helper = { path = "../cpython-build-helper" }

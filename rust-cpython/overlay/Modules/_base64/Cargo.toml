@@ -6,7 +6,7 @@ rust-version.workspace = true
 
 [dependencies]
 base64 = { version = "=0.23.1", default-features = false, features = ["std"] } # MIT OR Apache-2.0
-data-encoding = { version = "=2.9.0", default-features = false, features = ["alloc"] } # MIT
+data-encoding = { version = "=2.11.1", default-features = false, features = ["alloc"] } # MIT
 cpython-binding = { path = "../cpython-binding" }
 
 [build-dependencies]

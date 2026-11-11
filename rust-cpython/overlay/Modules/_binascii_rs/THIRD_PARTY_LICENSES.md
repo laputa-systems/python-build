@@ -8,8 +8,8 @@ linked in. Exact versions and registry checksums are pinned in the overlay
 
 | Crate | Version | Declared license |
 | --- | --- | --- |
-| `crc32fast` | 1.5.2 | MIT OR Apache-2.0 |
+| `crc32fast` | 1.5.5 | MIT OR Apache-2.0 |
 | `base64` | 0.23.1 | MIT OR Apache-2.0 |
-| `data-encoding` | 2.9.0 | MIT |
+| `data-encoding` | 2.11.1 | MIT |
 
 The crate offers permissive MIT and Apache-2.0 license choices.

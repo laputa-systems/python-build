@@ -26,7 +26,7 @@ from statistics import median
 from typing import Any, Literal
 
 PYPERFORMANCE_VERSION = "1.14.0"
-PYPERF_VERSION = "2.10.0"
+PYPERF_VERSION = "2.11.0"
 Mode = Literal["timing", "memory"]
 
 # The pinned 2to3 script has a pip fallback for lib2to3, which the tested
@@ -915,7 +915,7 @@ def _pinned_pyperf() -> Any:
 
     module = sys.modules.get("pyperf")
     if module is None:
-        wheel = Path(__file__).resolve().parents[1] / "vendor" / "pyperf-2.10.0-py3-none-any.whl"
+        wheel = Path(__file__).resolve().parents[1] / "vendor" / "pyperf-2.11.0-py3-none-any.whl"
         if not wheel.is_file():
             raise PyPerformanceError(f"vendored pyperf wheel is missing: {wheel}")
         sys.path.insert(0, str(wheel))

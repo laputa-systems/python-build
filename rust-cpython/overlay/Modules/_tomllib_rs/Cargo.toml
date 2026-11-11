@@ -6,8 +6,8 @@ rust-version.workspace = true
 
 [dependencies]
 cpython-sys = { path = "../cpython-sys" }
-toml_datetime = "=1.1.1"
-toml_parser = "=1.1.3"
+toml_datetime = "=1.1.3"
+toml_parser = "=1.1.5"
 
 [build-dependencies]
 cpython-build-helper = { path = "../cpython-build-helper" }

@@ -17,7 +17,7 @@ exclude = ["serc"]
 
 [workspace.package]
 # Make sure to also update the Rust toolchains in GitHub Actions whenever this version is modified
-rust-version = "1.95"
+rust-version = "1.98"
 
 # A `no_std` extension cannot link Rust's unwinding panic runtime; no crate
 # here catches a panic (extern "C" entry points abort on unwind already).
@@ -33,5 +33,5 @@ lto = "thin"
 # these trees so the engine, its provider, and its verifier share one copy.
 [patch.crates-io]
 ruff_python_parser = { git = "https://github.com/astral-sh/ruff", rev = "9d0f58b1d2fb1cf1062d3ff99b18ebf293563f6f" }
-rustls = { git = "https://github.com/laputa-systems/rustls", branch = "laputa/0.23.45" }
+rustls = { git = "https://github.com/laputa-systems/rustls", rev = "4610aea3ac06e966e2b05315a845c2fa51e69e2d" }
 rustls-webpki = { git = "https://github.com/laputa-systems/webpki", branch = "laputa/0.103.15" }

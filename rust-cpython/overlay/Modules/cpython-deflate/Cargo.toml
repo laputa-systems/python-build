@@ -7,7 +7,7 @@ license = "PSF-2.0"
 
 [dependencies]
 cpython-binding = { path = "../cpython-binding" }
-libz-rs-sys = { version = "=0.6.7", default-features = false, features = ["std", "rust-allocator"] }
+libz-rs-sys = { version = "=0.6.8", default-features = false, features = ["std", "rust-allocator"] }
 
 [lib]
 name = "cpython_deflate"

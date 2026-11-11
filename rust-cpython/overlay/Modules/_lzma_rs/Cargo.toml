@@ -6,7 +6,7 @@ rust-version.workspace = true
 
 [dependencies]
 cpython-binding = { path = "../cpython-binding" }
-lzma-rust2 = { version = "=0.21.0", default-features = false, features = ["std", "encoder", "xz"] }
+lzma-rust2 = { version = "=0.25.0", default-features = false, features = ["std", "encoder", "xz"] }
 
 [build-dependencies]
 cpython-build-helper = { path = "../cpython-build-helper" }

@@ -7,7 +7,7 @@ license = "PSF-2.0"
 
 [dependencies]
 cpython-sys = { path = "../cpython-sys" }
-mailparse = "=0.17.0"
+mailparse = "=0.18.0"
 
 [build-dependencies]
 cpython-build-helper = { path = "../cpython-build-helper" }
