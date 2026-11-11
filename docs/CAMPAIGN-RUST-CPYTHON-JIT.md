@@ -1155,9 +1155,48 @@ checking that only the import bootstrap is frozen and nothing came from a
 cache); `cold_import_app_stack` is unavailable like `import_app_stack`, so the
 exit's gate command must drop it until that closure is locked.
 
-The exit is still not met (`campaign/c2` at `52091c9`): the verify run adds
-`test_compile` (two tests, below) to the e891 set. The memory bar is met under
-OD15.
+The exit was met on `campaign/c2` rebased onto `main` `bd964f6` (2026-11-11,
+macOS arm64, empty bytecode cache), before the review fixes below changed
+Serc: `perf.py test --name perf-rust-serc-v3 --all` and `--all --serc-verify`
+each failed exactly `perf-rust`'s set, the e891 five (52,102 tests, 2,877
+skipped), plus one host-load flake in
+`test_concurrent_futures.test_process_pool` (2 of 5 isolated runs fail on
+`perf-rust` itself). `serc_parity.py --oracle perf-rust` reported 10,005
+cases, 0 mismatches. The memory bar is met under OD15. Both full-suite runs
+and the census must be repeated on `b4c2a8a` before C closes.
+
+**Independent re-review (2026-11-11) and fixes.** The adversarial review of
+`d02ebce`..`b1ffca1` found nine defects; `852831a`, `b327c5c` and `b4c2a8a`
+address all of them:
+
+- *Finally exits (two segfaults, skipped finally bodies and `__exit__`
+  calls, a `range_iterator` left in `sys.exception()`).* Serc reconstructs
+  codegen.c's fblock unwind order from separate depth stacks and gets nested
+  exceptional finalizers wrong. On 3.16 a `return` inside a `finally` body,
+  or a `break`/`continue` that leaves one, now routes to the C compiler
+  (`cpython_only::compiler_rules`, `CompileError::RequiresCpythonCompiler`).
+  CPython warns on all of these (PEP 765), so the hook already ran the C
+  compiler for them. The Serc code paths for these shapes remain for
+  3.12-3.15 and are dead on 3.16.
+- *Folded Boolean discard lines (b1ffca1) and chained-comparison break
+  jumps (d02ebce)* match CPython in verify mode again; see `b327c5c`.
+- *Routing:* parameter defaults weigh into the parser-stack estimate, 150
+  nested f-strings route, and a thread with under 2 MiB of C stack compiles
+  with the C compiler.
+
+Checked on `b4c2a8a`: `cargo test -p serc --lib` passes 1,257;
+`tests/test_serc_compile.py` passes 7; `test_compile test_grammar
+test_syntax test_patma test_exceptions` pass under `--serc-verify`; every
+review reproducer behaves as on the C compiler. With the Serc CLI against the
+C compiler (scratch harness, not committed), the review's corpora show no
+behaviour difference in 10,533 programs (5,331 now routed) and no layout
+difference absent from the pre-review build. Layout differences that
+predate this campaign remain: 19 targeted, 184/719/42 in the three random
+control-flow corpora, 164 in the comparison grid (down from 288), plus
+`a and False and b` statements, a decisive folded discard ending a try body
+at a function's end, and a chained-comparison break in a `while` inside
+`finally`. These are verify-mode-only (line tables, exception tables, jump
+shapes).
 
 **Parity.** The eight Serc 3.16 defect classes the first full-suite runs found
 are fixed in `serc-overlay`, each pinned by a Serc test against
@@ -1571,7 +1610,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 | --- | --- | --- | --- |
 | J | active | T3 inline-frame elision implemented and CORRECT; measured no bucket-(a) fall, dropped under P1. Next: virtual-frame inlining or T3 attribute/global caches | Inline frames: incumbent-named bucket (a) richards 24.0% → 17.2%, raytrace 11.6% → 9.6%, but including the new `_INLINE_*` call/frame uops 23.9% → 24.6% and 11.5% → 11.7%; CORRECT (5 incumbent superseded assertions; new `jit_inline_integration`), advisory 1.0123 |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
-| C | active | C2 in-process `exec`: the verify layout classes are fixed and pinned; the e891 suite set and independent review remain | `campaign/c2-layout` (base `21ab98d`): `perf-rust-serc-v3` builds clean (58 release Rust extensions verified, 374s); `cargo test -p serc --lib` passes 1,260 including the three new marshal fixtures; verify compiles each repro with `same`; `test_compile test_grammar test_syntax test_patma test_exceptions` under verify reports `Result: SUCCESS` (857 tests, 5 skipped); `serc_parity.py --oracle perf-rust` reports 0 mismatches in 10,005 cases; independent review pending |
+| C | active | C2 in-process `exec`: re-review's nine defects fixed (`852831a`..`b4c2a8a`). Next: rerun `--all`, `--all --serc-verify` and the parity census on `b4c2a8a`, then close C2 or triage the pre-existing verify-only layout classes | `cargo test -p serc --lib` 1,257 pass; `test_serc_compile.py` 7 pass; compiler suites pass under verify; 0 behaviour differences in 10,533 review-corpus programs |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
 
 **Owner queue:** R1 reference report (informational, no target change
@@ -1660,6 +1699,7 @@ opcodes `BINARY_OP_SUBSCR_ARRAY_D`/`_I`; new uops
 `_PyArray_GetSpecializationKind`, `_PyArray_ReadDoubleItem` and
 `_PyArray_ReadIntItem`, defined in `Python/specialize.c`. The
 `BINARY_OP` cache carries the recorded type version in `external_cache[0..1]`.
+
 **Owner queue (C2 contract changes, on `campaign/c2`, not yet on `main`):**
 
 - The compile hook in `overlay/Python/pythonrun.c` and `marshal.c` (compiled
@@ -1669,6 +1709,11 @@ opcodes `BINARY_OP_SUBSCR_ARRAY_D`/`_I`; new uops
   authority (it runs on a Serc refusal only to raise CPython's exception, and
   its code is never returned), and sources with the `barry_as_FLUFL` future or
   nesting deeper than 200 go to the C compiler by rule after Serc parses them.
+- Routing added after the re-review, awaiting owner review: on 3.16, Serc
+  leaves to the C compiler any `return` in a `finally` body and any `break` or
+  `continue` that leaves one (the public `serc::CompileError` gains
+  `RequiresCpythonCompiler`), and `serc_routes` sends requests from threads
+  with under 2 MiB of C stack to the C compiler.
 - `--serc` on `perf.py build` and `build.py build`, and `perf.py test
   --serc-verify`.
 - `cold_python_startup`, `cold_import_django`, `cold_import_app_stack`: they
