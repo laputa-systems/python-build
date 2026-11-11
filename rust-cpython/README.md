@@ -204,11 +204,16 @@ hold, and every other request to the C compiler:
   registry: no encoding cookie, or one that CPython's tokenizer maps to
   `utf-8`. Any other cookie goes through `codecs.lookup`, which Serc cannot
   call;
-- the source uses no grammar that only CPython's parser defines: Serc parses
-  it first and hands it to the C compiler if it imports the `barry_as_FLUFL`
-  future or nests more than 200 statements and expressions deep, where
-  CPython's parser recursion limit (as low as 747 nested lambda defaults)
-  begins to matter.
+- the source uses nothing that only CPython's parser or compiler handles:
+  Serc parses it first and hands it to the C compiler if it imports the
+  `barry_as_FLUFL` future, nests more than 200 statements and expressions
+  deep, approaches the C parser's 6000-slot stack (estimated from bracket,
+  block, expression, parameter-default, and `elif` nesting), nests f-strings
+  or t-strings 150 deep or format specs more than 3 deep, uses a
+  `\N{...}` name Ruff's Unicode table lacks, mixes tabs and spaces in a way
+  CPython's tokenizer rejects, binds a parenthesized walrus
+  target or a `__debug__` match capture, or has a `return` inside a
+  `finally` body or a `break` or `continue` that leaves one.
 
 `optimize=-1` resolves to the interpreter's `-O` level, and Serc receives the
 current `sys.get_int_max_str_digits()` limit. Serc's marshal bytes are loaded

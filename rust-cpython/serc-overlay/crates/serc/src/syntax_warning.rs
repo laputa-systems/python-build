@@ -276,8 +276,12 @@ mod tests {
     use crate::{CompileOptions, PythonVersion, compile_with_options};
 
     fn may_warn(source: &str) -> bool {
+        may_warn_for(PythonVersion::Py316, source)
+    }
+
+    fn may_warn_for(python_version: PythonVersion, source: &str) -> bool {
         let options = CompileOptions {
-            python_version: PythonVersion::Py316,
+            python_version,
             ..CompileOptions::default()
         };
         compile_with_options(source, "<test>", &options)
@@ -315,13 +319,18 @@ mod tests {
             "[a][1.0]\n",
             "(1, 2)[(0,)]\n",
             "assert (x, 'message')\n",
-            "def f():\n    try:\n        pass\n    finally:\n        return\n",
-            "for x in y:\n    try:\n        pass\n    finally:\n        break\n",
-            "while x:\n    try:\n        pass\n    finally:\n        continue\n",
             "from . lazy import x\n",
             "type X[T: (1)()] = int\n",
         ] {
             assert!(may_warn(source), "{source:?}");
+        }
+        // CPython 3.16 sources that leave a finally body go to CPython's compiler instead.
+        for source in [
+            "def f():\n    try:\n        pass\n    finally:\n        return\n",
+            "for x in y:\n    try:\n        pass\n    finally:\n        break\n",
+            "while x:\n    try:\n        pass\n    finally:\n        continue\n",
+        ] {
+            assert!(may_warn_for(PythonVersion::Py315, source), "{source:?}");
         }
     }
 

@@ -1,8 +1,8 @@
 use ruff_python_ast::token::{TokenKind, Tokens};
-use ruff_python_ast::visitor::{Visitor, walk_expr, walk_stmt};
+use ruff_python_ast::visitor::{Visitor, walk_expr, walk_parameters, walk_stmt};
 use ruff_python_ast::{
     Expr, InterpolatedStringElement, InterpolatedStringElements, InterpolatedStringFormatSpec,
-    Pattern, Stmt,
+    Parameters, Pattern, Stmt,
 };
 use ruff_python_parser::{LexicalErrorType, ParseError, ParseErrorType};
 
@@ -37,9 +37,11 @@ pub(crate) fn grammar(suite: &[Stmt]) -> Option<&'static str> {
 /// nested unary minuses parse); a bracket level costs about 27 (with 199 nested
 /// parentheses per arm, 626 arms parse and 627 overflow; 190 parentheses leave room for
 /// 853 unary minuses); a compound statement level about 7 (inside 99 nested `def`s, 196
-/// parentheses parse and 197 overflow). A module whose estimate reaches this budget is
-/// left to CPython; routing is exact, so the margin below 6000 only costs Serc coverage
-/// on pathological sources.
+/// parentheses parse and 197 overflow); a conditional expression, power, or lambda body
+/// level about 2 (2982 to 2984 levels parse); and a parameter default about 8 (746
+/// nested lambda defaults parse, and 171 parenthesized ones). A module whose estimate
+/// reaches this budget is left to CPython; routing is exact, so the margin below 6000 only
+/// costs Serc coverage on pathological sources.
 pub(crate) const PARSER_STACK_BUDGET: usize = 5000;
 
 /// Estimated CPython parser-stack slots per bracket nesting level.
@@ -48,6 +50,15 @@ pub(crate) const PARSER_STACK_PER_BRACKET: usize = 27;
 /// Estimated CPython parser-stack slots per compound statement nesting level.
 pub(crate) const PARSER_STACK_PER_BLOCK: usize = 7;
 
+/// Estimated CPython parser-stack slots per expression nesting level.
+pub(crate) const PARSER_STACK_PER_EXPRESSION: usize = 2;
+
+/// Estimated CPython parser-stack slots that a parameter default adds to its expression.
+pub(crate) const PARSER_STACK_PER_PARAMETER_DEFAULT: usize = 6;
+
+/// CPython's tokenizer rejects an f-string or t-string nested this deep (`MAXFTSTRINGLEVEL`).
+pub(crate) const MAX_INTERPOLATED_STRING_NESTING: usize = 150;
+
 /// CPython's f-string lexer allows three nested replacement fields per literal.
 pub(crate) const MAX_FORMAT_SPEC_DEPTH: usize = 3;
 
@@ -55,8 +66,8 @@ pub(crate) const MAX_FORMAT_SPEC_DEPTH: usize = 3;
 ///
 /// Each of these is valid to Ruff but rejected by CPython after or during its parse:
 /// a parenthesized assignment-expression target, a `__debug__` match-pattern capture,
-/// a format spec nested deeper than CPython's lexer allows, and a module whose estimated
-/// parser stack approaches CPython's limit.
+/// a format spec or f-string nested deeper than CPython's lexer allows, and a module whose
+/// estimated parser stack approaches CPython's limit.
 pub(crate) fn source_rules(suite: &[Stmt], tokens: &Tokens) -> Option<&'static str> {
     if assignment_expression_after_parenthesized_target(tokens) {
         return Some("a parenthesized assignment-expression target is invalid");
@@ -67,10 +78,100 @@ pub(crate) fn source_rules(suite: &[Stmt], tokens: &Tokens) -> Option<&'static s
     if has_deep_format_spec(suite) {
         return Some("an f-string format spec nests more expressions than CPython allows");
     }
+    if has_too_many_nested_interpolated_strings(suite) {
+        return Some("f-strings or t-strings nest deeper than CPython allows");
+    }
     if parser_stack_estimate(suite, tokens) >= PARSER_STACK_BUDGET {
         return Some("the source approaches CPython's parser stack limit");
     }
     None
+}
+
+/// Name control flow that Serc leaves to CPython 3.16's compiler, if any.
+///
+/// A `return` inside a `finally` body, or a `break` or `continue` that leaves one, must
+/// unwind the loops, managers, handlers, and finally bodies between it and its target in
+/// CPython's block order. Serc does not model that order for jumps out of a finally body.
+pub(crate) fn compiler_rules(suite: &[Stmt]) -> Option<&'static str> {
+    leaves_finally_body(suite).then_some("control flow leaves a finally body")
+}
+
+fn leaves_finally_body(suite: &[Stmt]) -> bool {
+    #[derive(Clone, Copy, Eq, PartialEq)]
+    enum Block {
+        Finally,
+        Loop,
+    }
+
+    struct FinallyExit {
+        blocks: Vec<Block>,
+        found: bool,
+    }
+
+    impl FinallyExit {
+        fn visit_block(&mut self, block: Block, body: &[Stmt]) {
+            self.blocks.push(block);
+            self.visit_body(body);
+            self.blocks.pop();
+        }
+
+        fn visit_scope(&mut self, body: &[Stmt]) {
+            let outer = std::mem::take(&mut self.blocks);
+            self.visit_body(body);
+            self.blocks = outer;
+        }
+    }
+
+    impl<'a> Visitor<'a> for FinallyExit {
+        fn visit_stmt(&mut self, statement: &'a Stmt) {
+            if self.found {
+                return;
+            }
+            if crate::stack_growth_required() {
+                return crate::grow_stack(|| self.visit_stmt(statement));
+            }
+            match statement {
+                Stmt::FunctionDef(function) => self.visit_scope(&function.body),
+                Stmt::ClassDef(class) => self.visit_scope(&class.body),
+                Stmt::For(for_statement) => {
+                    self.visit_block(Block::Loop, &for_statement.body);
+                    self.visit_body(&for_statement.orelse);
+                }
+                Stmt::While(while_statement) => {
+                    self.visit_block(Block::Loop, &while_statement.body);
+                    self.visit_body(&while_statement.orelse);
+                }
+                Stmt::Try(try_statement) => {
+                    self.visit_body(&try_statement.body);
+                    for handler in &try_statement.handlers {
+                        let ruff_python_ast::ExceptHandler::ExceptHandler(handler) = handler;
+                        self.visit_body(&handler.body);
+                    }
+                    self.visit_body(&try_statement.orelse);
+                    self.visit_block(Block::Finally, &try_statement.finalbody);
+                }
+                Stmt::Return(_) => self.found = self.blocks.contains(&Block::Finally),
+                Stmt::Break(_) | Stmt::Continue(_) => {
+                    self.found = self
+                        .blocks
+                        .iter()
+                        .rev()
+                        .take_while(|&&block| block != Block::Loop)
+                        .any(|&block| block == Block::Finally);
+                }
+                _ => walk_stmt(self, statement),
+            }
+        }
+
+        fn visit_expr(&mut self, _expression: &'a Expr) {}
+    }
+
+    let mut exit = FinallyExit {
+        blocks: Vec::new(),
+        found: false,
+    };
+    exit.visit_body(suite);
+    exit.found
 }
 
 /// Name a `\N{...}` escape that Ruff's Unicode table rejected, if any.
@@ -204,6 +305,39 @@ fn has_deep_format_spec(suite: &[Stmt]) -> bool {
     deep.found
 }
 
+fn has_too_many_nested_interpolated_strings(suite: &[Stmt]) -> bool {
+    struct Nesting {
+        depth: usize,
+        found: bool,
+    }
+
+    impl<'a> Visitor<'a> for Nesting {
+        fn visit_expr(&mut self, expression: &'a Expr) {
+            if self.found {
+                return;
+            }
+            if crate::stack_growth_required() {
+                return crate::grow_stack(|| self.visit_expr(expression));
+            }
+            let interpolated = matches!(expression, Expr::FString(_) | Expr::TString(_));
+            self.depth += usize::from(interpolated);
+            if self.depth >= MAX_INTERPOLATED_STRING_NESTING {
+                self.found = true;
+            } else {
+                walk_expr(self, expression);
+            }
+            self.depth -= usize::from(interpolated);
+        }
+    }
+
+    let mut nesting = Nesting {
+        depth: 0,
+        found: false,
+    };
+    nesting.visit_body(suite);
+    nesting.found
+}
+
 fn format_spec_depth(elements: &InterpolatedStringElements) -> usize {
     elements
         .iter()
@@ -234,15 +368,17 @@ fn format_spec_nested_depth(spec: &InterpolatedStringFormatSpec) -> usize {
 
 /// Estimate CPython's peak parser stack as the sum of the deepest bracket nesting at
 /// [`PARSER_STACK_PER_BRACKET`] slots per level, the deepest compound statement nesting
-/// at [`PARSER_STACK_PER_BLOCK`], the deepest expression nesting and the longest
-/// `if`/`elif` chain at one slot each. Summing module-wide maxima only over-estimates.
+/// at [`PARSER_STACK_PER_BLOCK`], the deepest expression nesting at
+/// [`PARSER_STACK_PER_EXPRESSION`] plus [`PARSER_STACK_PER_PARAMETER_DEFAULT`] for each
+/// enclosing parameter default, and the longest `if`/`elif` chain at one slot per arm.
+/// Summing module-wide maxima only over-estimates.
 pub(crate) fn parser_stack_estimate(suite: &[Stmt], tokens: &Tokens) -> usize {
     #[derive(Default)]
     struct Shape {
         blocks: usize,
         max_blocks: usize,
-        expressions: usize,
-        max_expressions: usize,
+        expression_slots: usize,
+        max_expression_slots: usize,
         max_arms: usize,
     }
 
@@ -258,10 +394,16 @@ pub(crate) fn parser_stack_estimate(suite: &[Stmt], tokens: &Tokens) -> usize {
         }
 
         fn visit_expr(&mut self, expression: &'a Expr) {
-            self.expressions += 1;
-            self.max_expressions = self.max_expressions.max(self.expressions);
+            self.expression_slots += PARSER_STACK_PER_EXPRESSION;
+            self.max_expression_slots = self.max_expression_slots.max(self.expression_slots);
             walk_expr(self, expression);
-            self.expressions -= 1;
+            self.expression_slots -= PARSER_STACK_PER_EXPRESSION;
+        }
+
+        fn visit_parameters(&mut self, parameters: &'a Parameters) {
+            self.expression_slots += PARSER_STACK_PER_PARAMETER_DEFAULT;
+            walk_parameters(self, parameters);
+            self.expression_slots -= PARSER_STACK_PER_PARAMETER_DEFAULT;
         }
     }
 
@@ -284,7 +426,7 @@ pub(crate) fn parser_stack_estimate(suite: &[Stmt], tokens: &Tokens) -> usize {
     shape.visit_body(suite);
     PARSER_STACK_PER_BRACKET * max_brackets
         + PARSER_STACK_PER_BLOCK * shape.max_blocks
-        + shape.max_expressions
+        + shape.max_expression_slots
         + shape.max_arms
 }
 
@@ -477,8 +619,16 @@ mod tests {
             }
             source + &format!("{}x = {}1{}\n", " ".repeat(depth), "(".repeat(parens), ")".repeat(parens))
         };
+        let lambda_defaults = |depth: usize| {
+            let mut value = "1".to_owned();
+            for _ in 0..depth {
+                value = format!("(lambda a={value}: 0)");
+            }
+            format!("x = {value}\n")
+        };
         // Each overflows CPython's parser (measured on the C compiler) and must route.
         for source in [
+            lambda_defaults(172),
             chain(5966, 0),
             chain(6000, 0),
             chain(4650, 50),
@@ -493,12 +643,60 @@ mod tests {
                 &source[..source.len().min(60)]
             );
         }
-        for source in [chain(1, 0), chain(100, 0), chain(4000, 0), chain(2, 150), nested_defs(99, 100)] {
+        for source in [
+            chain(1, 0),
+            chain(100, 0),
+            chain(4000, 0),
+            chain(2, 150),
+            nested_defs(99, 100),
+            lambda_defaults(100),
+        ] {
             assert!(
                 !matches!(compile(&source), Err(CompileError::RequiresCpythonParser(_))),
                 "{}",
                 &source[..source.len().min(60)]
             );
+        }
+    }
+
+    #[test]
+    fn interpolated_strings_nested_past_cpythons_lexer_are_left_to_cpython() {
+        let nested = |depth: usize| {
+            let mut value = "1".to_owned();
+            for _ in 0..depth {
+                value = format!("f'{{{value}}}'");
+            }
+            format!("x = {value}\n")
+        };
+        assert!(matches!(
+            compile(&nested(super::MAX_INTERPOLATED_STRING_NESTING)),
+            Err(CompileError::RequiresCpythonParser(_))
+        ));
+        assert!(compile(&nested(super::MAX_INTERPOLATED_STRING_NESTING - 1)).is_ok());
+    }
+
+    #[test]
+    fn control_flow_leaving_a_finally_body_is_left_to_cpython() {
+        for source in [
+            "def f():\n    try:\n        pass\n    finally:\n        return 1\n",
+            "def f():\n    try:\n        pass\n    finally:\n        for x in y:\n            return 1\n",
+            "def f():\n    try:\n        pass\n    finally:\n        with m:\n            try:\n                return\n            finally:\n                pass\n",
+            "for x in y:\n    try:\n        pass\n    finally:\n        break\n",
+            "for x in y:\n    try:\n        pass\n    finally:\n        try:\n            continue\n        except E:\n            pass\n",
+        ] {
+            assert!(
+                matches!(compile(source), Err(CompileError::RequiresCpythonCompiler(_))),
+                "{source:?}"
+            );
+        }
+        for source in [
+            "def f():\n    try:\n        return 1\n    finally:\n        pass\n",
+            "try:\n    pass\nfinally:\n    for x in y:\n        break\n",
+            "for x in y:\n    try:\n        break\n    finally:\n        pass\n",
+            "try:\n    pass\nfinally:\n    def g():\n        return 1\n",
+            "try:\n    pass\nfinally:\n    class C:\n        def g(self):\n            return 1\n",
+        ] {
+            assert!(compile(source).is_ok(), "{source:?}");
         }
     }
 

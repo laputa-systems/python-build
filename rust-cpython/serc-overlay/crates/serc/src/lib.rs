@@ -233,6 +233,8 @@ pub enum CompileError {
     },
     /// The source uses grammar that only CPython's own parser defines for it.
     RequiresCpythonParser(&'static str),
+    /// The source uses control flow that Serc leaves to CPython's compiler.
+    RequiresCpythonCompiler(&'static str),
     /// The compiler violated one of its own invariants.
     Internal(String),
 }
@@ -253,6 +255,7 @@ impl CompileError {
             | Self::UnresolvedIntegerStringLimit
             | Self::UnresolvedInternState { .. }
             | Self::RequiresCpythonParser(_)
+            | Self::RequiresCpythonCompiler(_)
             | Self::Internal(_) => None,
         }
     }
@@ -295,6 +298,9 @@ impl fmt::Display for CompileError {
             Self::RequiresCpythonParser(reason) => {
                 write!(formatter, "this source requires CPython's parser: {reason}")
             }
+            Self::RequiresCpythonCompiler(reason) => {
+                write!(formatter, "this source requires CPython's compiler: {reason}")
+            }
             Self::Internal(message) => write!(formatter, "internal compiler error: {message}"),
         }
     }
@@ -315,6 +321,7 @@ impl Error for CompileError {
             | Self::UnresolvedIntegerStringLimit
             | Self::UnresolvedInternState { .. }
             | Self::RequiresCpythonParser(_)
+            | Self::RequiresCpythonCompiler(_)
             | Self::Internal(_) => None,
         }
     }
@@ -1177,6 +1184,11 @@ fn compile_normalized(
     }
     if let Some(reason) = cpython_only::source_rules(parsed.suite(), parsed.tokens()) {
         return Err(CompileError::RequiresCpythonParser(reason));
+    }
+    if options.python_version >= PythonVersion::Py316
+        && let Some(reason) = cpython_only::compiler_rules(parsed.suite())
+    {
+        return Err(CompileError::RequiresCpythonCompiler(reason));
     }
     let mut owned_tokens = None;
     let (optimized_body, original_scopes) = if compiler::optimization::requires_optimization(

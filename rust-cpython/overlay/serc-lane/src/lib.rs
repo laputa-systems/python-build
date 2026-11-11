@@ -21,8 +21,8 @@ pub const COMPILED: c_int = 0;
 pub const COMPILED_MAY_WARN: c_int = 1;
 /// Serc refused the source; the buffer holds its UTF-8 reason.
 pub const REFUSED: c_int = 2;
-/// The source uses grammar only CPython's parser defines, so the C compiler compiles it; the
-/// buffer holds the UTF-8 reason.
+/// The source uses grammar or control flow that only CPython's parser or compiler handles, so
+/// the C compiler compiles it; the buffer holds the UTF-8 reason.
 pub const CPYTHON_GRAMMAR: c_int = 3;
 
 /// Compile one module for CPython 3.16 into `output`, returning one of the status codes.
@@ -130,7 +130,9 @@ fn compile(
         )
     };
     compiled.map_err(|error| match error {
-        serc::CompileError::RequiresCpythonParser(_) => CompileFailure::CpythonGrammar(error.to_string()),
+        serc::CompileError::RequiresCpythonParser(_) | serc::CompileError::RequiresCpythonCompiler(_) => {
+            CompileFailure::CpythonGrammar(error.to_string())
+        }
         error => CompileFailure::Refused(error.to_string()),
     })
 }

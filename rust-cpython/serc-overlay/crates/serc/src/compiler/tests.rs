@@ -4022,15 +4022,6 @@ fn python316_marshal_matches_cpython_for_while_chained_try_finally() {
     );
 }
 
-#[test]
-fn python316_marshal_matches_cpython_for_nested_finally_return_in_finally() {
-    assert_python316_marshal(
-        include_str!("../../tests/fixtures/python316_parity/nested_finally_return_in_finally.py"),
-        include_str!(
-            "../../tests/fixtures/python316_parity/nested_finally_return_in_finally.marshal.hex"
-        ),
-    );
-}
 
 #[test]
 fn python316_marshal_matches_cpython_for_redundant_comparison_condition() {
@@ -4465,73 +4456,27 @@ fn python316_marshal_matches_cpython_for_with_filtered_comprehension_unbound_tar
 }
 
 #[test]
-fn python316_marshal_matches_cpython_for_try_finally_loop_return_under_except() {
-    assert_python316_marshal(
-        include_str!(
-            "../../tests/fixtures/python316_parity/try_finally_loop_return_under_except.py"
-        ),
-        include_str!(
-            "../../tests/fixtures/python316_parity/try_finally_loop_return_under_except.marshal.hex"
-        ),
-    );
-}
-
-#[test]
-fn python316_marshal_matches_cpython_for_try_finally_direct_return_under_except() {
-    assert_python316_marshal(
-        include_str!(
-            "../../tests/fixtures/python316_parity/try_finally_direct_return_under_except.py"
-        ),
-        include_str!(
-            "../../tests/fixtures/python316_parity/try_finally_direct_return_under_except.marshal.hex"
-        ),
-    );
-}
-
-#[test]
-fn python316_marshal_matches_cpython_for_try_finally_loop_return_under_handler() {
-    assert_python316_marshal(
-        include_str!(
-            "../../tests/fixtures/python316_parity/try_finally_loop_return_under_handler.py"
-        ),
-        include_str!(
-            "../../tests/fixtures/python316_parity/try_finally_loop_return_under_handler.marshal.hex"
-        ),
-    );
-}
-
-#[test]
-fn python316_marshal_matches_cpython_for_return_in_finally_under_finally() {
-    assert_python316_marshal(
-        include_str!(
-            "../../tests/fixtures/python316_parity/return_in_finally_under_finally.py"
-        ),
-        include_str!(
-            "../../tests/fixtures/python316_parity/return_in_finally_under_finally.marshal.hex"
-        ),
-    );
-}
-
-#[test]
-fn python316_marshal_matches_cpython_for_return_in_else_finally_under_finally() {
-    assert_python316_marshal(
-        include_str!(
-            "../../tests/fixtures/python316_parity/return_in_else_finally_under_finally.py"
-        ),
-        include_str!(
-            "../../tests/fixtures/python316_parity/return_in_else_finally_under_finally.marshal.hex"
-        ),
-    );
-}
-
-#[test]
-fn python316_marshal_matches_cpython_for_return_in_finally_under_finally_no_raise() {
-    assert_python316_marshal(
-        include_str!(
-            "../../tests/fixtures/python316_parity/return_in_finally_under_finally_no_raise.py"
-        ),
-        include_str!(
-            "../../tests/fixtures/python316_parity/return_in_finally_under_finally_no_raise.marshal.hex"
-        ),
-    );
+fn python316_control_flow_leaving_a_finally_body_is_left_to_cpython() {
+    for source in [
+        include_str!("../../tests/fixtures/python316_parity/nested_finally_return_in_finally.py"),
+        include_str!("../../tests/fixtures/python316_parity/try_finally_loop_return_under_except.py"),
+        include_str!("../../tests/fixtures/python316_parity/try_finally_direct_return_under_except.py"),
+        include_str!("../../tests/fixtures/python316_parity/try_finally_loop_return_under_handler.py"),
+        include_str!("../../tests/fixtures/python316_parity/return_in_finally_under_finally.py"),
+        include_str!("../../tests/fixtures/python316_parity/return_in_else_finally_under_finally.py"),
+        include_str!("../../tests/fixtures/python316_parity/return_in_finally_under_finally_no_raise.py"),
+    ] {
+        let result = crate::compile_with_options(
+            source,
+            "t.py",
+            &crate::CompileOptions {
+                python_version: crate::PythonVersion::Py316,
+                ..crate::CompileOptions::default()
+            },
+        );
+        assert!(
+            matches!(result, Err(crate::CompileError::RequiresCpythonCompiler(_))),
+            "{source}"
+        );
+    }
 }
