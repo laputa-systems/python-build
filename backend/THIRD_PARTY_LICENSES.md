@@ -6,8 +6,8 @@ these packages:
 
 | Package | Version | License expression |
 | --- | --- | --- |
-| `rustls-webpki` (locally adapted verified-path API) | 0.103.15 | ISC |
-| `rustls` (session metadata accessors) | 0.23.45 | Apache-2.0 OR ISC OR MIT |
+| `rustls-webpki` (locally adapted verified-path API) | 0.103.17 | ISC |
+| `rustls` (session metadata accessors) | 0.23.46 | Apache-2.0 OR ISC OR MIT |
 | `x509-parser` (signature-verification feature) | 0.16.0 | MIT OR Apache-2.0 |
 | `ring` (RSA/SHA1 implicit-anchor verification) | 0.17.14 | Apache-2.0 AND ISC |
 | RTLS source (`backend/vendor/rtls/`, commit `302423b49e494863d07630d50b15a9488ec85ef7`) | 2026.10.3 | MIT |
@@ -37,7 +37,7 @@ CPython 3.15.1 `Lib/test/certdata` directory, including its PSF-licensed test
 CA key to generate a local expired leaf. These files are not copied into this
 repository or the product.
 
-`prepare_webpki.py` pins the original rustls-webpki 0.103.15 crate archive by
+`prepare_webpki.py` pins the original rustls-webpki 0.103.17 crate archive by
 SHA-256. `webpki-policy.patch` adapts path-length counting and exposes existing
 DNS validation to the policy layer. The extracted source retains its ISC
 license notices. The CPython protocol-message enums in `ssl_metadata.py` are

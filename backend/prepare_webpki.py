@@ -14,8 +14,8 @@ sys.path.insert(0, str(REPO))
 from buildsys.inputs import safe_extract
 from buildsys.patches import apply_patch
 
-VERSION = "0.103.15"
-SHA256 = "f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2"
+VERSION = "0.103.17"
+SHA256 = "e3a0760a887c14823fca5a1c970b01d47c328c696c0c64829d1df50e8f853fd5"
 URL = f"https://static.crates.io/crates/rustls-webpki/rustls-webpki-{VERSION}.crate"
 
 

@@ -298,10 +298,10 @@ index 809445c..0008b73 100644
  
      #[test]
 diff --git a/webpki/src/error.rs b/webpki/src/error.rs
-index c104d50..9bed897 100644
+index 9fdf20a..10944d0 100644
 --- a/webpki/src/error.rs
 +++ b/webpki/src/error.rs
-@@ -71,6 +71,15 @@ pub enum Error {
+@@ -74,6 +74,15 @@ pub enum Error {
          next_update: UnixTime,
      },
  
@@ -317,12 +317,13 @@ index c104d50..9bed897 100644
      /// The certificate has an Extended Key Usage extension without any EKU values.
      EmptyEkuExtension,
  
-@@ -292,7 +301,7 @@ impl Error {
-             // Errors related to certificate validity
-             Self::CertNotValidYet { .. } | Self::CertExpired { .. } => 290,
-             Self::CertNotValidForName(_) => 280,
--            Self::CertRevoked | Self::UnknownRevocationStatus | Self::CrlExpired { .. } => 270,
-+            Self::CertRevoked | Self::UnknownRevocationStatus | Self::CrlExpired { .. } | Self::CrlNotYetValid { .. } => 270,
+@@ -298,7 +307,8 @@ impl Error {
+             Self::CertDistrusted
+             | Self::CertRevoked
+             | Self::UnknownRevocationStatus
+-            | Self::CrlExpired { .. } => 270,
++            | Self::CrlExpired { .. }
++            | Self::CrlNotYetValid { .. } => 270,
              Self::InvalidCrlSignatureForPublicKey | Self::InvalidSignatureForPublicKey => 260,
              Self::SignatureAlgorithmMismatch => 250,
              Self::EmptyEkuExtension => 245,

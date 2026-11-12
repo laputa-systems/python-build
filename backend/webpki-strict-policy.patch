@@ -1,6 +1,8 @@
+diff --git a/src/error.rs b/src/error.rs
+index 10944d0..3d5fa42 100644
 --- a/src/error.rs
 +++ b/src/error.rs
-@@ -25,6 +25,45 @@
+@@ -25,6 +25,45 @@ use pki_types::{AlgorithmIdentifier, ServerName};
  
  use crate::verify_cert::RequiredEkuNotFoundContext;
  
@@ -46,17 +48,17 @@
  /// An error that occurs during certificate validation or name validation.
  #[derive(Clone, Debug, PartialEq, Eq)]
  #[non_exhaustive]
-@@ -88,6 +127,9 @@
- 
+@@ -92,6 +131,9 @@ pub enum Error {
      /// An X.509 extension is invalid.
      ExtensionValueInvalid,
-+
+ 
 +    /// A certificate violates a specific X.509 policy rule.
 +    CertificatePolicyViolation(CertificatePolicyViolation),
- 
++
      /// The certificate validity period (notBefore, notAfter) is invalid; e.g.
      /// the notAfter time is earlier than the notBefore time.
-@@ -308,6 +350,7 @@
+     InvalidCertValidity,
+@@ -315,6 +357,7 @@ impl Error {
              #[allow(deprecated)]
              Self::RequiredEkuNotFound | Self::RequiredEkuNotFoundContext(_) => 240,
              Self::NameConstraintViolation => 230,
@@ -64,7 +66,7 @@
              Self::PathLenConstraintViolated => 220,
              Self::CaUsedAsEndEntity | Self::EndEntityUsedAsCa => 210,
              Self::IssuerNotCrlSigner => 200,
-@@ -344,7 +387,6 @@
+@@ -351,7 +394,6 @@ impl Error {
              Self::MalformedDnsIdentifier => 60,
              Self::MalformedNameConstraint => 50,
              Self::MalformedExtensions | Self::TrailingData(_) => 40,
@@ -72,9 +74,11 @@
  
              // Generic DER errors.
              Self::BadDerTime => 20,
+diff --git a/src/lib.rs b/src/lib.rs
+index 39feff5..d2bb07e 100644
 --- a/src/lib.rs
 +++ b/src/lib.rs
-@@ -86,7 +86,8 @@
+@@ -88,7 +88,8 @@ pub use {
      der::DerIterator,
      end_entity::EndEntityCert,
      error::{

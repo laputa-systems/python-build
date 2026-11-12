@@ -1,15 +1,17 @@
+diff --git a/src/crl/mod.rs b/src/crl/mod.rs
+index de0bc35..d61deef 100644
 --- a/src/crl/mod.rs
 +++ b/src/crl/mod.rs
-@@ -16,7 +16,7 @@
-
+@@ -16,7 +16,7 @@ use pki_types::{SignatureVerificationAlgorithm, UnixTime};
+ 
  use crate::error::Error;
  use crate::verify_cert::{Budget, PathNode, Role};
 -use crate::{der, public_values_eq};
 +use crate::der;
-
+ 
  use core::fmt::Debug;
-
-@@ -121,8 +121,9 @@
+ 
+@@ -121,8 +121,9 @@ impl RevocationOptions<'_> {
          supported_sig_algs: &[&dyn SignatureVerificationAlgorithm],
          budget: &mut Budget,
          time: UnixTime,
@@ -17,21 +19,23 @@
      ) -> Result<Option<CertNotRevoked>, Error> {
 -        assert!(public_values_eq(path.cert.issuer, issuer_subject));
 +        assert!(name_comparison(path.cert.issuer(), issuer_subject.as_slice_less_safe()));
-
+ 
          // If the policy only specifies checking EndEntity revocation state and we're looking at an
          // issuer certificate, return early without considering the certificate's revocation state.
-@@ -133,7 +134,7 @@
+@@ -133,7 +134,7 @@ impl RevocationOptions<'_> {
          let crl = self
              .crls
              .iter()
 -            .find(|candidate_crl| candidate_crl.authoritative(path));
 +            .find(|candidate_crl| candidate_crl.authoritative(path, name_comparison));
-
+ 
          use UnknownStatusPolicy::*;
          let crl = match (crl, self.status_policy) {
+diff --git a/src/crl/types.rs b/src/crl/types.rs
+index 6a517d9..809445c 100644
 --- a/src/crl/types.rs
 +++ b/src/crl/types.rs
-@@ -93,10 +93,10 @@
+@@ -93,10 +93,10 @@ impl CertRevocationList<'_> {
      ///       distribution point extension.
      ///
      /// In all other circumstances the CRL is not considered authoritative.
@@ -43,31 +47,34 @@
 +        if !name_comparison(self.issuer(), path.cert.issuer()) {
              return false;
          }
-
-@@ -1215,7 +1215,7 @@
+ 
+@@ -1215,7 +1215,7 @@ mod tests {
          let path = PartialPath::new(&ee);
-
+ 
          // The CRL should not be authoritative for an EE issued by a different issuer.
 -        assert!(!crl.authoritative(&path.node()));
 +        assert!(!crl.authoritative(&path.node(), |left, right| left == right));
      }
-
+ 
      #[test]
-@@ -1232,7 +1232,7 @@
-
+@@ -1232,7 +1232,7 @@ mod tests {
+ 
          // The CRL should be considered authoritative, the issuers match, the CRL has no IDP and the
          // cert has no CRL DPs.
 -        assert!(crl.authoritative(&path.node()));
 +        assert!(crl.authoritative(&path.node(), |left, right| left == right));
      }
-
+ 
      #[test]
+diff --git a/src/end_entity.rs b/src/end_entity.rs
+index 67f9f9f..6125ba4 100644
 --- a/src/end_entity.rs
 +++ b/src/end_entity.rs
-@@ -110,12 +110,32 @@
+@@ -109,6 +109,25 @@ impl EndEntityCert<'_> {
+         usage: impl ExtendedKeyUsageValidator,
          revocation: Option<RevocationOptions<'_>>,
          verify_path: Option<&dyn Fn(&VerifiedPath<'_>) -> Result<(), Error>>,
-     ) -> Result<VerifiedPath<'p>, Error> {
++    ) -> Result<VerifiedPath<'p>, Error> {
 +        self.verify_for_usage_with_name_comparison(
 +            supported_sig_algs, trust_anchors, intermediate_certs, time,
 +            usage, revocation, verify_path, |left, right| left == right,
@@ -86,20 +93,22 @@
 +        revocation: Option<RevocationOptions<'_>>,
 +        verify_path: Option<&dyn Fn(&VerifiedPath<'_>) -> Result<(), Error>>,
 +        name_comparison: fn(&[u8], &[u8]) -> bool,
-+    ) -> Result<VerifiedPath<'p>, Error> {
+     ) -> Result<VerifiedPath<'p>, Error> {
          verify_cert::ChainOptions {
              eku: usage,
-             supported_sig_algs,
-             trust_anchors,
+@@ -117,6 +136,7 @@ impl EndEntityCert<'_> {
              intermediate_certs,
              revocation,
+             distrusted_spkis: verify_cert::DISTRUSTED_SPKIS,
 +            name_comparison,
          }
          .build_chain(self, time, verify_path)
      }
+diff --git a/src/lib.rs b/src/lib.rs
+index 1ccad74..39feff5 100644
 --- a/src/lib.rs
 +++ b/src/lib.rs
-@@ -90,6 +90,7 @@
+@@ -92,6 +92,7 @@ pub use {
          UnsupportedSignatureAlgorithmForPublicKeyContext,
      },
      rpk_entity::RawPublicKeyEntity,
@@ -107,14 +116,14 @@
      trust_anchor::anchor_from_trusted_cert,
      verify_cert::{
          ExtendedKeyUsageValidator, IntermediateIterator, KeyPurposeId, KeyPurposeIdIter, KeyUsage,
+diff --git a/src/subject_name/mod.rs b/src/subject_name/mod.rs
+index 1600390..428de3a 100644
 --- a/src/subject_name/mod.rs
 +++ b/src/subject_name/mod.rs
-@@ -84,6 +84,33 @@
-     }
-
+@@ -86,6 +86,33 @@ pub(crate) fn check_name_constraints(
      Ok(())
-+}
-+
+ }
+ 
 +/// Match a legacy subject common name using the DNS-ID matcher.
 +pub fn common_name_matches(presented: &str, expected: &pki_types::DnsName<'_>) -> Result<bool, Error> {
 +    dns_name::presented_id_matches_reference_id(
@@ -140,20 +149,24 @@
 +            permitted, excluded, &mut Budget::default(),
 +        ).unwrap_or(Ok(()))
 +    })
- }
-
++}
++
  fn check_presented_id_conforms_to_constraints(
+     name: GeneralName<'_>,
+     permitted_subtrees: Option<untrusted::Input<'_>>,
+diff --git a/src/verify_cert.rs b/src/verify_cert.rs
+index c871fe8..21c9878 100644
 --- a/src/verify_cert.rs
 +++ b/src/verify_cert.rs
-@@ -34,6 +34,7 @@
-     pub(crate) trust_anchors: &'p [TrustAnchor<'p>],
+@@ -39,6 +39,7 @@ pub(crate) struct ChainOptions<'a, 'p, V> {
      pub(crate) intermediate_certs: &'p [CertificateDer<'p>],
      pub(crate) revocation: Option<RevocationOptions<'a>>,
+     pub(crate) distrusted_spkis: &'a [&'a [u8]],
 +    pub(crate) name_comparison: fn(&[u8], &[u8]) -> bool,
  }
-
+ 
  impl<'a, 'p: 'a, V: ExtendedKeyUsageValidator> ChainOptions<'a, 'p, V> {
-@@ -67,7 +68,7 @@
+@@ -79,7 +80,7 @@ impl<'a, 'p: 'a, V: ExtendedKeyUsageValidator> ChainOptions<'a, 'p, V> {
          let result =
              loop_while_non_fatal_error(Error::UnknownIssuer, self.trust_anchors, |trust_anchor| {
                  let trust_anchor_subject = untrusted::Input::from(trust_anchor.subject.as_ref());
@@ -161,16 +174,16 @@
 +                if !self.names_equal(path.head().issuer, trust_anchor_subject) {
                      return Err(Error::UnknownIssuer.into());
                  }
-
-@@ -106,21 +107,22 @@
-
+ 
+@@ -123,21 +124,22 @@ impl<'a, 'p: 'a, V: ExtendedKeyUsageValidator> ChainOptions<'a, 'p, V> {
+ 
          loop_while_non_fatal_error(err, self.intermediate_certs, |cert_der| {
              let potential_issuer = Cert::from_der(untrusted::Input::from(cert_der))?;
 -            if !public_values_eq(potential_issuer.subject, path.head().issuer) {
 +            if !self.names_equal(potential_issuer.subject, path.head().issuer) {
                  return Err(Error::UnknownIssuer.into());
              }
-
+ 
              // Prevent loops; see RFC 4158 section 5.2.
              if path.node().iter().any(|prev| {
                  public_values_eq(potential_issuer.spki, prev.cert.spki)
@@ -179,40 +192,38 @@
              }) {
                  return Err(Error::UnknownIssuer.into());
              }
-
+ 
              let next_sub_ca_count = match role {
                  Role::EndEntity => sub_ca_count,
 -                Role::Issuer => sub_ca_count + 1,
 +                Role::Issuer => sub_ca_count
 +                    + usize::from(!self.names_equal(path.head().subject, path.head().issuer)),
              };
-
+ 
              budget.consume_build_chain_call()?;
-@@ -132,6 +134,10 @@
-
-             result
+@@ -151,6 +153,10 @@ impl<'a, 'p: 'a, V: ExtendedKeyUsageValidator> ChainOptions<'a, 'p, V> {
          })
-+    }
-+
+     }
+ 
 +    fn names_equal(&self, left: untrusted::Input<'_>, right: untrusted::Input<'_>) -> bool {
 +        (self.name_comparison)(left.as_slice_less_safe(), right.as_slice_less_safe())
-     }
-
++    }
++
      fn check_signed_chain(
-@@ -161,6 +167,7 @@
+         &self,
+         path: &PathNode<'_>,
+@@ -178,6 +184,7 @@ impl<'a, 'p: 'a, V: ExtendedKeyUsageValidator> ChainOptions<'a, 'p, V> {
                      self.supported_sig_algs,
                      budget,
                      time,
 +                    self.name_comparison,
                  )?;
              }
-
-@@ -196,6 +203,17 @@
-             },
-             anchor,
+ 
+@@ -215,6 +222,17 @@ impl<'p> VerifiedPath<'p> {
          }
-+    }
-+
+     }
+ 
 +    /// Validate a DNS name against every name constraint in this verified path.
 +    pub fn verify_common_name_constraints(&'p self, name: &str) -> Result<(), Error> {
 +        subject_name::check_dns_name_constraints(
@@ -222,14 +233,24 @@
 +            subject_name::check_dns_name_constraints(certificate.name_constraints, name)?;
 +        }
 +        Ok(())
-     }
-
++    }
++
      /// Yields a (double-ended) iterator over the intermediate certificates in this path.
-@@ -1357,6 +1375,7 @@
-             trust_anchors,
+     pub fn intermediate_certificates(&'p self) -> IntermediateIterator<'p> {
+         IntermediateIterator {
+@@ -1260,6 +1278,7 @@ mod tests {
+                 intermediate_certs: intermediates,
+                 revocation: None,
+                 distrusted_spkis,
++                name_comparison: |left, right| left == right,
+             }
+             .build_chain(
+                 ee_cert,
+@@ -1520,6 +1539,7 @@ mod tests {
              intermediate_certs,
              revocation: None,
+             distrusted_spkis: DISTRUSTED_SPKIS,
 +            name_comparison: |left, right| left == right,
          };
-
+ 
          match opts.build_chain_inner(
