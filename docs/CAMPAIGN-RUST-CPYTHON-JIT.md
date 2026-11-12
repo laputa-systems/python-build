@@ -758,6 +758,35 @@ including an argument getter, inherited and unrelated owner layouts, descriptor 
 tracing/monitoring, and a finalizer that deletes the slot while the caller is
 running in the JIT. The latter must retain the getter's traceback frame.
 
+**Inline instance getters (2026-11-12).** The same leaf planner recognizes
+borrowed argument loads followed by the managed-inline-values validity check,
+instance-value load and complete borrowed-owner cleanup. Existing type guards
+must already be discharged before the call. The private leaf opcode map grows
+from 80 to 84 bytes; result tag 3 records an inline instance value using the
+existing argument/byte-offset fields.
+
+The fused call retains the mutable storage check at runtime before reading
+that offset. Replaced dictionaries, invalid inline storage and missing values
+take the original call path before consuming inputs; the ordinary callee
+therefore produces the original error frame. The result acquires ownership
+before reverse argument/function/code cleanup. Descriptor/type invalidation,
+instrumentation and function guards retain their existing boundaries.
+
+The slot-getter native regression now shares behavioral checks across slot
+and managed layouts, including unrelated layouts, refcounts, finalizers,
+missing-value errors and observers. Separate managed mutation cases each
+start in a fresh child process. An earlier caller-side attribute read proves
+the argument layout; an active-JIT finalizer then replaces or empties only
+that argument's dictionary before the getter. Both cases prove tag 3 fusion,
+active execution at the call and original results or callee traceback.
+JIT-off and optimizer-disabled modes match all absolute behavioral checks.
+
+One additional upstream shape assertion is named under the existing ruling:
+`test_guard_type_version_locked_propagates` now sees one concrete frame and
+one fused managed getter rather than two concrete frames. Independent review
+ran the original method with only that count changed in memory; its numeric,
+one-type-guard and function-version assertions all passed.
+
 Global-return getters retain a pre-call `_CHECK_LEAF_GLOBALS_VERSION` that
 reads the called function's globals dictionary. The Rust planner moves one
 remaining globals guard from the pure callee body to the original call site;
@@ -1889,7 +1918,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | Numeric closed loops now guard local types at entry, prove backedge invariants and use typed cleanup; integer compactness checks remain. Next: general virtual frames, remaining lookup/allocation shapes and broader loop work. Performance acceptance deferred under OD16 | Loop-type slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 11 shape exclusions; 50 Rust tests; mutation/refusal/capacity native checks and all prior integrations pass; independent source/native review approves |
+| J | active | Managed inline-value getters now share frame-free leaf calls while retaining mutable storage guards and ordinary-call refusal. Numeric loop invariants remain integrated. Next: general virtual frames, remaining lookup/allocation shapes and broader loop work. Performance acceptance deferred under OD16 | Managed-getter slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; 12 reviewed shape exclusions; 51 Rust tests; slot/managed regressions in nine JIT/optimizer modes plus all prior integrations pass; independent source/native/policy review approves |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | feature complete | C3 integrated with refreshed main dependencies; performance acceptance deferred under OD16. Routing/API owner reviews remain asynchronous; nothing pushed | Integrated normal and verify runs each execute 52,102 tests, with exactly the matched reference's five failing files and 0 compiler mismatches; native 11-case integration passes; C3 corpus and independent reviews remain valid |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -1929,12 +1958,13 @@ requested): CinderX 3.15 steady JIT uplift `S = 0.7960`, held-out 1.0621, beside
 M2 ≤ 0.48, M3 ≤ 0.38, M4 ≤ 0.25. T2 does not wait for an answer.
 
 J continuation builds use `.work/wt/jit-pair`; its `perf-jit-pair` stage
-was rebuilt incrementally for the store, list, float-call and loop-type slices after
+was rebuilt incrementally for the store, list, float-call, loop-type and inline-instance-getter slices after
 the tuple slice. Earlier reports and suite logs were archived under
 `.work/tmp/tuple-tested-report.json`, `tuple-accepted/`,
 `glue-tested-report.json`, `glue-accepted/`, `list-tested-report.json`
 and `list-accepted/`, plus `arith-tested-report.json` and
-`arith-accepted/`, before reuse. Each ledger row
+`arith-accepted/`, followed by `loop-types-tested-report.json` and
+`loop-types-accepted/`, before reuse. Each ledger row
 has distinct digest-result directories and source identities. The committed
 `4b66ce3` reference in `.work/wt/jit-integrate` remains unchanged.
 
@@ -1949,6 +1979,14 @@ The three
 new named upstream uop-shape exclusions follow the existing owner ruling;
 an independent run bypassed only those obsolete assertions and passed every
 remaining original assertion. Performance acceptance is deferred under OD16.
+
+**Owner queue:** T3 inline instance getters (async review). The private
+leaf opcode map grows from 80 to 84 bytes and result tag 3 identifies managed
+inline values. Mutable storage validity remains a pre-consumption runtime
+guard, even when type guards have been proved outside the callee. Independent
+source/native review approves dictionary replacement and clear during active
+JIT execution; one additional named frame-count exclusion retains all original
+numeric/type/function assertions. Performance acceptance remains deferred.
 
 **Owner queue:** T3 global getters (landed locally, async review). The
 private leaf opcode map now includes a pre-call callee-dictionary version
@@ -2326,3 +2364,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-10 | e891 | J | T3 | Python-to-Python inline frames: eligible exact-args leaf call segments build the callee frame in datastack spare without linking it; side exits, deopts and errors materialize it before resuming; entry resume and stack-space checks fold into the call; generators, nested calls, escaping/error/periodic callees stay concrete | `perf-jit-genops` | timing deferred (OD14); advisory 1.0123 | incumbent-named bucket (a) richards 24.0% → 17.2%, raytrace 11.6% → 9.6%; including `_INLINE_*` call/frame uops 23.9% → 24.6% and 11.5% → 11.7% over two runs, so no fall; JIT code bytes ≤1.071x incumbent (sor), raytrace 457,404 (M0 457,068 at 1.30x) | DROPPED (correct; concrete-frame argument setup and refcount clear remain, under P1's 1% floor; 5 incumbent superseded `test_capi.test_opt` assertions; `jit_inline_integration.py` 18 absolute checks; lane 245/246, one pre-existing incumbent failure) | `rust-cpython/results/perf-bench/20261111T012030Z-perf-jit-genops-vs-perf-jit-inline`, `rust-cpython/results/perf-profile/20261110T2337*-perf-jit-{genops,inline}-{richards,raytrace}-sample`, repeat `20261111T0119*-...` |
 | 2026-11-12 | e891 | J | correctness | match specialized float division error text to the pinned interpreter | JIT disabled in the same stage | no timing | — | CORRECT: native regression proves active JIT at the fault and identical ZeroDivisionError text, traceback function, bytecode and line; independent review approves | `rust-cpython/tests/jit_float_division_integration.py`; tested alongside the pending loop-type slice in the incremental `perf-jit-pair` stage |
 | 2026-11-12 | e891 | J | T3 | prove callback-free numeric loop-local invariants under exact entry guards; retain integer range checks and terminal pending exits | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 11 shape exclusions; 50 Rust tests; numeric/mutation/refusal/capacity native coverage plus prior integrations; independent source/native review approves | `rust-cpython/results/perf-bench/20261112T101737Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T101904Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/loop-types-feature-acceptance.json`; incremental stage based on `3fafd75` with this slice and the separate division fix |
+| 2026-11-12 | e891 | J | T3 | fuse borrowed-argument inline instance getters while retaining mutable storage and missing-value refusals | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; 12 reviewed shape exclusions; 51 Rust tests; slot/managed regressions in nine JIT/optimizer modes plus prior integrations; independent source/native/policy review approves | `rust-cpython/results/perf-bench/20261112T103312Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T103439Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/managed-getter-feature-acceptance.json`; incremental stage based on `ff3f2b0` with this slice |

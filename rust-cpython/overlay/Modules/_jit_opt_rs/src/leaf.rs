@@ -54,6 +54,8 @@ pub struct LeafOpcodes {
     pub float_multiply: u16,
     pub float_divide: u16,
     pub float_call: u16,
+    pub managed_values: u16,
+    pub load_instance: u16,
 }
 
 /// `effectful` is 0 or 1. Operand bits are opaque; Rust never dereferences them.
@@ -67,7 +69,8 @@ pub struct LeafUop {
 }
 
 /// A replacement copies target metadata from `source`. The low two result bits
-/// select a constant address (0), argument (1), or argument slot (2). Argument
+/// select a constant address (0), argument (1), argument slot (2), or guarded
+/// inline instance value (3). Argument
 /// indices occupy bits 2..18; slot byte offsets occupy bits 18..34.
 /// For a leaf-globals guard, `result` holds the expected dictionary keys version.
 /// For a pair call it holds 0 for argument order or 1 for reversed order.
@@ -87,6 +90,7 @@ enum ResultSource {
     Argument(u16),
     Constant(u64),
     Slot { argument: u16, offset: u16 },
+    InstanceValue { argument: u16, offset: u16 },
 }
 
 impl ResultSource {
@@ -98,7 +102,10 @@ impl ResultSource {
             Self::Slot { argument, offset } if offset != 0 && offset & 7 == 0 => {
                 Ok((u64::from(offset) << 18) | (u64::from(argument) << 2) | 2)
             }
-            Self::Slot { .. } => Err(Inconsistent),
+            Self::InstanceValue { argument, offset } if offset != 0 && offset & 7 == 0 => {
+                Ok((u64::from(offset) << 18) | (u64::from(argument) << 2) | 3)
+            }
+            Self::Slot { .. } | Self::InstanceValue { .. } => Err(Inconsistent),
         }
     }
 }
@@ -107,6 +114,7 @@ enum BodyState {
     Entry { resumed: bool },
     Value { result: ResultSource, borrowed: bool },
     SlotOwner(ResultSource),
+    ManagedOwner(u16),
 }
 
 struct LeafBody {
@@ -331,6 +339,17 @@ fn leaf_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
                 BodyState::Value { result, borrowed: opcode == ops.load_const_borrow }
             }
             BodyState::Value { result: ResultSource::Argument(argument), borrowed: true }
+                if opcode == ops.managed_values && uop.effectful == 0 =>
+            {
+                BodyState::ManagedOwner(argument)
+            }
+            BodyState::ManagedOwner(argument) if opcode == ops.load_instance && uop.effectful == 0 => {
+                let offset = u16::try_from(uop.operand).map_err(|_| Inconsistent)?;
+                let result = ResultSource::InstanceValue { argument, offset };
+                result.encode()?;
+                BodyState::SlotOwner(result)
+            }
+            BodyState::Value { result: ResultSource::Argument(argument), borrowed: true }
                 if opcode == ops.load_slot && uop.effectful == 0 =>
             {
                 let offset = u16::try_from(uop.operand).map_err(|_| Inconsistent)?;
@@ -457,6 +476,7 @@ mod tests {
             build_list: 49, unpack_list: 50,
             guard_tos_float: 51, guard_nos_float: 52, float_add: 53,
             float_subtract: 54, float_multiply: 55, float_divide: 56, float_call: 57,
+            managed_values: 58, load_instance: 59,
         }
     }
 
@@ -549,6 +569,32 @@ mod tests {
     }
 
     #[test]
+    fn instance_values_require_valid_inline_storage_and_complete_cleanup() {
+        let ops = opcodes();
+        let mut input = identity();
+        input.splice(7..7, [uop(ops.managed_values, 0),
+            LeafUop { opcode: ops.load_instance, oparg: 0, effectful: 0, operand: 24 },
+            uop(ops.pop_borrow, 0)]);
+        let plan = plan_leaf_calls(&input, &ops).unwrap().unwrap();
+        assert_eq!(plan[4].result, (24 << 18) | 3);
+        for index in [7, 8, 9] {
+            let mut partial = input.clone();
+            partial[index].opcode = ops.nop;
+            assert!(plan_leaf_calls(&partial, &ops).unwrap().is_none());
+            let mut effectful = input.clone();
+            effectful[index].effectful = 1;
+            assert!(plan_leaf_calls(&effectful, &ops).unwrap().is_none());
+        }
+        for offset in [0, 3, 1 << 16] {
+            let mut invalid = input.clone();
+            invalid[8].operand = offset;
+            assert!(matches!(plan_leaf_calls(&invalid, &ops), Err(Inconsistent)));
+        }
+        input[6].opcode = ops.load_fast.first;
+        assert!(plan_leaf_calls(&input, &ops).unwrap().is_none());
+    }
+
+    #[test]
     fn global_guards_keep_callee_context_and_precall_deopt() {
         let mut uops = identity();
         uops.insert(6, LeafUop { opcode: opcodes().guard_globals, oparg: 0,
@@ -587,7 +633,7 @@ mod tests {
         assert!(output.iter().all(|step| *step == untouched));
         assert_eq!(std::mem::size_of::<LeafUop>(), 16);
         assert_eq!(std::mem::size_of::<LeafStep>(), 16);
-        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 80);
+        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 84);
     }
 
     fn pair() -> Vec<LeafUop> {

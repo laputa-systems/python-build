@@ -2082,6 +2082,8 @@ typedef struct {
     uint16_t float_multiply;
     uint16_t float_divide;
     uint16_t float_call;
+    uint16_t managed_values;
+    uint16_t load_instance;
 } _PyJitLeafOpcodes;
 
 typedef struct {
@@ -2098,7 +2100,7 @@ typedef struct {
     uint64_t result;
 } _PyJitLeafStep;
 
-static_assert(sizeof(_PyJitLeafOpcodes) == 80, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
+static_assert(sizeof(_PyJitLeafOpcodes) == 84, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
 static_assert(_Alignof(PyObject) >= 4, "leaf result tags use two object-alignment bits");
 static_assert(sizeof(_PyJitLeafUop) == 16, "_PyJitLeafUop matches Rust LeafUop");
 static_assert(offsetof(_PyJitLeafUop, operand) == 8, "LeafUop operand offset matches Rust");
@@ -2154,6 +2156,8 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         .float_multiply = _BINARY_OP_MULTIPLY_FLOAT,
         .float_divide = _BINARY_OP_TRUEDIV_FLOAT,
         .float_call = _CALL_PY_FLOAT_LEAF,
+        .managed_values = _CHECK_MANAGED_OBJECT_HAS_VALUES,
+        .load_instance = _LOAD_ATTR_INSTANCE_VALUE,
     };
     _PyJitLeafUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
     _PyJitLeafStep *steps = PyMem_RawMalloc((size_t)length * sizeof(*steps));
@@ -2171,7 +2175,8 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
             .effectful = (flags & (HAS_ESCAPES_FLAG | HAS_ERROR_FLAG | HAS_PERIODIC_FLAG |
                                    HAS_EVAL_BREAK_FLAG | HAS_SYNC_SP_FLAG)) != 0,
             .operand = (opcode == _LOAD_CONST_INLINE || opcode == _LOAD_CONST_INLINE_BORROW ||
-                        opcode == _LOAD_ATTR_SLOT || opcode == _GUARD_GLOBALS_VERSION)
+                        opcode == _LOAD_ATTR_SLOT || opcode == _LOAD_ATTR_INSTANCE_VALUE ||
+                        opcode == _GUARD_GLOBALS_VERSION)
                        ? buffer[i].operand0 :
                        (opcode == _BINARY_OP_ADD_FLOAT || opcode == _BINARY_OP_SUBTRACT_FLOAT ||
                         opcode == _BINARY_OP_MULTIPLY_FLOAT || opcode == _BINARY_OP_TRUEDIV_FLOAT)

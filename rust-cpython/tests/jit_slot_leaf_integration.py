@@ -27,8 +27,18 @@ def uops(function):
         names.update(entry[0] for entry in executor)
     return sorted(names)
 
+def result_kinds(function):
+    kinds = []
+    for offset in range(0, len(function.__code__.co_code), 2):
+        try:
+            entries = _opcode.get_executor(function.__code__, offset)
+        except (ValueError, RuntimeError):
+            continue
+        kinds.extend(entry[3] & 3 for entry in entries if entry[0] == "_CALL_PY_LEAF")
+    return kinds
+
 class Holder:
-    __slots__ = ("value",)
+    __HOLDER_LAYOUT__
     def __init__(self, value):
         self.value = value
     def get(self):
@@ -70,6 +80,51 @@ TRACES["inherited"] = uops(inherited_loop)
 RESULTS["argument"] = argument_loop(WARM, holder) is token
 TRACES["argument"] = uops(argument_loop)
 
+if __MANAGED__:
+    TRACES["managed result kinds"] = result_kinds(slot_loop)
+    class ReplaceDict:
+        def __init__(self, owner, values):
+            self.owner = owner
+            self.values = values
+        def __del__(self):
+            self.owner.__dict__ = self.values
+    def separate_loop(n, receiver, other, source):
+        for i in range(n):
+            proof = other.value
+            transient = source.pop()
+            ACTIVE.append(sys._jit.is_active())
+            result = receiver.get_argument(other)
+        return result
+    other = Holder(token)
+    RESULTS["separate"] = separate_loop(WARM, holder, other, [None] * WARM) is token
+    TRACES["separate result kinds"] = result_kinds(separate_loop)
+    ACTIVE.clear()
+    try:
+        RESULTS["separate changed dict"] = separate_loop(2, holder, other,
+            [None, ReplaceDict(other, {} if __CLEAR__ else {"value": "separate dictionary"})])
+    except AttributeError as error:
+        frames = []
+        tb = error.__traceback__
+        while tb:
+            frames.append(tb.tb_frame.f_code.co_name)
+            tb = tb.tb_next
+        RESULTS["separate changed dict"] = [str(error), frames]
+    TRACES["separate mutation active"] = bool(ACTIVE) and ACTIVE[-1]
+    RESULTS["materialized dict"] = holder.__dict__["value"] is token
+    holder.__dict__ = {"value": "replaced dictionary"}
+    RESULTS["replaced dict"] = slot_loop(8, holder)
+    holder.__dict__.clear()
+    try:
+        slot_loop(8, holder)
+    except AttributeError as error:
+        frames = []
+        tb = error.__traceback__
+        while tb:
+            frames.append(tb.tb_frame.f_code.co_name)
+            tb = tb.tb_next
+        RESULTS["cleared dict"] = [str(error), frames]
+    holder = Holder(token)
+
 class Foreign:
     __slots__ = ("pad", "value")
     get = Holder.get
@@ -78,6 +133,14 @@ class Foreign:
         self.value = "foreign"
 
 RESULTS["foreign layout"] = inherited_loop(32, Foreign())
+
+if __MANAGED__:
+    class ForeignManaged:
+        get = Holder.get
+        def __init__(self):
+            self.pad = "different inline offset"
+            self.value = "foreign managed"
+    RESULTS["foreign managed layout"] = inherited_loop(32, ForeignManaged())
 
 class MortalHolder(Holder):
     __slots__ = ("active",)
@@ -138,7 +201,7 @@ except AttributeError as exc:
         frames.append(tb.tb_frame.f_code.co_name)
         tb = tb.tb_next
     RESULTS["missing"] = [str(exc), frames]
-missing_was_jitted = any(ACTIVE)
+missing_was_jitted = bool(ACTIVE) and ACTIVE[-1]
 holder.value = token
 
 profiled = []
@@ -182,9 +245,13 @@ print(json.dumps({"results": RESULTS, "traces": TRACES,
 '''
 
 
-def run(jit):
-    completed = subprocess.run([sys.executable, "-s", "-c", PROGRAM],
-        env=dict(os.environ, PYTHON_JIT="1" if jit else "0"),
+def run(jit, managed, clear, optimize=True):
+    program = PROGRAM.replace("__HOLDER_LAYOUT__", "pass" if managed else '__slots__ = ("value",)')
+    program = program.replace("__MANAGED__", repr(managed))
+    program = program.replace("__CLEAR__", repr(clear))
+    completed = subprocess.run([sys.executable, "-s", "-c", program],
+        env=dict(os.environ, PYTHON_JIT="1" if jit else "0",
+                 PYTHON_UOPS_OPTIMIZE="1" if optimize else "0"),
         capture_output=True, text=True, timeout=120)
     if completed.returncode:
         raise AssertionError(f"JIT={int(jit)} exited {completed.returncode}:\n{completed.stderr}")
@@ -192,8 +259,6 @@ def run(jit):
 
 
 def main():
-    candidate, reference = run(True), run(False)
-    assert candidate["results"] == reference["results"], (candidate, reference)
     expected = {
         "self": True, "refcount delta": 0, "inherited": True, "argument": True,
         "foreign layout": "foreign",
@@ -203,11 +268,30 @@ def main():
         "profiled": [True] * 8, "traced": [True] * 8, "monitored": [True] * 8,
         "invalidated": True, "descriptor": "descriptor",
     }
-    assert reference["results"] == expected, reference
-    assert candidate["missing_was_jitted"], candidate
-    for name in ("self", "inherited", "argument", "ephemeral", "missing"):
-        assert "_CALL_PY_LEAF" in candidate["traces"][name], (name, candidate["traces"])
-    print("OK    five slot-getter traces preserve guards, missing-slot exits and observers")
+    for managed, clear in ((False, False), (True, False), (True, True)):
+        candidate, reference = run(True, managed, clear), run(False, managed, clear)
+        noopt = run(True, managed, clear, False)
+        assert candidate["results"] == reference["results"], (managed, candidate, reference)
+        absolute = dict(expected)
+        if managed:
+            absolute.update({"materialized dict": True, "replaced dict": "replaced dictionary",
+                "foreign managed layout": "foreign managed",
+                "separate": True,
+                "separate changed dict": ["'Holder' object has no attribute 'value'",
+                    ["<module>", "separate_loop", "get_argument"]] if clear else "separate dictionary",
+                "cleared dict": ["'Holder' object has no attribute 'value'",
+                    ["<module>", "slot_loop", "get"]]})
+            assert candidate["traces"]["managed result kinds"] == [3], candidate["traces"]
+            assert candidate["traces"]["separate result kinds"] == [3], candidate["traces"]
+            assert candidate["traces"]["separate mutation active"], candidate["traces"]
+        assert reference["results"] == absolute, (managed, reference)
+        assert noopt["results"] == absolute, (managed, noopt)
+        assert all("_CALL_PY_LEAF" not in noopt["traces"][name]
+                   for name in ("self", "inherited", "argument", "ephemeral", "missing")), noopt
+        assert candidate["missing_was_jitted"], (managed, candidate)
+        for name in ("self", "inherited", "argument", "ephemeral", "missing"):
+            assert "_CALL_PY_LEAF" in candidate["traces"][name], (managed, name, candidate["traces"])
+    print("OK    slot/instance getter traces preserve storage, guards, missing-value exits and observers")
     return 0
 
 

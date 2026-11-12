@@ -4893,7 +4893,6 @@ dummy_func(
             uintptr_t iversion = FT_ATOMIC_LOAD_UINTPTR_ACQUIRE(code->_co_instrumentation_version);
             DEOPT_IF(_Py_atomic_load_uintptr_relaxed(&tstate->eval_breaker) != iversion);
             unsigned int kind = result & 3;
-            DEOPT_IF(kind == 3);
             uint64_t argument = (result >> 2) & UINT16_MAX;
             DEOPT_IF(kind != 0 && argument >= (uint64_t)code->co_argcount);
             _PyStackRef selected = PyStackRef_NULL;
@@ -4901,10 +4900,14 @@ dummy_func(
             if (kind != 0) {
                 selected = has_self && argument == 0 ? self_or_null : args[argument - has_self];
             }
-            if (kind == 2) {
-                /* The original slot load has no remaining type guard: the
+            if (kind == 2 || kind == 3) {
+                /* The original attribute load has no remaining type guard: the
                    optimizer proved its owner layout before the call. */
                 PyObject *owner = PyStackRef_AsPyObjectBorrow(selected);
+                if (kind == 3) {
+                    DEOPT_IF(!(Py_TYPE(owner)->tp_flags & Py_TPFLAGS_INLINE_VALUES));
+                    DEOPT_IF(!_PyObject_InlineValues(owner)->valid);
+                }
                 uint16_t offset = (result >> 18) & UINT16_MAX;
                 slot = *(PyObject **)((char *)owner + offset);
                 DEOPT_IF(slot == NULL);
@@ -4915,7 +4918,7 @@ dummy_func(
             if (kind == 1) {
                 value = PyStackRef_DUP(selected);
             }
-            else if (kind == 2) {
+            else if (kind == 2 || kind == 3) {
                 value = PyStackRef_FromPyObjectNew(slot);
                 STAT_INC(LOAD_ATTR, hit);
             }

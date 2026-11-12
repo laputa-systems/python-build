@@ -139,6 +139,7 @@ CLIMB_SUPERSEDED_UOP_ASSERTIONS = frozenset({
     "test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_unique_result_enables_inplace",
     "test.test_capi.test_opt.TestUopsOptimization.test_func_guards_removed_or_reduced",
     "test.test_capi.test_opt.TestUopsOptimization.test_func_version_guarded_on_change",
+    "test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_locked_propagates",
     "test.test_capi.test_opt.TestUopsOptimization.test_int_inplace_chain_propagation",
     "test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_optimized_immortal",
 })
