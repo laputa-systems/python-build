@@ -2105,73 +2105,7 @@ A/A spread, and `S0`. Scores compare only within an epoch.
 - **Parked:** a method-based frontend (withdrawn PEP 836 prototype, observed
   head `04a79098`) opens only by owner decision.
 
-## Lane host
-
-Linux x86-64 lane commands run in the local image `rust-cpython-linux:20260401`
-(Ubuntu 24.04, the exact `linux-toolchain.lock.json` packages, rustup
-`nightly-2026-09-15`):
-
-```sh
-docker run --rm --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
-  -v "$PWD:$PWD" -w "$PWD" -e TMPDIR="$PWD/.work/tmp" \
-  rust-cpython-linux:20260401 <command>
-```
-
-Builds and `test --all` outlast 10 minutes; run them in the background. The
-image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
-
-## Debugging methods
-
-1. **Compare against the sibling build.** `PYTHON_JIT=0` skips every
-   `requires_jit_enabled` test, so it proves nothing for tier-2 tests.
-   `python -I` implies `-E` and silently drops `PYTHON_JIT`.
-2. **Shrink to pure Python first.** `sys.getallocatedblocks()` deltas over
-   fresh `exec`'d functions and `_opcode.get_executor(code, i)` reproduce
-   leaks and missing executors without a test runner. The GC invalidates cold
-   executors, and backoff then blocks re-tracing. Warmup takes about 4,000
-   iterations; a loop that raises every iteration never traces.
-3. **A release SIGSEGV becomes an assertion under pydebug.** Run the test on
-   `rust-cpython/stage/bin/python3.16d` with `PYTHON_LLTRACE=2`; the last trace
-   printed before the abort is the suspect, not the reported
-   `executor_cases.c.h` line.
-4. **Bisect code generation with a runtime mask** in a throwaway build: read
-   an env var once in the changed function, one bit per transition, and run
-   the failing tests once per bit. Delete the build and mask before
-   committing.
-5. **Model an allocator offline** from `_opcode.get_executor` dumps and
-   `_PyUop_Caching`; keep `-1` default entries in the table parse.
-6. **Uop share is not CPU.** Check stencil body sizes in
-   `jit_stencils-<triple>.h` before ranking a cost.
-7. **pystats:** `perf.py build --jit --pystats`; per kernel,
-   `sys._stats_clear()`, run, `sys._stats_off()`, `sys._stats_dump()` into an
-   existing stats directory; summarize with the build's
-   `Tools/scripts/summarize_stats.py`.
-8. **Look in the locked LLVM archive, not the prefix,** for `opt`,
-   `llvm-config`, `llvm-symbolizer`, headers, and the ASan runtime.
-9. **Monitoring:** the JIT reports LINE events only at side exits, upstream
-   included, so line sets are compared only between JIT-off runs. Event counts
-   at `set_events` boundaries vary between identical runs.
-10. **Bytecode mismatches:** diff `dis.dis(code, show_caches=True)` and the
-    `co_linetable`/`co_exceptiontable` bytes before reading marshal output;
-    most mismatches are in a table, not an instruction.
-11. **Harness traps:** two containers in one directory collide on
-    `test_python_<pid>`; a crashed test leaves mode-000 directories that break
-    the next clean build (`chmod -R u+rwx`); delete a dropped `core`; never run
-    bare `make` in a perf build directory; `rc=2` right after a crash is
-    usually leftover scratch.
-
-## Status
-
-**Winding down 2026-11-12:** no new feature work. Last accepted `f74aad6`; final integer correctness pass is green. Retain evidence and record reboot-safe resume state.
-
-| Lane | State | Current item | Last result |
-| --- | --- | --- | --- |
-| J | winding down | Integer and float scalar regions share typed ownership and original-PC reconstruction; integer reuse waits for operand cleanup, and outer unboxing remains available. Next: mixed arithmetic, then broader call/lookup/allocation/loop shapes. Performance acceptance deferred under OD16 | Integer slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; 16 independently reviewed shape exclusions; 62 Rust tests; 68 new active-JIT integer/boundary/receiver/generator/allocation cases plus prior integrations and assertion-enabled tail validation; independent source/generated/native review approves |
-| R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
-| C | feature complete | C3 integrated with refreshed main dependencies; performance acceptance deferred under OD16. Routing/API owner reviews remain asynchronous; nothing pushed | Integrated normal and verify runs each execute 52,102 tests, with exactly the matched reference's five failing files and 0 compiler mismatches; native 11-case integration passes; C3 corpus and independent reviews remain valid |
-| Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
-
-**Current integration (2026-11-11):** `campaign/jit-integrate` combines
+**Integration reference (2026-11-11):** `campaign/jit-integrate` combines
 `main` at `604ba93` with C3 and the four JIT slices `0b9a462`, `6acf8d2`,
 `e7c970c` and `a03814c`. Main's version pins are preserved; the combined
 Cargo-lock SHA-256 is
@@ -2199,7 +2133,7 @@ candidate's verify run retain only `test_asyncio.test_sendfile`,
 `.work/tmp/native-serc-integration.log` and `rust-cpython/logs/perf-jit-integrated-all*.log`.
 The stack landed on local `main` as `0e72f84`; its matched C3 reference is
 `8083f4f` on `campaign/jit-main-ref`. Continue J feature work from the integrated tree; keep both reference stages
-and earlier campaign stages for the deferred performance work. Nothing is pushed.
+and earlier campaign stages for the deferred performance work. These changes are integrated in main.
 
 **Owner queue:** R1 reference report (informational, no target change
 requested): CinderX 3.15 steady JIT uplift `S = 0.7960`, held-out 1.0621, beside
@@ -2543,6 +2477,80 @@ backlog:
   parked at `lane/jit-boxed-float-reuse`), compact-int fast path
   (INCONCLUSIVE), whole-trace register cache (INCONCLUSIVE, 0.9993).
 - Hybrid DynASM backend (python/cpython#146235): closed, not ported.
+
+## Lane host
+
+Linux x86-64 lane commands run in the local image `rust-cpython-linux:20260401`
+(Ubuntu 24.04, the exact `linux-toolchain.lock.json` packages, rustup
+`nightly-2026-09-15`):
+
+```sh
+docker run --rm --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+  -v "$PWD:$PWD" -w "$PWD" -e TMPDIR="$PWD/.work/tmp" \
+  rust-cpython-linux:20260401 <command>
+```
+
+Builds and `test --all` outlast 10 minutes; run them in the background. The
+image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
+
+## Debugging methods
+
+1. **Compare against the sibling build.** `PYTHON_JIT=0` skips every
+   `requires_jit_enabled` test, so it proves nothing for tier-2 tests.
+   `python -I` implies `-E` and silently drops `PYTHON_JIT`.
+2. **Shrink to pure Python first.** `sys.getallocatedblocks()` deltas over
+   fresh `exec`'d functions and `_opcode.get_executor(code, i)` reproduce
+   leaks and missing executors without a test runner. The GC invalidates cold
+   executors, and backoff then blocks re-tracing. Warmup takes about 4,000
+   iterations; a loop that raises every iteration never traces.
+3. **A release SIGSEGV becomes an assertion under pydebug.** Run the test on
+   `rust-cpython/stage/bin/python3.16d` with `PYTHON_LLTRACE=2`; the last trace
+   printed before the abort is the suspect, not the reported
+   `executor_cases.c.h` line.
+4. **Bisect code generation with a runtime mask** in a throwaway build: read
+   an env var once in the changed function, one bit per transition, and run
+   the failing tests once per bit. Delete the build and mask before
+   committing.
+5. **Model an allocator offline** from `_opcode.get_executor` dumps and
+   `_PyUop_Caching`; keep `-1` default entries in the table parse.
+6. **Uop share is not CPU.** Check stencil body sizes in
+   `jit_stencils-<triple>.h` before ranking a cost.
+7. **pystats:** `perf.py build --jit --pystats`; per kernel,
+   `sys._stats_clear()`, run, `sys._stats_off()`, `sys._stats_dump()` into an
+   existing stats directory; summarize with the build's
+   `Tools/scripts/summarize_stats.py`.
+8. **Look in the locked LLVM archive, not the prefix,** for `opt`,
+   `llvm-config`, `llvm-symbolizer`, headers, and the ASan runtime.
+9. **Monitoring:** the JIT reports LINE events only at side exits, upstream
+   included, so line sets are compared only between JIT-off runs. Event counts
+   at `set_events` boundaries vary between identical runs.
+10. **Bytecode mismatches:** diff `dis.dis(code, show_caches=True)` and the
+    `co_linetable`/`co_exceptiontable` bytes before reading marshal output;
+    most mismatches are in a table, not an instruction.
+11. **Harness traps:** two containers in one directory collide on
+    `test_python_<pid>`; a crashed test leaves mode-000 directories that break
+    the next clean build (`chmod -R u+rwx`); delete a dropped `core`; never run
+    bare `make` in a perf build directory; `rc=2` right after a crash is
+    usually leftover scratch.
+
+## Status
+
+**Paused 2026-11-12.** Resume prompt: “Continue J feature completion from this Status under OD16; leave performance gates deferred.”
+First command: `codex-campaign-closeout.py cancel`; then inspect `git status` and the retained candidate before creating the next feature branch.
+Integration: `main`, last accepted feature `f74aad6`; green correctness. Remote `main` was verified at `f74aad6` before winddown; this workflow does not push.
+
+| Lane | State | Resume / last evidence |
+| --- | --- | --- |
+| J | paused | Integer/float virtual calls, constants, bound attributes and outer unboxing integrated; 62 Rust tests, 68 integer activity checks, prior native integrations, 2,000 fuzz programs (97.45% JIT, 0 differences), 31 equal digests, 16 independently reviewed shape exclusions. Final rebuilt evidence: `.work/wt/jit-pair/.work/tmp/integers-cleanup-feature-acceptance.json`. |
+| C | feature complete | C3: integrated normal/verify each run 52,102 tests with the same five reference failures and 0 compiler mismatches; native 11 passes. C2/C3 performance acceptance remains deferred. |
+| R1 / Close | done / deferred | R1 catalog below; Close still needs deferred gates and the owner-approved macOS-only scope. No M4 or overall completion claim. |
+
+Next slice: virtualize existing `_BINARY_OP_ADD_FLOAT_INT`; refine `CompactInt` to imply `ExactInt`, keep ownership, preserve original conversion/OOM PCs, and test convertible/overflowing large ints. Design reviewed only; no implementation or mixed branch remains.
+Parked compiler work: `campaign/c0` (pre-existing report committed as `e2b4fde`), `campaign/c2-layout`, `campaign/c2-memgate`; historical/unreviewed alternatives, not required for closed C3. Review against main before any reuse or integration.
+Parked J/reference work: `campaign/t2-store`, `campaign/t3-pending` (array-store experiment), `campaign/t3-inline` (dropped linked-frame experiment), `campaign/r1` (older CinderX study), `campaign/jit-main-ref` (matched C3 reference). Reopen only for an explicit feature/reference review.
+Protected `.work/wt/` trees: `c2`, `c3`, `j3`, `jit-loop`, `r0` retain compiler/epoch/per-step gate stages; `jit-integrate` retains frozen `4b66ce3` oracle; `jit-main-ref` retains matched C3/pins; `jit-pair` retains current candidate/evidence; `c0`, `r1`, `t2-unbox` retain parked report/source and their evidence.
+Cleanup candidates `.work/wt/r1b` and `.work/wt/t3-measure` are integrated, completed analysis lanes; preserve useful ignored reports/artifacts before retirement. A requested cleanup worker follows this pause; preserve all protected stages and parked source.
+Owner routing/API reviews remain asynchronous in **Owner decisions**; acceptance details are in the feature sections and **Ledger**. No campaign runner, cron or feature agent remains active.
 
 ## CinderX catalog
 
