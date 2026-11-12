@@ -13,7 +13,7 @@ use ruff_text_size::Ranged;
 use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 use smallvec::SmallVec;
 
-use super::{LOAD_CONST, LOAD_SMALL_INT, NOP, STORE_NAME};
+use super::{LOAD_COMMON_CONSTANT, LOAD_CONST, LOAD_SMALL_INT, NOP, STORE_NAME};
 use crate::assembler::{FoldAdmissionId, Label, OperandPatchId};
 use crate::target::operands::{BinaryOperation, Conversion};
 use crate::{CompileError, PythonVersion};
@@ -852,7 +852,7 @@ impl Compiler<'_> {
                             self.record_folded_value(bound)?;
                         }
                     }
-                } else if !matches!(
+                } else if self.context.python_version >= PythonVersion::Py316 || !matches!(
                     self.context.fold_constant(&subscript.slice),
                     Some(Constant::Int(value)) if u8::try_from(value).is_ok()
                 ) {
@@ -1154,6 +1154,8 @@ impl Compiler<'_> {
         self.record_folded_operands(expression)?;
         if let Some(constant) = self.source_aware_fold_constant(expression)
             && !matches!(constant, Constant::Int(value) if u8::try_from(value).is_ok())
+            && !(self.context.python_version >= PythonVersion::Py316
+                && matches!(&constant, Constant::Tuple(values) if values.is_empty()))
         {
             self.record_fresh_empty_bytes_fold(expression, &constant);
             self.output.deferred_constants.push((None, constant));
@@ -1362,6 +1364,15 @@ impl Compiler<'_> {
         &mut self,
         constant: Constant,
     ) -> Result<(), CompileError> {
+        if self.context.python_version >= PythonVersion::Py316
+            && matches!(&constant, Constant::Tuple(values) if values.is_empty())
+        {
+            return self.emit(
+                LOAD_COMMON_CONSTANT,
+                crate::target::operands316::CommonConstant::EMPTY_TUPLE.argument(),
+                1,
+            );
+        }
         self.apply_compiler_stack_effect(LOAD_CONST, 0, 1)?;
         let instruction = self
             .assembler
