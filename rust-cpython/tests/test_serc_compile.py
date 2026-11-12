@@ -422,6 +422,22 @@ for mode in ("exec", "eval", "single"):
 print(json.dumps(outcomes))
 '''
 
+UNICODE_NAME_PROBE = r'''
+import __future__, json, sys
+sys.modules["unicodedata"] = None
+outcomes = {}
+for mode in ("exec", "eval", "single"):
+    outcomes[mode] = []
+    for flags in (0, __future__.generator_stop.compiler_flag):
+        try:
+            compile(r"'\N{SOFT HYPHEN}'", "probe", mode, flags=flags, dont_inherit=True)
+        except Exception as error:
+            outcomes[mode].append([type(error).__name__, str(error)])
+        else:
+            outcomes[mode].append(None)
+print(json.dumps(outcomes))
+'''
+
 
 @unittest.skipUnless(SERC_PYTHON, "set SERC_PYTHON to the interpreter of a --serc build")
 class SercCompileTests(unittest.TestCase):
@@ -503,6 +519,13 @@ class SercCompileTests(unittest.TestCase):
             candidate, reference = outcomes["custom key"]
             self.assertEqual(candidate, reference)
             self.assertEqual(reference, [1, ["lookup", "lookup", "lookup"]])
+
+    def test_named_unicode_escapes_use_the_interpreters_unicode_lookup(self):
+        for verify in (False, True):
+            for mode, (candidate, reference) in self.run_probe(UNICODE_NAME_PROBE, verify=verify).items():
+                with self.subTest(mode=mode, verify=verify):
+                    self.assertEqual(reference[0], "SyntaxError")
+                    self.assertEqual(candidate, reference)
 
     def test_verify_mode_raises_when_serc_and_the_c_compiler_differ(self):
         outcomes = self.run_probe(VERIFY_PROBE, verify=True)

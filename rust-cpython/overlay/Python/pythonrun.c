@@ -1732,8 +1732,9 @@ done:
    text or from bytes that CPython itself would decode as UTF-8, on a thread
    with enough C stack for the C compiler. Every other request, and every
    FILE * or AST input, is compiled
-   by the C compiler, as is a source that only CPython's parser or compiler
-   handles (_PySerc_CPYTHON_GRAMMAR). */
+   by the C compiler, as is source containing \N{, whose decoder imports
+   the interpreter's unicodedata provider, or source that only CPython's parser
+   or compiler handles (_PySerc_CPYTHON_GRAMMAR). */
 static int
 serc_routes(int start, const char *str, PyObject *filename,
             PyCompilerFlags *flags)
@@ -1741,6 +1742,7 @@ serc_routes(int start, const char *str, PyObject *filename,
     int cf_flags = flags == NULL ? 0 : flags->cf_flags;
     if ((start != Py_file_input && start != Py_eval_input && start != Py_single_input)
         || !PyUnicode_CheckExact(filename)
+        || strstr(str, "\\N{") != NULL
         || (cf_flags & ~(PyCF_SOURCE_IS_UTF8 | PyCF_IGNORE_COOKIE
                          | PyCF_MASK_OBSOLETE))
         || _Py_ReachedRecursionLimitWithMargin(_PyThreadState_GET(),

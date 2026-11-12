@@ -41,7 +41,7 @@ use crate::target::{Opcode, is_scope_exit};
 use crate::{CompileError, PythonVersion};
 
 use super::constant::{
-    PercentFormatPart, bytes_constant, double_negated_ellipsis, explicit_surrogate_string,
+    PercentFormatPart, bytes_constant, double_negated_literal, explicit_surrogate_string,
     first_literal_constant, fold_constant, fold_constant_for_version, folded_bool_operand,
     folded_constant_owner_slots, is_small_literal_tuple_element, number_constant,
     optimized_percent_format, two_element_slice_optimization, unique_frozenset_constants,
@@ -2851,7 +2851,7 @@ impl Compiler<'_> {
             }
             let expression_location = self.source_location(expression.range());
             let origin_location = self.source_location(origin.range());
-            let folded_location = double_negated_ellipsis(origin)
+            let folded_location = double_negated_literal(origin)
                 .map_or(origin_location, |inner| self.source_location(inner.range));
             if expression_location.line != folded_location.line {
                 self.assembler.set_location(expression_location);
@@ -6290,7 +6290,7 @@ impl Compiler<'_> {
                     generator_location,
                 )?;
             }
-        } else if self.context.python_version == PythonVersion::Py315
+        } else if self.context.python_version >= PythonVersion::Py315
             && let Expr::Starred(starred) = element
         {
             self.compile_iterable_expression(&starred.value)?;

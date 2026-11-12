@@ -1782,14 +1782,19 @@ opcodes `BINARY_OP_SUBSCR_ARRAY_D`/`_I`; new uops
 CPython parser start symbol. Source-mode routing now admits all three modes;
 AST, `FILE *`, flags, decoding, stack and finally-exit boundaries stay as in
 C2. The CLI adds `--mode` and separate non-exec cache names. The hook/FFI
-review approves the glue, conditional on the matching compiler API and CLI;
-integrated acceptance is still running. Source entry points emit one `compile`
+review approves the glue, and the matching compiler API and CLI pass their
+component checks. Integrated acceptance is still running. Source entry points emit one `compile`
 audit event before choosing a compiler, including verification and diagnostic
 paths. The new Py_SERC-only private parser helper
 `_PyParser_ASTFromStringWithoutAudit` requires that event to have been emitted
 by its caller; an audit veto aborts before parsing. `PyRun_String` uses the C
 parser if auditing changes the module-name snapshot or if dictionary keys can
 invoke Python comparisons, preserving warning context and reference lifetime.
+Sources containing `\N{` also use C so the interpreter owns Unicode-name
+lookup and its import failures; this conservative test includes raw strings
+and comments containing that spelling. Independent review approves these
+rules and the source-mode parity fixes; final full-suite acceptance remains
+in progress.
 
 **Epoch e891** (`main` `e891a911`, pinned 2026-11-10) opened at R0 on macOS
 arm64:

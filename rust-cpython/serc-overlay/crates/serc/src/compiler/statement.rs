@@ -16181,6 +16181,8 @@ impl<'source> Compiler<'source> {
     ) -> Result<(), CompileError> {
         let unpacked = if let [target] = assignment.targets.as_slice()
             && let Expr::Tuple(value) = assignment.value.as_ref()
+            && !(self.context.python_version >= crate::PythonVersion::Py316
+                && value.elts.is_empty())
             // Legacy AST folding replaces constant tuples before code generation,
             // so their LOAD_CONST remains followed by UNPACK_SEQUENCE.
             && !(self.context.python_version <= crate::PythonVersion::Py313

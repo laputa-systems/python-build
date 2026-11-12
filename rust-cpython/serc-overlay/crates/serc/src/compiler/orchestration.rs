@@ -734,8 +734,14 @@ impl<'source> Compiler<'source> {
                 ));
             };
             self.compile_expression(&expression.value)?;
-            // CPython appends the expression's RETURN_VALUE without a location.
-            self.assembler.set_location(SourceLocation::NONE);
+            // CPython's unlocated return inherits the outer unary operation's span,
+            // including when instruction folding removes that operation.
+            let return_location = if matches!(expression.value.as_ref(), Expr::UnaryOp(_)) {
+                self.source_location(expression.value.range())
+            } else {
+                SourceLocation::NONE
+            };
+            self.assembler.set_location(return_location);
             self.emit(RETURN_VALUE, 0, -1)?;
             return self.finish_inner(false);
         }
@@ -868,9 +874,13 @@ impl<'source> Compiler<'source> {
                 )
             })
         {
-            self.assembler.set_location(
-                self.source_location(implicit_return_range(&self, body.last().unwrap())),
-            );
+            let statement = body.last().unwrap();
+            let range = if interactive && matches!(statement, Stmt::Expr(_)) {
+                statement.range()
+            } else {
+                implicit_return_range(&self, statement)
+            };
+            self.assembler.set_location(self.source_location(range));
         } else if self.assembler.instruction_count() > body_start {
             self.assembler.set_location(SourceLocation::NONE);
         } else if let Some(statement) = body
