@@ -267,7 +267,7 @@ def main():
     for key in ("arithmetic", "first", "second", "generator", "allocation", "released"):
         names = {entry[0] for entry in candidate["traces"][key]}
         assert {"_BEGIN_VIRTUAL_FLOAT_CALL", "_RETURN_VIRTUAL_FLOAT_CALL",
-                "_MATERIALIZE_VIRTUAL_FLOAT_ERROR"} <= names, (key, names)
+                "_MATERIALIZE_VIRTUAL_FLOAT_FRAME"} <= names, (key, names)
     assert "_BEGIN_VIRTUAL_FLOAT_CALL" not in {entry[0] for entry in candidate["traces"]["argument write"]}
     assert all("_BEGIN_VIRTUAL_FLOAT_CALL" not in {entry[0] for entry in entries}
                for entries in noopt["traces"].values())

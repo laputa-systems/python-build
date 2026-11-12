@@ -1421,15 +1421,17 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
         _PyUOpInstruction *inst = &buffer[i];
         int base_opcode = _PyUop_Uncached[inst->opcode];
         assert(inst->opcode != _NOP);
-        if (base_opcode == _BEGIN_VIRTUAL_FLOAT_CALL) {
+        bool begins_virtual = base_opcode == _BEGIN_VIRTUAL_FLOAT_CALL;
+        if (begins_virtual) {
             assert(!virtual_call);
-            virtual_call = true;
             current_error_target = current_popped = -1;
+            current_jump_target = current_exit_op = -1;
         }
         else if (base_opcode == _RETURN_VIRTUAL_FLOAT_CALL) {
             assert(virtual_call);
             virtual_call = false;
             current_error_target = current_popped = -1;
+            current_jump_target = current_exit_op = -1;
         }
         int32_t target = (int32_t)uop_get_target(inst);
         uint16_t exit_flags = _PyUop_Flags[base_opcode] & (HAS_EXIT_FLAG | HAS_DEOPT_FLAG | HAS_PERIODIC_FLAG);
@@ -1451,7 +1453,23 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
             bool is_control_flow = (base_opcode == _GUARD_IS_FALSE_POP || base_opcode == _GUARD_IS_TRUE_POP || is_for_iter_test[base_opcode]);
             uint32_t exit_floats = unboxed == NULL ? 0 : unboxed[i].exit_floats;
             uint32_t exit_ints = unboxed == NULL ? 0 : unboxed[i].exit_ints;
-            if ((exit_floats | exit_ints) != 0) {
+            if (virtual_call) {
+                assert(base_opcode == _BINARY_OP_POWER_FLOAT);
+                assert((exit_floats | exit_ints) == 0);
+                current_jump = next_spare;
+                if (exit_depth != 0) {
+                    make_exit(&buffer[next_spare], _PyUop_SpillsAndReloads[exit_depth][0], 0, false);
+                    next_spare++;
+                }
+                int opcode = _PyUop_Caching[_MATERIALIZE_VIRTUAL_FLOAT_FRAME].entries[0].opcode;
+                assert(opcode > 0);
+                make_exit(&buffer[next_spare], opcode, 0, false);
+                buffer[next_spare].operand0 = jump_target;
+                buffer[next_spare].operand1 = true;
+                next_spare++;
+                current_jump_target = current_exit_op = -1;
+            }
+            else if ((exit_floats | exit_ints) != 0) {
                 current_jump = next_spare;
                 next_spare = make_boxing_exit(buffer, next_spare, exit_depth, base_exit_op,
                                               jump_target, is_control_flow, exit_floats, exit_ints);
@@ -1475,7 +1493,7 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
             if (virtual_call) {
                 assert(error_unboxed == 0 && popped == 0);
                 current_error = next_spare;
-                int opcode = _PyUop_Caching[_MATERIALIZE_VIRTUAL_FLOAT_ERROR].entries[0].opcode;
+                int opcode = _PyUop_Caching[_MATERIALIZE_VIRTUAL_FLOAT_FRAME].entries[0].opcode;
                 assert(opcode > 0);
                 make_exit(&buffer[next_spare], opcode, 0, false);
                 buffer[next_spare].operand0 = target;
@@ -1524,6 +1542,9 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
             buffer[i].format = UOP_FORMAT_JUMP;
             assert(loop_head >= 1);
             buffer[i].jump_target = loop_head;
+        }
+        if (begins_virtual) {
+            virtual_call = true;
         }
     }
     assert(!virtual_call);
@@ -1613,7 +1634,7 @@ sanity_check(_PyExecutorObject *executor)
             base_opcode == _BOX_UNBOXED_SLOTS ||
             base_opcode == _CLEAR_UNBOXED_SLOTS ||
             base_opcode == _MATERIALIZE_FLOAT_LEAF_ERROR ||
-            base_opcode == _MATERIALIZE_VIRTUAL_FLOAT_ERROR);
+            base_opcode == _MATERIALIZE_VIRTUAL_FLOAT_FRAME);
     }
 }
 
@@ -2122,6 +2143,7 @@ typedef struct {
     _PyJitOpcodeRange store_fast;
     uint16_t pop;
     uint16_t virtual_argument_copy;
+    uint16_t float_power;
 } _PyJitLeafOpcodes;
 
 typedef struct {
@@ -2138,7 +2160,7 @@ typedef struct {
     uint64_t result;
 } _PyJitLeafStep;
 
-static_assert(sizeof(_PyJitLeafOpcodes) == 116, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
+static_assert(sizeof(_PyJitLeafOpcodes) == 118, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
 static_assert(_Alignof(PyObject) >= 4, "leaf result tags use two object-alignment bits");
 static_assert(sizeof(_PyJitLeafUop) == 16, "_PyJitLeafUop matches Rust LeafUop");
 static_assert(offsetof(_PyJitLeafUop, operand) == 8, "LeafUop operand offset matches Rust");
@@ -2207,6 +2229,7 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         .store_fast = {_SWAP_FAST, _SWAP_FAST_7},
         .pop = _POP_TOP,
         .virtual_argument_copy = _COPY_VIRTUAL_FLOAT_ARGUMENT,
+        .float_power = _BINARY_OP_POWER_FLOAT,
     };
     _PyJitLeafUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
     _PyJitLeafStep *steps = PyMem_RawMalloc((size_t)length * sizeof(*steps));
@@ -2219,7 +2242,8 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         uint16_t opcode = buffer[i].opcode;
         uint32_t flags = _PyUop_Flags[opcode];
         uint8_t kind, detail;
-        bool arithmetic = float_node(opcode, &kind, &detail) && kind == JIT_OPT_KIND_FLOAT_ARITH;
+        bool arithmetic = (float_node(opcode, &kind, &detail) && kind == JIT_OPT_KIND_FLOAT_ARITH)
+                          || opcode == _BINARY_OP_POWER_FLOAT;
         uops[i] = (_PyJitLeafUop){
             .opcode = opcode,
             .oparg = buffer[i].oparg,
@@ -2246,7 +2270,7 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
                 if (opcode != _NOP) {
                     uint32_t flags = _PyUop_Flags[opcode];
                     bound += 2;
-                    bound += (flags & (HAS_EXIT_FLAG | HAS_DEOPT_FLAG | HAS_PERIODIC_FLAG)) != 0;
+                    bound += 2 * ((flags & (HAS_EXIT_FLAG | HAS_DEOPT_FLAG | HAS_PERIODIC_FLAG)) != 0);
                     bound += (flags & HAS_ERROR_FLAG) != 0;
                 }
             }

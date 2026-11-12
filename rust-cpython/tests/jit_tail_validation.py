@@ -39,7 +39,7 @@ int main(int argc, char **argv)
     const uint16_t tails[] = {
         _ERROR_POP_N,
         _MATERIALIZE_FLOAT_LEAF_ERROR,
-        _MATERIALIZE_VIRTUAL_FLOAT_ERROR,
+        _MATERIALIZE_VIRTUAL_FLOAT_FRAME,
         _LOAD_FAST,
     };
     assert(which >= 0 && which < 4);

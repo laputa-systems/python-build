@@ -5086,9 +5086,10 @@ dummy_func(
             res = returned;
         }
 
-        tier2 op(_MATERIALIZE_VIRTUAL_FLOAT_ERROR, (error_offset/2 --)) {
+        tier2 op(_MATERIALIZE_VIRTUAL_FLOAT_FRAME, (callee_offset/2, resuming/1 --)) {
             assert(frame == (_PyInterpreterFrame *)tstate->datastack_top);
-            assert(_PyErr_Occurred(tstate));
+            assert(resuming <= 1);
+            assert(resuming ? _PyErr_Occurred(tstate) == NULL : _PyErr_Occurred(tstate) != NULL);
             _PyInterpreterFrame *caller = tstate->current_frame;
             _PyStackRef *held = _PyFrame_GetStackPointer(caller);
             _PyStackRef *live_top = stack_pointer;
@@ -5105,8 +5106,11 @@ dummy_func(
             frame = tstate->current_frame = child;
             tstate->py_recursion_remaining--;
             RELOAD_STACK();
-            frame->instr_ptr = _PyFrame_GetBytecode(frame) + error_offset;
+            frame->instr_ptr = _PyFrame_GetBytecode(frame) + callee_offset;
             SYNC_SP();
+            if (resuming) {
+                GOTO_TIER_ONE(frame->instr_ptr);
+            }
             GOTO_TIER_ONE(NULL);
             Py_UNREACHABLE();
         }

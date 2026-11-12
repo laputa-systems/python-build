@@ -948,6 +948,36 @@ checks prove JIT execution. The full correctness pass was followed by the
 independent generator-case run; compiled sources did not change between them.
 Independent source, generated-code and native review approves.
 
+**Virtual-call side exits (2026-11-12).** Exact-float power can now remain
+inside a virtual call. The existing helper returns a fresh float on success,
+a non-consuming side exit for a complex result and a pending exception on
+error. The Rust success proof preserves original operand order and cleanup;
+complex fallback permanently leaves that proof. Single-operation, repeated-
+argument and single-argument scalar bodies also use the general virtual path
+when the earlier compact leaf-call shape does not apply. The private opcode
+map grows from 116 to 118 bytes.
+
+The terminal stub is renamed `_MATERIALIZE_VIRTUAL_FLOAT_FRAME`. Its private
+selector is 0 for pending-error propagation and 1 for interpreter resumption;
+both branches have zero outputs and cache depth zero. A side exit spills
+cached operands before reconstructing the same locals/stack as error
+materialization, then resumes the original callee instruction. Earlier
+arithmetic and caller argument evaluation are not repeated. Error transfer
+keeps the pending exception and never retries. Begin's own guards remain
+ordinary caller exits; virtual context activates only after them. Jump/error
+sharing resets across region boundaries, and the transactional capacity bound
+counts the additional side-exit spill and materializer.
+
+The native regression compares JIT-on/off and disabled optimization across
+ordinary/special float powers, repeated complex fallback, later complex/real
+division errors, overflow, zero-to-negative-power errors, one-shot allocation
+failure and a generator caller. It requires 29 active-JIT samples and exact
+source-consumption counts, along with single/repeated-argument fusion.
+Independent source/generated/native review approves. The actual tail checker
+also passes its assertion-enabled regression with the renamed materializer;
+this does not claim a full debug interpreter build. Boxing and in-place
+normalization restrictions remain in force, with performance deferred.
+
 **Loop globals prologue (2026-11-11).** The Rust planner in
 `Modules/_jit_opt_rs/src/loop_globals.rs` moves one root-frame globals guard
 before `_MAKE_WARM`. It requires a closed loop, an existing globals watcher,
@@ -2003,7 +2033,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | Virtual float calls now retain heap-safe nonargument locals, aliases and NULL slots for exact error reconstruction, including generator callers; argument writes and unsafe borrows retain ordinary calls. These traces remain boxed. Next: virtual-call guard side exits and broader call/lookup/allocation/loop shapes. Performance acceptance deferred under OD16 | Virtual-local slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 55 Rust tests; six active-JIT local/error/finalizer cases and prior integrations; independent source/generated/native review approves |
+| J | active | Virtual float calls now materialize for guard side exits as well as errors; complex power resumes in tier one without repeating prefix work. Single/repeated-argument shapes are supported; traces remain boxed. Next: object methods and broader scalar/call/lookup/allocation/loop shapes. Performance acceptance deferred under OD16 | Virtual-exit slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 56 Rust tests; 29 active-JIT side-exit/error cases plus prior integrations and assertion-enabled tail validation; independent source/generated/native review approves |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | feature complete | C3 integrated with refreshed main dependencies; performance acceptance deferred under OD16. Routing/API owner reviews remain asynchronous; nothing pushed | Integrated normal and verify runs each execute 52,102 tests, with exactly the matched reference's five failing files and 0 compiler mismatches; native 11-case integration passes; C3 corpus and independent reviews remain valid |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -2043,7 +2073,7 @@ requested): CinderX 3.15 steady JIT uplift `S = 0.7960`, held-out 1.0621, beside
 M2 ≤ 0.48, M3 ≤ 0.38, M4 ≤ 0.25. T2 does not wait for an answer.
 
 J continuation builds use `.work/wt/jit-pair`; its `perf-jit-pair` stage
-was rebuilt incrementally for the store, list, float-call, loop-type, inline-instance-getter, virtual-float and virtual-local slices after
+was rebuilt incrementally for the store, list, float-call, loop-type, inline-instance-getter, virtual-float, virtual-local and virtual-exit slices after
 the tuple slice. Earlier reports and suite logs were archived under
 `.work/tmp/tuple-tested-report.json`, `tuple-accepted/`,
 `glue-tested-report.json`, `glue-accepted/`, `list-tested-report.json`
@@ -2051,7 +2081,8 @@ and `list-accepted/`, plus `arith-tested-report.json` and
 `arith-accepted/`, followed by `loop-types-tested-report.json` and
 `loop-types-accepted/`, then `managed-getter-tested-report.json` and
 `managed-getter-accepted/`, then `virtual-tested-report.json` and
-`virtual-accepted/`, before reuse. Each ledger row
+`virtual-accepted/`, then `virtual-locals-tested-report.json` and
+`virtual-locals-accepted/`, before reuse. Each ledger row
 has distinct digest-result directories and source identities. The committed
 `4b66ce3` reference in `.work/wt/jit-integrate` remains unchanged.
 
@@ -2148,6 +2179,15 @@ and dangling local borrows, preserves aliases/NULL slots on error and closes
 all extra locals before callback-capable cleanup. Independent review approves
 source/generated code and six active-JIT native cases, including a generator
 caller. Performance acceptance remains deferred.
+
+**Owner queue:** T3 virtual-call side exits (async review). Private map
+118 bytes adds power; `_MATERIALIZE_VIRTUAL_FLOAT_FRAME` replaces the error-
+only name with an explicit error/resume selector. Cached side-exit operands
+spill before materialization, while Begin guards still exit at the caller.
+Independent source/generated/native review approves 29 activity samples,
+complex resumption and exact progress; assertion-enabled tail validation
+accepts the renamed stub and retains rejection of ordinary tail instructions.
+Performance acceptance remains deferred.
 
 **Owner queue:** T4 local-store fusion (async review). New private
 `_PyJitOpt_PlanStores` ABI and `_STORE_FAST_FUSED` uop. Generated escape/local
@@ -2475,3 +2515,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-12 | e891 | J | T3 | retain longer float-body arithmetic on a reserved virtual operand stack; initialize/link the full callee only on error | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 53 Rust tests; four kernels, seven active-JIT fault/finalizer assertions, wide stack and observers; all prior integrations; independent source/generated/native review approves | `rust-cpython/results/perf-bench/20261112T110914Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T111043Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/virtual-feature-acceptance.json`; incremental stage based on `1b3c1fc` with this slice and separate in-place division fix |
 | 2026-11-12 | e891 | J | T3 | preserve heap-safe virtual float locals, shared aliases and NULL slots without copying arguments on success | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 55 Rust tests; six active-JIT local/error/finalizer cases including heap-frame generator caller; all prior integrations; independent source/generated/native review approves | `rust-cpython/results/perf-bench/20261112T113401Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T113528Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/virtual-locals-feature-acceptance.json`, `.work/tmp/god-virtual-locals-generator.log`; incremental stage based on `777cdd6` with this slice |
 | 2026-11-12 | e891 | J | correctness | recognize private error materializers in the debug executor-tail validator | unchanged validator before fix | no timing | — | CORRECT: actual assertion-enabled C checker rejects both omitted materializer classes before the fix and accepts both afterward; an ordinary load remains rejected; independent source/native checker review approves | `rust-cpython/tests/jit_tail_validation.py`; `.work/tmp/tail-validation-before.log`, `.work/tmp/tail-validation.log`; checked alongside pending terminal-stub rename; no full `Py_DEBUG` interpreter build claimed |
+| 2026-11-12 | e891 | J | T3 | materialize virtual calls on power side exits, preserving cached operands and original callee resumption PC | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 56 Rust tests; 29 active-JIT complex/error/progress cases and prior integrations; assertion-enabled tail checker; independent source/generated/native review approves | `rust-cpython/results/perf-bench/20261112T122325Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T122452Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/virtual-exits-feature-acceptance.json`; incremental stage based on `2720c27` with this slice; debug tail policy checked directly |

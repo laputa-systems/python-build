@@ -65,6 +65,7 @@ pub struct LeafOpcodes {
     pub store_fast: OpcodeRange,
     pub pop: u16,
     pub virtual_argument_copy: u16,
+    pub float_power: u16,
 }
 
 /// `effectful` is 0 or 1. Operand bits are opaque; Rust never dereferences them.
@@ -256,6 +257,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
         }
         else if [ops.float_add, ops.float_subtract, ops.float_multiply, ops.float_divide].contains(&opcode)
             || ops.float_inplace_left.contains(&opcode) || ops.float_inplace_right.contains(&opcode)
+            || opcode == ops.float_power
         {
             if values.len() < 2 || u32::try_from(uop.operand).ok().filter(|offset| *offset != 0).is_none() {
                 return Err(Inconsistent);
@@ -281,6 +283,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
             operations += 1;
         }
         else if opcode == ops.pop_borrow || opcode == ops.pop_float || opcode == ops.pop {
+            if opcode == ops.pop_borrow && uop.effectful != 0 { return Ok(None) }
             let Some(value) = values.pop() else { return Err(Inconsistent) };
             replacement = match (opcode, value) {
                 (op, VirtualValue::BorrowedFloat | VirtualValue::BorrowedLocal(_) | VirtualValue::Null)
@@ -299,7 +302,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
             replacement = opcode;
         }
         else if opcode == ops.return_value {
-            if operations < 2 || values.len() != 1
+            if operations == 0 || values.len() != 1
                 || !matches!(values[0], VirtualValue::UniqueFloat | VirtualValue::SharedFloat) {
                 return Ok(None);
             }
@@ -534,7 +537,7 @@ fn leaf_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
 /// Fuses guarded exact-argument calls whose optimized body only returns an argument
 /// or constant, loads one slot from a borrowed argument, or returns both arguments
 /// in a tuple or list that is immediately unpacked, or computes one exact-float
-/// operation with an error-only frame reconstruction recipe. Longer callback-free
+/// operation with an error-only frame reconstruction recipe. Other callback-free
 /// float bodies use a reserved operand stack and borrowed argument loads, preserving
 /// original arithmetic targets. In-place arithmetic and its NULL cleanup are
 /// normalized together to boxed arithmetic and owning cleanup. Extra locals hold
@@ -656,6 +659,7 @@ mod tests {
             pop_float: 60, virtual_begin: 61, virtual_argument: 62, virtual_return: 63,
             float_inplace_left: [64, 65, 66, 67], float_inplace_right: [68, 69, 70, 71],
             store_fast: OpcodeRange { first: 72, last: 80 }, pop: 81, virtual_argument_copy: 82,
+            float_power: 83,
         }
     }
 
@@ -812,7 +816,7 @@ mod tests {
         assert!(output.iter().all(|step| *step == untouched));
         assert_eq!(std::mem::size_of::<LeafUop>(), 16);
         assert_eq!(std::mem::size_of::<LeafStep>(), 16);
-        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 116);
+        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 118);
     }
 
     fn pair() -> Vec<LeafUop> {
@@ -1069,6 +1073,30 @@ mod tests {
     }
 
     #[test]
+    fn power_and_repeated_arguments_keep_original_virtual_operand_order() {
+        let ops = opcodes();
+        let mut power = float_call();
+        power[10].opcode = ops.float_power;
+        let plan = plan_leaf_calls(&power, &ops).unwrap().unwrap();
+        assert_eq!(plan[4].opcode, ops.virtual_begin);
+        assert_eq!(plan[10], LeafStep { opcode: ops.float_power, oparg: 0, source: 10, result: 0 });
+        assert_eq!(power[10].operand, 3);
+        assert_eq!(plan[16].opcode, ops.virtual_return);
+        let mut repeated = float_call();
+        repeated[7].oparg = 0;
+        let repeated_plan = plan_leaf_calls(&repeated, &ops).unwrap().unwrap();
+        assert_eq!(repeated_plan[4].opcode, ops.virtual_begin);
+        assert_eq!(repeated_plan[6].opcode, ops.virtual_argument);
+        assert_eq!(repeated_plan[7].opcode, ops.virtual_argument);
+        assert_eq!(repeated_plan[6].oparg, repeated_plan[7].oparg);
+        repeated[2].opcode = ops.init.first + 1;
+        repeated[2].oparg = 1;
+        let single = plan_leaf_calls(&repeated, &ops).unwrap().unwrap();
+        assert_eq!(single[4].oparg, 1);
+        assert_eq!(single[4].result, 1);
+    }
+
+    #[test]
     fn float_callbacks_partial_cleanup_and_extra_state_keep_real_frames() {
         let ops = opcodes();
         for index in [0, 1, 5, 6, 7, 10, 11, 12, 16] {
@@ -1084,9 +1112,6 @@ mod tests {
         let mut observed = float_call();
         observed.insert(13, uop(99, 0));
         assert!(plan_leaf_calls(&observed, &ops).unwrap().is_none());
-        let mut repeated = float_call();
-        repeated[7].oparg = 0;
-        assert!(plan_leaf_calls(&repeated, &ops).unwrap().is_none());
         for end in 0..float_call().len() {
             assert!(plan_leaf_calls(&float_call()[..end], &ops).unwrap().is_none());
         }

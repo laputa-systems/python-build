@@ -331,7 +331,7 @@ def main():
         names = [entry[0] for entry in entries]
         assert "_BEGIN_VIRTUAL_FLOAT_CALL" in names, (key, names)
         assert "_RETURN_VIRTUAL_FLOAT_CALL" in names, (key, names)
-        assert "_MATERIALIZE_VIRTUAL_FLOAT_ERROR" in names, (key, names)
+        assert "_MATERIALIZE_VIRTUAL_FLOAT_FRAME" in names, (key, names)
         if key.startswith("multiple"):
             assert names.count("_BEGIN_VIRTUAL_FLOAT_CALL") >= 2, (key, names)
     assert all("_BEGIN_VIRTUAL_FLOAT_CALL" not in {entry[0] for entry in entries}
