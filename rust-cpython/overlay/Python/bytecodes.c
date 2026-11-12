@@ -332,6 +332,14 @@ dummy_func(
             trash = tmp;
         }
 
+        tier2 op(_STORE_FAST_FUSED, (value --)) {
+            _PyStackRef old = GETLOCAL(oparg);
+            GETLOCAL(oparg) = value;
+            DEAD(value);
+            INPUTS_DEAD();
+            PyStackRef_XCLOSE_TSTATE(tstate, old);
+        }
+
         pseudo(STORE_FAST_MAYBE_NULL, (unused --)) = {
             STORE_FAST,
         };

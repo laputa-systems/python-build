@@ -2264,6 +2264,69 @@ hoist_loop_globals(_PyUOpInstruction *buffer, int length, PyFunctionObject *func
 #endif
 }
 
+typedef struct {
+    uint16_t swap_first, swap_last, pop, store, nop;
+} _PyJitStoreOpcodes;
+
+typedef struct {
+    uint16_t opcode, oparg;
+} _PyJitStoreUop;
+
+typedef struct {
+    uint16_t opcode, oparg;
+    uint32_t source;
+} _PyJitStoreStep;
+
+static_assert(sizeof(_PyJitStoreOpcodes) == 10, "store opcode map matches Rust");
+static_assert(sizeof(_PyJitStoreUop) == 4, "store descriptors match Rust");
+static_assert(sizeof(_PyJitStoreStep) == 8, "store steps match Rust");
+static_assert(offsetof(_PyJitStoreStep, source) == 4, "store source offset matches Rust");
+
+extern Py_ssize_t _PyJitOpt_PlanStores(
+    const _PyJitStoreUop *, size_t, const _PyJitStoreOpcodes *, _PyJitStoreStep *, size_t);
+
+static void
+fuse_local_stores(_PyUOpInstruction *buffer, int length)
+{
+#if !defined(Py_GIL_DISABLED) && !defined(WITH_DTRACE)
+    static const _PyJitStoreOpcodes opcodes = {
+        _SWAP_FAST, _SWAP_FAST_7, _POP_TOP, _STORE_FAST_FUSED, _NOP,
+    };
+    _PyJitStoreUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
+    _PyJitStoreStep *steps = PyMem_RawMalloc((size_t)length * sizeof(*steps));
+    if (uops == NULL || steps == NULL) {
+        PyMem_RawFree(uops);
+        PyMem_RawFree(steps);
+        return;
+    }
+    for (int i = 0; i < length; i++) {
+        uops[i] = (_PyJitStoreUop){buffer[i].opcode, buffer[i].oparg};
+    }
+    Py_ssize_t count = _PyJitOpt_PlanStores(uops, (size_t)length, &opcodes, steps, (size_t)length);
+    if (count == length) {
+        for (int i = 0; i < length; i++) {
+            const _PyJitStoreStep *step = &steps[i];
+            assert(step->source >= (uint32_t)i && step->source < (uint32_t)length);
+            if (step->opcode == _STORE_FAST_FUSED) {
+                assert(buffer[step->source].opcode == _POP_TOP);
+                buffer[i] = buffer[step->source];
+                buffer[i].opcode = _STORE_FAST_FUSED;
+                buffer[i].oparg = step->oparg;
+            }
+            else if (step->opcode != buffer[i].opcode) {
+                assert(step->opcode == _NOP);
+                buffer[i].opcode = _NOP;
+                buffer[i].oparg = 0;
+                buffer[i].operand0 = 0;
+                buffer[i].operand1 = 0;
+            }
+        }
+    }
+    PyMem_RawFree(uops);
+    PyMem_RawFree(steps);
+#endif
+}
+
 static int
 uop_optimize(
     _PyInterpreterFrame *frame,
@@ -2326,6 +2389,7 @@ uop_optimize(
         fuse_leaf_calls(buffer, length);
         hoist_loop_globals(buffer, length, _tstate->jit_tracer_state->initial_state.func,
                            (PyCodeObject *)_tstate->jit_tracer_state->initial_state.code, &dependencies);
+        fuse_local_stores(buffer, length);
     }
     OPT_HIST(effective_trace_length(buffer, length), optimized_trace_length_hist);
     _PyUOpInstruction *output = &_tstate->jit_tracer_state->uop_array[0];

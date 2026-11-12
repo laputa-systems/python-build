@@ -977,6 +977,30 @@ against a matched reference. These counts establish the rewrite mechanism;
 runtime and resource acceptance remain deferred under OD16. Stencil glue
 outside these explicit transitions remains separate T4 work.
 
+**Local-store stencil fusion (2026-11-12).** The Rust planner in
+`Modules/_jit_opt_rs/src/store.rs` replaces a local swap followed only by
+NOPs and a generic pop with `_STORE_FAST_FUSED`. It keeps typed pops,
+instruction-pointer changes, guards and callbacks as boundaries. The new
+private `_PyJitOpt_PlanStores` ABI returns transactional steps using generated
+opcode identities and preserves the original pop's target metadata.
+
+Generated local/escape flags make the fused instruction an unboxing barrier.
+It replaces the local before publishing the consumed operand stack and
+closing the old value, including NULL on first assignment. The following
+validity check remains. A native finalizer regression checks the new local,
+original store IP and outer exception; it mutates that local, rebinds a
+watched global and collects garbage before the caller resumes. Alias
+reference counts, numeric boxing, observers and disabled optimization are
+also checked. This removes a stencil boundary; no speedup is claimed.
+
+Two more upstream count assertions are named under the existing owner ruling:
+`test_binary_subscr_list_slice` expects two generic pops (one pop and one fused
+store now), and `test_call_method_descriptor_noargs` expects at least five
+(three stores and two pops now). Independent review ran both original test
+methods with only the count helper including fused stores. Every numeric,
+list-slice and descriptor assertion, and the four unchanged no-op pops in the
+slice test, passed. CPython's tests remain unchanged.
+
 ### J acceptance
 
 Under OD14 a candidate lands on steps 3-6 alone, plus the memory and
@@ -1791,7 +1815,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | Immediate two-argument tuple returns now avoid callee frames and temporary tuples when the caller immediately unpacks. Next: local-store stencil fusion, then remaining T3 allocation/loop work. Performance acceptance deferred under OD16 | Pair slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 9 shape exclusions; 39 Rust tests; three native pair traces and all prior integrations pass; independent source/native review approves |
+| J | active | Local stores now fuse their swap/decref stencil boundary, composing with tuple-return elimination, watched loop prologues and whole-trace cache allocation. Next: non-escaping list results, then remaining T3 frame/loop work. Performance acceptance deferred under OD16 | Store slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; 11 named shape exclusions; 42 Rust tests; four native store traces plus prior integrations pass; independent source/native/policy review approves |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | feature complete | C3 integrated with refreshed main dependencies; performance acceptance deferred under OD16. Routing/API owner reviews remain asynchronous; nothing pushed | Integrated normal and verify runs each execute 52,102 tests, with exactly the matched reference's five failing files and 0 compiler mismatches; native 11-case integration passes; C3 corpus and independent reviews remain valid |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -1872,6 +1896,14 @@ unpack. Callable-lifetime refusal preserves tuples visible to finalizers;
 trace/profile/monitoring observers retain ordinary frames and tuples.
 Independent source/native review approves. Performance acceptance remains
 deferred under OD16.
+
+**Owner queue:** T4 local-store fusion (async review). New private
+`_PyJitOpt_PlanStores` ABI and `_STORE_FAST_FUSED` uop. Generated escape/local
+flags retain stack publication and unboxing barriers; IP changes and validity
+checks remain boundaries. Two additional named pop-count exclusions follow
+the existing owner ruling, with every other original assertion independently
+verified. Native finalizers observe the new local and can mutate it before
+resumption. Performance acceptance remains deferred under OD16.
 
 **Owner queue:** T1 thread-state (landed, async review). Every overlay build
 now regenerates the interpreter cases from `bytecodes.c` with a 3.11+
@@ -2168,6 +2200,7 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-11 | e891 | C/J | integration | combine C3 and four JIT slices with main's dependency update; repair three SSL dependency API mismatches while preserving behavior | `perf-jit-main-ref` (`8083f4f`) | performance deferred (OD16) | — | CORRECT: matched 31 digests; 2,000 clean fuzz programs; targeted JIT suites only 8 prior superseded assertions; normal reference/candidate and candidate verify each run 52,102 tests with the same five known failing files; no compiler mismatch; native compiler and SSL regressions pass; independent adapter review approves | local main `0e72f84`; integration evidence above |
 | 2026-11-11 | e891 | J | T3 | peel one watched globals guard into a side-exit entry prologue; preserve callback validity checks and derive the zero-depth backedge from warm marking | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; 9 named shape exclusions; 37 Rust tests; all native integrations pass; independent review approves progress for foreign and mapping globals, exact effects, invalidation and original builtins assertions | `rust-cpython/results/perf-bench/20261112T065626Z-perf-jit-integrated-vs-perf-jit-loop`, `20261112T065803Z-perf-jit-integrated-vs-perf-jit-loop`; `.work/tmp/loop-feature-acceptance.json` |
 | 2026-11-11 | e891 | J | T3 | remove non-escaping two-argument tuple returns and immediate unpack while retaining finalizer-visible tuple fallback | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 9 shape exclusions; 39 Rust tests; three pair traces plus all native integrations pass; independent source/native review approves | `rust-cpython/results/perf-bench/20261112T074531Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T074700Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/pair-feature-acceptance.json` |
+| 2026-11-12 | e891 | J | T4 | fuse adjacent local swap and generic decref into one stencil while preserving callback-visible state | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; 11 named shape exclusions; 42 Rust tests; four native store traces and all prior integrations pass; independent source/native/policy review approves | `rust-cpython/results/perf-bench/20261112T075752Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T075931Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/glue-feature-acceptance.json` |
 | 2026-11-10 | 3.15.1 | R1 | R1 | CinderX steady JIT vs off | `cinderx-e48f370d` | — → 0.7960 (held-out 1.0621) | — | MEASURED | `.work/r1` |
 | 2026-11-10 | e891 | J | T1 | thread-state: executor tstate to float/int freelists (`_tlv_get_addr` 4.61% of samples, targeted chains 1.36% → 0%) | `perf-rust-jit` | timing deferred (OD14) | — | CORRECT | `campaign/t1-tstate` |
 | 2026-11-10 | e891 | J | T2 | float unboxing across binary ops and compares (float boxing 8.9-38.6% of samples; float-op chains nbody 27.5% → 26.3%, fft 11.4% → 9.5%) | `perf-rust-jit` | timing deferred (OD14); advisory 0.9962 | — | CORRECT (4 named superseded `test_capi.test_opt` uop assertions, owner ruling) | `aadaf25` |

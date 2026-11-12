@@ -2,6 +2,7 @@ mod unbox;
 mod leaf;
 mod cache;
 mod loop_globals;
+mod store;
 
 use std::mem::MaybeUninit;
 use std::slice;
@@ -9,6 +10,39 @@ use std::slice;
 pub use leaf::{LeafOpcodes, LeafStep, LeafUop, OpcodeRange, plan_leaf_calls};
 pub use cache::{CacheUop, plan_cache};
 pub use loop_globals::{LoopOpcodes, LoopStep, LoopUop, plan_loop_globals};
+pub use store::{StoreOpcodes, StoreStep, StoreUop, plan_stores};
+
+/// Plans local-store stencil fusion. Positive results write a complete plan;
+/// zero preserves the trace, and -1 rejects inconsistent descriptors. Allocation
+/// failure and insufficient output capacity leave output unchanged.
+///
+/// # Safety
+///
+/// Inputs must point to `length` initialized descriptors and one generated opcode
+/// map. Output must be separate, aligned writable storage for `capacity` steps.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn _PyJitOpt_PlanStores(
+    uops: *const StoreUop,
+    length: usize,
+    opcodes: *const StoreOpcodes,
+    output: *mut StoreStep,
+    capacity: usize,
+) -> isize {
+    // SAFETY: the caller supplies live initialized inputs and a matching opcode map.
+    let (uops, opcodes) = unsafe { (slice::from_raw_parts(uops, length), &*opcodes) };
+    match plan_stores(uops, opcodes) {
+        Ok(Some(plan)) if plan.len() <= capacity && plan.len() <= isize::MAX as usize => {
+            // SAFETY: the caller supplies separate aligned writable output storage.
+            let output = unsafe { slice::from_raw_parts_mut(output.cast::<MaybeUninit<StoreStep>>(), capacity) };
+            for (slot, step) in output.iter_mut().zip(&plan) {
+                slot.write(*step);
+            }
+            plan.len() as isize
+        }
+        Ok(_) => 0,
+        Err(Inconsistent) => -1,
+    }
+}
 
 /// Plans an entry prologue for a watched loop-global guard. A positive result
 /// writes that many steps; 0 preserves the trace, and -1 rejects inconsistent
