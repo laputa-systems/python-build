@@ -758,6 +758,20 @@ including an argument getter, inherited and unrelated owner layouts, descriptor 
 tracing/monitoring, and a finalizer that deletes the slot while the caller is
 running in the JIT. The latter must retain the getter's traceback frame.
 
+Global-return getters retain a pre-call `_CHECK_LEAF_GLOBALS_VERSION` that
+reads the called function's globals dictionary. The Rust planner moves one
+remaining globals guard from the pure callee body to the original call site;
+it keeps the existing dictionary watcher dependencies and constant result.
+The guard and the leaf call both retry at the caller's call instruction.
+Dictionary value replacement invalidates the executor before the old object
+is decref'd, so the call's validity check protects cached mortal results.
+Unresolved lazy imports and dictionary-subclass lookups remain ordinary
+calls because their loads are not constant-folded by the existing optimizer.
+`jit_global_leaf_integration.py` checks separate caller/callee dictionaries,
+shared-code functions, replacement, deletion, clear/update, builtin fallback,
+cached object collection, dictionary callbacks, lazy lookup errors and
+observer frames.
+
 General virtual frames, remaining lookup caches, loop
 peeling and invariant-guard hoisting remain T3 work.
 
@@ -1738,7 +1752,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | T3 frame-free argument/constant/slot getters and T4 whole-trace cache allocation accepted on `campaign/j3`; next: remaining T3 lookup/allocation and loop work. Performance acceptance deferred under OD16 | J5 against J4: all 31 workload digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 8 prior superseded suite assertions; descriptor suite passes both modes; independent source/native review approves |
+| J | active | T3 frame-free argument/constant/slot/global getters and T4 whole-trace cache allocation accepted on `campaign/j3`; next: remaining T3 allocation and loop work. Performance acceptance deferred under OD16 | J6 against J5: all 31 workload digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 8 prior superseded suite assertions; lazy-import suite passes both modes; independent source/native review approves |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | feature complete | C3 closed on `campaign/c3`; performance acceptance deferred under OD16. Routing/API owner reviews remain asynchronous; nothing pushed | `fb131e1`: both full suites match the baseline five-file failure set; verify and 30,318-case census report 0 mismatches; 101 mode fixtures and independent reviews pass |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -1758,6 +1772,14 @@ The three
 new named upstream uop-shape exclusions follow the existing owner ruling;
 an independent run bypassed only those obsolete assertions and passed every
 remaining original assertion. Performance acceptance is deferred under OD16.
+
+**Owner queue:** T3 global getters (on `campaign/j3`, async review). The
+private leaf opcode map now includes a pre-call callee-dictionary version
+guard. Existing watcher dependencies protect cached mortal values; a native
+reentrant-finalizer regression receives the replacement value after the old
+global is collected. Independent source/native review approves. Dictionary
+subclasses and unresolved lazy loads keep concrete calls. Performance
+acceptance remains deferred under OD16.
 
 **Owner queue:** T4 cache allocation (on `campaign/j3`, async review). New
 private `_PyJitOpt_PlanCache` ABI selects generated cache depths across the
@@ -2058,6 +2080,7 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-11 | e891 | J | T3 | fuse complete exact-argument calls returning an argument or constant without a physical callee frame | clean `perf-jit-c3-ref` on `d52991a` | performance deferred (OD16) | — | CORRECT: 31 workload digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; targeted suites plus `test_capi.test_eval` differ only by 8 named superseded uop assertions; 30 Rust tests, 7 leaf traces, 10 unboxed kernels; independent review approves | `rust-cpython/results/perf-bench/20261112T041852Z-perf-jit-c3-ref-vs-perf-jit-j3`, `20261112T042029Z-perf-jit-c3-ref-vs-perf-jit-j3`; `.work/tmp/j3-feature-acceptance.json` |
 | 2026-11-11 | e891 | J | T4 | whole-trace Rust cache-depth planning minimizes explicit spill/reload stencils, then stack-reference transfers; preserves greedy endpoint and forbids speculative prefetch | `perf-jit-j3` | performance deferred (OD16) | call fixture 13 → 7 stencils, float fixture 3 → 2; instruction counts only | CORRECT: 31 workload digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 8 superseded suite assertions; 32 Rust tests including 15,625 exhaustive traces; native cache, leaf and unboxing checks pass; independent source/native review approves, including disabled optimization | `rust-cpython/results/perf-bench/20261112T043205Z-perf-jit-j3-vs-perf-jit-j4`, `20261112T043347Z-perf-jit-j3-vs-perf-jit-j4`; `.work/tmp/j4-feature-acceptance.json` |
 | 2026-11-11 | e891 | J | T3 | extend frame-free calls to preguarded borrowed-argument slot getters; missing slots retry the original call before consuming inputs | `perf-jit-j4` | performance deferred (OD16) | — | CORRECT: 31 workload digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 8 superseded assertions; descriptor suite passes JIT on/off; 33 Rust tests, 5 getter traces plus prior integration checks; independent source/native review approves, including an unrelated owner with a different slot layout | `rust-cpython/results/perf-bench/20261112T044643Z-perf-jit-j4-vs-perf-jit-j5`, `20261112T044811Z-perf-jit-j4-vs-perf-jit-j5`; `.work/tmp/j5-feature-acceptance.json`, `.work/tmp/j5-descr-{on,off}.log` |
+| 2026-11-11 | e891 | J | T3 | fuse global-return getters while preserving a pre-call guard against the callee's dictionary and existing watcher dependencies | `perf-jit-j5` | performance deferred (OD16) | — | CORRECT: 31 workload digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 8 superseded assertions; lazy-import suite passes both modes; 34 Rust tests and three native global-getter traces plus prior integrations; independent source/native review approves, including reentrant lookup during old-value finalization | `rust-cpython/results/perf-bench/20261112T045911Z-perf-jit-j5-vs-perf-jit-j6`, `20261112T050048Z-perf-jit-j5-vs-perf-jit-j6`; `.work/tmp/j6-feature-acceptance.json` |
 | 2026-11-10 | 3.15.1 | R1 | R1 | CinderX steady JIT vs off | `cinderx-e48f370d` | — → 0.7960 (held-out 1.0621) | — | MEASURED | `.work/r1` |
 | 2026-11-10 | e891 | J | T1 | thread-state: executor tstate to float/int freelists (`_tlv_get_addr` 4.61% of samples, targeted chains 1.36% → 0%) | `perf-rust-jit` | timing deferred (OD14) | — | CORRECT | `campaign/t1-tstate` |
 | 2026-11-10 | e891 | J | T2 | float unboxing across binary ops and compares (float boxing 8.9-38.6% of samples; float-op chains nbody 27.5% → 26.3%, fft 11.4% → 9.5%) | `perf-rust-jit` | timing deferred (OD14); advisory 0.9962 | — | CORRECT (4 named superseded `test_capi.test_opt` uop assertions, owner ruling) | `aadaf25` |

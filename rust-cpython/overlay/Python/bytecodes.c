@@ -4840,6 +4840,15 @@ dummy_func(
             LLTRACE_RESUME_FRAME();
         }
 
+        tier2 op(_CHECK_LEAF_GLOBALS_VERSION, (version/2, callable, unused, unused[oparg] -- callable, unused, unused[oparg])) {
+            PyObject *callable_o = PyStackRef_AsPyObjectBorrow(callable);
+            assert(PyFunction_Check(callable_o));
+            PyDictObject *dict = (PyDictObject *)((PyFunctionObject *)callable_o)->func_globals;
+            DEOPT_IF(!PyDict_CheckExact(dict));
+            PyDictKeysObject *keys = FT_ATOMIC_LOAD_PTR_ACQUIRE(dict->ma_keys);
+            DEOPT_IF(FT_ATOMIC_LOAD_UINT32_RELAXED(keys->dk_version) != version);
+        }
+
         tier2 op(_CALL_PY_LEAF, (result_low/2, result_high/2, callable, self_or_null, args[oparg] -- res)) {
             uint64_t result = (uint64_t)result_low | ((uint64_t)result_high << 32);
             PyFunctionObject *func = (PyFunctionObject *)PyStackRef_AsPyObjectBorrow(callable);

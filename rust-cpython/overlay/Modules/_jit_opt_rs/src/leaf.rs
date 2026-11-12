@@ -39,6 +39,8 @@ pub struct LeafOpcodes {
     pub leaf_call: u16,
     pub load_slot: u16,
     pub pop_borrow: u16,
+    pub guard_globals: u16,
+    pub leaf_globals: u16,
 }
 
 /// `effectful` is 0 or 1. Operand bits are opaque; Rust never dereferences them.
@@ -54,6 +56,7 @@ pub struct LeafUop {
 /// A replacement copies target metadata from `source`. The low two result bits
 /// select a constant address (0), argument (1), or argument slot (2). Argument
 /// indices occupy bits 2..18; slot byte offsets occupy bits 18..34.
+/// For a leaf-globals guard, `result` holds the expected dictionary keys version.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LeafStep {
@@ -90,6 +93,12 @@ enum BodyState {
     SlotOwner(ResultSource),
 }
 
+struct LeafBody {
+    end: usize,
+    result: ResultSource,
+    globals_version: Option<u32>,
+}
+
 fn header_is_guarded(uops: &[LeafUop], at: usize, ops: &LeafOpcodes) -> bool {
     if at == 0 || uops[at - 1].opcode != ops.recursion {
         return false;
@@ -112,10 +121,11 @@ fn header_is_guarded(uops: &[LeafUop], at: usize, ops: &LeafOpcodes) -> bool {
 }
 
 fn leaf_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
-    -> Result<Option<(usize, ResultSource)>, Inconsistent>
+    -> Result<Option<LeafBody>, Inconsistent>
 {
     let argc = uops[at].oparg;
     let mut state = BodyState::Entry { resumed: false };
+    let mut globals_version = None;
     for (index, uop) in uops.iter().enumerate().skip(at + 3) {
         let opcode = uop.opcode;
         if opcode == ops.nop || opcode == ops.set_ip {
@@ -129,6 +139,13 @@ fn leaf_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
                 BodyState::Entry { resumed }
             }
             BodyState::Entry { resumed: false } if opcode == ops.resume => {
+                BodyState::Entry { resumed: true }
+            }
+            BodyState::Entry { resumed: true }
+                if opcode == ops.guard_globals && uop.effectful == 0
+                    && globals_version.is_none() =>
+            {
+                globals_version = Some(u32::try_from(uop.operand).map_err(|_| Inconsistent)?);
                 BodyState::Entry { resumed: true }
             }
             BodyState::Entry { resumed: true }
@@ -161,7 +178,7 @@ fn leaf_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
                 BodyState::Value { result, borrowed: false }
             }
             BodyState::Value { result, .. } if opcode == ops.return_value => {
-                return Ok(Some((index, result)));
+                return Ok(Some(LeafBody { end: index, result, globals_version }));
             }
             _ => return Ok(None),
         };
@@ -172,7 +189,8 @@ fn leaf_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
 /// Fuses guarded exact-argument calls whose optimized body only returns an argument
 /// or constant, or loads one slot from a borrowed argument. Slot guards must
 /// already be discharged by the interpreter optimizer. An unsupported body or
-/// allocation failure leaves the trace unchanged.
+/// allocation failure leaves the trace unchanged. A globals-version guard is
+/// preserved before the call, checking the callee's dictionary.
 pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
     -> Result<Option<Vec<LeafStep>>, Inconsistent>
 {
@@ -201,20 +219,26 @@ pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
             at += 1;
             continue;
         }
-        let Some((end, result)) = leaf_body(uops, at, ops)? else {
+        let Some(body) = leaf_body(uops, at, ops)? else {
             at += 1;
             continue;
         };
-        steps[at].opcode = ops.nop;
+        if let Some(version) = body.globals_version {
+            steps[at] = LeafStep { opcode: ops.leaf_globals, oparg: uops[at].oparg,
+                                  source: (at - 1) as u32, result: u64::from(version) };
+        }
+        else {
+            steps[at].opcode = ops.nop;
+        }
         steps[at + 2] = LeafStep {
             opcode: ops.leaf_call, oparg: uops[at].oparg,
-            source: (at - 1) as u32, result: result.encode()?,
+            source: (at - 1) as u32, result: body.result.encode()?,
         };
-        for step in &mut steps[at + 3..=end] {
+        for step in &mut steps[at + 3..=body.end] {
             step.opcode = ops.nop;
         }
         changed = true;
-        at = end + 1;
+        at = body.end + 1;
     }
     Ok(changed.then_some(steps))
 }
@@ -233,6 +257,7 @@ mod tests {
             recursion: 30, stack_space: 31, pep523: 32, resume: 33, validity: 34,
             set_ip: 35, load_const: 36, load_const_borrow: 37, heap_safe: 38,
             nop: 39, leaf_call: 40, load_slot: 41, pop_borrow: 42,
+            guard_globals: 43, leaf_globals: 44,
         }
     }
 
@@ -325,6 +350,23 @@ mod tests {
     }
 
     #[test]
+    fn global_guards_keep_callee_context_and_precall_deopt() {
+        let mut uops = identity();
+        uops.insert(6, LeafUop { opcode: opcodes().guard_globals, oparg: 0,
+                                effectful: 0, operand: 42 });
+        let steps = plan_leaf_calls(&uops, &opcodes()).unwrap().unwrap();
+        assert_eq!(steps[2], LeafStep { opcode: opcodes().leaf_globals, oparg: 1,
+                                       source: 1, result: 42 });
+        assert_eq!(steps[4].opcode, opcodes().leaf_call);
+        assert!(steps[5..].iter().all(|step| step.opcode == opcodes().nop));
+        uops.insert(6, uops[6]);
+        assert!(plan_leaf_calls(&uops, &opcodes()).unwrap().is_none());
+        uops.remove(6);
+        uops[6].operand = 1 << 32;
+        assert!(matches!(plan_leaf_calls(&uops, &opcodes()), Err(Inconsistent)));
+    }
+
+    #[test]
     fn ffi_rejects_without_partially_writing_a_plan() {
         let mut uops = identity();
         let mut bad = identity();
@@ -346,6 +388,6 @@ mod tests {
         assert!(output.iter().all(|step| *step == untouched));
         assert_eq!(std::mem::size_of::<LeafUop>(), 16);
         assert_eq!(std::mem::size_of::<LeafStep>(), 16);
-        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 50);
+        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 54);
     }
 }

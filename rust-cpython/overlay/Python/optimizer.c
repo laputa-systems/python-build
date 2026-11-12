@@ -2045,6 +2045,8 @@ typedef struct {
     uint16_t leaf_call;
     uint16_t load_slot;
     uint16_t pop_borrow;
+    uint16_t guard_globals;
+    uint16_t leaf_globals;
 } _PyJitLeafOpcodes;
 
 typedef struct {
@@ -2061,7 +2063,7 @@ typedef struct {
     uint64_t result;
 } _PyJitLeafStep;
 
-static_assert(sizeof(_PyJitLeafOpcodes) == 50, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
+static_assert(sizeof(_PyJitLeafOpcodes) == 54, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
 static_assert(_Alignof(PyObject) >= 4, "leaf result tags use two object-alignment bits");
 static_assert(sizeof(_PyJitLeafUop) == 16, "_PyJitLeafUop matches Rust LeafUop");
 static_assert(offsetof(_PyJitLeafUop, operand) == 8, "LeafUop operand offset matches Rust");
@@ -2102,6 +2104,8 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         .leaf_call = _CALL_PY_LEAF,
         .load_slot = _LOAD_ATTR_SLOT,
         .pop_borrow = _POP_TOP_NOP,
+        .guard_globals = _GUARD_GLOBALS_VERSION,
+        .leaf_globals = _CHECK_LEAF_GLOBALS_VERSION,
     };
     _PyJitLeafUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
     _PyJitLeafStep *steps = PyMem_RawMalloc((size_t)length * sizeof(*steps));
@@ -2119,7 +2123,7 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
             .effectful = (flags & (HAS_ESCAPES_FLAG | HAS_ERROR_FLAG | HAS_PERIODIC_FLAG |
                                    HAS_EVAL_BREAK_FLAG | HAS_SYNC_SP_FLAG)) != 0,
             .operand = (opcode == _LOAD_CONST_INLINE || opcode == _LOAD_CONST_INLINE_BORROW ||
-                        opcode == _LOAD_ATTR_SLOT)
+                        opcode == _LOAD_ATTR_SLOT || opcode == _GUARD_GLOBALS_VERSION)
                        ? buffer[i].operand0 : 0,
         };
     }
@@ -2129,11 +2133,11 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         for (int i = 0; i < length; i++) {
             const _PyJitLeafStep *step = &steps[i];
             assert(step->source < (uint32_t)length);
-            if (step->opcode == _CALL_PY_LEAF) {
+            if (step->opcode == _CALL_PY_LEAF || step->opcode == _CHECK_LEAF_GLOBALS_VERSION) {
                 _PyUOpInstruction source = buffer[step->source];
                 assert(source.opcode == _CHECK_RECURSION_REMAINING);
                 buffer[i] = source;
-                buffer[i].opcode = _CALL_PY_LEAF;
+                buffer[i].opcode = step->opcode;
                 buffer[i].oparg = step->oparg;
                 buffer[i].operand0 = (uint32_t)step->result;
                 buffer[i].operand1 = (uint32_t)(step->result >> 32);
