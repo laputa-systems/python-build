@@ -4947,7 +4947,9 @@ dummy_func(
         }
 
         tier2 op(_CALL_PY_FLOAT_LEAF, (operation/2, error_offset/2, callable, self_or_null, args[oparg] -- res)) {
-            EXIT_IF(_Py_atomic_load_int_relaxed(&_PyRuntime.tracemalloc.config.tracing));
+            /* Reference tracers are published with all interpreter threads stopped. */
+            EXIT_IF(_PyRuntime.ref_tracer.tracer_func != NULL ||
+                    _Py_atomic_load_int_relaxed(&_PyRuntime.tracemalloc.config.tracing));
             PyFunctionObject *func = (PyFunctionObject *)PyStackRef_AsPyObjectBorrow(callable);
             assert(PyFunction_Check(func));
             PyCodeObject *code = (PyCodeObject *)func->func_code;
@@ -5009,7 +5011,8 @@ dummy_func(
         }
 
         tier2 op(_BEGIN_VIRTUAL_CALL, (required_locals/2, bound/1, callable, self_or_null, args[oparg] --)) {
-            EXIT_IF(_Py_atomic_load_int_relaxed(&_PyRuntime.tracemalloc.config.tracing));
+            EXIT_IF(_PyRuntime.ref_tracer.tracer_func != NULL ||
+                    _Py_atomic_load_int_relaxed(&_PyRuntime.tracemalloc.config.tracing));
             PyFunctionObject *func = (PyFunctionObject *)PyStackRef_AsPyObjectBorrow(callable);
             assert(PyFunction_Check(func));
             PyCodeObject *code = (PyCodeObject *)func->func_code;
