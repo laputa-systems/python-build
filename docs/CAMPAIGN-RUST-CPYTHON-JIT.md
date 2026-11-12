@@ -1783,14 +1783,15 @@ candidate's verify run retain only `test_asyncio.test_sendfile`,
 `test_ssl` and `test_support` failures. Evidence is in
 `.work/tmp/integration-feature-acceptance.json`, `.work/tmp/full-compiler.json`,
 `.work/tmp/native-serc-integration.log` and `rust-cpython/logs/perf-jit-integrated-all*.log`.
-Continue J feature work from the integrated tree; keep both reference stages
+The stack landed on local `main` as `0e72f84`; its matched C3 reference is
+`8083f4f` on `campaign/jit-main-ref`. Continue J feature work from the integrated tree; keep both reference stages
 and earlier campaign stages for the deferred performance work. Nothing is pushed.
 
 **Owner queue:** R1 reference report (informational, no target change
 requested): CinderX 3.15 steady JIT uplift `S = 0.7960`, held-out 1.0621, beside
 M2 ≤ 0.48, M3 ≤ 0.38, M4 ≤ 0.25. T2 does not wait for an answer.
 
-**Owner queue:** T3 leaf calls (on `campaign/j3`, async review). New private
+**Owner queue:** T3 leaf calls (landed locally, async review). New private
 `_PyJitOpt_PlanLeafCalls` ABI and `_CALL_PY_LEAF` tagged result caches;
 ownership, pre-call deopts and frame elision independently reviewed. Seven
 native leaf cases, five slot-getter traces and the ten unboxing kernels pass
@@ -1802,7 +1803,7 @@ new named upstream uop-shape exclusions follow the existing owner ruling;
 an independent run bypassed only those obsolete assertions and passed every
 remaining original assertion. Performance acceptance is deferred under OD16.
 
-**Owner queue:** T3 global getters (on `campaign/j3`, async review). The
+**Owner queue:** T3 global getters (landed locally, async review). The
 private leaf opcode map now includes a pre-call callee-dictionary version
 guard. Existing watcher dependencies protect cached mortal values; a native
 reentrant-finalizer regression receives the replacement value after the old
@@ -1810,7 +1811,7 @@ global is collected. Independent source/native review approves. Dictionary
 subclasses and unresolved lazy loads keep concrete calls. Performance
 acceptance remains deferred under OD16.
 
-**Owner queue:** T4 cache allocation (on `campaign/j3`, async review). New
+**Owner queue:** T4 cache allocation (landed locally, async review). New
 private `_PyJitOpt_PlanCache` ABI selects generated cache depths across the
 trace without speculative stack prefetch. Independent source/native review
 approves, including disabled optimization and unboxed exits. The native call
@@ -1901,7 +1902,7 @@ opcodes `BINARY_OP_SUBSCR_ARRAY_D`/`_I`; new uops
 `_PyArray_ReadIntItem`, defined in `Python/specialize.c`. The
 `BINARY_OP` cache carries the recorded type version in `external_cache[0..1]`.
 
-**Owner queue (C2 contract changes, on `campaign/c2`, not yet on `main`):**
+**Owner queue (C2 contract changes, landed locally):**
 
 - The compile hook in `overlay/Python/pythonrun.c` and `marshal.c` (compiled
   only under `Py_SERC`), the `serc-lane` C ABI, and its routing rule.
@@ -1938,7 +1939,7 @@ opcodes `BINARY_OP_SUBSCR_ARRAY_D`/`_I`; new uops
   finds no new defect; the empirical stack-cutoff validation limit is recorded
   in C2. Owner acceptance of the routing/API changes remains pending.
 
-**Owner queue (C3, on `campaign/c3`):** `serc::CompileMode` and
+**Owner queue (C3, landed locally):** `serc::CompileMode` and
 `CompileOptions.mode` select `exec`, `eval` or `single`; the default stays
 `exec`, and non-exec modes currently require the 3.16 target.
 `ParseCompileModeError` reports invalid mode spellings. The private C ABI
@@ -2110,6 +2111,7 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-11 | e891 | J | T4 | whole-trace Rust cache-depth planning minimizes explicit spill/reload stencils, then stack-reference transfers; preserves greedy endpoint and forbids speculative prefetch | `perf-jit-j3` | performance deferred (OD16) | call fixture 13 → 7 stencils, float fixture 3 → 2; instruction counts only | CORRECT: 31 workload digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 8 superseded suite assertions; 32 Rust tests including 15,625 exhaustive traces; native cache, leaf and unboxing checks pass; independent source/native review approves, including disabled optimization | `rust-cpython/results/perf-bench/20261112T043205Z-perf-jit-j3-vs-perf-jit-j4`, `20261112T043347Z-perf-jit-j3-vs-perf-jit-j4`; `.work/tmp/j4-feature-acceptance.json` |
 | 2026-11-11 | e891 | J | T3 | extend frame-free calls to preguarded borrowed-argument slot getters; missing slots retry the original call before consuming inputs | `perf-jit-j4` | performance deferred (OD16) | — | CORRECT: 31 workload digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 8 superseded assertions; descriptor suite passes JIT on/off; 33 Rust tests, 5 getter traces plus prior integration checks; independent source/native review approves, including an unrelated owner with a different slot layout | `rust-cpython/results/perf-bench/20261112T044643Z-perf-jit-j4-vs-perf-jit-j5`, `20261112T044811Z-perf-jit-j4-vs-perf-jit-j5`; `.work/tmp/j5-feature-acceptance.json`, `.work/tmp/j5-descr-{on,off}.log` |
 | 2026-11-11 | e891 | J | T3 | fuse global-return getters while preserving a pre-call guard against the callee's dictionary and existing watcher dependencies | `perf-jit-j5` | performance deferred (OD16) | — | CORRECT: 31 workload digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 8 superseded assertions; lazy-import suite passes both modes; 34 Rust tests and three native global-getter traces plus prior integrations; independent source/native review approves, including reentrant lookup during old-value finalization | `rust-cpython/results/perf-bench/20261112T045911Z-perf-jit-j5-vs-perf-jit-j6`, `20261112T050048Z-perf-jit-j5-vs-perf-jit-j6`; `.work/tmp/j6-feature-acceptance.json` |
+| 2026-11-11 | e891 | C/J | integration | combine C3 and four JIT slices with main's dependency update; repair three SSL dependency API mismatches while preserving behavior | `perf-jit-main-ref` (`8083f4f`) | performance deferred (OD16) | — | CORRECT: matched 31 digests; 2,000 clean fuzz programs; targeted JIT suites only 8 prior superseded assertions; normal reference/candidate and candidate verify each run 52,102 tests with the same five known failing files; no compiler mismatch; native compiler and SSL regressions pass; independent adapter review approves | local main `0e72f84`; integration evidence above |
 | 2026-11-10 | 3.15.1 | R1 | R1 | CinderX steady JIT vs off | `cinderx-e48f370d` | — → 0.7960 (held-out 1.0621) | — | MEASURED | `.work/r1` |
 | 2026-11-10 | e891 | J | T1 | thread-state: executor tstate to float/int freelists (`_tlv_get_addr` 4.61% of samples, targeted chains 1.36% → 0%) | `perf-rust-jit` | timing deferred (OD14) | — | CORRECT | `campaign/t1-tstate` |
 | 2026-11-10 | e891 | J | T2 | float unboxing across binary ops and compares (float boxing 8.9-38.6% of samples; float-op chains nbody 27.5% → 26.3%, fft 11.4% → 9.5%) | `perf-rust-jit` | timing deferred (OD14); advisory 0.9962 | — | CORRECT (4 named superseded `test_capi.test_opt` uop assertions, owner ruling) | `aadaf25` |
