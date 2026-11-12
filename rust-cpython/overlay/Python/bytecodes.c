@@ -31,6 +31,7 @@
 #include "pycore_pyerrors.h"      // _PyErr_GetRaisedException()
 #include "pycore_pystate.h"       // _PyInterpreterState_GET()
 #include "pycore_range.h"         // _PyRangeIterObject
+#include "pycore_runtime.h"
 #include "pycore_setobject.h"     // _PySet_NextEntry()
 #include "pycore_sliceobject.h"   // _PyBuildSlice_ConsumeRefs
 #include "pycore_stackref.h"
@@ -4946,6 +4947,7 @@ dummy_func(
         }
 
         tier2 op(_CALL_PY_FLOAT_LEAF, (operation/2, error_offset/2, callable, self_or_null, args[oparg] -- res)) {
+            EXIT_IF(_Py_atomic_load_int_relaxed(&_PyRuntime.tracemalloc.config.tracing));
             PyFunctionObject *func = (PyFunctionObject *)PyStackRef_AsPyObjectBorrow(callable);
             assert(PyFunction_Check(func));
             PyCodeObject *code = (PyCodeObject *)func->func_code;
@@ -5007,6 +5009,7 @@ dummy_func(
         }
 
         tier2 op(_BEGIN_VIRTUAL_CALL, (required_locals/2, bound/1, callable, self_or_null, args[oparg] --)) {
+            EXIT_IF(_Py_atomic_load_int_relaxed(&_PyRuntime.tracemalloc.config.tracing));
             PyFunctionObject *func = (PyFunctionObject *)PyStackRef_AsPyObjectBorrow(callable);
             assert(PyFunction_Check(func));
             PyCodeObject *code = (PyCodeObject *)func->func_code;

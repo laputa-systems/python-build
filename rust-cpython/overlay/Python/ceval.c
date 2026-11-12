@@ -3,6 +3,7 @@
 #include "ceval.h"
 #include "pycore_floatobject.h"
 #include "pycore_long.h"
+#include "pycore_runtime.h"
 
 #ifdef HAVE_PTHREAD_NP_H
 #  include <pthread_np.h>         // pthread_attr_get_np()
