@@ -188,6 +188,65 @@ for name, source, start in (("exec", b"x = 1\n", 257), ("eval", b"1", 258),
 print(json.dumps(outcomes))
 '''
 
+AUDIT_MODULE_PROBE = r'''
+import __future__, _testcapi, json, sys, warnings
+
+active = None
+events = []
+def audit(event, args):
+    if event == "compile" and active is not None:
+        namespace, action = active
+        if action == "replace":
+            namespace["__name__"] = "after"
+        else:
+            del namespace["__name__"]
+sys.addaudithook(audit)
+
+class Module(str):
+    def __del__(self):
+        events.append("deleted")
+        sys.set_int_max_str_digits(640)
+
+def outcome(action, flags):
+    global active
+    sys.set_int_max_str_digits(0)
+    events.clear()
+    namespace = {"__name__": "before" if action == "replace" else Module("before")}
+    source = b"x = '\\q'\n" if action == "replace" else b"x = " + b"1" * 700 + b"\n"
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        warnings.filterwarnings("error", category=SyntaxWarning, module="^before$")
+        active = namespace, action
+        try:
+            _testcapi.run_stringflags(source, 257, namespace, namespace, flags)
+            result = "ok"
+        except Exception as error:
+            result = type(error).__name__
+        finally:
+            active = None
+    sys.set_int_max_str_digits(0)
+    return [result, events.copy()]
+
+outcomes = {}
+for action in ("replace", "delete"):
+    outcomes[action] = [outcome(action, 0), outcome(action, __future__.generator_stop.compiler_flag)]
+
+class NameKey(str):
+    __hash__ = str.__hash__
+    def __eq__(self, other):
+        events.append("lookup")
+        return str.__eq__(self, other)
+
+def custom_key(flags):
+    namespace = {NameKey("__name__"): "before"}
+    events.clear()
+    _testcapi.run_stringflags(b"x = 1\n", 257, namespace, namespace, flags)
+    return [namespace["x"], events.copy()]
+
+outcomes["custom key"] = [custom_key(0), custom_key(__future__.generator_stop.compiler_flag)]
+print(json.dumps(outcomes))
+'''
+
 VERIFY_PROBE = r'''
 import _pylong, json, sys
 
@@ -322,6 +381,47 @@ for case in cases:
 print(json.dumps(outcomes))
 '''
 
+AUDIT_PROBE = r'''
+import __future__, _testcapi, json, sys, warnings
+
+active = None
+def audit(event, args):
+    if event == "compile" and active is not None:
+        active["events"].append([list(args[0]), args[1]])
+        if active["veto"]:
+            raise PermissionError("compile denied")
+sys.addaudithook(audit)
+
+def outcome(source, mode, api, flags, veto):
+    global active
+    observation = {"events": [], "veto": veto, "raised": None}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        active = observation
+        try:
+            if api == "compile":
+                compile(source, "<audit-probe>", mode, flags=flags, dont_inherit=True)
+            else:
+                namespace = {}
+                _testcapi.run_stringflags(source, {"single": 256, "exec": 257, "eval": 258}[mode],
+                                         namespace, namespace, flags)
+        except Exception as error:
+            observation["raised"] = [type(error).__name__, str(error)]
+        finally:
+            active = None
+    return observation
+
+outcomes = []
+for mode in ("exec", "eval", "single"):
+    for source in (b"1 + 2\n", b"1 +\n", b"'\\q'\n"):
+        for api, text in (("compile", source), ("compile", source.decode()), ("run", source)):
+            for veto in (False, True):
+                candidate = outcome(text, mode, api, 0, veto)
+                reference = outcome(text, mode, api, __future__.generator_stop.compiler_flag, veto)
+                outcomes.append([mode, api, repr(text), candidate, reference])
+print(json.dumps(outcomes))
+'''
+
 
 @unittest.skipUnless(SERC_PYTHON, "set SERC_PYTHON to the interpreter of a --serc build")
 class SercCompileTests(unittest.TestCase):
@@ -385,6 +485,24 @@ class SercCompileTests(unittest.TestCase):
         ):
             with self.subTest(name=name, mode=mode, optimize=level):
                 self.assertEqual(candidate, reference)
+
+    def test_source_compilation_audits_once_and_honors_a_veto_before_parsing(self):
+        for verify in (False, True):
+            for mode, api, source, candidate, reference in self.run_probe(AUDIT_PROBE, verify=verify):
+                with self.subTest(mode=mode, api=api, source=source, verify=verify):
+                    self.assertEqual(len(reference["events"]), 1)
+                    self.assertEqual(candidate, reference)
+                    if reference["veto"]:
+                        self.assertEqual(candidate["raised"], ["PermissionError", "compile denied"])
+
+    def test_audit_module_mutation_preserves_parser_context_and_reference_lifetime(self):
+        for verify in (False, True):
+            outcomes = self.run_probe(AUDIT_MODULE_PROBE, verify=verify)
+            self.assertEqual(outcomes["replace"], [["SyntaxError", []], ["SyntaxError", []]])
+            self.assertEqual(outcomes["delete"], [["ok", ["deleted"]], ["ok", ["deleted"]]])
+            candidate, reference = outcomes["custom key"]
+            self.assertEqual(candidate, reference)
+            self.assertEqual(reference, [1, ["lookup", "lookup", "lookup"]])
 
     def test_verify_mode_raises_when_serc_and_the_c_compiler_differ(self):
         outcomes = self.run_probe(VERIFY_PROBE, verify=True)

@@ -32,6 +32,10 @@
 
 #include <stdbool.h>
 
+#ifdef Py_SERC
+#include "pycore_dict.h"
+#endif
+
 #ifdef MS_WINDOWS
 #  include "malloc.h"             // alloca()
 #endif
@@ -1321,19 +1325,39 @@ _PyRun_String(const char *str, PyObject* name, int start,
     } else {
         name = &_Py_STR(anon_string);
     }
-#ifdef Py_SERC
-    if (serc_routes(start, str, name, flags)) {
-        ret = run_mod_or_source(NULL, str, start, name, globals, locals, flags, arena,
-                                source, generate_new_source);
-        goto done;
-    }
-#endif
     PyObject *module = NULL;
     if (globals && PyDict_GetItemStringRef(globals, "__name__", &module) < 0) {
         goto done;
     }
 
+#ifdef Py_SERC
+    if (PySys_Audit("compile", "yO", str, name) < 0) {
+        Py_XDECREF(module);
+        goto done;
+    }
+    int module_unchanged = globals == NULL;
+    if (globals && DK_IS_UNICODE(((PyDictObject *)globals)->ma_keys)) {
+        PyObject *current_module = NULL;
+        if (PyDict_GetItemStringRef(globals, "__name__", &current_module) < 0) {
+            Py_XDECREF(module);
+            goto done;
+        }
+        module_unchanged = current_module == module;
+        Py_XDECREF(current_module);
+    }
+    /* The parser uses the pre-audit module snapshot. General-key lookups can
+       execute Python, so only compare snapshots in Unicode-key dictionaries. */
+    if (module_unchanged && serc_routes(start, str, name, flags)) {
+        Py_XDECREF(module);
+        ret = run_mod_or_source(NULL, str, start, name, globals, locals, flags, arena,
+                                source, generate_new_source);
+        goto done;
+    }
+    mod = _PyParser_ASTFromStringWithoutAudit(str, name, start, flags, arena,
+                                             module, NULL);
+#else
     mod = _PyParser_ASTFromString(str, name, start, flags, arena, module, NULL);
+#endif
     Py_XDECREF(module);
 
     if (mod != NULL) {
@@ -1636,6 +1660,9 @@ _Py_CompileString(const char *str, PyObject *filename, int start,
         return NULL;
     }
 #ifdef Py_SERC
+    if (PySys_Audit("compile", "yO", str, filename) < 0) {
+        return NULL;
+    }
     if (serc_routes(start, str, filename, flags)) {
         return serc_compile(str, filename, start, flags, optimize, module);
     }
@@ -1654,8 +1681,13 @@ c_compile_string(const char *str, PyObject *filename, int start,
 
     PyObject *result = NULL;
     PyObject *incomplete = NULL;
+#ifdef Py_SERC
+    mod_ty mod = _PyParser_ASTFromStringWithoutAudit(str, filename, start, flags,
+                                                   arena, module, &incomplete);
+#else
     mod_ty mod = _PyParser_ASTFromString(str, filename, start, flags, arena,
                                         module, &incomplete);
+#endif
     if (mod == NULL) {
         goto done;
     }
