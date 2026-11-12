@@ -14,7 +14,7 @@ from unittest.mock import Mock, patch
 from buildsys.comparison import compare_completed_artifact
 from buildsys.deporder import dependency_order
 from buildsys.generations import active_generation, publish_generation
-from buildsys.inputs import canonical_json, load_lock
+from buildsys.inputs import canonical_json, locked_inputs, pin_identity
 from buildsys.package import (
     ArchiveFacts,
     PackageError,
@@ -227,7 +227,7 @@ class ManifestTests(unittest.TestCase):
 
     def test_build_record_binds_locked_inputs_target_and_installed_recipe(self) -> None:
         target = target_for_triple("aarch64-unknown-linux-musl")
-        entries = load_lock(SOURCE_LOCK)
+        entries = locked_inputs(SOURCE_LOCK)
         source = next(entry for entry in entries if entry.name == "cpython")
         pins_by_name = {entry.name: entry for entry in entries}
         dependencies = [
@@ -235,7 +235,7 @@ class ManifestTests(unittest.TestCase):
                 "name": pins_by_name[name].name,
                 "version": pins_by_name[name].version,
                 "sha256": pins_by_name[name].sha256,
-                "identity": pins_by_name[name].identity(),
+                "identity": pin_identity(pins_by_name[name]),
             }
             for name in dependency_order(target)
             if name != "pkgconf"

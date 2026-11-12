@@ -19,11 +19,12 @@ publishes with `gh release create ... --prerelease --verify-tag`.
 
 Each target has, per the build-repository contract:
 
-- `cpython-<version>-<target>.tar.xz`, the installation recompressed from the
-  qualified archive.
+- `cpython-<version>-<target>.tar.xz`, the installation extracted from the
+  qualified archive and repacked by `laputa-buildlib` (same tar content, xz
+  preset 6).
 - `cpython-<version>-<target>.manifest.json`, with `schema_version`,
   `product`, `version`, `target`, `source_revision`, `sources_lock_sha256`, and
-  the archive and compatibility asset digests.
+  the archive and compatibility asset digests, in that key order.
 
 uv, the consumer of the compatibility layout, reads these beside them:
 

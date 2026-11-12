@@ -140,6 +140,16 @@
       "purpose": "dbm backend"
     },
     {
+      "name": "laputa-buildlib",
+      "version": "0.1.0",
+      "url": "https://pypi.17166969.xyz/current/wheels/laputa_buildlib-0.1.0-py3-none-any.whl",
+      "sha256": "edd102a1713c903f93e19b10036983d123dd76fa1b04a0e5f3c5070f00a95383",
+      "size": 23941,
+      "role": "build-source",
+      "license": "Apache-2.0",
+      "purpose": "shared build-contract helpers, imported from the verified wheel by buildsys"
+    },
+    {
       "name": "reference-pbs",
       "version": "20260610",
       "target": "x86_64-unknown-linux-musl",

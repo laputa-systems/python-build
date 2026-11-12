@@ -6,10 +6,13 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from .inputs import InputError, load_lock
+from buildlib.release import archive_name, manifest_name
+
+from .inputs import InputError, locked_inputs
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_LOCK = REPOSITORY_ROOT / "sources.lock.json"
+PRODUCT_NAME = "cpython"
 
 
 class ProductError(Exception):
@@ -79,15 +82,15 @@ class Product:
         return f"cpython-{self.version_string}+{build}-{target}-install_only_stripped.tar.gz"
 
     def release_archive_name(self, target: str) -> str:
-        return f"cpython-{self.version_string}-{target}.tar.xz"
+        return archive_name(PRODUCT_NAME, self.version_string, target)
 
     def release_manifest_name(self, target: str) -> str:
-        return f"cpython-{self.version_string}-{target}.manifest.json"
+        return manifest_name(PRODUCT_NAME, self.version_string, target)
 
 
 def load_product(lock_path: Path = SOURCE_LOCK) -> Product:
     try:
-        entries = load_lock(Path(lock_path))
+        entries = locked_inputs(Path(lock_path))
     except InputError as error:
         raise ProductError(str(error)) from error
     pins = [entry for entry in entries if entry.name == "cpython"]

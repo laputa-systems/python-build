@@ -7,11 +7,12 @@ would show up as a suspiciously-easy match rather than real evidence.
 
 from __future__ import annotations
 
-import hashlib
 import os
 import stat
 from dataclasses import dataclass
 from pathlib import Path
+
+from buildlib.hashing import sha256_file
 
 
 @dataclass(frozen=True)
@@ -30,18 +31,10 @@ def _relative_entries(root: Path) -> dict[str, _TreeEntry]:
         entries[str(path.relative_to(root))] = _TreeEntry(
             kind=kind,
             mode=stat.S_IMODE(info.st_mode),
-            content_digest=_sha256(path) if stat.S_ISREG(info.st_mode) else None,
+            content_digest=sha256_file(path) if stat.S_ISREG(info.st_mode) else None,
             symlink_target=os.readlink(path) if stat.S_ISLNK(info.st_mode) else None,
         )
     return entries
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        while chunk := handle.read(1 << 20):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def macho_difference(first: Path, second: Path) -> dict:
@@ -157,11 +150,11 @@ def compare_archives(first: Path, second: Path, scratch: Path) -> dict:
     ]
     return {
         "archives": {
-            "first": {"sha256": _sha256(first), "size_bytes": first.stat().st_size},
-            "second": {"sha256": _sha256(second), "size_bytes": second.stat().st_size},
+            "first": {"sha256": sha256_file(first), "size_bytes": first.stat().st_size},
+            "second": {"sha256": sha256_file(second), "size_bytes": second.stat().st_size},
         },
         "files_compared": result["files_compared"],
-        "raw_archives_identical": _sha256(first) == _sha256(second),
+        "raw_archives_identical": sha256_file(first) == sha256_file(second),
         "structural_differences": {
             key: result[key] for key in (
                 "only_in_first", "only_in_second", "entry_type_differs",

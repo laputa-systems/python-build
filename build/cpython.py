@@ -35,7 +35,7 @@ from buildsys.cpython import (
     resolve_pgo_jobs,
 )
 from buildsys.deporder import dependency_order
-from buildsys.inputs import Cache, InputError, load_lock, safe_extract
+from buildsys.inputs import Cache, InputError, locked_inputs, pin_identity, safe_extract
 from buildsys.patches import PatchError, apply_patch_set
 from buildsys.product import PRODUCT
 from buildsys.product_process import run_product_process
@@ -114,7 +114,7 @@ def build(
     staged = stage / "cpython-staged"
     if staged.exists():
         shutil.rmtree(staged)
-    pins = load_lock(REPO / "sources.lock.json")
+    pins = locked_inputs(REPO / "sources.lock.json")
     pin = next(entry for entry in pins if entry.name == "cpython")
     if pin.version != PRODUCT.version_string:
         raise BuildError("the CPython source lock and product definition disagree")
@@ -298,7 +298,7 @@ def build(
             "name": pin_by_name[name].name,
             "version": pin_by_name[name].version,
             "sha256": pin_by_name[name].sha256,
-            "identity": pin_by_name[name].identity(),
+            "identity": pin_identity(pin_by_name[name]),
         }
         for name in dependency_names
     ]

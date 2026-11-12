@@ -1,11 +1,7 @@
-"""Mach-O parsing, exercised against synthetic images.
+"""Mach-O load-command edits and the buildlib inspection they rest on.
 
-The load commands are built here by hand rather than scraped from a tool so
-the assertions pin the *format*, not a tool's current output. The dylib-name
-test in particular is a regression test: `lc_str` offsets are relative to the
-start of the load command, so reading them against the command body silently
-returns a truncated path — which reads like a plausible library name and
-would let a wrong dependency through validation.
+Inspection itself is tested in laputa-buildlib; these tests pin the argv of the
+edits this build layers on top of it, against synthetic images built by hand.
 """
 from __future__ import annotations
 
@@ -20,31 +16,21 @@ from pathlib import Path
 from unittest.mock import patch
 
 from buildsys.macho import (
-    CPU_TYPE_ARM64,
-    CPU_TYPE_X86_64,
-    LC_BUILD_VERSION,
-    LC_ID_DYLIB,
-    LC_LOAD_DYLIB,
-    LC_RPATH,
-    MH_DYLIB,
-    MH_EXECUTE,
-    MH_PIE,
     MachOError,
     build_version,
-    dependencies,
-    dylib_id,
-    find_machos,
-    format_version,
-    inspect,
     is_macho,
     read_header,
-    rpaths,
     sign_adhoc,
     signature_status,
 )
 from buildsys.product import PRODUCT
 
 MH_MAGIC_64 = 0xFEEDFACF
+CPU_TYPE_ARM64 = 0x0100000C
+MH_EXECUTE = 2
+MH_PIE = 0x00200000
+LC_RPATH = 0x8000001C
+LC_BUILD_VERSION = 0x32
 LIBPYTHON = f"lib{PRODUCT.shared_library_stem}.dylib"
 
 
@@ -54,13 +40,6 @@ def _pad8(raw: bytes) -> bytes:
 
 def _command(cmd: int, payload: bytes) -> bytes:
     return struct.pack("<II", cmd, 8 + len(payload)) + payload
-
-
-def dylib_command(cmd: int, name: str) -> bytes:
-    raw = _pad8(name.encode() + b"\x00")
-    # name offset is measured from the start of the command, which is 8 bytes
-    # of cmd/cmdsize followed by four 4-byte dylib fields.
-    return _command(cmd, struct.pack("<IIII", 24, 0, 0x10000, 0x10000) + raw)
 
 
 def rpath_command(path: str) -> bytes:
@@ -83,153 +62,6 @@ def make_macho(commands, *, cputype: int = CPU_TYPE_ARM64,
         "<IiiIIIII", MH_MAGIC_64, cputype, 3, filetype, len(commands), len(body), flags, 0
     )
     return header + body
-
-
-class TempImage:
-    """Write image bytes to a temp file for the duration of a test."""
-
-    def __init__(self, data: bytes) -> None:
-        self._directory = tempfile.TemporaryDirectory()
-        self.path = Path(self._directory.name) / "image"
-        self.path.write_bytes(data)
-
-    def __enter__(self) -> Path:
-        return self.path
-
-    def __exit__(self, *exc) -> None:
-        self._directory.cleanup()
-
-
-class FormatVersionTests(unittest.TestCase):
-    def test_packs_major_minor(self) -> None:
-        self.assertEqual(format_version((26 << 16) | (0 << 8)), "26.0")
-
-    def test_includes_patch_when_present(self) -> None:
-        self.assertEqual(format_version((26 << 16) | (1 << 8) | 3), "26.1.3")
-
-
-class HeaderTests(unittest.TestCase):
-    def test_reads_arch_kind_and_pie(self) -> None:
-        with TempImage(make_macho([], cputype=CPU_TYPE_ARM64)) as path:
-            header = read_header(path)
-        self.assertEqual(header.arch, "arm64")
-        self.assertEqual(header.kind, "execute")
-        self.assertTrue(header.pie)
-        self.assertTrue(header.is_64)
-
-    def test_reads_non_pie_flag(self) -> None:
-        with TempImage(make_macho([], flags=0)) as path:
-            self.assertFalse(read_header(path).pie)
-
-    def test_distinguishes_x86_64(self) -> None:
-        with TempImage(make_macho([], cputype=CPU_TYPE_X86_64)) as path:
-            self.assertEqual(read_header(path).arch, "x86_64")
-
-    def test_dylib_filetype(self) -> None:
-        with TempImage(make_macho([], filetype=MH_DYLIB)) as path:
-            self.assertEqual(read_header(path).kind, "dylib")
-
-    def test_non_macho_is_rejected(self) -> None:
-        with TempImage(b"\x7fELF" + b"\x00" * 64) as path:
-            self.assertFalse(is_macho(path))
-            with self.assertRaises(MachOError):
-                read_header(path)
-
-    def test_fat_image_is_rejected_not_silently_accepted(self) -> None:
-        # A universal binary would mean an Intel slice this project excludes
-        # It must fail loudly rather than parse as one
-        # arbitrary slice.
-        fat = b"\xca\xfe\xba\xbe" + b"\x00" * 60
-        with TempImage(fat) as path:
-            self.assertFalse(is_macho(path))
-            with self.assertRaises(MachOError) as caught:
-                read_header(path)
-            self.assertIn("fat/universal", str(caught.exception))
-
-    def test_truncated_header_is_rejected(self) -> None:
-        with TempImage(make_macho([])[:16]) as path, self.assertRaises(MachOError):
-            read_header(path)
-
-
-class LoadCommandTests(unittest.TestCase):
-    def test_build_version_reports_floor_and_sdk(self) -> None:
-        image = make_macho([build_version_command(1, (26, 0), (26, 5))])
-        with TempImage(image) as path:
-            version = build_version(path)
-        self.assertEqual(version.platform_name, "macos")
-        self.assertEqual(version.minos, "26.0")
-        self.assertEqual(version.sdk, "26.5")
-
-    def test_dependency_names_are_not_truncated(self) -> None:
-        # Regression: an unrebased lc_str offset drops leading path components,
-        # turning /usr/lib/libSystem.B.dylib into libSystem.B.dylib.
-        image = make_macho([dylib_command(LC_LOAD_DYLIB, "/usr/lib/libSystem.B.dylib")])
-        with TempImage(image) as path:
-            self.assertEqual(dependencies(path), ["/usr/lib/libSystem.B.dylib"])
-
-    def test_dependency_names_with_rpath_prefix(self) -> None:
-        image = make_macho([
-            dylib_command(LC_LOAD_DYLIB, f"@rpath/{LIBPYTHON}"),
-            dylib_command(LC_LOAD_DYLIB, "@loader_path/../lib/libz.1.dylib"),
-        ])
-        with TempImage(image) as path:
-            self.assertEqual(
-                dependencies(path),
-                [f"@rpath/{LIBPYTHON}", "@loader_path/../lib/libz.1.dylib"],
-            )
-
-    def test_install_name_is_read(self) -> None:
-        image = make_macho([dylib_command(LC_ID_DYLIB, f"@rpath/{LIBPYTHON}")],
-                           filetype=MH_DYLIB)
-        with TempImage(image) as path:
-            self.assertEqual(dylib_id(path), f"@rpath/{LIBPYTHON}")
-
-    def test_executable_has_no_install_name(self) -> None:
-        with TempImage(make_macho([build_version_command()])) as path:
-            self.assertIsNone(dylib_id(path))
-
-    def test_rpaths_are_listed(self) -> None:
-        image = make_macho([rpath_command("@loader_path/../lib"),
-                            rpath_command("/opt/homebrew/lib")])
-        with TempImage(image) as path:
-            self.assertEqual(rpaths(path), ["@loader_path/../lib", "/opt/homebrew/lib"])
-
-    def test_malformed_command_size_is_rejected(self) -> None:
-        body = struct.pack("<II", LC_RPATH, 4)  # cmdsize smaller than the header
-        header = struct.pack("<IiiIIIII", MH_MAGIC_64, CPU_TYPE_ARM64, 3, MH_EXECUTE, 1, 8, 0, 0)
-        with TempImage(header + body) as path, self.assertRaises(MachOError):
-            rpaths(path)
-
-    def test_inspect_summarises_one_image(self) -> None:
-        image = make_macho([
-            build_version_command(1, (26, 0), (26, 5)),
-            dylib_command(LC_ID_DYLIB, f"@rpath/{LIBPYTHON}"),
-            dylib_command(LC_LOAD_DYLIB, "/usr/lib/libSystem.B.dylib"),
-            rpath_command("@loader_path/../lib"),
-        ], filetype=MH_DYLIB)
-        with TempImage(image) as path:
-            summary = inspect(path)
-        self.assertEqual(summary["arch"], "arm64")
-        self.assertEqual(summary["minos"], "26.0")
-        self.assertEqual(summary["install_name"], f"@rpath/{LIBPYTHON}")
-        self.assertEqual(summary["dependencies"], ["/usr/lib/libSystem.B.dylib"])
-        self.assertEqual(summary["rpaths"], ["@loader_path/../lib"])
-
-
-class FindMachosTests(unittest.TestCase):
-    def test_finds_nested_images_and_skips_other_files(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            (root / "bin").mkdir()
-            (root / "lib").mkdir()
-            (root / "bin" / PRODUCT.interpreter_name).write_bytes(make_macho([]))
-            (root / "lib" / LIBPYTHON).write_bytes(
-                make_macho([], filetype=MH_DYLIB)
-            )
-            (root / "lib" / PRODUCT.interpreter_name).mkdir()
-            (root / "lib" / PRODUCT.interpreter_name / "os.py").write_text("pass\n")
-            found = {str(p.relative_to(root)) for p in find_machos(root)}
-        self.assertEqual(found, {f"bin/{PRODUCT.interpreter_name}", f"lib/{LIBPYTHON}"})
 
 
 class EditCommandTests(unittest.TestCase):
@@ -334,11 +166,12 @@ class HostBinaryTests(unittest.TestCase):
 
     def _assert_host_interpreter(self, executable: Path) -> None:
         self.assertTrue(is_macho(executable), f"{executable} is not a thin Mach-O")
-        summary = inspect(executable)
-        self.assertIn(summary["arch"], {"arm64", "x86_64"})
-        self.assertEqual(summary["kind"], "execute")
-        self.assertEqual(summary["platform"], "macos")
-        self.assertIsNotNone(summary["minos"])
+        header = read_header(executable)
+        version = build_version(executable)
+        self.assertIn(header.arch, {"arm64", "x86_64"})
+        self.assertEqual(header.kind, "execute")
+        self.assertIsNotNone(version)
+        self.assertEqual(version.platform_name, "macos")
 
 
 if __name__ == "__main__":

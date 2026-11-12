@@ -1463,7 +1463,7 @@ def verify_linux_overlay(prefix: Path, run_dir: Path, target) -> None:
 def write_linux_receipt(run_dir: Path, target, toolchain, isolation: dict, commands: dict) -> None:
     from buildsys.cpython import configuration
     from buildsys.deporder import dependency_order
-    from buildsys.inputs import Cache, load_lock
+    from buildsys.inputs import Cache, locked_inputs
 
     compiler = {}
     for name in ("cc", "cxx", "ar", "ranlib", "ld", "nm", "strip"):
@@ -1482,7 +1482,7 @@ def write_linux_receipt(run_dir: Path, target, toolchain, isolation: dict, comma
         {"name": path.relative_to(REPO).as_posix(), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
         for path in sorted((REPO / "backend" / "cpython-linux-patches").glob("*.patch"))
     ]
-    pins = {pin.name: pin for pin in load_lock(REPO / "sources.lock.json")}
+    pins = {pin.name: pin for pin in locked_inputs(REPO / "sources.lock.json")}
     names = ("cpython", *tuple(name for name in dependency_order(target) if name not in {"pkgconf", "openssl"}), "certifi-ca")
     cache = Cache(repository_common_root() / ".cache")
     source["c_inputs"] = []
@@ -1578,7 +1578,7 @@ def run_linux(args, target, toolchain) -> int:
 
 def build_base(run_dir: Path, cache_root: Path, target, toolchain, *, pgo: bool) -> Path:
     from buildsys.bootstrap import lto_smoke_test
-    from buildsys.inputs import Cache, InputError, load_lock
+    from buildsys.inputs import Cache, InputError, locked_inputs
 
     if target.triple not in {TARGET_TRIPLE, LINUX_AARCH64_TRIPLE, LINUX_X86_64_TRIPLE}:
         raise BuildError("this research build supports native arm64 and x86_64 only")
@@ -1592,7 +1592,7 @@ def build_base(run_dir: Path, cache_root: Path, target, toolchain, *, pgo: bool)
         lto_smoke_test(toolchain, run_dir / "logs" / "lto-smoke")
     else:
         verify_linux_lto(toolchain, run_dir)
-    pins = {entry.name: entry for entry in load_lock(REPO / "sources.lock.json")}
+    pins = {entry.name: entry for entry in locked_inputs(REPO / "sources.lock.json")}
     cache = Cache(cache_root)
     from buildsys.deporder import dependency_order
 

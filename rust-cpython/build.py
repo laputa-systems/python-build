@@ -50,7 +50,8 @@ from buildsys.inputs import (
     Cache,
     Input,
     InputError,
-    load_lock,
+    locked_inputs,
+    pin_identity,
     safe_extract,
 )
 from buildsys.llvm import (
@@ -138,7 +139,7 @@ def _read_lock() -> tuple[dict[str, Any], Input]:
     try:
         document = json.loads(SOURCE_LOCK.read_text())
         metadata = document["source"]
-        entries = load_lock(SOURCE_LOCK)
+        entries = locked_inputs(SOURCE_LOCK)
     except (OSError, json.JSONDecodeError, KeyError, TypeError, InputError) as error:
         raise LaneError(f"cannot read Rust-for-CPython source lock: {error}") from error
     names = {entry.name for entry in entries}
@@ -171,7 +172,7 @@ def _read_serc_lock() -> tuple[dict[str, Any], Input]:
     try:
         document = json.loads(SOURCE_LOCK.read_text())
         metadata = document["serc_source"]
-        entries = [entry for entry in load_lock(SOURCE_LOCK) if entry.name == "serc"]
+        entries = [entry for entry in locked_inputs(SOURCE_LOCK) if entry.name == "serc"]
         required = {"repository", "commit", "version", "license", "cargo_lock_sha256"}
         if not isinstance(metadata, dict) or required - metadata.keys():
             raise LaneError(f"{SOURCE_LOCK}: incomplete Serc source metadata")
@@ -202,7 +203,7 @@ def _read_rust_std_lock() -> tuple[dict[str, Any], Input]:
     try:
         document = json.loads(SOURCE_LOCK.read_text())
         metadata = document["rust_std_source"]
-        entries = [entry for entry in load_lock(SOURCE_LOCK)
+        entries = [entry for entry in locked_inputs(SOURCE_LOCK)
                    if entry.name == "rust-std-src"]
         required = {"version", "compiler_revision", "library_cargo_lock_sha256", "license"}
         if not isinstance(metadata, dict) or required - metadata.keys():
@@ -261,8 +262,12 @@ def _rust_std_source_environment(destination: Path) -> dict[str, str]:
     receipt = destination / "source-input.json"
     receipt.write_text(json.dumps({
         "schema": 1,
-        "input": dataclasses.asdict(source_input),
-        "input_identity": source_input.identity(),
+        "input": {
+            "name": source_input.name, "version": source_input.version, "url": source_input.url,
+            "sha256": source_input.sha256, "role": source_input.role, "target": source_input.target,
+            "size": source_input.size, "license": source_input.license, "purpose": source_input.purpose,
+        },
+        "input_identity": pin_identity(source_input),
         "compiler_revision": metadata["compiler_revision"],
         "library_cargo_lock_sha256": metadata["library_cargo_lock_sha256"],
         "library": str(library.resolve()),
@@ -376,7 +381,7 @@ def _rust_identity(rustup: str | None) -> dict[str, Any]:
 
 def _mpdecimal_input() -> Input:
     try:
-        entries = [entry for entry in load_lock(PRODUCT_SOURCE_LOCK) if entry.name == "mpdecimal"]
+        entries = [entry for entry in locked_inputs(PRODUCT_SOURCE_LOCK) if entry.name == "mpdecimal"]
     except (OSError, InputError) as error:
         raise LaneError(f"cannot read the locked mpdecimal source: {error}") from error
     if len(entries) != 1 or entries[0].role != "source":
@@ -1108,7 +1113,7 @@ def fetch() -> int:
     if IS_LINUX:
         mpdecimal = _mpdecimal_input()
         mirror = dataclasses.replace(
-            mpdecimal, url=MPDECIMAL_MIRROR.format(version=mpdecimal.version))
+            mpdecimal, urls=(MPDECIMAL_MIRROR.format(version=mpdecimal.version),))
         errors = []
         for route in (mpdecimal, mirror):
             try:

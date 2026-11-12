@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from buildsys.inputs import Cache, load_lock
+from buildsys.inputs import Cache, locked_inputs
 from buildsys.notices import (
     NATIVE_NOTICES,
     SOURCES_RECORD,
@@ -66,7 +66,7 @@ class NoticeFixture:
             }
             entries.append(entry)
         self.lock_path.write_text(json.dumps({"schema_version": 1, "inputs": entries}))
-        for entry, archive in zip(load_lock(self.lock_path), entries):
+        for entry, archive in zip(locked_inputs(self.lock_path), entries):
             cache.store(root / f"{entry.name}.tar.gz", entry)
 
     def install(self, install: Path, target=LINUX) -> dict:
@@ -141,14 +141,14 @@ class InstallNoticesTests(unittest.TestCase):
         fixture.lock_path.write_text(json.dumps(lock))
         archive = self.root / "broken.tar.gz"
         archive.write_bytes(broken)
-        cache.store(archive, next(e for e in load_lock(fixture.lock_path) if e.name == "expat"))
+        cache.store(archive, next(e for e in locked_inputs(fixture.lock_path) if e.name == "expat"))
         with self.assertRaises(NoticeError):
             fixture.install(self.root / "install", MACOS)
 
 
 class ShippedPolicyTests(unittest.TestCase):
     def test_every_bundled_input_has_a_notice_rule(self) -> None:
-        locked = {entry.name: entry for entry in load_lock(REPOSITORY / "sources.lock.json")}
+        locked = {entry.name: entry for entry in locked_inputs(REPOSITORY / "sources.lock.json")}
         for target in (LINUX, MACOS):
             for name in bundled_native_names(target):
                 self.assertIn(name, NATIVE_NOTICES, name)

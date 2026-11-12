@@ -58,23 +58,24 @@ class TargetRegistryTests(unittest.TestCase):
         self.assertEqual(len(names), len(TARGETS))
 
     def test_family_specific_fields_are_not_populated_on_the_other_family(self) -> None:
-        self.assertEqual(target_for_triple(MACOS_TRIPLE).musl_loader, "")
-        self.assertEqual(target_for_triple(MACOS_TRIPLE).docker_platform, "")
+        self.assertIsNone(target_for_triple(MACOS_TRIPLE).musl_loader)
+        self.assertIsNone(target_for_triple(MACOS_TRIPLE).docker_platform)
         self.assertEqual(target_for_triple("x86_64-unknown-linux-musl").deployment_target, "")
 
     def test_incomplete_target_is_rejected_at_construction(self) -> None:
         from buildsys.targets import Target
 
-        uv_metadata = {"uv_arch": "aarch64", "uv_os": "darwin", "uv_libc": "none"}
+        specific = {
+            "cpu_baseline_cflag": "", "openssl_configure_target": "",
+            "uv_arch": "aarch64", "uv_os": "darwin", "uv_libc": "none",
+        }
+        shared = {"triple": "x", "machine": "x", "os": "x", "executable_format": "x"}
         with self.assertRaises(UnsupportedTargetError):
-            Target(triple="x", machine="x", family=MACOS, cpu_baseline_cflag="",
-                   openssl_configure_target="", **uv_metadata)
+            Target(family=MACOS, **shared, **specific)
         with self.assertRaises(UnsupportedTargetError):
-            Target(triple="x", machine="x", family="linux-musl", cpu_baseline_cflag="",
-                   openssl_configure_target="", **uv_metadata)
+            Target(family="linux-musl", **shared, **specific)
         with self.assertRaises(UnsupportedTargetError):
-            Target(triple="x", machine="x", family="plan9", cpu_baseline_cflag="",
-                   openssl_configure_target="", **uv_metadata)
+            Target(family="plan9", **shared, **specific)
 
     def test_unknown_triple_fails_closed(self) -> None:
         with self.assertRaises(UnsupportedTargetError):

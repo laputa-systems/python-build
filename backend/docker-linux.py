@@ -21,7 +21,9 @@ sys.path.insert(0, str(REPO))
 
 from artifact_layout import ARCHIVE_NAME, MANIFEST_NAME, REPORT_NAME
 
-from buildsys.inputs import input_sources
+from buildsys.inputs import input_sources, locked_inputs
+from buildsys.wheel import INPUT_NAME as BUILDLIB_INPUT
+from buildsys.wheel import VIEW_RELATIVE_PATH as BUILDLIB_VIEW
 
 ARCH_CONFIGS = {
     "aarch64-unknown-linux-musl": {
@@ -357,6 +359,17 @@ def toolchain_input_paths(common: Path, bootstrap: dict) -> list[tuple[str, Path
     return result
 
 
+def buildlib_wheel_path(common: Path) -> tuple[str, Path]:
+    pin = next(entry for entry in locked_inputs(common / "sources.lock.json") if entry.name == BUILDLIB_INPUT)
+    path = common / BUILDLIB_VIEW / f"{pin.sha256}.whl"
+    require_no_symlink_below(common, path.parent)
+    if not verify_file(path, pin.sha256, pin.size):
+        raise DockerBuildError(
+            f"locked buildlib wheel is missing or invalid at {path}; run build.py fetch --target {TARGET}"
+        )
+    return pin.sha256, path
+
+
 def image_info(image: str) -> dict:
     output = checked_run(["docker", "image", "inspect", image, "--format", "{{json .}}"])
     try:
@@ -374,6 +387,7 @@ def prepare_toolchain_image(
     common = common_root()
     package_paths = base_package_paths(common, bootstrap)
     toolchain_paths = toolchain_input_paths(common, bootstrap)
+    wheel_sha256, wheel_path = buildlib_wheel_path(common)
     base_material = {
         "dockerfile": sha256_file(REPO / "Dockerfile"),
         "bootstrap_lock": sha256_file(REPO / "bootstrap.lock.json"),
@@ -381,6 +395,7 @@ def prepare_toolchain_image(
         "stack_patch": sha256_file(REPO / "build" / "patch_llvm_stack.py"),
         "apk_closure": sorted(item[0]["sha256"] for item in package_paths),
         "toolchain_inputs": sorted(name for name, _ in toolchain_paths),
+        "buildlib_wheel": wheel_sha256,
     }
     base_hash = canonical_digest(base_material)
     base_tag = f"python-build-rtls-{DOCKER_ARCH}-base:{base_hash[:16]}"
@@ -403,6 +418,9 @@ def prepare_toolchain_image(
             toolchain_dir.mkdir(parents=True)
             for name, path in toolchain_paths:
                 shutil.copy2(path, toolchain_dir / name)
+            wheel_dir = context / BUILDLIB_VIEW
+            wheel_dir.mkdir(parents=True)
+            shutil.copy2(wheel_path, wheel_dir / f"{wheel_sha256}.whl")
             (context / ".dockerignore").write_text("")
             subprocess.run(
                 ["docker", "pull", "--platform", DOCKER_PLATFORM, f"alpine@{locked_digest}"],

@@ -31,12 +31,26 @@ any other value. `bootstrap.lock.json` pins the macOS compiler archive and
 attestation, host requirements, the Linux image, the Linux LLVM archive, and
 the complete APK closure.
 `buildsys/inputs.py` verifies cached bytes and safe extraction; invalid
-objects are replaced only after the downloaded bytes pass verification.
+objects are replaced only after the downloaded bytes pass verification. Lock
+parsing, pinned downloads, release manifests and `SHA256SUMS`, Mach-O
+inspection, and the released target triples come from `laputa-buildlib`; this
+repository adds its roles, mirror, load-command edits, and target fields on top.
+
+`laputa-buildlib` is pinned as a `sources.lock.json` input, a `pyproject.toml`
+dependency, and in `uv.lock`; `tests/test_wheel.py` checks that the three agree.
+`buildsys/wheel.py` runs when `buildsys` is imported: unless `buildlib` is
+already installed it puts the verified wheel from the input cache on `sys.path`
+(a pure wheel is a zip archive), downloading it first if the cache lacks it. So
+plain `python3`, the sealed and offline Linux builds (the cache is copied into
+the image), and `uv run` all import it the same way, and the Linux toolchain
+image receives the wheel through `.cache/bootstrap/buildlib/`, published by
+`build.py fetch`, for its CPU-baseline probe.
 
 Every pinned object is also stored as an asset named by its SHA-256 in the
 `bootstrap-inputs` release of this repository. Fetches try that mirror first
-and the recorded upstream URL second. Only transport failures fall back;
-bytes that do not match the lock fail the fetch from either source. Alpine
+and the recorded upstream URL second. A source that fails or serves bytes
+that do not match the lock is skipped and the next is tried; the fetch fails,
+listing every source's failure, unless one serves the pinned bytes. Alpine
 drops superseded APKs, so the mirror is what keeps an existing pin
 buildable. The mirror is an input store, not a product release: it lives under
 the `bootstrap-inputs` tag, never a `release-` tag.
