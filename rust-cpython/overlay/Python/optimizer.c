@@ -1421,13 +1421,13 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
         _PyUOpInstruction *inst = &buffer[i];
         int base_opcode = _PyUop_Uncached[inst->opcode];
         assert(inst->opcode != _NOP);
-        bool begins_virtual = base_opcode == _BEGIN_VIRTUAL_FLOAT_CALL;
+        bool begins_virtual = base_opcode == _BEGIN_VIRTUAL_CALL;
         if (begins_virtual) {
             assert(!virtual_call);
             current_error_target = current_popped = -1;
             current_jump_target = current_exit_op = -1;
         }
-        else if (base_opcode == _RETURN_VIRTUAL_FLOAT_CALL) {
+        else if (base_opcode == _RETURN_VIRTUAL_CALL) {
             assert(virtual_call);
             virtual_call = false;
             current_error_target = current_popped = -1;
@@ -1454,18 +1454,14 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
             uint32_t exit_floats = unboxed == NULL ? 0 : unboxed[i].exit_floats;
             uint32_t exit_ints = unboxed == NULL ? 0 : unboxed[i].exit_ints;
             if (virtual_call) {
-                assert(base_opcode == _BINARY_OP_POWER_FLOAT ||
-                       base_opcode == _GUARD_TYPE_VERSION || base_opcode == _GUARD_TYPE_VERSION_LOCKED ||
-                       base_opcode == _CHECK_MANAGED_OBJECT_HAS_VALUES ||
-                       base_opcode == _LOAD_ATTR_SLOT || base_opcode == _LOAD_ATTR_INSTANCE_VALUE ||
-                       base_opcode == _GUARD_TOS_FLOAT || base_opcode == _GUARD_NOS_FLOAT);
+                assert(!is_control_flow && !(exit_flags & HAS_PERIODIC_FLAG));
                 assert((exit_floats | exit_ints) == 0);
                 current_jump = next_spare;
                 if (exit_depth != 0) {
                     make_exit(&buffer[next_spare], _PyUop_SpillsAndReloads[exit_depth][0], 0, false);
                     next_spare++;
                 }
-                int opcode = _PyUop_Caching[_MATERIALIZE_VIRTUAL_FLOAT_FRAME].entries[0].opcode;
+                int opcode = _PyUop_Caching[_MATERIALIZE_VIRTUAL_FRAME].entries[0].opcode;
                 assert(opcode > 0);
                 make_exit(&buffer[next_spare], opcode, 0, false);
                 buffer[next_spare].operand0 = jump_target;
@@ -1497,7 +1493,7 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
             if (virtual_call) {
                 assert(error_unboxed == 0 && popped == 0);
                 current_error = next_spare;
-                int opcode = _PyUop_Caching[_MATERIALIZE_VIRTUAL_FLOAT_FRAME].entries[0].opcode;
+                int opcode = _PyUop_Caching[_MATERIALIZE_VIRTUAL_FRAME].entries[0].opcode;
                 assert(opcode > 0);
                 make_exit(&buffer[next_spare], opcode, 0, false);
                 buffer[next_spare].operand0 = target;
@@ -1638,7 +1634,7 @@ sanity_check(_PyExecutorObject *executor)
             base_opcode == _BOX_UNBOXED_SLOTS ||
             base_opcode == _CLEAR_UNBOXED_SLOTS ||
             base_opcode == _MATERIALIZE_FLOAT_LEAF_ERROR ||
-            base_opcode == _MATERIALIZE_VIRTUAL_FLOAT_FRAME);
+            base_opcode == _MATERIALIZE_VIRTUAL_FRAME);
     }
 }
 
@@ -2040,7 +2036,7 @@ unbox_values(_PyUOpInstruction *buffer, int length,
     bool virtual_call = false;
     for (int i = 0; i < length; i++) {
         int opcode = buffer[i].opcode;
-        if (opcode == _BEGIN_VIRTUAL_FLOAT_CALL) {
+        if (opcode == _BEGIN_VIRTUAL_CALL) {
             assert(!virtual_call);
             virtual_call = true;
         }
@@ -2056,7 +2052,7 @@ unbox_values(_PyUOpInstruction *buffer, int length,
         else {
             uops[i] = describe_uop(opcode);
         }
-        if (opcode == _RETURN_VIRTUAL_FLOAT_CALL) {
+        if (opcode == _RETURN_VIRTUAL_CALL) {
             assert(virtual_call);
             virtual_call = false;
         }
@@ -2167,6 +2163,14 @@ typedef struct {
     uint16_t float_power;
     uint16_t type_version;
     uint16_t type_version_locked;
+    uint16_t int_arithmetic[3];
+    uint16_t int_inplace_left[3];
+    uint16_t int_inplace_right[3];
+    uint16_t guard_tos_int;
+    uint16_t guard_nos_int;
+    uint16_t overflow_tos;
+    uint16_t overflow_nos;
+    uint16_t pop_int;
 } _PyJitLeafOpcodes;
 
 typedef struct {
@@ -2183,7 +2187,7 @@ typedef struct {
     uint64_t result;
 } _PyJitLeafStep;
 
-static_assert(sizeof(_PyJitLeafOpcodes) == 122, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
+static_assert(sizeof(_PyJitLeafOpcodes) == 150, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
 static_assert(_Alignof(PyObject) >= 4, "leaf result tags use two object-alignment bits");
 static_assert(sizeof(_PyJitLeafUop) == 16, "_PyJitLeafUop matches Rust LeafUop");
 static_assert(offsetof(_PyJitLeafUop, operand) == 8, "LeafUop operand offset matches Rust");
@@ -2242,19 +2246,27 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         .managed_values = _CHECK_MANAGED_OBJECT_HAS_VALUES,
         .load_instance = _LOAD_ATTR_INSTANCE_VALUE,
         .pop_float = _POP_TOP_FLOAT,
-        .virtual_begin = _BEGIN_VIRTUAL_FLOAT_CALL,
-        .virtual_argument = _LOAD_VIRTUAL_FLOAT_ARGUMENT,
-        .virtual_return = _RETURN_VIRTUAL_FLOAT_CALL,
+        .virtual_begin = _BEGIN_VIRTUAL_CALL,
+        .virtual_argument = _LOAD_VIRTUAL_ARGUMENT,
+        .virtual_return = _RETURN_VIRTUAL_CALL,
         .float_inplace_left = {_BINARY_OP_ADD_FLOAT_INPLACE, _BINARY_OP_SUBTRACT_FLOAT_INPLACE,
                                _BINARY_OP_MULTIPLY_FLOAT_INPLACE, _BINARY_OP_TRUEDIV_FLOAT_INPLACE},
         .float_inplace_right = {_BINARY_OP_ADD_FLOAT_INPLACE_RIGHT, _BINARY_OP_SUBTRACT_FLOAT_INPLACE_RIGHT,
                                 _BINARY_OP_MULTIPLY_FLOAT_INPLACE_RIGHT, _BINARY_OP_TRUEDIV_FLOAT_INPLACE_RIGHT},
         .store_fast = {_SWAP_FAST, _SWAP_FAST_7},
         .pop = _POP_TOP,
-        .virtual_argument_copy = _COPY_VIRTUAL_FLOAT_ARGUMENT,
+        .virtual_argument_copy = _COPY_VIRTUAL_ARGUMENT,
         .float_power = _BINARY_OP_POWER_FLOAT,
         .type_version = _GUARD_TYPE_VERSION,
         .type_version_locked = _GUARD_TYPE_VERSION_LOCKED,
+        .int_arithmetic = {_BINARY_OP_ADD_INT, _BINARY_OP_SUBTRACT_INT, _BINARY_OP_MULTIPLY_INT},
+        .int_inplace_left = {_BINARY_OP_ADD_INT_INPLACE, _BINARY_OP_SUBTRACT_INT_INPLACE, _BINARY_OP_MULTIPLY_INT_INPLACE},
+        .int_inplace_right = {_BINARY_OP_ADD_INT_INPLACE_RIGHT, _BINARY_OP_SUBTRACT_INT_INPLACE_RIGHT, _BINARY_OP_MULTIPLY_INT_INPLACE_RIGHT},
+        .guard_tos_int = _GUARD_TOS_INT,
+        .guard_nos_int = _GUARD_NOS_INT,
+        .overflow_tos = _GUARD_TOS_OVERFLOWED,
+        .overflow_nos = _GUARD_NOS_OVERFLOWED,
+        .pop_int = _POP_TOP_INT,
     };
     _PyJitLeafUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
     _PyJitLeafStep *steps = PyMem_RawMalloc(UOP_MAX_TRACE_LENGTH * sizeof(*steps));
@@ -2268,6 +2280,7 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         uint32_t flags = _PyUop_Flags[opcode];
         uint8_t kind, detail;
         bool arithmetic = (float_node(opcode, &kind, &detail) && kind == JIT_OPT_KIND_FLOAT_ARITH)
+                          || (int_node(opcode, &kind, &detail) && kind == JIT_OPT_KIND_INT_ARITH)
                           || opcode == _BINARY_OP_POWER_FLOAT;
         uops[i] = (_PyJitLeafUop){
             .opcode = opcode,
@@ -2291,7 +2304,7 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
                 PyMem_RawFree(steps);
                 return length;
             }
-            has_virtual |= steps[i].opcode == _BEGIN_VIRTUAL_FLOAT_CALL;
+            has_virtual |= steps[i].opcode == _BEGIN_VIRTUAL_CALL;
         }
         if (has_virtual) {
             size_t bound = 0;
@@ -2323,7 +2336,7 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
             buffer[i] = original[step->source];
             if (step->opcode == _CALL_PY_LEAF || step->opcode == _CALL_PY_LEAF_PAIR ||
                 step->opcode == _CALL_PY_FLOAT_LEAF || step->opcode == _CHECK_LEAF_GLOBALS_VERSION ||
-                step->opcode == _BEGIN_VIRTUAL_FLOAT_CALL) {
+                step->opcode == _BEGIN_VIRTUAL_CALL) {
                 _PyUOpInstruction source = original[step->source];
                 assert(source.opcode == _CHECK_RECURSION_REMAINING);
                 buffer[i] = source;
@@ -2332,10 +2345,11 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
                 buffer[i].operand0 = (uint32_t)step->result;
                 buffer[i].operand1 = (uint32_t)(step->result >> 32);
             }
-            else if (step->opcode == _LOAD_VIRTUAL_FLOAT_ARGUMENT ||
-                     step->opcode == _COPY_VIRTUAL_FLOAT_ARGUMENT ||
-                     step->opcode == _RETURN_VIRTUAL_FLOAT_CALL || step->opcode == _POP_TOP_FLOAT ||
+            else if (step->opcode == _LOAD_VIRTUAL_ARGUMENT ||
+                     step->opcode == _COPY_VIRTUAL_ARGUMENT ||
+                     step->opcode == _RETURN_VIRTUAL_CALL || step->opcode == _POP_TOP_FLOAT || step->opcode == _POP_TOP_INT ||
                      step->opcode == _GUARD_TOS_FLOAT || step->opcode == _GUARD_NOS_FLOAT ||
+                     step->opcode == _GUARD_TOS_INT || step->opcode == _GUARD_NOS_INT ||
                      step->opcode == _BINARY_OP_ADD_FLOAT || step->opcode == _BINARY_OP_SUBTRACT_FLOAT ||
                      step->opcode == _BINARY_OP_MULTIPLY_FLOAT || step->opcode == _BINARY_OP_TRUEDIV_FLOAT) {
                 buffer[i].opcode = step->opcode;

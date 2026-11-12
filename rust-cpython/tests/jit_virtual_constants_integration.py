@@ -196,13 +196,13 @@ def main():
     assert candidate["active"] == [True] * 6, candidate["active"]
     for label, entries in candidate["traces"].items():
         names = [entry[0] for entry in entries]
-        begin = names.index("_BEGIN_VIRTUAL_FLOAT_CALL")
-        end = names.index("_RETURN_VIRTUAL_FLOAT_CALL")
+        begin = names.index("_BEGIN_VIRTUAL_CALL")
+        end = names.index("_RETURN_VIRTUAL_CALL")
         body = names[begin + 1:end]
         assert any(name in ("_LOAD_CONST_INLINE", "_LOAD_CONST_INLINE_BORROW") for name in body), (label, body)
         assert any(name in ("_GUARD_TOS_FLOAT", "_GUARD_NOS_FLOAT") for name in body), (label, body)
-        assert "_MATERIALIZE_VIRTUAL_FLOAT_FRAME" in names, (label, names)
-    assert all("_BEGIN_VIRTUAL_FLOAT_CALL" not in {entry[0] for entry in entries}
+        assert "_MATERIALIZE_VIRTUAL_FRAME" in names, (label, names)
+    assert all("_BEGIN_VIRTUAL_CALL" not in {entry[0] for entry in entries}
                for entries in noopt["traces"].values())
     print("OK    virtual constants preserve use-site guards, unused arguments, later errors, allocation faults and finalizers")
     return 0

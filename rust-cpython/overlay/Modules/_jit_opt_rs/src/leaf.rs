@@ -68,12 +68,54 @@ pub struct LeafOpcodes {
     pub float_power: u16,
     pub type_version: u16,
     pub type_version_locked: u16,
+    pub int_arithmetic: [u16; 3],
+    pub int_inplace_left: [u16; 3],
+    pub int_inplace_right: [u16; 3],
+    pub guard_tos_int: u16,
+    pub guard_nos_int: u16,
+    pub overflow_tos: u16,
+    pub overflow_nos: u16,
+    pub pop_int: u16,
 }
 
 impl LeafOpcodes {
     fn virtual_arithmetic(&self, opcode: u16) -> bool {
-        [self.float_add, self.float_subtract, self.float_multiply, self.float_divide, self.float_power].contains(&opcode)
-            || self.float_inplace_left.contains(&opcode) || self.float_inplace_right.contains(&opcode)
+        self.virtual_kind(opcode).is_some()
+    }
+
+    fn virtual_kind(&self, opcode: u16) -> Option<ScalarKind> {
+        if self.int_arithmetic.contains(&opcode) || self.int_inplace_left.contains(&opcode)
+            || self.int_inplace_right.contains(&opcode)
+        {
+            return Some(ScalarKind::CompactInt);
+        }
+        ([self.float_add, self.float_subtract, self.float_multiply, self.float_divide, self.float_power].contains(&opcode)
+            || self.float_inplace_left.contains(&opcode) || self.float_inplace_right.contains(&opcode))
+            .then_some(ScalarKind::Float)
+    }
+
+    fn virtual_guard(&self, opcode: u16) -> Option<(ScalarKind, usize)> {
+        if opcode == self.guard_tos_float { Some((ScalarKind::Float, 1)) }
+        else if opcode == self.guard_nos_float { Some((ScalarKind::Float, 2)) }
+        else if opcode == self.guard_tos_int || opcode == self.overflow_tos { Some((ScalarKind::CompactInt, 1)) }
+        else if opcode == self.guard_nos_int || opcode == self.overflow_nos { Some((ScalarKind::CompactInt, 2)) }
+        else { None }
+    }
+
+    fn scalar_guard(&self, kind: ScalarKind, depth: usize) -> u16 {
+        match (kind, depth) {
+            (ScalarKind::Float, 1) => self.guard_tos_float,
+            (ScalarKind::Float, _) => self.guard_nos_float,
+            (ScalarKind::CompactInt, 1) => self.guard_tos_int,
+            (ScalarKind::CompactInt, _) => self.guard_nos_int,
+        }
+    }
+
+    fn scalar_pop(&self, kind: ScalarKind) -> u16 {
+        match kind {
+            ScalarKind::Float => self.pop_float,
+            ScalarKind::CompactInt => self.pop_int,
+        }
     }
 }
 
@@ -175,6 +217,21 @@ enum FloatState {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+enum ScalarKind {
+    Float,
+    CompactInt,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ScalarOwnership {
+    Borrowed,
+    BorrowedLocal(u16),
+    ArgumentCopy,
+    Fresh,
+    Shared,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum VirtualValue {
     BorrowedReceiver,
     ManagedReceiver,
@@ -182,44 +239,37 @@ enum VirtualValue {
     BorrowedArgument(u16),
     CopiedArgument(u16),
     BorrowedConstant,
-    BorrowedFloat,
-    BorrowedLocal(u16),
-    ArgumentCopy,
-    UniqueFloat,
-    SharedFloat,
+    Scalar(ScalarKind, ScalarOwnership),
     ReallocatedOperand,
     Null,
 }
 
 impl VirtualValue {
-    fn is_float(self) -> bool {
-        matches!(self, Self::BorrowedFloat | Self::BorrowedLocal(_) | Self::ArgumentCopy | Self::UniqueFloat | Self::SharedFloat)
-    }
-
     fn is_receiver(self) -> bool {
         matches!(self, Self::BorrowedReceiver | Self::ManagedReceiver)
     }
 
-    fn float_is_proven(self, arguments: &[bool]) -> bool {
+    fn scalar_is_proven(self, kind: ScalarKind, arguments: &[Option<ScalarKind>]) -> bool {
         match self {
-            Self::BorrowedArgument(index) | Self::CopiedArgument(index) => arguments[usize::from(index)],
-            _ => self.is_float(),
+            Self::BorrowedArgument(index) | Self::CopiedArgument(index) => arguments[usize::from(index)] == Some(kind),
+            Self::Scalar(proven, _) => proven == kind,
+            _ => false,
         }
     }
 
-    fn narrow_float(self, arguments: &mut [bool]) -> Option<Self> {
+    fn narrow_scalar(self, kind: ScalarKind, arguments: &mut [Option<ScalarKind>]) -> Option<Self> {
         match self {
-            Self::BorrowedArgument(index) => {
-                arguments[usize::from(index)] = true;
-                Some(Self::BorrowedFloat)
+            Self::BorrowedArgument(index) | Self::CopiedArgument(index) => {
+                let proof = &mut arguments[usize::from(index)];
+                if proof.is_some_and(|proven| proven != kind) { return None }
+                *proof = Some(kind);
+                Some(Self::Scalar(kind, if matches!(self, Self::BorrowedArgument(_)) {
+                    ScalarOwnership::Borrowed
+                } else { ScalarOwnership::ArgumentCopy }))
             }
-            Self::CopiedArgument(index) => {
-                arguments[usize::from(index)] = true;
-                Some(Self::ArgumentCopy)
-            }
-            Self::BorrowedConstant => Some(Self::BorrowedFloat),
-            Self::OwnedUnknown => Some(Self::SharedFloat),
-            Self::BorrowedFloat | Self::BorrowedLocal(_) | Self::ArgumentCopy | Self::UniqueFloat | Self::SharedFloat => Some(self),
+            Self::BorrowedConstant => Some(Self::Scalar(kind, ScalarOwnership::Borrowed)),
+            Self::OwnedUnknown => Some(Self::Scalar(kind, ScalarOwnership::Shared)),
+            Self::Scalar(proven, _) => (proven == kind).then_some(self),
             Self::BorrowedReceiver | Self::ManagedReceiver | Self::ReallocatedOperand | Self::Null => None,
         }
     }
@@ -270,12 +320,18 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
     {
         return Ok(None);
     }
-    locals.resize(local_count, false);
-    arguments.resize(argc as usize, false);
+    locals.resize(local_count, None);
+    arguments.resize(argc as usize, None);
     let mut resumed = false;
     let mut operations = 0;
+    let mut integer_cleanup: u8 = 0;
     for (index, uop) in uops.iter().enumerate().skip(at + 3) {
         let opcode = uop.opcode;
+        if integer_cleanup != 0 && ![ops.nop, ops.set_ip, ops.validity,
+            ops.pop_borrow, ops.pop_int, ops.pop].contains(&opcode)
+        {
+            return Ok(None);
+        }
         let replacement;
         if [ops.nop, ops.set_ip, ops.validity].contains(&opcode) && uop.effectful == 0 {
             replacement = ops.nop;
@@ -294,17 +350,19 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                 }
                 else {
                     values.push(match (borrowed, arguments[usize::from(uop.oparg)]) {
-                        (true, true) => VirtualValue::BorrowedFloat,
-                        (false, true) => VirtualValue::ArgumentCopy,
-                        (true, false) => VirtualValue::BorrowedArgument(uop.oparg),
-                        (false, false) => VirtualValue::CopiedArgument(uop.oparg),
+                        (true, Some(kind)) => VirtualValue::Scalar(kind, ScalarOwnership::Borrowed),
+                        (false, Some(kind)) => VirtualValue::Scalar(kind, ScalarOwnership::ArgumentCopy),
+                        (true, None) => VirtualValue::BorrowedArgument(uop.oparg),
+                        (false, None) => VirtualValue::CopiedArgument(uop.oparg),
                     });
                 }
                 replacement = if borrowed { ops.virtual_argument } else { ops.virtual_argument_copy };
             }
             else {
-                if !locals[usize::from(uop.oparg)] { return Ok(None) }
-                values.push(if borrowed { VirtualValue::BorrowedLocal(uop.oparg) } else { VirtualValue::SharedFloat });
+                let Some(kind) = locals[usize::from(uop.oparg)] else { return Ok(None) };
+                values.push(VirtualValue::Scalar(kind, if borrowed {
+                    ScalarOwnership::BorrowedLocal(uop.oparg)
+                } else { ScalarOwnership::Shared }));
                 replacement = opcode;
             }
         }
@@ -317,22 +375,29 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
         else if ops.store_fast.contains(opcode) {
             if u32::from(uop.oparg) < argc { return Ok(None) }
             let Some(value) = values.pop() else { return Err(Inconsistent) };
-            if !matches!(value, VirtualValue::UniqueFloat | VirtualValue::SharedFloat)
-                || values.iter().any(|value| *value == VirtualValue::BorrowedLocal(uop.oparg))
+            let VirtualValue::Scalar(kind, ScalarOwnership::Fresh | ScalarOwnership::Shared) = value else {
+                return Ok(None);
+            };
+            if values.iter().any(|value| matches!(value,
+                VirtualValue::Scalar(_, ScalarOwnership::BorrowedLocal(index)) if *index == uop.oparg))
             {
                 return Ok(None);
             }
             let local = &mut locals[usize::from(uop.oparg)];
-            values.push(if *local { VirtualValue::SharedFloat } else { VirtualValue::Null });
-            *local = true;
+            values.push(local.map_or(VirtualValue::Null, |old_kind| VirtualValue::Scalar(old_kind, ScalarOwnership::Shared)));
+            *local = Some(kind);
             replacement = opcode;
         }
-        else if [ops.guard_tos_float, ops.guard_nos_float].contains(&opcode) && uop.effectful == 0 {
-            let depth = if opcode == ops.guard_tos_float { 1 } else { 2 };
+        else if let Some((kind, depth)) = ops.virtual_guard(opcode) {
+            if uop.effectful != 0 { return Ok(None) }
             if values.len() < depth { return Err(Inconsistent) }
             let position = values.len() - depth;
-            replacement = if values[position].float_is_proven(&arguments) { ops.nop } else { opcode };
-            let Some(narrowed) = values[position].narrow_float(&mut arguments) else { return Ok(None) };
+            let proven = values[position].scalar_is_proven(kind, &arguments);
+            if [ops.overflow_tos, ops.overflow_nos].contains(&opcode) && !proven {
+                guards.push(VirtualGuard { index, opcode: ops.scalar_guard(kind, depth) });
+            }
+            replacement = if kind == ScalarKind::Float && proven { ops.nop } else { opcode };
+            let Some(narrowed) = values[position].narrow_scalar(kind, &mut arguments) else { return Ok(None) };
             values[position] = narrowed;
         }
         else if [ops.type_version, ops.type_version_locked, ops.managed_values].contains(&opcode)
@@ -351,60 +416,67 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
             values.extend([VirtualValue::OwnedUnknown, owner]);
             replacement = opcode;
         }
-        else if ops.virtual_arithmetic(opcode) {
+        else if let Some(kind) = ops.virtual_kind(opcode) {
             if values.len() < 2 || u32::try_from(uop.operand).ok().filter(|offset| *offset != 0).is_none() {
                 return Err(Inconsistent);
             }
-            for (depth, guard) in [(2, ops.guard_nos_float), (1, ops.guard_tos_float)] {
+            for depth in [2, 1] {
                 let position = values.len() - depth;
-                if !values[position].float_is_proven(&arguments) {
-                    guards.push(VirtualGuard { index, opcode: guard });
+                if !values[position].scalar_is_proven(kind, &arguments) {
+                    guards.push(VirtualGuard { index, opcode: ops.scalar_guard(kind, depth) });
                 }
-                let Some(narrowed) = values[position].narrow_float(&mut arguments) else { return Ok(None) };
+                let Some(narrowed) = values[position].narrow_scalar(kind, &mut arguments) else { return Ok(None) };
                 values[position] = narrowed;
             }
             let mut right = values.pop().unwrap();
             let mut left = values.pop().unwrap();
-            if !left.is_float() || !right.is_float() {
-                return Ok(None);
-            }
             let normal = [ops.float_add, ops.float_subtract, ops.float_multiply, ops.float_divide];
             if let Some(operation) = ops.float_inplace_left.iter().position(|op| *op == opcode) {
-                if left != VirtualValue::UniqueFloat { return Ok(None) }
+                if left != VirtualValue::Scalar(kind, ScalarOwnership::Fresh) { return Ok(None) }
                 left = VirtualValue::ReallocatedOperand;
                 replacement = normal[operation];
             }
             else if let Some(operation) = ops.float_inplace_right.iter().position(|op| *op == opcode) {
-                if right != VirtualValue::UniqueFloat { return Ok(None) }
+                if right != VirtualValue::Scalar(kind, ScalarOwnership::Fresh) { return Ok(None) }
                 right = VirtualValue::ReallocatedOperand;
                 replacement = normal[operation];
             }
-            else { replacement = opcode }
-            values.extend([VirtualValue::UniqueFloat, left, right]);
+            else {
+                if (ops.int_inplace_left.contains(&opcode) && left != VirtualValue::Scalar(kind, ScalarOwnership::Fresh))
+                    || (ops.int_inplace_right.contains(&opcode) && right != VirtualValue::Scalar(kind, ScalarOwnership::Fresh))
+                { return Ok(None) }
+                if ops.int_inplace_left.contains(&opcode) || ops.int_inplace_right.contains(&opcode) {
+                    integer_cleanup = 2;
+                }
+                replacement = opcode;
+            }
+            values.extend([VirtualValue::Scalar(kind, ScalarOwnership::Fresh), left, right]);
             operations += 1;
         }
-        else if opcode == ops.pop_borrow || opcode == ops.pop_float || opcode == ops.pop {
+        else if [ops.pop_borrow, ops.pop_float, ops.pop_int, ops.pop].contains(&opcode) {
             if opcode == ops.pop_borrow && uop.effectful != 0 { return Ok(None) }
             let Some(value) = values.pop() else { return Err(Inconsistent) };
             replacement = match (opcode, value) {
-                (op, VirtualValue::BorrowedReceiver | VirtualValue::ManagedReceiver | VirtualValue::BorrowedFloat | VirtualValue::BorrowedLocal(_) | VirtualValue::Null)
+                (op, VirtualValue::BorrowedReceiver | VirtualValue::ManagedReceiver | VirtualValue::Null |
+                    VirtualValue::Scalar(_, ScalarOwnership::Borrowed | ScalarOwnership::BorrowedLocal(_)))
                     if op == ops.pop_borrow || op == ops.pop => ops.pop_borrow,
-                (op, value) if value.is_float() && (op == ops.pop_float || op == ops.pop) => ops.pop_float,
+                (op, VirtualValue::Scalar(kind, _)) if op == ops.scalar_pop(kind) || op == ops.pop => ops.scalar_pop(kind),
                 (op, VirtualValue::ReallocatedOperand) if op == ops.pop_borrow || op == ops.pop => ops.pop_float,
                 _ => return Ok(None),
             };
+            integer_cleanup = integer_cleanup.saturating_sub(1);
         }
         else if opcode == ops.heap_safe {
             let Some(value) = values.last_mut() else { return Err(Inconsistent) };
-            if !value.is_float() { return Ok(None) }
-            if matches!(*value, VirtualValue::BorrowedFloat | VirtualValue::BorrowedLocal(_) | VirtualValue::ArgumentCopy) {
-                *value = VirtualValue::SharedFloat;
+            let VirtualValue::Scalar(_, ownership) = value else { return Ok(None) };
+            if !matches!(ownership, ScalarOwnership::Fresh | ScalarOwnership::Shared) {
+                *ownership = ScalarOwnership::Shared;
             }
             replacement = opcode;
         }
         else if opcode == ops.return_value {
             if operations == 0 || values.len() != 1
-                || !matches!(values[0], VirtualValue::UniqueFloat | VirtualValue::SharedFloat) {
+                || !matches!(values[0], VirtualValue::Scalar(_, ScalarOwnership::Fresh | ScalarOwnership::Shared)) {
                 return Ok(None);
             }
             changes.push(VirtualChange { index, opcode: ops.virtual_return, oparg: 0 });
@@ -783,6 +855,9 @@ mod tests {
             float_inplace_left: [64, 65, 66, 67], float_inplace_right: [68, 69, 70, 71],
             store_fast: OpcodeRange { first: 72, last: 80 }, pop: 81, virtual_argument_copy: 82,
             float_power: 83, type_version: 84, type_version_locked: 85,
+            int_arithmetic: [86, 87, 88], int_inplace_left: [89, 90, 91],
+            int_inplace_right: [92, 93, 94], guard_tos_int: 95, guard_nos_int: 96,
+            overflow_tos: 97, overflow_nos: 98, pop_int: 100,
         }
     }
 
@@ -939,7 +1014,7 @@ mod tests {
         assert!(output.iter().all(|step| *step == untouched));
         assert_eq!(std::mem::size_of::<LeafUop>(), 16);
         assert_eq!(std::mem::size_of::<LeafStep>(), 16);
-        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 122);
+        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 150);
     }
 
     fn pair() -> Vec<LeafUop> {
@@ -1315,6 +1390,82 @@ mod tests {
             input[7].operand = 3;
             assert!(matches!(plan_leaf_calls(&input, &ops), Err(Inconsistent)));
         }
+    }
+
+    #[test]
+    fn compact_integer_calls_preserve_range_guards_and_inplace_operand_ownership() {
+        let ops = opcodes();
+        for right in [false, true] {
+            for operation in 0..3 {
+                let mut input = float_call()[..14].to_vec();
+                input[8].opcode = ops.guard_tos_int;
+                input[9].opcode = ops.guard_nos_int;
+                input[10].opcode = ops.int_arithmetic[0];
+                if right { input.insert(6, uop(ops.load_borrow.first, 0)); }
+                else { input.push(uop(ops.load_borrow.first, 0)); }
+                input.extend([uop(ops.guard_nos_int, 0), uop(ops.guard_tos_int, 0),
+                    uop(ops.overflow_nos, 0), uop(ops.overflow_tos, 0)]);
+                let arithmetic = input.len();
+                let opcode = if right { ops.int_inplace_right[operation] } else { ops.int_inplace_left[operation] };
+                input.extend([LeafUop { opcode, oparg: 0, effectful: 0, operand: 7 },
+                    uop(if right { ops.pop_int } else { ops.pop_borrow }, 0),
+                    uop(if right { ops.pop_borrow } else { ops.pop_int }, 0),
+                    uop(ops.heap_safe, 0), uop(ops.return_value, 0)]);
+                let plan = plan_leaf_calls(&input, &ops).unwrap().unwrap();
+                assert_eq!(plan.len(), input.len());
+                assert_eq!(plan[4].opcode, ops.virtual_begin);
+                assert_eq!(plan[arithmetic].opcode, opcode);
+                assert_eq!(plan[arithmetic].source as usize, arithmetic);
+                for index in arithmetic - 4..arithmetic + 3 {
+                    assert_eq!(plan[index].opcode, input[index].opcode);
+                }
+                let mut shared = input.clone();
+                shared[arithmetic].opcode = if right { ops.int_inplace_left[operation] } else { ops.int_inplace_right[operation] };
+                assert!(plan_leaf_calls(&shared, &ops).unwrap().is_none());
+                let mut interleaved = input.clone();
+                interleaved.insert(arithmetic + 1, uop(ops.store_fast.first, 4));
+                assert!(plan_leaf_calls(&interleaved, &ops).unwrap().is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn unknown_integer_overflow_inputs_get_exact_compact_guards_first() {
+        let ops = opcodes();
+        let mut input = float_call();
+        input[8].opcode = ops.overflow_tos;
+        input[9].opcode = ops.overflow_nos;
+        input[10].opcode = ops.int_arithmetic[2];
+        let plan = plan_leaf_calls(&input, &ops).unwrap().unwrap();
+        assert_eq!(plan.len(), input.len() + 2);
+        assert_eq!(plan[8], LeafStep { opcode: ops.guard_tos_int, oparg: 0, source: 8, result: 0 });
+        assert_eq!(plan[9].opcode, ops.overflow_tos);
+        assert_eq!(plan[10], LeafStep { opcode: ops.guard_nos_int, oparg: 0, source: 9, result: 0 });
+        assert_eq!(plan[11].opcode, ops.overflow_nos);
+        assert_eq!(plan[12].opcode, ops.int_arithmetic[2]);
+    }
+
+    #[test]
+    fn scalar_local_overwrites_clean_the_old_kind_and_preserve_borrow_anchors() {
+        let ops = opcodes();
+        let mut input = virtual_locals();
+        input[2].oparg = 4;
+        input[8].opcode = ops.guard_tos_int;
+        input[9].opcode = ops.guard_nos_int;
+        input[10].opcode = ops.int_arithmetic[0];
+        for index in [14, 16, 19, 26] { input[index].oparg = 4 }
+        for index in [17, 28] { input[index].oparg = 5 }
+        input[19].oparg = 2;
+        input[20].oparg = 3;
+        let plan = plan_leaf_calls(&input, &ops).unwrap().unwrap();
+        assert_eq!(plan[27].opcode, ops.pop_int);
+        assert_eq!(plan[30].opcode, ops.virtual_return);
+        let mut dangling = input.clone();
+        dangling.insert(19, uop(ops.load_borrow.first, 4));
+        assert!(plan_leaf_calls(&dangling, &ops).unwrap().is_none());
+        let mut contradictory = input.clone();
+        contradictory[21].opcode = ops.guard_tos_int;
+        assert!(plan_leaf_calls(&contradictory, &ops).unwrap().is_none());
     }
 
     #[test]

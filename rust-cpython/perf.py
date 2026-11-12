@@ -130,9 +130,11 @@ CLIMB_SUITES = (
     "test_weakref",
 )
 CLIMB_SUPERSEDED_UOP_ASSERTIONS = frozenset({
+    "test.test_capi.test_opt.TestUops.test_call_py_exact_args",
     "test.test_capi.test_opt.TestUopsOptimization.test_binary_subscr_list_slice",
     "test.test_capi.test_opt.TestUopsOptimization.test_builtins_guard_emitted_once_per_frame",
     "test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_noargs",
+    "test.test_capi.test_opt.TestUopsOptimization.test_call_py_exact_args",
     "test.test_capi.test_opt.TestUopsOptimization.test_float_add_chain_both_unique",
     "test.test_capi.test_opt.TestUopsOptimization.test_float_inplace_chain_propagation",
     "test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_inplace_unique_lhs",
@@ -142,6 +144,8 @@ CLIMB_SUPERSEDED_UOP_ASSERTIONS = frozenset({
     "test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_locked_propagates",
     "test.test_capi.test_opt.TestUopsOptimization.test_int_inplace_chain_propagation",
     "test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_optimized_immortal",
+    "test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_not_optimized_for_owned",
+    "test.test_capi.test_opt.TestUopsOptimization.test_record_bound_method_exact_args",
 })
 CLIMB_FROZEN_PREFIXES = ("benchmarks/",)
 CLIMB_FROZEN_FILES = ("rust-cpython/perf_verdict.py", "rust-cpython/tests/jit_fuzz.py")

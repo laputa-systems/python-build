@@ -329,12 +329,12 @@ def main():
     assert candidate["active"] == [True] * 7, candidate["active"]
     for key, entries in candidate["traces"].items():
         names = [entry[0] for entry in entries]
-        assert "_BEGIN_VIRTUAL_FLOAT_CALL" in names, (key, names)
-        assert "_RETURN_VIRTUAL_FLOAT_CALL" in names, (key, names)
-        assert "_MATERIALIZE_VIRTUAL_FLOAT_FRAME" in names, (key, names)
+        assert "_BEGIN_VIRTUAL_CALL" in names, (key, names)
+        assert "_RETURN_VIRTUAL_CALL" in names, (key, names)
+        assert "_MATERIALIZE_VIRTUAL_FRAME" in names, (key, names)
         if key.startswith("multiple"):
-            assert names.count("_BEGIN_VIRTUAL_FLOAT_CALL") >= 2, (key, names)
-    assert all("_BEGIN_VIRTUAL_FLOAT_CALL" not in {entry[0] for entry in entries}
+            assert names.count("_BEGIN_VIRTUAL_CALL") >= 2, (key, names)
+    assert all("_BEGIN_VIRTUAL_CALL" not in {entry[0] for entry in entries}
                for entries in noopt["traces"].values())
     print("OK    virtual float calls preserve scratch bounds, distinct errors, finalizers and observers")
     return 0

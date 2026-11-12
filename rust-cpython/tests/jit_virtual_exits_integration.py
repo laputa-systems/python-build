@@ -221,13 +221,13 @@ def main():
     assert candidate["active"] == [True] * 29, candidate["active"]
     for label, entries in candidate["traces"].items():
         names = [entry[0] for entry in entries]
-        assert "_BEGIN_VIRTUAL_FLOAT_CALL" in names, (label, names)
-        assert "_RETURN_VIRTUAL_FLOAT_CALL" in names, (label, names)
-        assert "_MATERIALIZE_VIRTUAL_FLOAT_FRAME" in names, (label, names)
+        assert "_BEGIN_VIRTUAL_CALL" in names, (label, names)
+        assert "_RETURN_VIRTUAL_CALL" in names, (label, names)
+        assert "_MATERIALIZE_VIRTUAL_FRAME" in names, (label, names)
         if label not in ("repeated", "unary"):
             assert "_BINARY_OP_POWER_FLOAT" in names, (label, names)
-            assert names.count("_MATERIALIZE_VIRTUAL_FLOAT_FRAME") >= 2, (label, names)
-    assert all("_BEGIN_VIRTUAL_FLOAT_CALL" not in {entry[0] for entry in entries}
+            assert names.count("_MATERIALIZE_VIRTUAL_FRAME") >= 2, (label, names)
+    assert all("_BEGIN_VIRTUAL_CALL" not in {entry[0] for entry in entries}
                for entries in noopt["traces"].values())
     print("OK    virtual side exits preserve complex fallback, later errors, exact progress and generators")
     return 0

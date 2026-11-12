@@ -1041,6 +1041,56 @@ optimization modes. Rust tests cover owned/borrowed constants and expanded-
 output refusal without partial writes. Independent source/generated/native
 review approves; performance acceptance remains deferred under OD16.
 
+**Integer scalar virtual calls (2026-11-12).** The same virtual-frame
+proof now supports compact integer addition, subtraction and multiplication,
+including their existing left/right in-place helpers. Scalar kind and
+ownership are separate. Successful helpers produce compact integers, which
+may be cached immortal values; fresh origin does not imply physical uniqueness.
+Arguments, constants and shared local loads cannot become reuse targets.
+The in-place helper retains its operand references and duplicates its result,
+so the proof requires both operand pops before any further value use or store.
+Float in-place normalization remains unchanged.
+
+Original integer type, compactness and overflow guards remain. Unknown values
+receive a full exact-and-compact guard before an overflow-only check can inspect
+their layout. Local overwrites clean the previous value with its previous kind,
+while aliases preserve their own kind and borrowed-local anchors prevent early
+overwrites. Slot and managed receiver attributes, integer constants, mixed
+integer/float locals and generator callers use the same reconstruction path.
+Mixed arithmetic itself remains separate work.
+
+Compact helpers return NULL without a pending exception for overflow or
+allocation refusal. Both cases materialize at the original arithmetic PC and
+resume in tier one, with earlier assignments and all operands intact. The
+regression requires one-shot allocation recovery and sustained allocation
+failure; available callee traceback state must be exact. Memory exhaustion
+can itself prevent traceback allocation. Intermediate injected failure counts
+are not required to match across modes: the ordinary cold-exit path can spend
+allocations on tracing or retries that terminal materialization bypasses.
+No strict allocation-attempt parity is claimed.
+
+The private runtime names are now `_BEGIN_VIRTUAL_CALL`,
+`_LOAD_VIRTUAL_ARGUMENT`, `_COPY_VIRTUAL_ARGUMENT`, `_RETURN_VIRTUAL_CALL`
+and `_MATERIALIZE_VIRTUAL_FRAME`; their old float spellings are removed.
+The private opcode map grows from 122 to 150 bytes. The specialized
+`_CALL_PY_FLOAT_LEAF` remains unchanged. Virtual regions stay boxed while
+independent outer arithmetic can still be unboxed.
+
+Native tests compare ordinary results across JIT-on/off and disabled
+optimization, with 68 activity samples across slot and managed layouts.
+They cover cached and mortal integers, both reuse directions, bool/subclass/
+noncompact fallback, helper overflow followed by a callback that inspects
+reconstructed locals, mixed-kind overwrites, reference counts, generator
+callers and allocation refusal. Four additional original tests require physical
+frame uops that are now virtual: both `test_call_py_exact_args` methods,
+`test_make_heap_safe_not_optimized_for_owned` and
+`test_record_bound_method_exact_args`. They are listed individually in the
+existing shape-exclusion set. Independent review ran every original method
+with only that obsolete name translated; every other assertion passed.
+CPython tests and suite thresholds are unchanged. Independent source/generated/
+native review approves; the final rebuild includes the cleanup restriction and
+repeats all correctness checks. Performance acceptance remains deferred.
+
 **Loop globals prologue (2026-11-11).** The Rust planner in
 `Modules/_jit_opt_rs/src/loop_globals.rs` moves one root-frame globals guard
 before `_MAKE_WARM`. It requires a closed loop, an existing globals watcher,
@@ -2114,7 +2164,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | Virtual float calls now retain constants and guard arguments at arithmetic use sites; unused generic arguments can finalize after scratch retirement. Outer regional unboxing remains available. Next: integer and mixed scalar bodies, then broader call/lookup/allocation/loop shapes. Performance acceptance deferred under OD16 | Constants slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 59 Rust tests; 6 new active-JIT constant/error/finalizer cases plus prior integrations and assertion-enabled tail validation; independent source/generated/native review approves |
+| J | active | Integer and float scalar regions share typed ownership and original-PC reconstruction; integer reuse waits for operand cleanup, and outer unboxing remains available. Next: mixed arithmetic, then broader call/lookup/allocation/loop shapes. Performance acceptance deferred under OD16 | Integer slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; 16 independently reviewed shape exclusions; 62 Rust tests; 68 new active-JIT integer/boundary/receiver/generator/allocation cases plus prior integrations and assertion-enabled tail validation; independent source/generated/native review approves |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | feature complete | C3 integrated with refreshed main dependencies; performance acceptance deferred under OD16. Routing/API owner reviews remain asynchronous; nothing pushed | Integrated normal and verify runs each execute 52,102 tests, with exactly the matched reference's five failing files and 0 compiler mismatches; native 11-case integration passes; C3 corpus and independent reviews remain valid |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -2154,7 +2204,7 @@ requested): CinderX 3.15 steady JIT uplift `S = 0.7960`, held-out 1.0621, beside
 M2 ≤ 0.48, M3 ≤ 0.38, M4 ≤ 0.25. T2 does not wait for an answer.
 
 J continuation builds use `.work/wt/jit-pair`; its `perf-jit-pair` stage
-was rebuilt incrementally for the store, list, float-call, loop-type, inline-instance-getter, virtual-float, virtual-local, virtual-exit, bound-method, regional-unboxing and constants/use-site-guard slices after
+was rebuilt incrementally for the store, list, float-call, loop-type, inline-instance-getter, virtual-float, virtual-local, virtual-exit, bound-method, regional-unboxing, constants/use-site-guard and integer scalar slices after
 the tuple slice. Earlier reports and suite logs were archived under
 `.work/tmp/tuple-tested-report.json`, `tuple-accepted/`,
 `glue-tested-report.json`, `glue-accepted/`, `list-tested-report.json`
@@ -2166,7 +2216,8 @@ and `list-accepted/`, plus `arith-tested-report.json` and
 `virtual-locals-accepted/`, then `virtual-exits-tested-report.json` and
 `virtual-exits-accepted/`, then `bound-floats-tested-report.json` and
 `bound-floats-accepted/`, then `regional-tested-report.json` and
-`regional-accepted/`, before reuse. Each ledger row
+`regional-accepted/`, then `constants-tested-report.json` and
+`constants-accepted/`, before reuse. Each ledger row
 has distinct digest-result directories and source identities. The committed
 `4b66ce3` reference in `.work/wt/jit-integrate` remains unchanged.
 
@@ -2222,6 +2273,16 @@ immutable snapshot with transactional count/source/capacity checks; layouts
 are unchanged. Independent source/generated/native review approves reverse
 argument finalization with code-arity changes and later errors. Performance
 acceptance remains deferred under OD16.
+
+**Owner queue:** T3 integer scalar calls (async review). The private
+opcode map grows from 122 to 150 bytes; five virtual-frame uops now use generic
+names without aliases. Typed ownership preserves integer operand references,
+compact checks and old-kind local cleanup. Helper overflow/allocation refusal
+uses terminal interpreter resumption, rather than the ordinary cold-exit tracing
+path; bounded injected allocation counts need not match, while eventual errors
+retain the original operation and available locals. Independent review approves
+source/generated/native semantics and four exact new shape exclusions; all
+remaining original assertions pass. Performance acceptance remains deferred.
 
 **Owner queue:** T3 loop-global prologue (async review). New private
 `_PyJitOpt_PlanLoopGlobals` ABI and `_GUARD_LOOP_GLOBALS_VERSION` entry guard;
@@ -2620,3 +2681,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-12 | e891 | J | T3 | virtualize bound float methods with guarded receiver attributes and original-PC storage/type materialization | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 57 Rust tests; 20 active-JIT method/mutation/error/finalizer cases and prior integrations; independent source/generated/native review approves | `rust-cpython/results/perf-bench/20261112T131439Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T131913Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/bound-floats-feature-acceptance.json`, `.work/tmp/bound-floats-native.log`; incremental stage based on `e8cf127` with this slice |
 | 2026-11-12 | e891 | J | T4 | preserve independent outer unboxing around opaque boxed virtual-call regions and box live caller prefixes before entry | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 58 Rust tests; 11 active-JIT prefix/error/complex-exit cases and prior integrations; independent source/native review approves | `rust-cpython/results/perf-bench/20261112T132914Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T133046Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/regional-feature-acceptance.json`; incremental stage based on `df56e47` with this slice |
 | 2026-11-12 | e891 | J | T3 | retain scalar constants and guard virtual-call arguments at their original arithmetic PCs, allowing unused generic arguments | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 59 Rust tests; 6 active-JIT constant/fallback/error/OOM/reverse-finalizer cases and prior integrations; independent source/generated/native review approves | `rust-cpython/results/perf-bench/20261112T134732Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T134902Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/constants-feature-acceptance.json`; incremental stage based on `e61add3` with this slice |
+| 2026-11-12 | e891 | J | T3 | virtualize compact integer scalar calls with typed local cleanup, literal in-place ownership and original-PC helper refusal | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; 16 reviewed shape exclusions; 62 Rust tests; 68 active-JIT integer/reuse/overflow/mixed-local/receiver/generator/allocation cases and prior integrations; independent source/generated/native review approves, rebuilt with operand-cleanup restriction | `rust-cpython/results/perf-bench/20261112T142521Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T142657Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/integers-cleanup-feature-acceptance.json`; `.work/tmp/god-integers-original-assertions.log`; incremental stage based on `1751091` with this slice |

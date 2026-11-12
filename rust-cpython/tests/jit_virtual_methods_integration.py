@@ -253,17 +253,17 @@ def main():
         assert candidate["active"] == [True] * (11 if managed else 9), candidate["active"]
         for label, entries in candidate["traces"].items():
             names = [entry[0] for entry in entries]
-            assert "_BEGIN_VIRTUAL_FLOAT_CALL" in names, (managed, label, names)
-            assert "_RETURN_VIRTUAL_FLOAT_CALL" in names, (managed, label, names)
-            assert "_MATERIALIZE_VIRTUAL_FLOAT_FRAME" in names, (managed, label, names)
-            body = names[names.index("_BEGIN_VIRTUAL_FLOAT_CALL") + 1:
-                         names.index("_RETURN_VIRTUAL_FLOAT_CALL")]
+            assert "_BEGIN_VIRTUAL_CALL" in names, (managed, label, names)
+            assert "_RETURN_VIRTUAL_CALL" in names, (managed, label, names)
+            assert "_MATERIALIZE_VIRTUAL_FRAME" in names, (managed, label, names)
+            body = names[names.index("_BEGIN_VIRTUAL_CALL") + 1:
+                         names.index("_RETURN_VIRTUAL_CALL")]
             if managed and label not in ("zero args", "finalizer"):
                 assert "_CHECK_MANAGED_OBJECT_HAS_VALUES" in body, (label, body)
                 assert "_LOAD_ATTR_INSTANCE_VALUE" in body, (label, body)
             else:
                 assert "_LOAD_ATTR_SLOT" in body, (label, body)
-        assert all("_BEGIN_VIRTUAL_FLOAT_CALL" not in {entry[0] for entry in entries}
+        assert all("_BEGIN_VIRTUAL_CALL" not in {entry[0] for entry in entries}
                    for entries in noopt["traces"].values())
     print("OK    bound float methods preserve receivers, mutations, exact progress, error locals and finalizers")
     return 0

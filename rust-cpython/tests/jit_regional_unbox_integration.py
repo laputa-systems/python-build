@@ -118,14 +118,14 @@ def main():
     assert candidate["active"] == [True] * 11, candidate["active"]
     for label, entries in candidate["traces"].items():
         names = [entry[0] for entry in entries]
-        begin = names.index("_BEGIN_VIRTUAL_FLOAT_CALL")
-        end = names.index("_RETURN_VIRTUAL_FLOAT_CALL")
-        assert "_MATERIALIZE_VIRTUAL_FLOAT_FRAME" in names, (label, names)
+        begin = names.index("_BEGIN_VIRTUAL_CALL")
+        end = names.index("_RETURN_VIRTUAL_CALL")
+        assert "_MATERIALIZE_VIRTUAL_FRAME" in names, (label, names)
         assert any(name.endswith("_FLOAT_UNBOXED") for name in names[:begin]), (label, names)
         assert any(name.endswith("_FLOAT_UNBOXED") for name in names[end + 1:]), (label, names)
         assert not any("UNBOX" in name for name in names[begin:end + 1]), (label, names)
         assert "_BOX_FLOAT" in names[:begin], (label, names)
-    assert all("_BEGIN_VIRTUAL_FLOAT_CALL" not in {entry[0] for entry in entries}
+    assert all("_BEGIN_VIRTUAL_CALL" not in {entry[0] for entry in entries}
                for entries in noopt["traces"].values())
     print("OK    regional unboxing preserves boxed virtual calls and live caller prefixes on errors and exits")
     return 0

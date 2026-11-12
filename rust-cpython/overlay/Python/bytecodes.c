@@ -5006,7 +5006,7 @@ dummy_func(
             res = returned;
         }
 
-        tier2 op(_BEGIN_VIRTUAL_FLOAT_CALL, (required_locals/2, bound/1, callable, self_or_null, args[oparg] --)) {
+        tier2 op(_BEGIN_VIRTUAL_CALL, (required_locals/2, bound/1, callable, self_or_null, args[oparg] --)) {
             PyFunctionObject *func = (PyFunctionObject *)PyStackRef_AsPyObjectBorrow(callable);
             assert(PyFunction_Check(func));
             PyCodeObject *code = (PyCodeObject *)func->func_code;
@@ -5040,21 +5040,21 @@ dummy_func(
             LOAD_IP(0);
         }
 
-        tier2 op(_LOAD_VIRTUAL_FLOAT_ARGUMENT, (-- value)) {
+        tier2 op(_LOAD_VIRTUAL_ARGUMENT, (-- value)) {
             assert(frame == (_PyInterpreterFrame *)tstate->datastack_top);
             _PyStackRef *held = _PyFrame_GetStackPointer(tstate->current_frame);
             int bound = !PyStackRef_IsNull(held[1]);
             value = PyStackRef_Borrow(held[bound && oparg == 0 ? 1 : 2 + oparg - bound]);
         }
 
-        tier2 op(_COPY_VIRTUAL_FLOAT_ARGUMENT, (-- value)) {
+        tier2 op(_COPY_VIRTUAL_ARGUMENT, (-- value)) {
             assert(frame == (_PyInterpreterFrame *)tstate->datastack_top);
             _PyStackRef *held = _PyFrame_GetStackPointer(tstate->current_frame);
             int bound = !PyStackRef_IsNull(held[1]);
             value = PyStackRef_DUP(held[bound && oparg == 0 ? 1 : 2 + oparg - bound]);
         }
 
-        tier2 op(_RETURN_VIRTUAL_FLOAT_CALL, (retval -- res)) {
+        tier2 op(_RETURN_VIRTUAL_CALL, (retval -- res)) {
             assert(frame == (_PyInterpreterFrame *)tstate->datastack_top);
             PyCodeObject *code = _PyFrame_GetCode(frame);
             int argc = code->co_argcount;
@@ -5070,7 +5070,7 @@ dummy_func(
             RELOAD_STACK();
             _PyStackRef *held = stack_pointer;
             SAVE_STACK();
-            /* Exact-float locals cannot run Python. Finish scratch reads
+            /* Exact numeric locals cannot run Python. Finish scratch reads
                before held-reference callbacks can reuse the reservation. */
             for (int i = locals_count; --i >= argc; ) {
                 PyStackRef_XCLOSE(locals[i]);
@@ -5087,7 +5087,7 @@ dummy_func(
             res = returned;
         }
 
-        tier2 op(_MATERIALIZE_VIRTUAL_FLOAT_FRAME, (callee_offset/2, resuming/1 --)) {
+        tier2 op(_MATERIALIZE_VIRTUAL_FRAME, (callee_offset/2, resuming/1 --)) {
             assert(frame == (_PyInterpreterFrame *)tstate->datastack_top);
             assert(resuming <= 1);
             assert(resuming ? _PyErr_Occurred(tstate) == NULL : _PyErr_Occurred(tstate) != NULL);
