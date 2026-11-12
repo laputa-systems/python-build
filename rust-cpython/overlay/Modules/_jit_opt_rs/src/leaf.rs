@@ -45,6 +45,8 @@ pub struct LeafOpcodes {
     pub unpack_two: u16,
     pub unpack_two_unique: u16,
     pub pair_call: u16,
+    pub build_list: u16,
+    pub unpack_list: u16,
 }
 
 /// `effectful` is 0 or 1. Operand bits are opaque; Rust never dereferences them.
@@ -110,13 +112,28 @@ enum PairOrder {
     Reverse,
 }
 
+#[derive(Clone, Copy)]
+enum PairContainer {
+    Tuple,
+    List,
+}
+
+impl PairContainer {
+    fn unpacks(self, opcode: u16, ops: &LeafOpcodes) -> bool {
+        match self {
+            Self::Tuple => opcode == ops.unpack_two || opcode == ops.unpack_two_unique,
+            Self::List => opcode == ops.unpack_list,
+        }
+    }
+}
+
 enum PairState {
     Entry,
     Resumed,
     First(u16),
     Arguments(PairOrder),
-    Tuple(PairOrder),
-    Returned(PairOrder),
+    Built(PairOrder, PairContainer),
+    Returned(PairOrder, PairContainer),
 }
 
 fn pair_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes) -> Option<(usize, PairOrder)> {
@@ -142,12 +159,21 @@ fn pair_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes) -> Option<(usize, P
             {
                 PairState::Arguments(if first == 0 { PairOrder::Forward } else { PairOrder::Reverse })
             }
-            PairState::Arguments(order) if opcode == ops.build_tuple && uop.oparg == 2 => PairState::Tuple(order),
-            PairState::Tuple(order) if opcode == ops.heap_safe => PairState::Tuple(order),
-            PairState::Tuple(order) if opcode == ops.return_value => PairState::Returned(order),
-            PairState::Returned(order) if opcode == ops.validity && uop.effectful == 0 => PairState::Returned(order),
-            PairState::Returned(order) if (opcode == ops.unpack_two || opcode == ops.unpack_two_unique)
-                && uop.oparg == 2 =>
+            PairState::Arguments(order) if opcode == ops.build_tuple && uop.oparg == 2 => {
+                PairState::Built(order, PairContainer::Tuple)
+            }
+            PairState::Arguments(order) if opcode == ops.build_list && uop.oparg == 2 => {
+                PairState::Built(order, PairContainer::List)
+            }
+            PairState::Built(order, container) if opcode == ops.heap_safe => PairState::Built(order, container),
+            PairState::Built(order, container) if opcode == ops.validity && uop.effectful == 0 => {
+                PairState::Built(order, container)
+            }
+            PairState::Built(order, container) if opcode == ops.return_value => PairState::Returned(order, container),
+            PairState::Returned(order, container) if opcode == ops.validity && uop.effectful == 0 => {
+                PairState::Returned(order, container)
+            }
+            PairState::Returned(order, container) if container.unpacks(opcode, ops) && uop.oparg == 2 =>
             {
                 return Some((index, order));
             }
@@ -246,7 +272,7 @@ fn leaf_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
 
 /// Fuses guarded exact-argument calls whose optimized body only returns an argument
 /// or constant, loads one slot from a borrowed argument, or returns both arguments
-/// in a tuple that is immediately unpacked. Slot guards must
+/// in a tuple or list that is immediately unpacked. Slot guards must
 /// already be discharged by the interpreter optimizer. An unsupported body or
 /// allocation failure leaves the trace unchanged. A globals-version guard is
 /// preserved before the call, checking the callee's dictionary.
@@ -331,6 +357,7 @@ mod tests {
             nop: 39, leaf_call: 40, load_slot: 41, pop_borrow: 42,
             guard_globals: 43, leaf_globals: 44,
             build_tuple: 45, unpack_two: 46, unpack_two_unique: 47, pair_call: 48,
+            build_list: 49, unpack_list: 50,
         }
     }
 
@@ -461,7 +488,7 @@ mod tests {
         assert!(output.iter().all(|step| *step == untouched));
         assert_eq!(std::mem::size_of::<LeafUop>(), 16);
         assert_eq!(std::mem::size_of::<LeafStep>(), 16);
-        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 62);
+        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 66);
     }
 
     fn pair() -> Vec<LeafUop> {
@@ -489,6 +516,42 @@ mod tests {
                 assert!(steps[5..].iter().all(|step| step.opcode == opcodes().nop));
             }
         }
+    }
+
+    #[test]
+    fn list_pairs_require_a_matching_two_item_unpack() {
+        for order in [0, 1] {
+            let mut uops = pair();
+            uops[6].oparg = order;
+            uops[7].oparg = 1 - order;
+            uops[8].opcode = opcodes().build_list;
+            uops[13].opcode = opcodes().unpack_list;
+            let steps = plan_leaf_calls(&uops, &opcodes()).unwrap().unwrap();
+            assert_eq!(steps[4].opcode, opcodes().pair_call);
+            assert_eq!(steps[4].result, u64::from(order));
+            for unpack in [opcodes().unpack_two, opcodes().unpack_two_unique] {
+                uops[13].opcode = unpack;
+                assert!(plan_leaf_calls(&uops, &opcodes()).unwrap().is_none());
+            }
+            uops[13] = uop(opcodes().unpack_list, 3);
+            assert!(plan_leaf_calls(&uops, &opcodes()).unwrap().is_none());
+            uops[8].opcode = opcodes().build_tuple;
+            uops[13].oparg = 2;
+            assert!(plan_leaf_calls(&uops, &opcodes()).unwrap().is_none());
+        }
+    }
+
+    #[test]
+    fn list_construction_validity_is_consumed_with_the_allocation() {
+        let mut uops = pair();
+        uops[8].opcode = opcodes().build_list;
+        uops[13].opcode = opcodes().unpack_list;
+        uops.insert(9, uop(opcodes().validity, 0));
+        let steps = plan_leaf_calls(&uops, &opcodes()).unwrap().unwrap();
+        assert_eq!(steps[4].opcode, opcodes().pair_call);
+        assert!(steps[5..].iter().all(|step| step.opcode == opcodes().nop));
+        uops[9].effectful = 1;
+        assert!(plan_leaf_calls(&uops, &opcodes()).unwrap().is_none());
     }
 
     #[test]

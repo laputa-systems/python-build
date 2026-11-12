@@ -23,10 +23,10 @@ X = Token()
 Y = Token()
 
 def pair(a, b):
-    return a, b
+    return __PAIR_FORWARD__
 
 def reverse(a, b):
-    return b, a
+    return __PAIR_REVERSE__
 
 def loop(n, fn, x, y):
     for _ in range(n):
@@ -70,18 +70,18 @@ def escaping(n, fn):
 
 held = escaping(WARM, pair)
 RESULTS["escaped"] = [len({id(value) for value in held}),
-    all(type(value) is tuple and value[0] is X and value[1] is Y for value in held)]
+    all(type(value) is __PAIR_TYPE__ and value[0] is X and value[1] is Y for value in held)]
 TRACES["escaped"] = trace(escaping)
 del held
 
 namespace = {}
-exec("def released_pair(a, b):\n    return a, b\n", namespace)
+exec("def released_pair(a, b):\n    return __PAIR_FORWARD__\n", namespace)
 functions = [namespace.pop("released_pair")] * (WARM + 1)
 
 def observe(label):
-    tuples = [value for value in gc.get_referrers(X)
-              if type(value) is tuple and len(value) == 2 and value[0] is X and value[1] is Y]
-    EVENTS.append([label, len(tuples), sys._getframe(2).f_code.co_name, str(sys.exception())])
+    containers = [value for value in gc.get_referrers(X)
+              if type(value) is __PAIR_TYPE__ and len(value) == 2 and value[0] is X and value[1] is Y]
+    EVENTS.append([label, len(containers), sys._getframe(2).f_code.co_name, str(sys.exception())])
 
 function_ref = weakref.ref(functions[0], lambda _: observe("function"))
 code_ref = weakref.ref(functions[0].__code__, lambda _: observe("code"))
@@ -107,7 +107,7 @@ def profiler(frame, event, arg):
 
 def observations():
     result = [len(observed), len({id(value[0]) for value in observed}),
-              all(type(value[0]) is tuple and value[0][0] is X and value[0][1] is Y
+              all(type(value[0]) is __PAIR_TYPE__ and value[0][0] is X and value[0][1] is Y
                   and value[1] and value[2] for value in observed)]
     observed.clear()
     return result
@@ -140,7 +140,7 @@ sys.monitoring.free_tool_id(4)
 RESULTS["monitor"] = observations()
 
 def alternative(a, b):
-    return b, a
+    return __PAIR_REVERSE__
 
 old_code = pair.__code__
 pair.__code__ = alternative.__code__
@@ -152,7 +152,7 @@ del left, right
 def cell_pair(a, b):
     def inner():
         return a
-    return a, b
+    return __PAIR_FORWARD__
 
 left, right = loop(20, cell_pair, X, Y)
 RESULTS["cell"] = left is X and right is Y
@@ -160,8 +160,12 @@ print(json.dumps({"results": RESULTS, "traces": TRACES}, sort_keys=True))
 '''
 
 
-def run(jit):
-    completed = subprocess.run([sys.executable, "-s", "-c", PROGRAM],
+def run(jit, kind):
+    forward, reverse = {"tuple": ("(a, b)", "(b, a)"),
+                        "list": ("[a, b]", "[b, a]")}[kind]
+    program = PROGRAM.replace("__PAIR_FORWARD__", forward).replace("__PAIR_REVERSE__", reverse)
+    program = program.replace("__PAIR_TYPE__", kind)
+    completed = subprocess.run([sys.executable, "-s", "-c", program],
         env=dict(os.environ, PYTHON_JIT="1" if jit else "0"),
         capture_output=True, text=True, timeout=30)
     assert completed.returncode == 0, (jit, completed.returncode, completed.stderr)
@@ -169,21 +173,23 @@ def run(jit):
 
 
 def main():
-    candidate, reference = run(True), run(False)
     expected = {"forward": True, "reverse": True, "refcounts": [0, 0], "aliased": True,
         "escaped": [7000, True],
         "released": [True, 0, True, True,
             [["function", 1, "released_loop", "outer"], ["code", 1, "released_loop", "outer"]]],
         "profile": [8, 8, True], "trace": [8, 8, True], "monitor": [8, 8, True],
         "rebound": True, "cell": True}
-    assert reference["results"] == expected, reference["results"]
-    assert candidate["results"] == expected, candidate["results"]
-    for name in ("forward", "reverse", "released"):
-        names = {entry[0] for entry in candidate["traces"][name]}
-        assert "_CALL_PY_LEAF_PAIR" in names, (name, names)
-        assert not names.intersection({"_BUILD_TUPLE", "_PUSH_FRAME", "_UNPACK_SEQUENCE_UNIQUE_TWO_TUPLE"}), (name, names)
-    assert "_CALL_PY_LEAF_PAIR" not in {entry[0] for entry in candidate["traces"]["escaped"]}
-    print("OK    three pair traces preserve unpack order, escaping tuples, finalizers and observers")
+    for kind in ("tuple", "list"):
+        candidate, reference = run(True, kind), run(False, kind)
+        assert reference["results"] == expected, (kind, reference["results"])
+        assert candidate["results"] == expected, (kind, candidate["results"])
+        for name in ("forward", "reverse", "released"):
+            names = {entry[0] for entry in candidate["traces"][name]}
+            assert "_CALL_PY_LEAF_PAIR" in names, (kind, name, names)
+            assert not names.intersection({"_BUILD_TUPLE", "_BUILD_LIST", "_PUSH_FRAME",
+                "_UNPACK_SEQUENCE_UNIQUE_TWO_TUPLE", "_UNPACK_SEQUENCE_LIST"}), (kind, name, names)
+        assert "_CALL_PY_LEAF_PAIR" not in {entry[0] for entry in candidate["traces"]["escaped"]}
+    print("OK    six pair traces preserve tuple/list identities, unpack order, finalizers and observers")
     return 0
 
 

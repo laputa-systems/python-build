@@ -4943,7 +4943,7 @@ dummy_func(
             uintptr_t iversion = FT_ATOMIC_LOAD_UINTPTR_ACQUIRE(code->_co_instrumentation_version);
             EXIT_IF(_Py_atomic_load_uintptr_relaxed(&tstate->eval_breaker) != iversion);
             /* A function or code finalizer could observe the concrete return
-               tuple. Keep that tuple whenever closing the callable can finalize. */
+               container. Keep it whenever closing the callable can finalize. */
             EXIT_IF(PyStackRef_RefcountOnObject(callable) && Py_REFCNT(func) <= 1);
             Py_INCREF(code);
             _PyStackRef first = PyStackRef_MakeHeapSafe(PyStackRef_DUP(args[order]));
