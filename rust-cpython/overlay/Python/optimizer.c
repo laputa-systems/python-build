@@ -1454,7 +1454,11 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
             uint32_t exit_floats = unboxed == NULL ? 0 : unboxed[i].exit_floats;
             uint32_t exit_ints = unboxed == NULL ? 0 : unboxed[i].exit_ints;
             if (virtual_call) {
-                assert(base_opcode == _BINARY_OP_POWER_FLOAT);
+                assert(base_opcode == _BINARY_OP_POWER_FLOAT ||
+                       base_opcode == _GUARD_TYPE_VERSION || base_opcode == _GUARD_TYPE_VERSION_LOCKED ||
+                       base_opcode == _CHECK_MANAGED_OBJECT_HAS_VALUES ||
+                       base_opcode == _LOAD_ATTR_SLOT || base_opcode == _LOAD_ATTR_INSTANCE_VALUE ||
+                       base_opcode == _GUARD_TOS_FLOAT || base_opcode == _GUARD_NOS_FLOAT);
                 assert((exit_floats | exit_ints) == 0);
                 current_jump = next_spare;
                 if (exit_depth != 0) {
@@ -2144,6 +2148,8 @@ typedef struct {
     uint16_t pop;
     uint16_t virtual_argument_copy;
     uint16_t float_power;
+    uint16_t type_version;
+    uint16_t type_version_locked;
 } _PyJitLeafOpcodes;
 
 typedef struct {
@@ -2160,7 +2166,7 @@ typedef struct {
     uint64_t result;
 } _PyJitLeafStep;
 
-static_assert(sizeof(_PyJitLeafOpcodes) == 118, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
+static_assert(sizeof(_PyJitLeafOpcodes) == 122, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
 static_assert(_Alignof(PyObject) >= 4, "leaf result tags use two object-alignment bits");
 static_assert(sizeof(_PyJitLeafUop) == 16, "_PyJitLeafUop matches Rust LeafUop");
 static_assert(offsetof(_PyJitLeafUop, operand) == 8, "LeafUop operand offset matches Rust");
@@ -2230,6 +2236,8 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         .pop = _POP_TOP,
         .virtual_argument_copy = _COPY_VIRTUAL_FLOAT_ARGUMENT,
         .float_power = _BINARY_OP_POWER_FLOAT,
+        .type_version = _GUARD_TYPE_VERSION,
+        .type_version_locked = _GUARD_TYPE_VERSION_LOCKED,
     };
     _PyJitLeafUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
     _PyJitLeafStep *steps = PyMem_RawMalloc((size_t)length * sizeof(*steps));
