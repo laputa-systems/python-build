@@ -5006,6 +5006,95 @@ dummy_func(
             res = returned;
         }
 
+        tier2 op(_BEGIN_VIRTUAL_FLOAT_CALL, (callable, self_or_null, args[oparg] --)) {
+            PyFunctionObject *func = (PyFunctionObject *)PyStackRef_AsPyObjectBorrow(callable);
+            assert(PyFunction_Check(func));
+            PyCodeObject *code = (PyCodeObject *)func->func_code;
+            EXIT_IF(!PyStackRef_IsNull(self_or_null));
+            EXIT_IF(code->co_argcount != oparg || code->co_nlocalsplus != oparg);
+            EXIT_IF(code->co_kwonlyargcount != 0 || code->co_ncellvars != 0 || code->co_nfreevars != 0);
+            EXIT_IF(code->co_flags & (CO_GENERATOR | CO_COROUTINE | CO_ASYNC_GENERATOR |
+                                       CO_VARARGS | CO_VARKEYWORDS));
+            EXIT_IF(!current_executor->vm_data.valid);
+            uintptr_t iversion = FT_ATOMIC_LOAD_UINTPTR_ACQUIRE(code->_co_instrumentation_version);
+            EXIT_IF(_Py_atomic_load_uintptr_relaxed(&tstate->eval_breaker) != iversion);
+            for (int i = 0; i < oparg; i++) {
+                EXIT_IF(!PyFloat_CheckExact(PyStackRef_AsPyObjectBorrow(args[i])));
+            }
+            INPUTS_DEAD();
+            SAVE_STACK();
+            /* The checked callee reservation stays unallocated until error.
+               Held CALL references remain above the published caller SP. */
+            frame = (_PyInterpreterFrame *)tstate->datastack_top;
+            frame->f_executable = PyStackRef_FromPyObjectBorrow((PyObject *)code);
+            frame->owner = FRAME_OWNED_BY_THREAD;
+            frame->instr_ptr = _PyCode_CODE(code);
+            frame->stackpointer = frame->localsplus + code->co_nlocalsplus;
+            #ifdef Py_DEBUG
+            frame->stackpointer_valid = 1;
+            frame->lltrace = 0;
+            #endif
+            RELOAD_STACK();
+            LOAD_IP(0);
+        }
+
+        tier2 op(_LOAD_VIRTUAL_FLOAT_ARGUMENT, (-- value)) {
+            assert(frame == (_PyInterpreterFrame *)tstate->datastack_top);
+            _PyStackRef *held = _PyFrame_GetStackPointer(tstate->current_frame);
+            value = PyStackRef_Borrow(held[2 + oparg]);
+        }
+
+        tier2 op(_RETURN_VIRTUAL_FLOAT_CALL, (retval -- res)) {
+            assert(frame == (_PyInterpreterFrame *)tstate->datastack_top);
+            PyCodeObject *code = _PyFrame_GetCode(frame);
+            int argc = code->co_argcount;
+            Py_INCREF(code);
+            _PyStackRef returned = PyStackRef_MakeHeapSafe(retval);
+            DEAD(retval);
+            SAVE_STACK();
+            assert(STACK_LEVEL() == 0);
+            PyStackRef_CLOSE(frame->f_executable);
+            frame = tstate->current_frame;
+            RELOAD_STACK();
+            _PyStackRef *held = stack_pointer;
+            SAVE_STACK();
+            /* Callbacks may reuse scratch immediately; only caller storage
+               and the held code reference remain live during cleanup. */
+            for (int i = argc; --i >= 0; ) {
+                PyStackRef_CLOSE(held[2 + i]);
+            }
+            assert(PyStackRef_IsNull(held[1]));
+            PyStackRef_CLOSE(held[0]);
+            Py_DECREF(code);
+            RELOAD_STACK();
+            LOAD_IP(frame->return_offset);
+            res = returned;
+        }
+
+        tier2 op(_MATERIALIZE_VIRTUAL_FLOAT_ERROR, (error_offset/2 --)) {
+            assert(frame == (_PyInterpreterFrame *)tstate->datastack_top);
+            assert(_PyErr_Occurred(tstate));
+            _PyInterpreterFrame *caller = tstate->current_frame;
+            _PyStackRef *held = _PyFrame_GetStackPointer(caller);
+            _PyStackRef *live_top = stack_pointer;
+            int argc = _PyFrame_GetCode(frame)->co_argcount;
+            SAVE_STACK();
+            PyStackRef_CLOSE(frame->f_executable);
+            _PyInterpreterFrame *child = _PyFrame_PushUnchecked(tstate, held[0], argc, caller);
+            assert(child == frame && PyStackRef_IsNull(held[1]));
+            for (int i = 0; i < argc; i++) {
+                child->localsplus[i] = held[2 + i];
+            }
+            child->stackpointer = live_top;
+            frame = tstate->current_frame = child;
+            tstate->py_recursion_remaining--;
+            RELOAD_STACK();
+            frame->instr_ptr = _PyFrame_GetBytecode(frame) + error_offset;
+            SYNC_SP();
+            GOTO_TIER_ONE(NULL);
+            Py_UNREACHABLE();
+        }
+
         tier2 op(_MATERIALIZE_FLOAT_LEAF_ERROR, (error_offset/2, order/1, callable, self_or_null, args[oparg] --)) {
             assert(oparg == 2 && PyStackRef_IsNull(self_or_null) && order <= 1);
             assert(_PyErr_Occurred(tstate));

@@ -863,6 +863,57 @@ allocator failure. It also checks all four operations in both argument
 orders, special float values, success finalizers, subclass fallback,
 invalidation and observer frames.
 
+**Virtual float-call operands (2026-11-12).** Longer straight-line float
+callees now retain their original arithmetic instructions while avoiding
+ordinary frame initialization, argument-to-local copying and frame
+registration on success. The Rust leaf planner recognizes borrowed argument
+loads, at least two exact-float operations, complete typed/borrowed cleanup
+and heap-safe return. The private opcode map grows from 84 to 108 bytes.
+Unused locals, cells, free variables, resumable/bound calls, non-float
+arguments, callbacks, constants and unsupported operations retain ordinary
+calls. This is a closed float-body slice, not general frame virtualization.
+
+`_BEGIN_VIRTUAL_FLOAT_CALL` retains existing function-version, recursion,
+stack-space and PEP 523 checks and checks exact argument types and
+instrumentation before consumption. It publishes the consumed caller stack
+while holding the CALL references in their original reserved slots. The
+already checked callee reservation supplies a separate operand stack with a
+minimal unlinked frame header; the running thread-state frame remains the
+caller at its original CALL IP. A callee stack may exceed the caller's
+capacity without extending the caller's stack. Borrowed argument loads read
+the held slots. The scratch reservation remains exclusive until return or
+materialization; no body operation executes Python or releases the GIL.
+
+Original in-place forms are normalized to ordinary boxed arithmetic together
+with their former NULL cleanup. The proof distinguishes fresh unique
+intermediates from shared heap-safe arguments. This preserves the
+interpreter's allocation/error boundaries for the initial implementation.
+Traces containing these virtual calls stay boxed throughout; restoring
+unboxing and in-place reuse requires a further proof. These restrictions can
+affect performance, which has not been accepted under OD16.
+
+`_RETURN_VIRTUAL_FLOAT_CALL` makes the result heap-safe, holds the code and
+closes the scratch executable borrow before restoring the real caller.
+Arguments, function and code are then released in the original order; a
+finalizer may immediately reuse scratch without a later read of that area.
+Begin/return use explicit register-cache boundaries. New error stubs close
+the scratch borrow, initialize the same reserved address with the held
+callable/arguments, restore the untouched operand-stack top, link the child
+and decrement recursion once. Original arithmetic targets supply the callee
+PC. The terminal zero-output stub preserves the pending exception and does
+not allocate, retry, clear operands or overwrite the restored SP. Debug
+stack-reference borrows and SP validity follow the same lifetime boundaries.
+An explicit transactional bound covers cache transitions and error/exit
+stubs before any rewrite is committed.
+
+The native regression compares JIT-on, JIT-off and disabled optimization,
+including a callee stack larger than its caller's, distinct first/second
+error PCs, one-shot allocation failure at a later operation, sole-callable
+traceback lifetime, multiple virtual calls, scratch-reusing function/code
+finalizers, subclass fallback, code rebinding and profile/trace/monitoring
+observers. All seven fault/finalizer activity checks prove JIT execution.
+Independent source, generated-code and native review approves.
+
 **Loop globals prologue (2026-11-11).** The Rust planner in
 `Modules/_jit_opt_rs/src/loop_globals.rs` moves one root-frame globals guard
 before `_MAKE_WARM`. It requires a closed loop, an existing globals watcher,
@@ -914,8 +965,8 @@ fallback. Async cases inspect warmed guarded executors and exact checkpoint
 state; they do not directly sample JIT activity before the callback.
 Independent source and native review approves.
 
-General virtual frames, remaining lookup caches, other non-escaping allocation
-shapes and broader loop peeling remain T3 work.
+Virtual-call locals and broader call shapes, remaining lookup caches, other
+non-escaping allocations and broader loop peeling remain T3 work.
 
 **Inline frames (dropped 2026-11-10, CORRECT; code parked on branch
 `campaign/t3-inline`, whose paths the citations below refer to).** A trace call site is
@@ -1918,7 +1969,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | Managed inline-value getters now share frame-free leaf calls while retaining mutable storage guards and ordinary-call refusal. Numeric loop invariants remain integrated. Next: general virtual frames, remaining lookup/allocation shapes and broader loop work. Performance acceptance deferred under OD16 | Managed-getter slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; 12 reviewed shape exclusions; 51 Rust tests; slot/managed regressions in nine JIT/optimizer modes plus all prior integrations pass; independent source/native/policy review approves |
+| J | active | Longer straight-line float calls now use reserved virtual operands and materialize the full callee only on error; success keeps a minimal unlinked header. These traces stay boxed and normalize in-place arithmetic. Next: virtual-call locals, broader call/lookup/allocation shapes and loop work. Performance acceptance deferred under OD16 | Virtual-float slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 53 Rust tests; seven active-JIT fault/finalizer assertions, wide-stack and observer checks plus all prior integrations; independent source/generated/native review approves |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | feature complete | C3 integrated with refreshed main dependencies; performance acceptance deferred under OD16. Routing/API owner reviews remain asynchronous; nothing pushed | Integrated normal and verify runs each execute 52,102 tests, with exactly the matched reference's five failing files and 0 compiler mismatches; native 11-case integration passes; C3 corpus and independent reviews remain valid |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -1958,13 +2009,14 @@ requested): CinderX 3.15 steady JIT uplift `S = 0.7960`, held-out 1.0621, beside
 M2 ≤ 0.48, M3 ≤ 0.38, M4 ≤ 0.25. T2 does not wait for an answer.
 
 J continuation builds use `.work/wt/jit-pair`; its `perf-jit-pair` stage
-was rebuilt incrementally for the store, list, float-call, loop-type and inline-instance-getter slices after
+was rebuilt incrementally for the store, list, float-call, loop-type, inline-instance-getter and virtual-float slices after
 the tuple slice. Earlier reports and suite logs were archived under
 `.work/tmp/tuple-tested-report.json`, `tuple-accepted/`,
 `glue-tested-report.json`, `glue-accepted/`, `list-tested-report.json`
 and `list-accepted/`, plus `arith-tested-report.json` and
 `arith-accepted/`, followed by `loop-types-tested-report.json` and
-`loop-types-accepted/`, before reuse. Each ledger row
+`loop-types-accepted/`, then `managed-getter-tested-report.json` and
+`managed-getter-accepted/`, before reuse. Each ledger row
 has distinct digest-result directories and source identities. The committed
 `4b66ce3` reference in `.work/wt/jit-integrate` remains unchanged.
 
@@ -2042,6 +2094,16 @@ callback-free closed cycle. Integer range checks remain; pending work takes
 a terminal exit before callbacks. Failed guards use cold side exits for
 progress. Allocation/capacity failure retains the original trace. Independent
 source/native review approves; performance acceptance remains deferred.
+
+**Owner queue:** T3 virtual float-call operands (async review). The private
+leaf opcode map grows from 84 to 108 bytes. New begin/argument/return/error
+instructions use an exclusive reserved callee operand stack and held caller
+references, retaining only a minimal unlinked header on success. Precise
+error materialization initializes that same address without copying live
+operands or allocating. Original in-place forms are normalized together with
+NULL cleanup; these traces stay boxed. Independent source/generated/native
+review approves all seven active-JIT fault/finalizer checks. General locals,
+callbacks and unboxing remain outside this slice; performance is deferred.
 
 **Owner queue:** T4 local-store fusion (async review). New private
 `_PyJitOpt_PlanStores` ABI and `_STORE_FAST_FUSED` uop. Generated escape/local
@@ -2366,3 +2428,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-12 | e891 | J | T3 | prove callback-free numeric loop-local invariants under exact entry guards; retain integer range checks and terminal pending exits | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 11 shape exclusions; 50 Rust tests; numeric/mutation/refusal/capacity native coverage plus prior integrations; independent source/native review approves | `rust-cpython/results/perf-bench/20261112T101737Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T101904Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/loop-types-feature-acceptance.json`; incremental stage based on `3fafd75` with this slice and the separate division fix |
 | 2026-11-12 | e891 | J | T3 | fuse borrowed-argument inline instance getters while retaining mutable storage and missing-value refusals | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; 12 reviewed shape exclusions; 51 Rust tests; slot/managed regressions in nine JIT/optimizer modes plus prior integrations; independent source/native/policy review approves | `rust-cpython/results/perf-bench/20261112T103312Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T103439Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/managed-getter-feature-acceptance.json`; incremental stage based on `ff3f2b0` with this slice |
 | 2026-11-12 | e891 | J | correctness | match both shared in-place float division error strings to the interpreter | JIT disabled in the same stage | no timing | — | CORRECT: scalar, left-reuse and right-reuse kernels each prove the expected opcode and active-JIT fault, with identical interpreter error text and traceback location; independent source/provenance/native review approves | `rust-cpython/tests/jit_float_division_integration.py`; new `ceval_macros.h` overlay is the exact pinned header with only that string changed; tested alongside the pending virtual-call slice in incremental `perf-jit-pair` |
+| 2026-11-12 | e891 | J | T3 | retain longer float-body arithmetic on a reserved virtual operand stack; initialize/link the full callee only on error | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 53 Rust tests; four kernels, seven active-JIT fault/finalizer assertions, wide stack and observers; all prior integrations; independent source/generated/native review approves | `rust-cpython/results/perf-bench/20261112T110914Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T111043Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/virtual-feature-acceptance.json`; incremental stage based on `1b3c1fc` with this slice and separate in-place division fix |
