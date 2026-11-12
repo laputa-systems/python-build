@@ -130,6 +130,7 @@ CLIMB_SUITES = (
     "test_weakref",
 )
 CLIMB_SUPERSEDED_UOP_ASSERTIONS = frozenset({
+    "test.test_capi.test_opt.TestUopsOptimization.test_builtins_guard_emitted_once_per_frame",
     "test.test_capi.test_opt.TestUopsOptimization.test_float_add_chain_both_unique",
     "test.test_capi.test_opt.TestUopsOptimization.test_float_inplace_chain_propagation",
     "test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_inplace_unique_lhs",

@@ -8,6 +8,7 @@
 #include "pycore_bitutils.h"        // _Py_popcount32()
 #include "pycore_ceval.h"       // _Py_set_eval_breaker_bit
 #include "pycore_code.h"            // _Py_GetBaseCodeUnit
+#include "pycore_dict.h"
 #include "pycore_interpframe.h"
 #include "pycore_object.h"          // _PyObject_GC_UNTRACK()
 #include "pycore_opcode_metadata.h" // _PyOpcode_OpName[]
@@ -1401,6 +1402,13 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
         }
     }
     length = (int)(copy_to - buffer);
+    int loop_head = -1;
+    for (int i = 1; i < length; i++) {
+        if (_PyUop_Uncached[buffer[i].opcode] == _MAKE_WARM) {
+            loop_head = i;
+            break;
+        }
+    }
     int next_spare = length;
     if (unboxed != NULL && length > UOP_MAX_TRACE_LENGTH) {
         return -1;
@@ -1480,7 +1488,8 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
         if (base_opcode == _JUMP_TO_TOP) {
             assert(_PyUop_Uncached[buffer[0].opcode] == _START_EXECUTOR);
             buffer[i].format = UOP_FORMAT_JUMP;
-            buffer[i].jump_target = 1;
+            assert(loop_head >= 1);
+            buffer[i].jump_target = loop_head;
         }
     }
     return next_spare;
@@ -2156,6 +2165,96 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
 #endif
 }
 
+typedef struct {
+    uint16_t start, warm, globals, entry_globals, validity, jump;
+} _PyJitLoopOpcodes;
+
+typedef struct {
+    uint16_t opcode;
+    uint8_t effectful;
+    uint8_t changes_frame;
+    uint64_t version;
+} _PyJitLoopUop;
+
+typedef struct {
+    uint16_t opcode;
+    uint32_t source, target;
+} _PyJitLoopStep;
+
+static_assert(sizeof(_PyJitLoopOpcodes) == 12, "loop opcode map matches Rust");
+static_assert(sizeof(_PyJitLoopUop) == 16 && offsetof(_PyJitLoopUop, version) == 8,
+              "loop descriptor matches Rust");
+static_assert(sizeof(_PyJitLoopStep) == 12 && offsetof(_PyJitLoopStep, source) == 4,
+              "loop rewrite matches Rust");
+
+extern Py_ssize_t _PyJitOpt_PlanLoopGlobals(
+    const _PyJitLoopUop *, size_t, const _PyJitLoopOpcodes *, uint32_t, uint8_t,
+    _PyJitLoopStep *, size_t);
+
+static void
+hoist_loop_globals(_PyUOpInstruction *buffer, int length, PyFunctionObject *func,
+                   PyCodeObject *code, _PyBloomFilter *dependencies)
+{
+#if !defined(Py_GIL_DISABLED) && !defined(WITH_DTRACE)
+    PyObject *globals = func->func_globals;
+    if (!PyDict_CheckExact(globals)) {
+        return;
+    }
+    PyDictObject *dict = (PyDictObject *)globals;
+    if (dict->ma_keys->dk_kind != DICT_KEYS_UNICODE ||
+        !(dict->_ma_watcher_tag & (1ULL << GLOBALS_WATCHER_ID))) {
+        return;
+    }
+    static const _PyJitLoopOpcodes ops = {
+        _START_EXECUTOR, _MAKE_WARM, _GUARD_GLOBALS_VERSION, _GUARD_LOOP_GLOBALS_VERSION,
+        _CHECK_VALIDITY, _JUMP_TO_TOP
+    };
+    _PyJitLoopUop *uops = PyMem_RawMalloc(length * sizeof(_PyJitLoopUop));
+    _PyJitLoopStep *steps = PyMem_RawMalloc(length * sizeof(_PyJitLoopStep));
+    _PyUOpInstruction *original = PyMem_RawMalloc(length * sizeof(_PyUOpInstruction));
+    if (uops == NULL || steps == NULL || original == NULL) {
+        PyMem_RawFree(uops);
+        PyMem_RawFree(steps);
+        PyMem_RawFree(original);
+        return;
+    }
+    for (int i = 0; i < length; i++) {
+        int opcode = buffer[i].opcode;
+        uint32_t flags = _PyUop_Flags[opcode];
+        uops[i] = (_PyJitLoopUop){
+            .opcode = opcode,
+            .effectful = (flags & (HAS_ESCAPES_FLAG | HAS_ERROR_FLAG | HAS_PERIODIC_FLAG |
+                                   HAS_EVAL_BREAK_FLAG | HAS_SYNC_SP_FLAG)) != 0,
+            .changes_frame = (opcode == _PUSH_FRAME || opcode == _RETURN_VALUE ||
+                              opcode == _YIELD_VALUE || opcode == _RETURN_GENERATOR ||
+                              opcode == _SEND_GEN_FRAME || opcode == _FOR_ITER_GEN_FRAME),
+            .version = opcode == _GUARD_GLOBALS_VERSION ? buffer[i].operand0 : 0,
+        };
+    }
+    uint8_t resumable = (code->co_flags & (CO_GENERATOR | CO_COROUTINE | CO_ASYNC_GENERATOR)) != 0;
+    Py_ssize_t planned = _PyJitOpt_PlanLoopGlobals(uops, length, &ops,
+        dict->ma_keys->dk_version, resumable, steps, length);
+    assert(planned >= 0);
+    if (planned == length) {
+        _Py_BloomFilter_Add(dependencies, globals);
+        memcpy(original, buffer, length * sizeof(_PyUOpInstruction));
+        for (int i = 0; i < length; i++) {
+            assert(steps[i].source < (uint32_t)length && steps[i].target < (uint32_t)length);
+            buffer[i] = original[steps[i].source];
+            buffer[i].opcode = steps[i].opcode;
+            if (steps[i].source != steps[i].target) {
+                assert(buffer[i].opcode == _GUARD_LOOP_GLOBALS_VERSION && steps[i].target == 0);
+                buffer[i].format = UOP_FORMAT_TARGET;
+                buffer[i].target = original[steps[i].target].target;
+            }
+        }
+    }
+    PyMem_RawFree(uops);
+    PyMem_RawFree(steps);
+    PyMem_RawFree(original);
+#endif
+}
+
 static int
 uop_optimize(
     _PyInterpreterFrame *frame,
@@ -2216,6 +2315,8 @@ uop_optimize(
 
     if (!is_noopt) {
         fuse_leaf_calls(buffer, length);
+        hoist_loop_globals(buffer, length, _tstate->jit_tracer_state->initial_state.func,
+                           (PyCodeObject *)_tstate->jit_tracer_state->initial_state.code, &dependencies);
     }
     OPT_HIST(effective_trace_length(buffer, length), optimized_trace_length_hist);
     _PyUOpInstruction *output = &_tstate->jit_tracer_state->uop_array[0];

@@ -2472,6 +2472,16 @@ dummy_func(
             _LOAD_GLOBAL +
             _PUSH_NULL_CONDITIONAL;
 
+        /* Entry failures must use a side exit: the cold executor detaches
+           self-targets before resuming ENTER_EXECUTOR, guaranteeing progress. */
+        tier2 op(_GUARD_LOOP_GLOBALS_VERSION, (version/2 --)) {
+            PyDictObject *dict = (PyDictObject *)GLOBALS();
+            EXIT_IF(!PyDict_CheckExact(dict));
+            PyDictKeysObject *keys = FT_ATOMIC_LOAD_PTR_ACQUIRE(dict->ma_keys);
+            EXIT_IF(FT_ATOMIC_LOAD_UINT32_RELAXED(keys->dk_version) != version);
+            assert(keys->dk_kind == DICT_KEYS_UNICODE);
+        }
+
         op(_GUARD_GLOBALS_VERSION, (version/1 --)) {
             PyDictObject *dict = (PyDictObject *)GLOBALS();
             DEOPT_IF(!PyDict_CheckExact(dict));

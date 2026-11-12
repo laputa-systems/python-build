@@ -1,12 +1,46 @@
 mod unbox;
 mod leaf;
 mod cache;
+mod loop_globals;
 
 use std::mem::MaybeUninit;
 use std::slice;
 
 pub use leaf::{LeafOpcodes, LeafStep, LeafUop, OpcodeRange, plan_leaf_calls};
 pub use cache::{CacheUop, plan_cache};
+pub use loop_globals::{LoopOpcodes, LoopStep, LoopUop, plan_loop_globals};
+
+/// Plans an entry prologue for a watched loop-global guard. A positive result
+/// writes that many steps; 0 preserves the trace, and -1 rejects inconsistent
+/// descriptors. Allocation failure and short capacity leave output unchanged.
+///
+/// # Safety
+///
+/// Inputs must point to `length` initialized descriptors and one matching opcode
+/// map. `output` must be separate writable storage for `capacity` steps. The
+/// interpreter must retain the dictionary watcher/dependency until invalidation.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn _PyJitOpt_PlanLoopGlobals(
+    uops: *const LoopUop,
+    length: usize,
+    opcodes: *const LoopOpcodes,
+    version: u32,
+    resumable: u8,
+    output: *mut LoopStep,
+    capacity: usize,
+) -> isize {
+    // SAFETY: the caller supplies initialized live inputs and a complete opcode map.
+    let (uops, opcodes) = unsafe { (slice::from_raw_parts(uops, length), &*opcodes) };
+    match plan_loop_globals(uops, opcodes, version, resumable) {
+        Ok(Some(plan)) if plan.len() <= capacity => {
+            // SAFETY: the caller supplies separate writable storage with sufficient capacity.
+            unsafe { std::ptr::copy_nonoverlapping(plan.as_ptr(), output, plan.len()) };
+            plan.len() as isize
+        }
+        Ok(_) => 0,
+        Err(Inconsistent) => -1,
+    }
+}
 
 /// Plans whole-trace input cache depths. A positive result writes that many
 /// depths, 0 preserves the current allocator, and -1 rejects inconsistent input.
