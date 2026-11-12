@@ -48,7 +48,7 @@ class InstallFallbackCABundleTests(unittest.TestCase):
             "purpose": "test fallback CA source",
         }
         lock = root / "sources.lock.json"
-        lock.write_text(json.dumps({"inputs": [entry]}))
+        lock.write_text(json.dumps({"schema_version": 1, "inputs": [entry]}))
         cache_root = root / "cache"
         Cache(cache_root).store(archive, load_lock(lock)[0])
         return lock, cache_root

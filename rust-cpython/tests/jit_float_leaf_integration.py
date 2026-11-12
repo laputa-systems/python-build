@@ -3,7 +3,6 @@ import os
 import subprocess
 import sys
 
-
 PROGRAM = r'''
 import _opcode
 import _testcapi
@@ -280,7 +279,7 @@ print(json.dumps({"results": RESULTS, "traces": TRACES, "active": ACTIVE}, sort_
 def run(jit):
     completed = subprocess.run([sys.executable, "-s", "-c", PROGRAM],
         env=dict(os.environ, PYTHON_JIT="1" if jit else "0"),
-        capture_output=True, text=True, timeout=45)
+        capture_output=True, text=True, timeout=45, check=False)
     assert completed.returncode == 0, (jit, completed.returncode, completed.stderr)
     return json.loads(completed.stdout)
 

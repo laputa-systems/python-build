@@ -162,7 +162,7 @@ def derive_module(source: str, filename: str) -> dict:
                 for name in names:
                     literal_owners[name] = values
             elif isinstance(node, (ast.Delete, ast.For, ast.While, ast.Try, ast.With)):
-                raise ValueError("unverified bootstrap owner lifetime")
+                raise ValueError("unverified bootstrap owner lifetime")  # noqa: TRY004 - callers handle ValueError
         for node in ast.walk(ast.Module(body=body, type_ignores=[])):
             if isinstance(node, ast.Global):
                 if function_owners.intersection(node.names):

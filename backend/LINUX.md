@@ -74,22 +74,23 @@ qualification, even if an archive or partial report exists.
 
 ## Run the prerelease workflow
 
-After pushing the tested revision, dispatch the official build workflow:
+After pushing the tested revision to the default branch, dispatch the official
+release workflow:
 
 ```sh
-gh workflow run build.yml --ref main
-gh run list --workflow build.yml
+gh workflow run release.yml --ref main
+gh run list --workflow release.yml
 gh run watch <run-id> --exit-status
 ```
 
-Linux jobs run on native `ubuntu-24.04` (amd64) and `ubuntu-24.04-arm`
+Linux jobs run on native `ubuntu-26.04` (amd64) and `ubuntu-26.04-arm`
 runners using the same Docker driver; the macOS job runs natively on
 `xcode-27`. Assembly validates the three artifacts and publishes them as an
-official date-tagged prerelease.
+official prerelease tagged `release-<commit>`.
 
 ## Verify a published prerelease
 
-Download the release tag into a fresh directory:
+Download the release (tag `release-<commit>`) into a fresh directory:
 
 ```sh
 gh release download <tag> --dir .work/tmp/published-candidate

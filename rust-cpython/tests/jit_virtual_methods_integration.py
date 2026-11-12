@@ -3,7 +3,6 @@ import os
 import subprocess
 import sys
 
-
 PROGRAM = r'''
 import _opcode
 import dis
@@ -219,7 +218,7 @@ def run(jit, managed, optimize=True):
     completed = subprocess.run([sys.executable, "-s", "-c", program],
         env=dict(os.environ, PYTHON_JIT="1" if jit else "0",
                  PYTHON_UOPS_OPTIMIZE="1" if optimize else "0"),
-        capture_output=True, text=True, timeout=120)
+        capture_output=True, text=True, timeout=120, check=False)
     assert completed.returncode == 0, (jit, managed, optimize, completed.returncode, completed.stderr)
     return json.loads(completed.stdout)
 
@@ -230,23 +229,23 @@ def main():
         assert candidate["results"] == reference["results"] == noopt["results"], (
             managed, candidate["results"], reference["results"], noopt["results"])
         results = reference["results"]
-        assert results["success"] == [float(2.4375).hex(), 16, 0, 0]
+        assert results["success"] == [2.4375.hex(), 16, 0, 0]
         assert results["zero"][:3] == ["ZeroDivisionError", "division by zero", "outer"]
         assert results["zero"][-1][-1][-1] == {
             "self": "self", "x": float(2).hex(), "y": float(3).hex(), "z": float(0).hex(),
-            "first": float(3.25).hex(), "alias": float(3.25).hex(), "second": float(9.75).hex()}
-        assert results["nonfloat"] == [float(9.75).hex(), "outer"]
-        assert results["float subclass"] == [float(9.75).hex(), "outer"]
-        assert results["zero args"] == float(3.75).hex()
+            "first": 3.25.hex(), "alias": 3.25.hex(), "second": 9.75.hex()}
+        assert results["nonfloat"] == [9.75.hex(), "outer"]
+        assert results["float subclass"] == [9.75.hex(), "outer"]
+        assert results["zero args"] == 3.75.hex()
         assert results["missing"][0] == "AttributeError"
-        assert results["descriptor"] == [float(8.25).hex(), "outer"]
-        assert results["class"] == [float(2.4375).hex(), "outer"]
+        assert results["descriptor"] == [8.25.hex(), "outer"]
+        assert results["class"] == [2.4375.hex(), "outer"]
         if managed:
-            assert results["replace dict"] == [float(8.25).hex(), "outer"]
+            assert results["replace dict"] == [8.25.hex(), "outer"]
             assert results["clear dict"][0] == "AttributeError"
-        assert results["finalizer"] == [float(2.4375).hex(), 7016, 0]
+        assert results["finalizer"] == [2.4375.hex(), 7016, 0]
         assert results["events"][0] == ["calculate", ["self", "x", "y", "z"], float(2).hex()]
-        assert results["events"][-1] == ["nested", float(2.4375).hex()]
+        assert results["events"][-1] == ["nested", 2.4375.hex()]
         for key, value in results.items():
             if key.endswith(" progress"):
                 assert value == [7016, 0], (key, value)

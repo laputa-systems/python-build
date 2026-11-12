@@ -1133,8 +1133,10 @@ def render(sources: dict[str, str]) -> str:
             f'pub(crate) const TARGET_COMMIT: &str = "{TARGET_COMMIT}";',
             'pub(crate) const TARGET_IMPLEMENTATION: &str = "cpython";',
             f"pub(crate) const TARGET_VERSION: (u8, u8, u8) = ({version[0]}, {version[1]}, {version[2]});",
-            "pub(crate) const TARGET_MAGIC_NUMBER: [u8; 4] = "
-            f"[0x{magic_bytes[0]:02x}, 0x{magic_bytes[1]:02x}, 0x{magic_bytes[2]:02x}, 0x{magic_bytes[3]:02x}];",
+            (
+                "pub(crate) const TARGET_MAGIC_NUMBER: [u8; 4] = "
+                f"[0x{magic_bytes[0]:02x}, 0x{magic_bytes[1]:02x}, 0x{magic_bytes[2]:02x}, 0x{magic_bytes[3]:02x}];"
+            ),
             "",
         ]
     )
@@ -1416,8 +1418,10 @@ def render(sources: dict[str, str]) -> str:
         [
             "    impl ResumeLocation {",
             "        pub(crate) const fn at_depth(self, depth_one: bool) -> u32 {",
-            "            let location = self.0 & "
-            f"{resume_values['RESUME_OPARG_LOCATION_MASK']};",
+            (
+                "            let location = self.0 & "
+                f"{resume_values['RESUME_OPARG_LOCATION_MASK']};"
+            ),
             "            if depth_one {",
             f"                location | {resume_values['RESUME_OPARG_DEPTH1_MASK']}",
             "            } else {",

@@ -20,17 +20,29 @@ regression tests, bytecode caches, and `sampling-profiler` static web assets.
 
 ## Install
 
-Releases provide one relocatable archive per target plus uv download
-metadata. Release tags resolve to the source revision recorded in every
-artifact, and the release path smoke-tests the exact published bytes by
-installing them through a local uv mirror into fresh directories. The
-assembly and publication contract is in
+Install through uv, the consumer of the release assets. Each release,
+tagged `release-<commit>`, carries python-build-standalone-compatible
+archives named
+`cpython-<version>+<date>-<target>-install_only_stripped.tar.gz`, plus
+`download-metadata.json`, which `uv python install` reads through
+`--python-downloads-json-url`. `<date>` is the UTC build date. The
+smoke-tested archive bytes are exactly the published bytes: the release
+workflow installs them through a local uv mirror into fresh directories before
+it publishes.
+
+Every release also carries the standard build-repository assets for each
+target: `cpython-<version>-<target>.tar.xz`, the same installation recompressed,
+and `cpython-<version>-<target>.manifest.json` with the source revision and the
+SHA-256 of `sources.lock.json`. A `SHA256SUMS` file covers every other asset.
+The assembly and publication contract is in
 [docs/ci-and-releases.md](docs/ci-and-releases.md).
 
 Building from source requires the locked toolchain and, on Linux, Docker
-BuildKit. The commands, inputs, build records, and isolation boundaries are in
-[docs/build-system.md](docs/build-system.md); the final-byte qualification and
-publication contract is in
+BuildKit. Run `make build TARGET=<triple>` (`fetch` and `qualify`),
+`make verify`, `make package`, `make repro`, and `make clean`; `TARGET`
+defaults to the host's triple. The commands, inputs, build records, and
+isolation boundaries are in [docs/build-system.md](docs/build-system.md); the
+final-byte qualification and publication contract is in
 [docs/qualification-and-packaging.md](docs/qualification-and-packaging.md).
 
 ## TLS trust

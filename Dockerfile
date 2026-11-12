@@ -1,5 +1,5 @@
-FROM --platform=linux/amd64 alpine@sha256:266f29255458134745f2bf588cb23ed1ed1768b96ff2580a05d70a8aba59e145 AS alpine-amd64
-FROM --platform=linux/arm64 alpine@sha256:42d86a3173522de4786cfba0b5d631dbadb3d03a86d218dafb070dafd9809c7e AS alpine-arm64
+FROM --platform=linux/amd64 alpine@sha256:d56c381f961d307a21b3ca004cf1e3910f106644aefb1f43e654c8a56c4fd395 AS alpine-amd64
+FROM --platform=linux/arm64 alpine@sha256:260479a1cfaf304c4c20da7f8405d3ce313513dcd534bb743257bdd2fe0f3e2d AS alpine-arm64
 
 ARG TARGETARCH
 FROM alpine-${TARGETARCH} AS toolchain

@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "macos_toolchain": {
     "xcode": {
       "major": 27,
@@ -71,37 +72,37 @@
     }
   },
   "linux_toolchain": {
-    "release": "3.25.0_alpha20260805",
-    "image_index_digest": "sha256:020dfcbaaf4cc1078bf2d9c7ba31a8466e334061dcd2f248001d68f79e52c000",
-    "image_revision": "410e6fcf56b6bfd6e6b3acf0ab59a5ad1381ca54",
+    "release": "3.24.2",
+    "image_index_digest": "sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6",
+    "image_revision": "1c744e2d49059e51b063a11a6e3e18c9ccf04ab8",
     "repositories": [
-      "https://cdn.alpinelinux.org/edge/main",
-      "https://cdn.alpinelinux.org/edge/community"
+      "https://cdn.alpinelinux.org/alpine/v3.24/main",
+      "https://cdn.alpinelinux.org/alpine/v3.24/community"
     ],
     "images": {
       "amd64": {
         "platform": "linux/amd64",
         "alpine_arch": "x86_64",
-        "digest": "sha256:266f29255458134745f2bf588cb23ed1ed1768b96ff2580a05d70a8aba59e145",
-        "release": "3.25.0_alpha20260805",
-        "revision": "410e6fcf56b6bfd6e6b3acf0ab59a5ad1381ca54"
+        "digest": "sha256:d56c381f961d307a21b3ca004cf1e3910f106644aefb1f43e654c8a56c4fd395",
+        "release": "3.24.2",
+        "revision": "1c744e2d49059e51b063a11a6e3e18c9ccf04ab8"
       },
       "arm64": {
         "platform": "linux/arm64",
         "alpine_arch": "aarch64",
-        "digest": "sha256:42d86a3173522de4786cfba0b5d631dbadb3d03a86d218dafb070dafd9809c7e",
-        "release": "3.25.0_alpha20260805",
-        "revision": "410e6fcf56b6bfd6e6b3acf0ab59a5ad1381ca54"
+        "digest": "sha256:260479a1cfaf304c4c20da7f8405d3ce313513dcd534bb743257bdd2fe0f3e2d",
+        "release": "3.24.2",
+        "revision": "1c744e2d49059e51b063a11a6e3e18c9ccf04ab8"
       }
     },
     "direct_packages": [
       {
         "name": "musl-dev",
-        "version": "1.2.6-r6"
+        "version": "1.2.6-r3"
       },
       {
         "name": "linux-headers",
-        "version": "7.2.1-r0"
+        "version": "7.0.0-r1"
       },
       {
         "name": "bsd-compat-headers",
@@ -109,7 +110,7 @@
       },
       {
         "name": "fortify-headers",
-        "version": "3.0.2-r0"
+        "version": "3.0.1-r2"
       },
       {
         "name": "make",
@@ -117,7 +118,7 @@
       },
       {
         "name": "file",
-        "version": "5.48-r0"
+        "version": "5.47-r2"
       },
       {
         "name": "patch",
@@ -137,11 +138,11 @@
       },
       {
         "name": "perl",
-        "version": "5.44.0-r0"
+        "version": "5.42.3-r0"
       },
       {
         "name": "pkgconf",
-        "version": "3.0.10-r0"
+        "version": "2.5.1-r0"
       },
       {
         "name": "autoconf",
@@ -153,7 +154,7 @@
       },
       {
         "name": "libtool",
-        "version": "2.6.2-r1"
+        "version": "2.6.0-r1"
       },
       {
         "name": "patchelf",
@@ -183,18 +184,18 @@
       "alpine-baselayout=3.7.2-r1",
       "alpine-baselayout-data=3.7.2-r1",
       "alpine-keys=2.6-r0",
-      "alpine-release=3.25.0_alpha20260805-r0",
-      "apk-tools=3.0.7-r0",
-      "busybox=1.38.0-r4",
-      "busybox-binsh=1.38.0-r4",
-      "ca-certificates-bundle=20260611-r0",
-      "libapk=3.0.7-r0",
-      "libcrypto3=3.5.7-r0",
-      "libssl3=3.5.7-r0",
+      "alpine-release=3.24.2-r0",
+      "apk-tools=3.0.8-r0",
+      "busybox=1.37.0-r31",
+      "busybox-binsh=1.37.0-r31",
+      "ca-certificates-bundle=20260909-r0",
+      "libapk=3.0.8-r0",
+      "libcrypto3=3.5.8-r0",
+      "libssl3=3.5.8-r0",
       "musl=1.2.6-r2",
       "musl-utils=1.2.6-r2",
       "scanelf=1.3.9-r1",
-      "ssl_client=1.38.0-r4",
+      "ssl_client=1.37.0-r31",
       "zlib=1.3.2-r0"
     ],
     "apk_closure": {
@@ -203,281 +204,289 @@
           "name": "autoconf",
           "version": "2.73-r0",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/autoconf-2.73-r0.apk",
-          "sha256": "cb66d02429e84d0d33d83b13937c251439be33396a7b60c07532e0a8632c672f",
-          "size": 600182
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/autoconf-2.73-r0.apk",
+          "sha256": "03f0bbba4df7c43e7ae5ff3cab861abf9180731d9e057e62d2f9022f7aa4e047",
+          "size": 600187
         },
         {
           "name": "automake",
           "version": "1.18.1-r1",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/automake-1.18.1-r1.apk",
-          "sha256": "da723d8d0148c627229d3aed9a0636c8a305f9ee097d730814d3405998818b60",
-          "size": 415738
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/automake-1.18.1-r1.apk",
+          "sha256": "68164e792c3951b21aab938a5b4878e33c8f0dbeab65099746e9e7709f17f99e",
+          "size": 415741
         },
         {
           "name": "bsd-compat-headers",
           "version": "0.7.2-r6",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/bsd-compat-headers-0.7.2-r6.apk",
-          "sha256": "5f79c7c00dc847bccfaa45ea58511c9f66a35364d43d5bbbb86b9823bfb726cc",
-          "size": 12133
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/bsd-compat-headers-0.7.2-r6.apk",
+          "sha256": "185af20c670894721f8b5bc9be1294bd42cc698b4ab6b782880ff5cedbf98b98",
+          "size": 12033
         },
         {
           "name": "diffutils",
           "version": "3.12-r0",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/diffutils-3.12-r0.apk",
-          "sha256": "6ac2404adcea38557cf45668261cc36a83358aae037df8ce22bf5d301be6e986",
-          "size": 137561
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/diffutils-3.12-r0.apk",
+          "sha256": "ef3b6796669607e420331b932dcf4a9dc0a399c64263be724a0621c3094ce6fb",
+          "size": 135352
         },
         {
           "name": "file",
-          "version": "5.48-r0",
+          "version": "5.47-r2",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/file-5.48-r0.apk",
-          "sha256": "e6a970a657e0f766b0004e78a77a1b24ebb2ab04834570f88646edff96c4c807",
-          "size": 9804
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/file-5.47-r2.apk",
+          "sha256": "4681c153c509aec126e2b9ea2c959730309b24a792d49fc8cc26fa5fa87e8fdd",
+          "size": 9722
         },
         {
           "name": "fortify-headers",
-          "version": "3.0.2-r0",
+          "version": "3.0.1-r2",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/fortify-headers-3.0.2-r0.apk",
-          "sha256": "9e6c0f152fe515809f3799f9db80b72323cbfb343c786cd0047b19d762101b8d",
-          "size": 7263
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/fortify-headers-3.0.1-r2.apk",
+          "sha256": "5ffaebd9f141ac3e3fa0cc99f798f64b4c0aa16fb06a7a77e68f63f350fe23aa",
+          "size": 7356
+        },
+        {
+          "name": "gdbm",
+          "version": "1.26-r0",
+          "arch": "x86_64",
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/gdbm-1.26-r0.apk",
+          "sha256": "3278ccba30b241168ca4ab93c919be805411b918fdc062f06d3684d12dc33ae3",
+          "size": 31902
         },
         {
           "name": "libbz2",
           "version": "1.0.8-r6",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/libbz2-1.0.8-r6.apk",
-          "sha256": "77bf2e1327c0582fb59225c1e0c1bc38aac384473210550ce0f4e5b6d60364bd",
-          "size": 33577
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libbz2-1.0.8-r6.apk",
+          "sha256": "2737e2b23ed08d4911ee62cd0163b5f4bf0379cacf4dc35b23a00209584c98fd",
+          "size": 35467
         },
         {
           "name": "libexpat",
           "version": "2.10.0-r0",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/libexpat-2.10.0-r0.apk",
-          "sha256": "ad565cb50371c22a746fa6cf9435d814fd6d1439220dc4dc80318088d9ea03db",
-          "size": 63639
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libexpat-2.10.0-r0.apk",
+          "sha256": "e7e7408ea787ed06d00159b0ff1f9b65a63cf634f36d9e0fa7512ce2c489a503",
+          "size": 63634
         },
         {
           "name": "libffi",
-          "version": "3.8.0-r0",
+          "version": "3.5.2-r1",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/libffi-3.8.0-r0.apk",
-          "sha256": "d1160fa275d18c06c49a159c76627168f4aa2c0b2776b84db522b7117a61e189",
-          "size": 23028
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libffi-3.5.2-r1.apk",
+          "sha256": "6da1a19313a40c56cac756fb11e2c4d5267831e1c22fc8323f24c943c94da6e0",
+          "size": 18348
         },
         {
           "name": "libgcc",
-          "version": "15.2.0-r9",
+          "version": "15.2.0-r5",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/libgcc-15.2.0-r9.apk",
-          "sha256": "01c9609197de10519ceb204a09d1efa54baad145f65bf00ba0908086692ca3fe",
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libgcc-15.2.0-r5.apk",
+          "sha256": "393dcd32629f06d7d85409c272d142d0c082772d10b87ef55ee82f47de3be637",
           "size": 80348
         },
         {
           "name": "libltdl",
-          "version": "2.6.2-r1",
+          "version": "2.6.0-r1",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/libltdl-2.6.2-r1.apk",
-          "sha256": "91a3116c4398738b2bc6daf16e30b81cd19d118563f348f77dee0bac1a55a7bc",
-          "size": 16497
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libltdl-2.6.0-r1.apk",
+          "sha256": "5a61ee2419f1ca973ee03655265a52ba9296827169872ad1b645badb56984610",
+          "size": 16509
         },
         {
           "name": "libmagic",
-          "version": "5.48-r0",
+          "version": "5.47-r2",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/libmagic-5.48-r0.apk",
-          "sha256": "314efce49ce84bb2252acae71d558321a323a241ed1c60977aade312fde0e475",
-          "size": 532817
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libmagic-5.47-r2.apk",
+          "sha256": "1820acd299025619a848b19ac98c7996fd92c06965255898800b6a790a8b03a2",
+          "size": 526164
         },
         {
           "name": "libncursesw",
-          "version": "6.6_p20261017-r0",
+          "version": "6.6_p20260516-r0",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/libncursesw-6.6_p20261017-r0.apk",
-          "sha256": "953fc025d8c86b3e03d75214ab8bc8349b2070ab7de3ad638081e36a29fb44b2",
-          "size": 160709
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libncursesw-6.6_p20260516-r0.apk",
+          "sha256": "cf8caa8a88bc4ce9d9e395567fefaf9ef7fbd55c50ae6155b35c1b58f3755023",
+          "size": 159438
         },
         {
           "name": "libpanelw",
-          "version": "6.6_p20261017-r0",
+          "version": "6.6_p20260516-r0",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/libpanelw-6.6_p20261017-r0.apk",
-          "sha256": "cc9527c2549d7c3d00f8d603e96913d9268fa3ceb0a59f818c39caae1640f980",
-          "size": 5564
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libpanelw-6.6_p20260516-r0.apk",
+          "sha256": "057be8b1b788580f4cb72c382a6dcc03467d15bd69700f32192bd709e7a57a12",
+          "size": 5563
         },
         {
           "name": "libstdc++",
-          "version": "15.2.0-r9",
+          "version": "15.2.0-r5",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/libstdc++-15.2.0-r9.apk",
-          "sha256": "adfebfc0c4b80c293be8cc802a7fb73d7f5854f01b47ff1f40282d18f255b357",
-          "size": 961408
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libstdc++-15.2.0-r5.apk",
+          "sha256": "14c987b556f5385a5db18376e788c75f37d85321b8dc1920d926ea7daac1d6f6",
+          "size": 961295
         },
         {
           "name": "libtool",
-          "version": "2.6.2-r1",
+          "version": "2.6.0-r1",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/libtool-2.6.2-r1.apk",
-          "sha256": "caf19596e126ac2dccf70a214cda37bc9e585dc65677fc81b35c86ba51ffaa95",
-          "size": 562311
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libtool-2.6.0-r1.apk",
+          "sha256": "4304c7a8b5d81e0912415bdba4297aeccb00e3fe019d3581a970e129b6fecc69",
+          "size": 561023
         },
         {
           "name": "linux-headers",
-          "version": "7.2.1-r0",
+          "version": "7.0.0-r1",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/linux-headers-7.2.1-r0.apk",
-          "sha256": "45e0d4df3e4002122c953d0af6e208f1e8369fc6c88c67138400b87f871fd54b",
-          "size": 2017036
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/linux-headers-7.0.0-r1.apk",
+          "sha256": "c4535f3f0dc6fd4d80efa7ff2a7a72a2d3f8dae31e2587c0785cc3243889cdf2",
+          "size": 2000169
         },
         {
           "name": "m4",
-          "version": "1.4.21-r0",
+          "version": "1.4.20-r1",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/m4-1.4.21-r0.apk",
-          "sha256": "502e9407c1b96c3aabecbdc944a598976ac6144474f552540699c586f83d114c",
-          "size": 119236
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/m4-1.4.20-r1.apk",
+          "sha256": "e163b45e0fae7b50f4abec37833a729453cea38a5d74c9ed1bdb04a475eeba70",
+          "size": 113579
         },
         {
           "name": "make",
           "version": "4.4.1-r4",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/make-4.4.1-r4.apk",
-          "sha256": "b3b0b1e03637888031b075c4eccc35c5196045cfa28667b666d1ef35d07e22f3",
-          "size": 116300
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/make-4.4.1-r4.apk",
+          "sha256": "a916626a876f64c6b6fb32a6bf0fa93351d09fae0aa7684135642390da647e60",
+          "size": 116285
         },
         {
           "name": "mpdecimal",
           "version": "4.0.1-r0",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/mpdecimal-4.0.1-r0.apk",
-          "sha256": "28f3d868efbc1e9093b95f4a3f6e74393acd4a37292fcb5c0e0e0612fe83fff3",
-          "size": 79004
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/mpdecimal-4.0.1-r0.apk",
+          "sha256": "1278f374bbc8b4aad674244458cca5fc63e0780a921138eef400d5db64381a31",
+          "size": 78803
         },
         {
           "name": "musl",
-          "version": "1.2.6-r6",
+          "version": "1.2.6-r3",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/musl-1.2.6-r6.apk",
-          "sha256": "002f8b956419d67e91fd4e594f7b8d62fef13042cec45d977305df1a9ce0704f",
-          "size": 415482
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/musl-1.2.6-r3.apk",
+          "sha256": "e142255d0fa397f14318996bc10378093dcc069dc3dd1b6818c8f28a789c21da",
+          "size": 415466
         },
         {
           "name": "musl-dev",
-          "version": "1.2.6-r6",
+          "version": "1.2.6-r3",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/musl-dev-1.2.6-r6.apk",
-          "sha256": "3f6eb3192357d900caf322734980bdd3008cc9955efe8b1e1f4fe81997ea4671",
-          "size": 3422050
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/musl-dev-1.2.6-r3.apk",
+          "sha256": "310b51cff12e1d5ce5f135c558a82e2550427da5465bbd16c9ff9b05e63ee3d9",
+          "size": 3422063
         },
         {
           "name": "ncurses-terminfo-base",
-          "version": "6.6_p20261017-r0",
+          "version": "6.6_p20260516-r0",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/ncurses-terminfo-base-6.6_p20261017-r0.apk",
-          "sha256": "41f697fef61c95b807829a35ba34283fa304da3aac3d70de43e6632d5969102c",
-          "size": 22183
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/ncurses-terminfo-base-6.6_p20260516-r0.apk",
+          "sha256": "ce83be6d0bd10584a53c3a5868cc1595ce5f0f8e0b621f8f7f70b6144e521fc9",
+          "size": 22172
         },
         {
           "name": "patch",
           "version": "2.8.1-r0",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/patch-2.8.1-r0.apk",
-          "sha256": "a4e3a6d2c33d4604ac5939f4d993e857cd383b85b91c28861539028d1a2ac3e2",
-          "size": 69606
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/patch-2.8.1-r0.apk",
+          "sha256": "9ea3be7dca8efce2031dbf3f885a54ad75515f2afe9a19e238d79e2ffbbe4240",
+          "size": 69631
         },
         {
           "name": "patchelf",
           "version": "0.18.0-r3",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/patchelf-0.18.0-r3.apk",
-          "sha256": "7b583f0f557e6c6a07724a86e6a142c80cc85bf056b5de2efe3a4b653d68a0ba",
-          "size": 73556
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/patchelf-0.18.0-r3.apk",
+          "sha256": "76231dd6886d9ad1b885340b41327ce74f840fd70c6b7b8ee013d4191314012d",
+          "size": 72721
         },
         {
           "name": "perl",
-          "version": "5.44.0-r0",
+          "version": "5.42.3-r0",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/perl-5.44.0-r0.apk",
-          "sha256": "2780f7a74305ebb15c8c65f96c6ae0565ca476f822da3dd9bf76277ba18f51d7",
-          "size": 10329059
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/perl-5.42.3-r0.apk",
+          "sha256": "6bb4d744425b1689d54feece20bdd51f71508c4d23d1af5f66298f03f8310df7",
+          "size": 10175617
         },
         {
           "name": "pkgconf",
-          "version": "3.0.10-r0",
+          "version": "2.5.1-r0",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/pkgconf-3.0.10-r0.apk",
-          "sha256": "8e696c919c9b7955a50ef3313c5b7d7d973fa8ff17fb6b3c9c65bbc5f09da96e",
-          "size": 94267
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/pkgconf-2.5.1-r0.apk",
+          "sha256": "20cc47b76b82e9424a35ecc4fdd7bd904ef49ada1684214910fae31bc0cab737",
+          "size": 53905
         },
         {
           "name": "pyc",
           "version": "3.14.10-r1",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/pyc-3.14.10-r1.apk",
-          "sha256": "9331dc5585c71662b89f19632efe56b5cb972ac00e6ab93b995a26f92c99af53",
-          "size": 1271
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/pyc-3.14.10-r1.apk",
+          "sha256": "8b1678559e6c29db978a923b611cd21a8bfda26d4814edefbb2d62a903bf7df8",
+          "size": 1269
         },
         {
           "name": "python3",
           "version": "3.14.10-r1",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/python3-3.14.10-r1.apk",
-          "sha256": "549ed16bf67fe942afd9d8161e766d16bfaa0deae7e6db557906d8d69e07445c",
-          "size": 8482159
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/python3-3.14.10-r1.apk",
+          "sha256": "32ae9c446a79f965f942ae704c5121fa4744c5fee76ec86955fe0fc9a6e6c412",
+          "size": 8414398
         },
         {
           "name": "python3-pyc",
           "version": "3.14.10-r1",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/python3-pyc-3.14.10-r1.apk",
-          "sha256": "e4b345c0bb2f26f281ec4c05936a535e616618aff8577116ce8c64be976fabdc",
-          "size": 1331
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/python3-pyc-3.14.10-r1.apk",
+          "sha256": "bc63349707d5658ee2d852e415846246b8d71ece5007120b1d2aee85b4a2ad0a",
+          "size": 1316
         },
         {
           "name": "python3-pycache-pyc0",
           "version": "3.14.10-r1",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/python3-pycache-pyc0-3.14.10-r1.apk",
-          "sha256": "f0ddc43b1804ea16d14316e19714d06f02befd456b56b24210d1e2120adcc1b8",
-          "size": 4641828
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/python3-pycache-pyc0-3.14.10-r1.apk",
+          "sha256": "19a814d76898adbf90ec0f33ff1fd85fb8454be8615f4993fba0b69b7b978926",
+          "size": 4495572
         },
         {
           "name": "readline",
           "version": "8.3.3-r1",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/readline-8.3.3-r1.apk",
-          "sha256": "a0facde0de1a476438b099ffd85393aef0a2c1e0966dd6017941d44361803aed",
-          "size": 127189
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/readline-8.3.3-r1.apk",
+          "sha256": "766911ecb986a6c5cf0841a6b556cd1e9dbbf22b3559726de32416486cd15c81",
+          "size": 127194
         },
         {
           "name": "sqlite-libs",
-          "version": "3.54.1-r0",
+          "version": "3.53.4-r0",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/sqlite-libs-3.54.1-r0.apk",
-          "sha256": "5dfd76936e795efd988d6bad4949b8d20c410d6dc9dd256da884111f668f3915",
-          "size": 891646
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/sqlite-libs-3.53.4-r0.apk",
+          "sha256": "a8a216e53d22faa3f04d2e3650c1991af66f8d0b42fadff5afcdb9afb60b19e5",
+          "size": 877769
         },
         {
           "name": "xz",
           "version": "5.8.4-r0",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/xz-5.8.4-r0.apk",
-          "sha256": "a87eb30f63697adc2e335b0cf02fa4424a61fd9cf9ce9de6593e1d2991511049",
-          "size": 64572
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/xz-5.8.4-r0.apk",
+          "sha256": "547866cbe6f4a93efc9cee3bba03629d37f5590446677bb800cf4eada4b22c7c",
+          "size": 64573
         },
         {
           "name": "xz-libs",
           "version": "5.8.4-r0",
           "arch": "x86_64",
-          "url": "https://cdn.alpinelinux.org/edge/main/x86_64/xz-libs-5.8.4-r0.apk",
-          "sha256": "c32448d77e4b41bc48ffd5bc66ff4ba7a3e17bd4278238d90d6a30f82194cf49",
-          "size": 118500
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/x86_64/xz-libs-5.8.4-r0.apk",
+          "sha256": "ab362dd515ead04c31a6c302163248da7aa4813e283c971e6dd3f789b453a1d9",
+          "size": 118503
         }
       ],
       "aarch64": [
@@ -485,281 +494,289 @@
           "name": "autoconf",
           "version": "2.73-r0",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/autoconf-2.73-r0.apk",
-          "sha256": "c65fbef72ce4301ca4ef0e7d922c3ca7d2f8413e0f0c84a7a1226f60d9a75ddb",
-          "size": 600187
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/autoconf-2.73-r0.apk",
+          "sha256": "fed8458b0f186e7d335ba939d094597a73302eb58c58114810193d8681935948",
+          "size": 600165
         },
         {
           "name": "automake",
           "version": "1.18.1-r1",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/automake-1.18.1-r1.apk",
-          "sha256": "a47d88f32218050bf2d800c0b463bd91a6e9e5b511fb26077840992659556d15",
-          "size": 415738
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/automake-1.18.1-r1.apk",
+          "sha256": "edc621b9a75a13b0f4f9e8d483a140760a578059453744b27b95353e0c472825",
+          "size": 415716
         },
         {
           "name": "bsd-compat-headers",
           "version": "0.7.2-r6",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/bsd-compat-headers-0.7.2-r6.apk",
-          "sha256": "2ae95e33fd57930d8be3321b287a1149c852d98bc2184dd34a273313c9c7e2a4",
-          "size": 12131
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/bsd-compat-headers-0.7.2-r6.apk",
+          "sha256": "16b7f8b09b067649dfcfb25e366ffcf781fffb9a60e96fc14001f88035b10389",
+          "size": 12019
         },
         {
           "name": "diffutils",
           "version": "3.12-r0",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/diffutils-3.12-r0.apk",
-          "sha256": "8909b3668be95bbd246d6b40de884ade51a50e30ec575ca9eb805189e46041c4",
-          "size": 138799
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/diffutils-3.12-r0.apk",
+          "sha256": "579e30e49f3c02d2b8433246d838b51dfb907f4a3e455b0a61bcfbf16604bebf",
+          "size": 138032
         },
         {
           "name": "file",
-          "version": "5.48-r0",
+          "version": "5.47-r2",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/file-5.48-r0.apk",
-          "sha256": "adebf1ab63704e95803846afb3c99e728e923006592d9afa1091040709437e0a",
-          "size": 10364
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/file-5.47-r2.apk",
+          "sha256": "fb1ccc520c2e80cb1d3b739500826cedf4b35b8a43ff78aa683c6f6bd48dd3e5",
+          "size": 10233
         },
         {
           "name": "fortify-headers",
-          "version": "3.0.2-r0",
+          "version": "3.0.1-r2",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/fortify-headers-3.0.2-r0.apk",
-          "sha256": "6c1327a54090003843ed34ba5e6cbf6a2bffc27fea43e0f1b705ee5ff1dd0502",
-          "size": 7262
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/fortify-headers-3.0.1-r2.apk",
+          "sha256": "72bf2a77475f2550a7345683c77b39487ee94ecbc2ca11ed5314161f3b927d76",
+          "size": 7328
+        },
+        {
+          "name": "gdbm",
+          "version": "1.26-r0",
+          "arch": "aarch64",
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/gdbm-1.26-r0.apk",
+          "sha256": "bad50eb26533e2f58e014fbcd3c1744f2fdb79954af6e3c188ccd059251c7790",
+          "size": 33830
         },
         {
           "name": "libbz2",
           "version": "1.0.8-r6",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/libbz2-1.0.8-r6.apk",
-          "sha256": "387613963132acce64d6210bf5a88b0c1522740d13e80060404f091260088038",
-          "size": 35661
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libbz2-1.0.8-r6.apk",
+          "sha256": "28cb76bb6d11d2a55c3061b5fcb2ab84996412a248b2c9fe52bb710d0a2a84e7",
+          "size": 34259
         },
         {
           "name": "libexpat",
           "version": "2.10.0-r0",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/libexpat-2.10.0-r0.apk",
-          "sha256": "2c493582b0a3464f65a47647b5c24c89416d26be8bd82336cb588b88edfb95ce",
-          "size": 63407
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libexpat-2.10.0-r0.apk",
+          "sha256": "99144fe0b1bb9316a3bc30c38707996767806661f4a0456fcf4565ac92e79b0f",
+          "size": 63387
         },
         {
           "name": "libffi",
-          "version": "3.8.0-r0",
+          "version": "3.5.2-r1",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/libffi-3.8.0-r0.apk",
-          "sha256": "660a197cf7d0f5541c1d220cf4d59c5ec12082ed91a78b3e00def261e4b4e5e5",
-          "size": 21307
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libffi-3.5.2-r1.apk",
+          "sha256": "9a67280b0c7c62db658c2d4d32ed1199903bef859c32dd4245e1a7e35c89ab4b",
+          "size": 17799
         },
         {
           "name": "libgcc",
-          "version": "15.2.0-r9",
+          "version": "15.2.0-r5",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/libgcc-15.2.0-r9.apk",
-          "sha256": "23653103b2adf85dab73e4e35047f64b8671cd654e2d0291f44bec549084afd1",
-          "size": 66331
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libgcc-15.2.0-r5.apk",
+          "sha256": "369aaa6e9d099a737bad6dd3e6c2fe7bb1547ca26d22b94ee0411228f709b403",
+          "size": 66323
         },
         {
           "name": "libltdl",
-          "version": "2.6.2-r1",
+          "version": "2.6.0-r1",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/libltdl-2.6.2-r1.apk",
-          "sha256": "9c5d3b293ca46b4d5dd51d51c33fc49752e3cfecde769bf7b3de446da6a9b5f6",
-          "size": 17182
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libltdl-2.6.0-r1.apk",
+          "sha256": "16d92108ccd2f7155c88348a144ee51fd1c28ff483ec8a1dec5f20ff67f1e079",
+          "size": 17169
         },
         {
           "name": "libmagic",
-          "version": "5.48-r0",
+          "version": "5.47-r2",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/libmagic-5.48-r0.apk",
-          "sha256": "3083f145be299f92caa2eca61a4b099269842689b1540ff7c47b76d26e855e8d",
-          "size": 534162
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libmagic-5.47-r2.apk",
+          "sha256": "bcd233f28a6f1c07cd789c47df2234eb35d2bac295aa223ea2ccef17d75ce0f0",
+          "size": 527434
         },
         {
           "name": "libncursesw",
-          "version": "6.6_p20261017-r0",
+          "version": "6.6_p20260516-r0",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/libncursesw-6.6_p20261017-r0.apk",
-          "sha256": "bd4f81dc1cef1399f7ca8c994ba5860136ca6d10f949d9609975310d8f3a6138",
-          "size": 163404
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libncursesw-6.6_p20260516-r0.apk",
+          "sha256": "51a7aa4b3ec40b144d0801c0544e0a9f62e2a41d04b6067bb5e95786040741c6",
+          "size": 161906
         },
         {
           "name": "libpanelw",
-          "version": "6.6_p20261017-r0",
+          "version": "6.6_p20260516-r0",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/libpanelw-6.6_p20261017-r0.apk",
-          "sha256": "92ef1ac0cdb8da2a6a7d67af1fd77a4395c6ccd9560ac293eba03ecd2094c930",
-          "size": 5921
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libpanelw-6.6_p20260516-r0.apk",
+          "sha256": "a6912c654c821db4f8a801321709205bd482b0e515b862f2d02045e21b73d97d",
+          "size": 5903
         },
         {
           "name": "libstdc++",
-          "version": "15.2.0-r9",
+          "version": "15.2.0-r5",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/libstdc++-15.2.0-r9.apk",
-          "sha256": "36e8a2cee1ee14df5180c1f5737f0ffb59004ef92dd4f0bedff425968c4855ae",
-          "size": 908720
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libstdc++-15.2.0-r5.apk",
+          "sha256": "2302e766d4e4926038ec166ecb85837ee884576115236ddb565e3a5fca4a11d7",
+          "size": 908984
         },
         {
           "name": "libtool",
-          "version": "2.6.2-r1",
+          "version": "2.6.0-r1",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/libtool-2.6.2-r1.apk",
-          "sha256": "855d504c0504a05258b998c59578e3451aabb3fa85831ce6b4be1e73969e654f",
-          "size": 562278
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/libtool-2.6.0-r1.apk",
+          "sha256": "be3ac8bc2d0ad391621adad005fd4646e5d17fc0b6c4a056c24b6c0880e3093e",
+          "size": 560976
         },
         {
           "name": "linux-headers",
-          "version": "7.2.1-r0",
+          "version": "7.0.0-r1",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/linux-headers-7.2.1-r0.apk",
-          "sha256": "d4db4bdb66a54ef86500bb8ea834e3769ff5502f22d1ab40b360edc1566a0e92",
-          "size": 1981326
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/linux-headers-7.0.0-r1.apk",
+          "sha256": "d61656e81116040ebac0bc8d9046a3ba97f01a00ee085809103576e8a437468f",
+          "size": 1964140
         },
         {
           "name": "m4",
-          "version": "1.4.21-r0",
+          "version": "1.4.20-r1",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/m4-1.4.21-r0.apk",
-          "sha256": "6c9fde9a6393dc42a0d2f647e79dbddd0a27bf6dee0dc450dc042a10127a629d",
-          "size": 120000
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/m4-1.4.20-r1.apk",
+          "sha256": "2550f7b1dae60fcd0e9c49b21e4c44a1ab65c83600383c73375d4ef52dd4ad9a",
+          "size": 114502
         },
         {
           "name": "make",
           "version": "4.4.1-r4",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/make-4.4.1-r4.apk",
-          "sha256": "07a05073a634b54afba68c77f646b05dd0fd57ac6c76fe084684bd78e7d3ea2d",
-          "size": 117594
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/make-4.4.1-r4.apk",
+          "sha256": "0a2c6c3fa0d90b652bbaeac362d1bfe54b75aae57631a6b448826f8b51c85170",
+          "size": 117543
         },
         {
           "name": "mpdecimal",
           "version": "4.0.1-r0",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/mpdecimal-4.0.1-r0.apk",
-          "sha256": "49549baed3c6467bafee8e42f02d9d30d19304eaa12ff4b7b5123b10c55bca0d",
-          "size": 81417
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/mpdecimal-4.0.1-r0.apk",
+          "sha256": "358959600f99f58deee30ca9089c7f6f0f1bd73cc0021e321a7dbf6f735935c6",
+          "size": 81031
         },
         {
           "name": "musl",
-          "version": "1.2.6-r6",
+          "version": "1.2.6-r3",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/musl-1.2.6-r6.apk",
-          "sha256": "180b2e52dbd452919c3271ed9dddf06826cee9a387650c81c00c7ac393031c5b",
-          "size": 417747
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/musl-1.2.6-r3.apk",
+          "sha256": "2e17864102278d9049c3a56f1bceed9e8cf287065617e579325123443daed8a5",
+          "size": 417730
         },
         {
           "name": "musl-dev",
-          "version": "1.2.6-r6",
+          "version": "1.2.6-r3",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/musl-dev-1.2.6-r6.apk",
-          "sha256": "867ed4f6c22c905980a06d17a55d8396120b737085e83486496b18360302323d",
-          "size": 2540242
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/musl-dev-1.2.6-r3.apk",
+          "sha256": "45afe0a9f78de3402b6b5d11f5153ed955bf59d59b45344d9c3fed9f4bbf2f66",
+          "size": 2540248
         },
         {
           "name": "ncurses-terminfo-base",
-          "version": "6.6_p20261017-r0",
+          "version": "6.6_p20260516-r0",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/ncurses-terminfo-base-6.6_p20261017-r0.apk",
-          "sha256": "16fd5e1d7d93f98a3eeeccf0629bc49613a0a159b64c67a06f2d6a627a64347a",
-          "size": 22183
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/ncurses-terminfo-base-6.6_p20260516-r0.apk",
+          "sha256": "e0c546b9461bdce206a90bc720cb69aa4628b5a5b8d908c3e5084e00f28f6a9d",
+          "size": 22150
         },
         {
           "name": "patch",
           "version": "2.8.1-r0",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/patch-2.8.1-r0.apk",
-          "sha256": "d1bd7caea9efc25119e6f65d409a66d102a4b3cd33373e29ff76affdabb3facb",
-          "size": 70808
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/patch-2.8.1-r0.apk",
+          "sha256": "87a3de430e522c432e4f09b2788a68d3240972d28a9484077724bf5950568a27",
+          "size": 70822
         },
         {
           "name": "patchelf",
           "version": "0.18.0-r3",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/patchelf-0.18.0-r3.apk",
-          "sha256": "a0a6c0cf0de3818beb8dbd633e38033b71927cbb5bfc6ad5bbacdff1f27798ce",
-          "size": 74715
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/patchelf-0.18.0-r3.apk",
+          "sha256": "e7af9728c48ab77f0dc49bb58f5cc04a245537a70ec5581ede4007143137f325",
+          "size": 73962
         },
         {
           "name": "perl",
-          "version": "5.44.0-r0",
+          "version": "5.42.3-r0",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/perl-5.44.0-r0.apk",
-          "sha256": "6e652d9498853c9ae68a7731e92327074d34fa471a29e2f26a28b1c4c41f196f",
-          "size": 10250833
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/perl-5.42.3-r0.apk",
+          "sha256": "2e0de796c7ec30c2711816c03bc0af6dc4eee141039387c6530ab21375460f7d",
+          "size": 10097103
         },
         {
           "name": "pkgconf",
-          "version": "3.0.10-r0",
+          "version": "2.5.1-r0",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/pkgconf-3.0.10-r0.apk",
-          "sha256": "489125b392d07b5a5a385f9c3f69524843d5df74067d2bf19dd0afb9d068b9d9",
-          "size": 99141
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/pkgconf-2.5.1-r0.apk",
+          "sha256": "6b716719ac9457bd35c8ea5373da1dc33ae86863bbb0f411aed0cb5e71b9cf2d",
+          "size": 56279
         },
         {
           "name": "pyc",
           "version": "3.14.10-r1",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/pyc-3.14.10-r1.apk",
-          "sha256": "f11d26e7e73ecbea1db422e242352f85510edda132fc416938688b471fb16dbc",
-          "size": 1274
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/pyc-3.14.10-r1.apk",
+          "sha256": "327b6fa5948e31d6794fd1e49b2b0a06f0d411f37b7942ee906a00f6e3b9a3c3",
+          "size": 1254
         },
         {
           "name": "python3",
           "version": "3.14.10-r1",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/python3-3.14.10-r1.apk",
-          "sha256": "686e42ebdb4d491d5f6ef559c21d2740ee1be07a428226acff66701e7ed6197e",
-          "size": 8399884
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/python3-3.14.10-r1.apk",
+          "sha256": "980b5108e756f1aae298c041ef6bb229b655b7a5393b8c001f6bac8a03825429",
+          "size": 8332404
         },
         {
           "name": "python3-pyc",
           "version": "3.14.10-r1",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/python3-pyc-3.14.10-r1.apk",
-          "sha256": "f0a1a1ad50989b444705c8c03e4f9d8370dfc80636b0c37126c1c75f8b764429",
-          "size": 1330
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/python3-pyc-3.14.10-r1.apk",
+          "sha256": "9dbc6bf33d5c90c51d90bf00ea93e94fc52c0d8d5e8076e557479fd2062bfadf",
+          "size": 1300
         },
         {
           "name": "python3-pycache-pyc0",
           "version": "3.14.10-r1",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/python3-pycache-pyc0-3.14.10-r1.apk",
-          "sha256": "4e23834dfb3e6dee478457657edc5388130a24a1c9c13eb3c55609de499f38da",
-          "size": 4641752
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/python3-pycache-pyc0-3.14.10-r1.apk",
+          "sha256": "7efec44a37bcb3c958b07f523de214da3ae0e8fb9c4e45cbc2709d7fae15a4a1",
+          "size": 4495475
         },
         {
           "name": "readline",
           "version": "8.3.3-r1",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/readline-8.3.3-r1.apk",
-          "sha256": "ef3339d5a240b3501b57b21b48da192b429780af9e8a1ba3def629a72810dfbf",
-          "size": 129718
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/readline-8.3.3-r1.apk",
+          "sha256": "9f0ae0923c02b0d6aba62e9173542b65396ba3f0efefcbf087ea32f1120e7b34",
+          "size": 129706
         },
         {
           "name": "sqlite-libs",
-          "version": "3.54.1-r0",
+          "version": "3.53.4-r0",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/sqlite-libs-3.54.1-r0.apk",
-          "sha256": "e92861972b07c848fbf7e2e5ed20ca872c00f3a87550d01a5f7820d4d02df526",
-          "size": 866515
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/sqlite-libs-3.53.4-r0.apk",
+          "sha256": "b39d8d73c1208838a436f2d481ba605b52a095f8d6ff781556eafc81cd1a13e9",
+          "size": 852532
         },
         {
           "name": "xz",
           "version": "5.8.4-r0",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/xz-5.8.4-r0.apk",
-          "sha256": "f9b75ac773820a537740daba361083f4a060b6c81f26b0d37a1ef4c7ddb5dff4",
-          "size": 70079
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/xz-5.8.4-r0.apk",
+          "sha256": "05e4e19bc47caf6d2dcf22c493ae5a44a6d7c395b4cedead2328698e52dc6bad",
+          "size": 72092
         },
         {
           "name": "xz-libs",
           "version": "5.8.4-r0",
           "arch": "aarch64",
-          "url": "https://cdn.alpinelinux.org/edge/main/aarch64/xz-libs-5.8.4-r0.apk",
-          "sha256": "54de3f3b3bc26b341f39fcda09e762a22fad10a1d185a1096cc95b4a09bdd4ef",
-          "size": 119441
+          "url": "https://cdn.alpinelinux.org/alpine/v3.24/main/aarch64/xz-libs-5.8.4-r0.apk",
+          "sha256": "9be375832e747afe14f98e400e8b55d8f6fde25e41663090c81600628daab093",
+          "size": 119423
         }
       ]
     }

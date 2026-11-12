@@ -1022,7 +1022,7 @@ class _IndexForwarder(http.server.BaseHTTPRequestHandler):
             self.send_response(error.code)
             self.send_header("Content-Length", "0")
             self.end_headers()
-        except Exception:
+        except Exception:  # noqa: BLE001 - the proxy reports every upstream failure as 502
             self.send_response(502)
             self.send_header("Content-Length", "0")
             self.end_headers()

@@ -65,7 +65,7 @@ class NoticeFixture:
                 "license": "Sleepycat" if name == "bdb" else "MIT",
             }
             entries.append(entry)
-        self.lock_path.write_text(json.dumps({"inputs": entries}))
+        self.lock_path.write_text(json.dumps({"schema_version": 1, "inputs": entries}))
         for entry, archive in zip(load_lock(self.lock_path), entries):
             cache.store(root / f"{entry.name}.tar.gz", entry)
 

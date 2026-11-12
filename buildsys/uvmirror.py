@@ -5,6 +5,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+import lzma
 import os
 import re
 import shutil
@@ -39,10 +40,16 @@ class UvMirrorError(Exception):
     """Release assets failed identity, qualification, or size validation."""
 
 
-def asset_name(tag: str, triple: str) -> str:
+SOURCES_LOCK = Path(__file__).resolve().parents[1] / "sources.lock.json"
+RELEASE_TAG_PREFIX = "release-"
+_BUILD_ID = re.compile(r"[0-9]{8}")
+_XZ_PRESET = 9
+
+
+def asset_name(build: str, triple: str) -> str:
     if triple not in TRIPLES:
         raise UvMirrorError(f"unsupported release target {triple!r}")
-    return PRODUCT.mirror_archive_name(tag, triple)
+    return PRODUCT.mirror_archive_name(build, triple)
 
 
 def metadata_key(triple: str) -> str:
@@ -53,9 +60,9 @@ def metadata_key(triple: str) -> str:
     return f"cpython-{VERSION}-{info['os']}-{info['key_arch']}-{info['libc']}"
 
 
-def metadata_entry(triple: str, tag: str, url_base: str, sha256: str) -> dict:
+def metadata_entry(triple: str, build: str, release_tag: str, url_base: str, sha256: str) -> dict:
     info = TRIPLES[triple]
-    name = asset_name(tag, triple)
+    name = asset_name(build, triple)
     return {
         "name": "cpython",
         "arch": {"family": info["key_arch"], "variant": None},
@@ -65,10 +72,10 @@ def metadata_entry(triple: str, tag: str, url_base: str, sha256: str) -> dict:
         "minor": PRODUCT.version[1],
         "patch": PRODUCT.version[2],
         "prerelease": "",
-        "url": f"{url_base.rstrip('/')}/{tag}/{quote(name, safe='')}",
+        "url": f"{url_base.rstrip('/')}/{release_tag}/{quote(name, safe='')}",
         "sha256": sha256,
         "variant": None,
-        "build": tag,
+        "build": build,
     }
 
 
@@ -268,29 +275,75 @@ def _load_budgets(path: Path) -> dict[str, dict[str, int]]:
     return result
 
 
-def _metadata(tag: str, url_base: str, hashes: dict[str, str]) -> dict:
+def _metadata(build: str, release_tag: str, url_base: str, hashes: dict[str, str]) -> dict:
     return {
         metadata_key(triple): metadata_entry(
-            triple, tag, url_base, hashes[asset_name(tag, triple)]
+            triple, build, release_tag, url_base, hashes[asset_name(build, triple)]
         )
         for triple in TARGETS
     }
 
 
+def _write_xz_archive(source: Path, destination: Path) -> None:
+    compressor = lzma.LZMACompressor(format=lzma.FORMAT_XZ, check=lzma.CHECK_CRC64, preset=_XZ_PRESET)
+    try:
+        with gzip.open(source, "rb") as reader, destination.open("wb") as writer:
+            for chunk in iter(lambda: reader.read(1 << 20), b""):
+                writer.write(compressor.compress(chunk))
+            writer.write(compressor.flush())
+    except (OSError, EOFError) as error:
+        raise UvMirrorError(f"cannot recompress artifact {source}: {error}") from error
+
+
+def _release_manifest(
+    triple: str,
+    revision: str,
+    sources_lock_sha256: str,
+    archive: Path,
+    compat_name: str,
+    compat_sha256: str,
+    build: str,
+) -> dict:
+    return {
+        "schema_version": 1,
+        "product": "cpython",
+        "version": PRODUCT.version_string,
+        "target": triple,
+        "source_revision": revision,
+        "sources_lock_sha256": sources_lock_sha256,
+        "archive": {
+            "filename": archive.name,
+            "sha256": sha256_of(archive),
+            "size_bytes": archive.stat().st_size,
+        },
+        "standalone_compat": {
+            "build": build,
+            "filename": compat_name,
+            "sha256": compat_sha256,
+        },
+    }
+
+
 def assemble(
-    tag: str,
+    build: str,
     repo: str,
     dist: Path,
     out: Path,
     *,
     expected_revision: str | None = None,
     budgets_path: Path = RELEASE_BUDGETS,
+    sources_lock_path: Path = SOURCES_LOCK,
 ) -> dict:
-    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", tag) is None:
-        raise UvMirrorError(f"refusing unsafe release tag {tag!r}")
+    if _BUILD_ID.fullmatch(build) is None:
+        raise UvMirrorError(f"build id must be a YYYYMMDD date, got {build!r}")
     if re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo) is None:
         raise UvMirrorError(f"invalid GitHub repository {repo!r}")
     revision = _expected_revision(expected_revision)
+    release_tag = f"{RELEASE_TAG_PREFIX}{revision}"
+    try:
+        sources_lock_sha256 = sha256_of(sources_lock_path)
+    except OSError as error:
+        raise UvMirrorError(f"cannot read the source lock: {error}") from error
     budgets = _load_budgets(budgets_path)
     prepared: dict[str, tuple[Path, Path, dict]] = {}
     for triple in TARGETS:
@@ -321,33 +374,49 @@ def assemble(
     output.parent.mkdir(parents=True, exist_ok=True)
     if output.exists() or output.is_symlink():
         raise UvMirrorError(f"refusing to overwrite existing release directory {output}")
-    hashes: dict[str, str] = {}
     with tempfile.TemporaryDirectory(prefix=f".{output.name}-", dir=output.parent) as temporary:
         staging = Path(temporary)
+        hashes: dict[str, str] = {}
         for triple, (source, manifest_path, manifest) in prepared.items():
-            name = asset_name(tag, triple)
-            archive = staging / name
-            shutil.copyfile(source, archive)
-            hashes[name] = sha256_of(archive)
+            name = asset_name(build, triple)
+            compat = staging / name
+            shutil.copyfile(source, compat)
+            compat_sha256 = sha256_of(compat)
+            hashes[name] = compat_sha256
             shutil.copyfile(manifest_path, staging / f"artifact-{triple}.json")
-            manifest_hash = sha256_of(staging / f"artifact-{triple}.json")
-            hashes[f"artifact-{triple}.json"] = manifest_hash
-        (staging / "SHA256SUMS").write_text(
-            "".join(f"{digest}  {name}\n" for name, digest in sorted(hashes.items()))
-        )
+            archive = staging / PRODUCT.release_archive_name(triple)
+            _write_xz_archive(source, archive)
+            (staging / PRODUCT.release_manifest_name(triple)).write_text(
+                json.dumps(
+                    _release_manifest(
+                        triple, revision, sources_lock_sha256, archive, name, compat_sha256, build
+                    ),
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n"
+            )
         release_base = f"https://github.com/{repo}/releases/download"
         (staging / "download-metadata.json").write_text(
-            json.dumps(_metadata(tag, release_base, hashes), indent=2) + "\n"
+            json.dumps(_metadata(build, release_tag, release_base, hashes), indent=2) + "\n"
         )
         (staging / "smoke-metadata.json").write_text(
-            json.dumps(_metadata(tag, CANONICAL_PREFIX, hashes), indent=2) + "\n"
+            json.dumps(_metadata(build, release_tag, CANONICAL_PREFIX, hashes), indent=2) + "\n"
         )
+        assets = sorted(path.name for path in staging.iterdir())
         report = {
-            "tag": tag,
+            "build": build,
+            "release_tag": release_tag,
             "source_revision": revision,
-            "assets": sorted(hashes),
+            "assets": assets,
             "out": str(output),
         }
         (staging / "assembly.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+        (staging / "SHA256SUMS").write_text(
+            "".join(
+                f"{sha256_of(path)}  {path.name}\n"
+                for path in sorted(staging.iterdir(), key=lambda entry: entry.name)
+            )
+        )
         os.replace(staging, output)
     return report

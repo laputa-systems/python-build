@@ -3,7 +3,6 @@ import os
 import subprocess
 import sys
 
-
 PROGRAM = r'''
 import _opcode
 import dis
@@ -99,7 +98,7 @@ def run(jit, optimize=True):
     completed = subprocess.run([sys.executable, "-s", "-c", PROGRAM],
         env=dict(os.environ, PYTHON_JIT="1" if jit else "0",
                  PYTHON_UOPS_OPTIMIZE="1" if optimize else "0"),
-        capture_output=True, text=True, timeout=120)
+        capture_output=True, text=True, timeout=120, check=False)
     assert completed.returncode == 0, (jit, optimize, completed.returncode, completed.stderr)
     return json.loads(completed.stdout)
 
@@ -108,12 +107,12 @@ def main():
     candidate, reference, noopt = run(True), run(False), run(True, False)
     assert candidate["results"] == reference["results"] == noopt["results"], (
         candidate["results"], reference["results"], noopt["results"])
-    assert reference["results"]["divide"] == [["float", float(15.5625).hex()], 0]
+    assert reference["results"]["divide"] == [["float", 15.5625.hex()], 0]
     assert reference["results"]["power"] == [["float", ((7.8125 + 3.75 ** 2.5) + 6.25).hex()], 0]
     error = reference["results"]["error"]
     assert error[:3] == ["ZeroDivisionError", "division by zero", "outer"]
     assert error[-1] == 0
-    assert error[-2][-1][-1] == {"a": float(1.25).hex(), "b": float(0).hex(), "first": float(1.25).hex()}
+    assert error[-2][-1][-1] == {"a": 1.25.hex(), "b": float(0).hex(), "first": 1.25.hex()}
     assert reference["results"]["complex"][1:] == [0, 8]
     assert candidate["active"] == [True] * 11, candidate["active"]
     for label, entries in candidate["traces"].items():

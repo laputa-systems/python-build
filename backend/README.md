@@ -8,7 +8,7 @@ not those historical status assertions.
 
 This is the official TLS and hashing backend: fully OpenSSL-free CPython
 3.15.1 distributions for macOS arm64 and Linux x86-64/arm64 musl, built by
-`build.yml` with the drivers in this directory. The sections below record the
+`release.yml` with the drivers in this directory. The sections below record the
 research history and the evidence behind that decision.
 
 ## Current implementation
@@ -174,7 +174,7 @@ The remainder records the earlier prototype and adoption requirements.
 ## Decision
 
 Promoted: the OpenSSL-free backend is the official production
-distribution. `build.yml` builds and qualifies all three targets with the
+distribution. `release.yml` builds and qualifies all three targets with the
 drivers in this directory and publishes the archives as official
 prereleases. No OpenSSL source enters the build; Linux Rust extensions link
 musl through the dynamic CRT (`-crt-static` is mandatory for cdylib/proc-macro artifacts) with `ld.lld` and no `kache` or `mold`; CPU floors

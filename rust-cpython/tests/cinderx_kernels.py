@@ -292,6 +292,7 @@ def run_kernel(python: Path, name: str, label: str, flags: tuple[str, ...],
             capture_output=True,
             text=True,
             timeout=timeout,
+            check=False,
         )
     except subprocess.TimeoutExpired as error:
         raise KernelError(f"{name} [{label}] timed out after {timeout}s") from error
@@ -772,10 +773,12 @@ def timed_main(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int
 
     lease = load_host_lease()
     try:
-        with contextlib.redirect_stdout(sys.stderr):
-            with lease("measure", f"cinderx kernels {args.runs} runs"):
-                rows = timed_run(python, selected, sets, args.runs, modes, flags,
-                                 args.timeout, expectations)
+        with (
+            contextlib.redirect_stdout(sys.stderr),
+            lease("measure", f"cinderx kernels {args.runs} runs"),
+        ):
+            rows = timed_run(python, selected, sets, args.runs, modes, flags,
+                             args.timeout, expectations)
     except KernelError as error:
         failures.append(str(error))
         rows = {}
@@ -859,12 +862,14 @@ def steady_main(args: argparse.Namespace, parser: argparse.ArgumentParser) -> in
 
     lease = load_host_lease()
     try:
-        with contextlib.redirect_stdout(sys.stderr):
-            with lease("measure", f"cinderx steady kernels {args.runs} runs"):
-                rows = steady_run(python, selected, sets, args.runs, modes, flags,
-                                  args.timeout, expectations, args.steady_passes,
-                                  args.steady_min_warmup,
-                                  args.steady_stable_passes)
+        with (
+            contextlib.redirect_stdout(sys.stderr),
+            lease("measure", f"cinderx steady kernels {args.runs} runs"),
+        ):
+            rows = steady_run(python, selected, sets, args.runs, modes, flags,
+                              args.timeout, expectations, args.steady_passes,
+                              args.steady_min_warmup,
+                              args.steady_stable_passes)
     except KernelError as error:
         failures.append(str(error))
         rows = {}

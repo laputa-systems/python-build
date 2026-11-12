@@ -236,6 +236,24 @@ def build(args: argparse.Namespace) -> int:
     return subprocess.run(cpython_command, cwd=Path(__file__).parent, check=False).returncode
 
 
+def verify(target: str) -> int:
+    from buildsys.generations import GenerationError, active_generation
+    from buildsys.uvmirror import UvMirrorError, validate_artifact
+
+    root = Path(__file__).parent
+    try:
+        revision = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=root,
+            capture_output=True, text=True, check=True, timeout=15,
+        ).stdout.strip()
+        directory = active_generation(root / "dist" / target)
+        archive, _ = validate_artifact(directory, target, revision)
+    except (OSError, subprocess.SubprocessError, GenerationError, UvMirrorError) as error:
+        _fail(f"{target}: published artifact failed verification: {error}")
+    print(f"OK    verify {archive}")
+    return 0
+
+
 def qualify_linux(target: str) -> int:
     description = TARGETS[target]
     if description.family != "linux-musl":
@@ -359,6 +377,8 @@ def main(argv: list[str] | None = None) -> int:
              "(default: CPython compile jobs, one fewer than host CPUs)",
     )
     commands.add_parser("controller-test")
+    verify_parser = commands.add_parser("verify")
+    verify_parser.add_argument("--target", default=DEFAULT_TARGET)
     qualify = commands.add_parser("qualify")
     qualify.add_argument("--target", default=DEFAULT_TARGET)
     qualify.add_argument(
@@ -392,6 +412,9 @@ def main(argv: list[str] | None = None) -> int:
         _require_native_target(args.target)
     if args.command == "controller-test":
         return _controller_test()
+    if args.command == "verify":
+        _require_target(args.target)
+        return verify(args.target)
     if args.command == "qualify":
         _require_target(args.target)
         target = TARGETS[args.target]

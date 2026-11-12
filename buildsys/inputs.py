@@ -35,6 +35,9 @@ def input_sources(sha256: str, upstream: str) -> tuple[str, str]:
     return mirror_url(sha256), upstream
 
 
+LOCK_SCHEMA_VERSION = 1
+
+
 class InputError(Exception):
     """Raised when locks are malformed or inputs fail verification."""
 
@@ -98,6 +101,8 @@ def load_lock(path: Path) -> list[Input]:
         raise InputError(f"cannot read lock {path}: {error}") from error
     if not isinstance(document, dict) or not isinstance(document.get("inputs"), list):
         raise InputError(f"{path}: expected top-level object with 'inputs' list")
+    if document.get("schema_version") != LOCK_SCHEMA_VERSION:
+        raise InputError(f"{path}: unsupported lock schema_version {document.get('schema_version')!r}")
     inputs: list[Input] = []
     seen: set[str] = set()
     for index, entry in enumerate(document["inputs"]):

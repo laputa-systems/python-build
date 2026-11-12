@@ -28,11 +28,19 @@ class ProductTests(unittest.TestCase):
             product.mirror_archive_name("v1", "aarch64-apple-darwin"),
             "cpython-3.15.1+v1-aarch64-apple-darwin-install_only_stripped.tar.gz",
         )
+        self.assertEqual(
+            product.release_archive_name("aarch64-apple-darwin"),
+            "cpython-3.15.1-aarch64-apple-darwin.tar.xz",
+        )
+        self.assertEqual(
+            product.release_manifest_name("aarch64-apple-darwin"),
+            "cpython-3.15.1-aarch64-apple-darwin.manifest.json",
+        )
 
     def test_locked_source_controls_product_version(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "sources.lock.json"
-            path.write_text(json.dumps({"inputs": [{
+            path.write_text(json.dumps({"schema_version": 1, "inputs": [{
                 "name": "cpython",
                 "version": "3.15.1",
                 "url": "https://example.invalid/Python-3.15.1.tar.xz",
@@ -46,10 +54,10 @@ class ProductTests(unittest.TestCase):
     def test_missing_or_nonrelease_cpython_pin_fails(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "sources.lock.json"
-            path.write_text('{"inputs": []}')
+            path.write_text('{"schema_version": 1, "inputs": []}')
             with self.assertRaises(ProductError):
                 load_product(path)
-            path.write_text(json.dumps({"inputs": [{
+            path.write_text(json.dumps({"schema_version": 1, "inputs": [{
                 "name": "cpython",
                 "version": "3.15.1rc1",
                 "url": "https://example.invalid/source.tar.xz",

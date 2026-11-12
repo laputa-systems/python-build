@@ -44,3 +44,8 @@ class CLITests(unittest.TestCase):
         self.assertIn('x86_64-unknown-linux-musl', report['supported_targets'])
         self.assertIn('aarch64-unknown-linux-musl', report['supported_targets'])
         self.assertIn('qualification', report)
+
+    def test_verify_rejects_unsupported_target(self):
+        result = self.invoke('verify', '--target', 'riscv64-unknown-linux-musl')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('not implemented', result.stderr)

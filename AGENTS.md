@@ -21,12 +21,18 @@ python3 build.py fetch --target <triple>
 python3 build.py build --target <triple> [--pgo-jobs N]
 python3 build.py qualify --target <triple> [--pgo-jobs N]
 python3 build.py controller-test
+python3 build.py verify --target <triple>
 python3 build.py compare-reference --target <triple>
 python3 build.py reproduce --target aarch64-apple-darwin [--pgo-jobs N]
-python3 build/uvmirror.py --tag <tag> --repo <owner/repo>
+python3 build/uvmirror.py --build <YYYYMMDD> --repo <owner/repo>
 python3 build/relock_linux.py
 python3 build/mirror_inputs.py [--check]
 ```
+
+`make build|fetch|package|verify|repro|clean|lint` wrap these commands; `TARGET` is a Rust triple
+and defaults to the host. Releases come from `.github/workflows/release.yml`; the
+`bootstrap-inputs` release is an input mirror outside the release contract and never uses a
+`release-` tag.
 
 ## Invariants
 
