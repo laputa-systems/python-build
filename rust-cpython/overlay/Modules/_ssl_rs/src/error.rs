@@ -20,6 +20,7 @@ fn verify_code_from_webpki(error: &webpki::Error) -> i32 {
         webpki::Error::CertNotValidForName(_) => 62,
         webpki::Error::CertNotValidYet { .. } => 9,
         webpki::Error::CertRevoked => 23,
+        webpki::Error::CertDistrusted => 28,
         webpki::Error::CrlNotYetValid { .. } => 11,
         webpki::Error::CrlExpired { .. } => 12,
         webpki::Error::InvalidCrlSignatureForPublicKey => 8,
@@ -276,6 +277,7 @@ pub(crate) fn certificate_verification_message(message: &str, verify_code: i32) 
         23 => "certificate revoked",
         25 => "path length constraint exceeded",
         26 => "unsuitable certificate purpose",
+        28 => "certificate rejected",
         34 => "unhandled critical extension",
         68 => "CA signature digest algorithm too weak",
         78 => "Signature algorithm mismatch",
@@ -297,5 +299,21 @@ pub(crate) fn certificate_verification_message(message: &str, verify_code: i32) 
         41 => "invalid certificate extension",
         62 => "Hostname mismatch",
         _ => message,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn distrusted_certificate_is_rejected_with_openssl_code() {
+        let other = rustls::OtherError(std::sync::Arc::new(webpki::Error::CertDistrusted));
+        let error = rustls::Error::InvalidCertificate(rustls::CertificateError::Other(other));
+        let TlsError::CertVerification { message, code } = TlsError::from(error) else {
+            panic!("distrusted certificate must fail verification");
+        };
+        assert_eq!(code, 28);
+        assert_eq!(certificate_verification_message(&message, code), "certificate rejected");
     }
 }

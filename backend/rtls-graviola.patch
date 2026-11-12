@@ -3536,7 +3536,7 @@ new file mode 100644
 diff --git a/rust/src/error.rs b/rust/src/error.rs
 --- a/rust/src/error.rs
 +++ b/rust/src/error.rs
-@@ -1,62 +1,452 @@
+@@ -1,62 +1,454 @@
  use pyo3::prelude::*;
 -use pyo3::types::PyType;
 -
@@ -3576,6 +3576,7 @@ diff --git a/rust/src/error.rs b/rust/src/error.rs
 +        webpki::Error::CertNotValidForName(_) => 62,
 +        webpki::Error::CertNotValidYet { .. } => 9,
 +        webpki::Error::CertRevoked => 23,
++        webpki::Error::CertDistrusted => 28,
 +        webpki::Error::CrlNotYetValid { .. } => 11,
 +        webpki::Error::CrlExpired { .. } => 12,
 +        webpki::Error::InvalidCrlSignatureForPublicKey => 8,
@@ -3981,6 +3982,7 @@ diff --git a/rust/src/error.rs b/rust/src/error.rs
 +        23 => "certificate revoked",
 +        25 => "path length constraint exceeded",
 +        26 => "unsuitable certificate purpose",
++        28 => "certificate rejected",
 +        34 => "unhandled critical extension",
 +        68 => "CA signature digest algorithm too weak",
 +        78 => "Signature algorithm mismatch",
