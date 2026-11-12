@@ -76,6 +76,8 @@ pub struct LeafOpcodes {
     pub overflow_tos: u16,
     pub overflow_nos: u16,
     pub pop_int: u16,
+    pub float_add_int: u16,
+    pub guard_tos_exact_int: u16,
 }
 
 impl LeafOpcodes {
@@ -84,6 +86,7 @@ impl LeafOpcodes {
     }
 
     fn virtual_kind(&self, opcode: u16) -> Option<ScalarKind> {
+        if opcode == self.float_add_int { return Some(ScalarKind::Float) }
         if self.int_arithmetic.contains(&opcode) || self.int_inplace_left.contains(&opcode)
             || self.int_inplace_right.contains(&opcode)
         {
@@ -95,7 +98,8 @@ impl LeafOpcodes {
     }
 
     fn virtual_guard(&self, opcode: u16) -> Option<(ScalarKind, usize)> {
-        if opcode == self.guard_tos_float { Some((ScalarKind::Float, 1)) }
+        if opcode == self.guard_tos_exact_int { Some((ScalarKind::ExactInt, 1)) }
+        else if opcode == self.guard_tos_float { Some((ScalarKind::Float, 1)) }
         else if opcode == self.guard_nos_float { Some((ScalarKind::Float, 2)) }
         else if opcode == self.guard_tos_int || opcode == self.overflow_tos { Some((ScalarKind::CompactInt, 1)) }
         else if opcode == self.guard_nos_int || opcode == self.overflow_nos { Some((ScalarKind::CompactInt, 2)) }
@@ -106,6 +110,8 @@ impl LeafOpcodes {
         match (kind, depth) {
             (ScalarKind::Float, 1) => self.guard_tos_float,
             (ScalarKind::Float, _) => self.guard_nos_float,
+            (ScalarKind::ExactInt, 1) => self.guard_tos_exact_int,
+            (ScalarKind::ExactInt, _) => unreachable!(),
             (ScalarKind::CompactInt, 1) => self.guard_tos_int,
             (ScalarKind::CompactInt, _) => self.guard_nos_int,
         }
@@ -114,7 +120,7 @@ impl LeafOpcodes {
     fn scalar_pop(&self, kind: ScalarKind) -> u16 {
         match kind {
             ScalarKind::Float => self.pop_float,
-            ScalarKind::CompactInt => self.pop_int,
+            ScalarKind::CompactInt | ScalarKind::ExactInt => self.pop_int,
         }
     }
 }
@@ -220,6 +226,13 @@ enum FloatState {
 enum ScalarKind {
     Float,
     CompactInt,
+    ExactInt,
+}
+
+impl ScalarKind {
+    fn implies(self, required: Self) -> bool {
+        self == required || (self == Self::CompactInt && required == Self::ExactInt)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -251,8 +264,8 @@ impl VirtualValue {
 
     fn scalar_is_proven(self, kind: ScalarKind, arguments: &[Option<ScalarKind>]) -> bool {
         match self {
-            Self::BorrowedArgument(index) | Self::CopiedArgument(index) => arguments[usize::from(index)] == Some(kind),
-            Self::Scalar(proven, _) => proven == kind,
+            Self::BorrowedArgument(index) | Self::CopiedArgument(index) => arguments[usize::from(index)].is_some_and(|proven| proven.implies(kind)),
+            Self::Scalar(proven, _) => proven.implies(kind),
             _ => false,
         }
     }
@@ -261,15 +274,22 @@ impl VirtualValue {
         match self {
             Self::BorrowedArgument(index) | Self::CopiedArgument(index) => {
                 let proof = &mut arguments[usize::from(index)];
-                if proof.is_some_and(|proven| proven != kind) { return None }
-                *proof = Some(kind);
-                Some(Self::Scalar(kind, if matches!(self, Self::BorrowedArgument(_)) {
+                let narrowed = match *proof {
+                    Some(proven) if proven.implies(kind) => proven,
+                    Some(proven) if kind.implies(proven) => kind,
+                    Some(_) => return None,
+                    None => kind,
+                };
+                *proof = Some(narrowed);
+                Some(Self::Scalar(narrowed, if matches!(self, Self::BorrowedArgument(_)) {
                     ScalarOwnership::Borrowed
                 } else { ScalarOwnership::ArgumentCopy }))
             }
             Self::BorrowedConstant => Some(Self::Scalar(kind, ScalarOwnership::Borrowed)),
             Self::OwnedUnknown => Some(Self::Scalar(kind, ScalarOwnership::Shared)),
-            Self::Scalar(proven, _) => (proven == kind).then_some(self),
+            Self::Scalar(proven, _) if proven.implies(kind) => Some(self),
+            Self::Scalar(proven, ownership) if kind.implies(proven) => Some(Self::Scalar(kind, ownership)),
+            Self::Scalar(_, _) => None,
             Self::BorrowedReceiver | Self::ManagedReceiver | Self::ReallocatedOperand | Self::Null => None,
         }
     }
@@ -422,10 +442,11 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
             }
             for depth in [2, 1] {
                 let position = values.len() - depth;
-                if !values[position].scalar_is_proven(kind, &arguments) {
-                    guards.push(VirtualGuard { index, opcode: ops.scalar_guard(kind, depth) });
+                let required = if opcode == ops.float_add_int && depth == 1 { ScalarKind::ExactInt } else { kind };
+                if !values[position].scalar_is_proven(required, &arguments) {
+                    guards.push(VirtualGuard { index, opcode: ops.scalar_guard(required, depth) });
                 }
-                let Some(narrowed) = values[position].narrow_scalar(kind, &mut arguments) else { return Ok(None) };
+                let Some(narrowed) = values[position].narrow_scalar(required, &mut arguments) else { return Ok(None) };
                 values[position] = narrowed;
             }
             let mut right = values.pop().unwrap();
@@ -858,6 +879,7 @@ mod tests {
             int_arithmetic: [86, 87, 88], int_inplace_left: [89, 90, 91],
             int_inplace_right: [92, 93, 94], guard_tos_int: 95, guard_nos_int: 96,
             overflow_tos: 97, overflow_nos: 98, pop_int: 100,
+            float_add_int: 101, guard_tos_exact_int: 102,
         }
     }
 
@@ -1014,7 +1036,7 @@ mod tests {
         assert!(output.iter().all(|step| *step == untouched));
         assert_eq!(std::mem::size_of::<LeafUop>(), 16);
         assert_eq!(std::mem::size_of::<LeafStep>(), 16);
-        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 150);
+        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 154);
     }
 
     fn pair() -> Vec<LeafUop> {
@@ -1466,6 +1488,55 @@ mod tests {
         let mut contradictory = input.clone();
         contradictory[21].opcode = ops.guard_tos_int;
         assert!(plan_leaf_calls(&contradictory, &ops).unwrap().is_none());
+    }
+
+    #[test]
+    fn mixed_add_preserves_integer_proofs_ownership_and_error_target() {
+        let ops = opcodes();
+        let mut input = float_call();
+        input[8].opcode = ops.guard_tos_exact_int;
+        input[10].opcode = ops.float_add_int;
+        input[11].opcode = ops.pop_borrow;
+        let plan = plan_leaf_calls(&input, &ops).unwrap().unwrap();
+        assert_eq!(plan[4].opcode, ops.virtual_begin);
+        assert_eq!(plan[8].opcode, ops.guard_tos_exact_int);
+        assert_eq!(plan[10], LeafStep { opcode: ops.float_add_int, oparg: 0, source: 10, result: 0 });
+        assert_eq!(input[10].operand, 3);
+        assert_eq!(plan[11].opcode, ops.pop_borrow);
+        let mut owned = input.clone();
+        owned[7].opcode = ops.load_fast.first;
+        owned[11].opcode = ops.pop_int;
+        let plan = plan_leaf_calls(&owned, &ops).unwrap().unwrap();
+        assert_eq!(plan[11].opcode, ops.pop_int);
+        let mut compact = input.clone();
+        compact[8].opcode = ops.guard_tos_int;
+        let plan = plan_leaf_calls(&compact, &ops).unwrap().unwrap();
+        assert_eq!(plan.len(), compact.len());
+        assert_eq!(plan[10].opcode, ops.float_add_int);
+        let mut chained = virtual_locals();
+        chained[8].opcode = ops.guard_tos_int;
+        chained[9].opcode = ops.guard_nos_int;
+        chained[10].opcode = ops.int_arithmetic[0];
+        chained[2].oparg = 3;
+        chained[19].oparg = 2;
+        chained[20].oparg = 3;
+        for index in [14, 16, 26] { chained[index].oparg = 3 }
+        for index in [17, 28] { chained[index].oparg = 4 }
+        chained[21].opcode = ops.guard_tos_exact_int;
+        chained[22].opcode = ops.guard_nos_float;
+        chained[23].opcode = ops.float_add_int;
+        let plan = plan_leaf_calls(&chained, &ops).unwrap().unwrap();
+        assert_eq!(plan.len(), chained.len());
+        assert_eq!(plan[23].opcode, ops.float_add_int);
+        assert_eq!(plan[24].opcode, ops.pop_borrow);
+        let mut unknown = input.clone();
+        unknown[8].opcode = ops.nop;
+        let plan = plan_leaf_calls(&unknown, &ops).unwrap().unwrap();
+        assert_eq!(plan[10], LeafStep { opcode: ops.guard_tos_exact_int, oparg: 0, source: 10, result: 0 });
+        assert_eq!(plan[11].source, 10);
+        let mut incompatible = input.clone();
+        incompatible[8].opcode = ops.guard_tos_float;
+        assert!(plan_leaf_calls(&incompatible, &ops).unwrap().is_none());
     }
 
     #[test]

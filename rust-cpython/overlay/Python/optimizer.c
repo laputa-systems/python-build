@@ -2171,6 +2171,8 @@ typedef struct {
     uint16_t overflow_tos;
     uint16_t overflow_nos;
     uint16_t pop_int;
+    uint16_t float_add_int;
+    uint16_t guard_tos_exact_int;
 } _PyJitLeafOpcodes;
 
 typedef struct {
@@ -2187,7 +2189,7 @@ typedef struct {
     uint64_t result;
 } _PyJitLeafStep;
 
-static_assert(sizeof(_PyJitLeafOpcodes) == 150, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
+static_assert(sizeof(_PyJitLeafOpcodes) == 154, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
 static_assert(_Alignof(PyObject) >= 4, "leaf result tags use two object-alignment bits");
 static_assert(sizeof(_PyJitLeafUop) == 16, "_PyJitLeafUop matches Rust LeafUop");
 static_assert(offsetof(_PyJitLeafUop, operand) == 8, "LeafUop operand offset matches Rust");
@@ -2267,6 +2269,8 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         .overflow_tos = _GUARD_TOS_OVERFLOWED,
         .overflow_nos = _GUARD_NOS_OVERFLOWED,
         .pop_int = _POP_TOP_INT,
+        .float_add_int = _BINARY_OP_ADD_FLOAT_INT,
+        .guard_tos_exact_int = _GUARD_TOS_EXACT_INT,
     };
     _PyJitLeafUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
     _PyJitLeafStep *steps = PyMem_RawMalloc(UOP_MAX_TRACE_LENGTH * sizeof(*steps));
@@ -2281,7 +2285,7 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         uint8_t kind, detail;
         bool arithmetic = (float_node(opcode, &kind, &detail) && kind == JIT_OPT_KIND_FLOAT_ARITH)
                           || (int_node(opcode, &kind, &detail) && kind == JIT_OPT_KIND_INT_ARITH)
-                          || opcode == _BINARY_OP_POWER_FLOAT;
+                          || opcode == _BINARY_OP_POWER_FLOAT || opcode == _BINARY_OP_ADD_FLOAT_INT;
         uops[i] = (_PyJitLeafUop){
             .opcode = opcode,
             .oparg = buffer[i].oparg,
@@ -2350,6 +2354,7 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
                      step->opcode == _RETURN_VIRTUAL_CALL || step->opcode == _POP_TOP_FLOAT || step->opcode == _POP_TOP_INT ||
                      step->opcode == _GUARD_TOS_FLOAT || step->opcode == _GUARD_NOS_FLOAT ||
                      step->opcode == _GUARD_TOS_INT || step->opcode == _GUARD_NOS_INT ||
+                     step->opcode == _GUARD_TOS_EXACT_INT ||
                      step->opcode == _BINARY_OP_ADD_FLOAT || step->opcode == _BINARY_OP_SUBTRACT_FLOAT ||
                      step->opcode == _BINARY_OP_MULTIPLY_FLOAT || step->opcode == _BINARY_OP_TRUEDIV_FLOAT) {
                 buffer[i].opcode = step->opcode;
