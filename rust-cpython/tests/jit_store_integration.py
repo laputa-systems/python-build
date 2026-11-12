@@ -141,12 +141,14 @@ def main():
     for side in (candidate, reference, unoptimized):
         assert side["results"] == expected, side["results"]
     assert candidate["active"] == [True], candidate["active"]
-    for name in ("finalizer", "alias", "float", "int"):
+    for name in ("finalizer", "alias", "int"):
         names = {entry[0] for entry in candidate["traces"][name]}
         assert "_STORE_FAST_FUSED" in names, (name, names)
+    names = {entry[0] for entry in candidate["traces"]["float"]}
+    assert {"_GUARD_LOCAL_FLOAT", "_POP_TOP_FLOAT"} <= names, names
     assert all("_STORE_FAST_FUSED" not in {entry[0] for entry in entries}
                for entries in unoptimized["traces"].values())
-    print("OK    four fused-store traces preserve finalizer IP, locals, invalidation and numeric boxing")
+    print("OK    fused and typed stores preserve finalizer IP, locals, invalidation and numeric boxing")
     return 0
 
 

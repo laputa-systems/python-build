@@ -12,6 +12,7 @@ pub use _jit_opt_rs::_PyJitOpt_PlanLeafCalls;
 pub use _jit_opt_rs::_PyJitOpt_PlanCache;
 pub use _jit_opt_rs::_PyJitOpt_PlanLoopGlobals;
 pub use _jit_opt_rs::_PyJitOpt_PlanStores;
+pub use _jit_opt_rs::_PyJitOpt_PlanLoopTypes;
 pub use _posixpath_rs::PyInit__posixpath_rs;
 pub use _random_rs::PyInit__random_rs;
 pub use _tempfile_rs::PyInit__tempfile_rs;

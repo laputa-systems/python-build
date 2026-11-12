@@ -856,8 +856,37 @@ the old globals-guard count is now zero. Its other original assertions pass;
 the canonical builtins guard remains exactly once and the kernel returns
 `102*n`. This ninth named shape exclusion follows the existing owner ruling.
 
+**Numeric loop-local invariants (2026-11-12).** The Rust planner in
+`Modules/_jit_opt_rs/src/loop_types.rs` proves a closed, callback-free warm
+cycle under exact root-local type guards. It replaces generic cleanup of
+proven integers/floats with typed pops and removes redundant float guards.
+It retains integer compactness and overflow checks: an exact integer may
+already be large or grow beyond the specialized arithmetic range.
+
+`_PyJitOpt_PlanLoopTypes` receives generated opcode identities, scalar local
+kinds and stack depth, and returns transactional rewrite steps. Its private
+opcode map, instruction descriptor and output step occupy 116, 6 and 8 bytes.
+C owns live-object classification; cached constant addresses are classified
+only by identity with objects owned by the active code's constant tuple.
+All input stack kinds begin unknown. Every guarded local must retain its
+kind at the backedge; unproved callbacks, frame changes, resumable roots,
+closure state and unsupported operations retain the original trace.
+
+New `_GUARD_LOCAL_INT` and `_GUARD_LOCAL_FLOAT` entry side exits precede
+`_MAKE_WARM`; the backedge skips them. Pending work uses the existing
+terminal resume-check path, so callbacks and thread handoffs leave the cycle
+and reentry checks local kinds again. Rewriting is committed only after
+allocations, descriptors and an explicit bound for cache transitions and
+exit/error stubs succeed; unboxed expansion retains a bounded boxed fallback.
+The native regression covers numeric induction, noncompact indices, integer
+growth, NULL/bool/subclass refusal, signal/GC/thread mutation of locals,
+exception context, observers, wide accepted loops and oversized-trace
+fallback. Async cases inspect warmed guarded executors and exact checkpoint
+state; they do not directly sample JIT activity before the callback.
+Independent source and native review approves.
+
 General virtual frames, remaining lookup caches, other non-escaping allocation
-shapes and whole-loop peeling remain T3 work.
+shapes and broader loop peeling remain T3 work.
 
 **Inline frames (dropped 2026-11-10, CORRECT; code parked on branch
 `campaign/t3-inline`, whose paths the citations below refer to).** A trace call site is
@@ -1860,7 +1889,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | Guarded two-argument float arithmetic calls now materialize callee frames only on error, composing with container/selector calls, store fusion and loop-global prologues. Next: pure-loop local invariants and remaining T3 loop work. Performance acceptance deferred under OD16 | Arithmetic slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 11 shape exclusions; 46 Rust tests; eight arithmetic/order kernels, four active-JIT faults and two success callbacks; all prior integrations pass; independent source/native review approves |
+| J | active | Numeric closed loops now guard local types at entry, prove backedge invariants and use typed cleanup; integer compactness checks remain. Next: general virtual frames, remaining lookup/allocation shapes and broader loop work. Performance acceptance deferred under OD16 | Loop-type slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 11 shape exclusions; 50 Rust tests; mutation/refusal/capacity native checks and all prior integrations pass; independent source/native review approves |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | feature complete | C3 integrated with refreshed main dependencies; performance acceptance deferred under OD16. Routing/API owner reviews remain asynchronous; nothing pushed | Integrated normal and verify runs each execute 52,102 tests, with exactly the matched reference's five failing files and 0 compiler mismatches; native 11-case integration passes; C3 corpus and independent reviews remain valid |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -1900,11 +1929,12 @@ requested): CinderX 3.15 steady JIT uplift `S = 0.7960`, held-out 1.0621, beside
 M2 ≤ 0.48, M3 ≤ 0.38, M4 ≤ 0.25. T2 does not wait for an answer.
 
 J continuation builds use `.work/wt/jit-pair`; its `perf-jit-pair` stage
-was rebuilt incrementally for the store, list and float-call slices after
+was rebuilt incrementally for the store, list, float-call and loop-type slices after
 the tuple slice. Earlier reports and suite logs were archived under
 `.work/tmp/tuple-tested-report.json`, `tuple-accepted/`,
 `glue-tested-report.json`, `glue-accepted/`, `list-tested-report.json`
-and `list-accepted/` before reuse. Each ledger row
+and `list-accepted/`, plus `arith-tested-report.json` and
+`arith-accepted/`, before reuse. Each ledger row
 has distinct digest-result directories and source identities. The committed
 `4b66ce3` reference in `.work/wt/jit-integrate` remains unchanged.
 
@@ -1967,6 +1997,13 @@ an already-space-checked frame and propagates the original pending exception.
 It allocates nothing and never retries. Native allocation failure, reverse
 division, sole-callable traceback lifetime and successful finalizers all prove
 active-JIT execution; independent review approves. Performance is deferred.
+
+**Owner queue:** T3 numeric loop-local invariants (async review). New
+private `_PyJitOpt_PlanLoopTypes` ABI and exact local entry guards prove a
+callback-free closed cycle. Integer range checks remain; pending work takes
+a terminal exit before callbacks. Failed guards use cold side exits for
+progress. Allocation/capacity failure retains the original trace. Independent
+source/native review approves; performance acceptance remains deferred.
 
 **Owner queue:** T4 local-store fusion (async review). New private
 `_PyJitOpt_PlanStores` ABI and `_STORE_FAST_FUSED` uop. Generated escape/local
@@ -2288,3 +2325,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-10 | e891 | J | T2 | generic `_BINARY_OP` specialization: monte_carlo `float += 2**31-1` 9.6% → 0.0% (replaced by `_BINARY_OP_ADD_FLOAT_INT` 8.8%), nbody `float ** float` 11.6% → 0.0% (replaced by `_BINARY_OP_POWER_FLOAT` 6.4%); JIT code bytes ≤1.303x M0, peak RSS 0.989-0.995x incumbent | `perf-jit-array` | timing deferred (OD14); advisory 0.9992 | monte_carlo generic `_BINARY_OP` 9.6% → 0.0%, nbody 11.6% → 0.0% of samples | CORRECT (5 incumbent superseded `test_capi.test_opt` uop assertions; genops integration test) | `rust-cpython/results/perf-bench/20261110T204736Z-perf-jit-array-vs-perf-jit-genops`, `rust-cpython/results/perf-profile/20261110T2021*-perf-jit-array-{scimark_monte_carlo,nbody}-sample`, `20261110T2046*-perf-jit-genops-{scimark_monte_carlo,nbody}-sample`, `20261110T205313Z-perf-jit-array-vs-perf-jit-genops` |
 | 2026-11-10 | e891 | J | T3 | Python-to-Python inline frames: eligible exact-args leaf call segments build the callee frame in datastack spare without linking it; side exits, deopts and errors materialize it before resuming; entry resume and stack-space checks fold into the call; generators, nested calls, escaping/error/periodic callees stay concrete | `perf-jit-genops` | timing deferred (OD14); advisory 1.0123 | incumbent-named bucket (a) richards 24.0% → 17.2%, raytrace 11.6% → 9.6%; including `_INLINE_*` call/frame uops 23.9% → 24.6% and 11.5% → 11.7% over two runs, so no fall; JIT code bytes ≤1.071x incumbent (sor), raytrace 457,404 (M0 457,068 at 1.30x) | DROPPED (correct; concrete-frame argument setup and refcount clear remain, under P1's 1% floor; 5 incumbent superseded `test_capi.test_opt` assertions; `jit_inline_integration.py` 18 absolute checks; lane 245/246, one pre-existing incumbent failure) | `rust-cpython/results/perf-bench/20261111T012030Z-perf-jit-genops-vs-perf-jit-inline`, `rust-cpython/results/perf-profile/20261110T2337*-perf-jit-{genops,inline}-{richards,raytrace}-sample`, repeat `20261111T0119*-...` |
 | 2026-11-12 | e891 | J | correctness | match specialized float division error text to the pinned interpreter | JIT disabled in the same stage | no timing | — | CORRECT: native regression proves active JIT at the fault and identical ZeroDivisionError text, traceback function, bytecode and line; independent review approves | `rust-cpython/tests/jit_float_division_integration.py`; tested alongside the pending loop-type slice in the incremental `perf-jit-pair` stage |
+| 2026-11-12 | e891 | J | T3 | prove callback-free numeric loop-local invariants under exact entry guards; retain integer range checks and terminal pending exits | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 11 shape exclusions; 50 Rust tests; numeric/mutation/refusal/capacity native coverage plus prior integrations; independent source/native review approves | `rust-cpython/results/perf-bench/20261112T101737Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T101904Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/loop-types-feature-acceptance.json`; incremental stage based on `3fafd75` with this slice and the separate division fix |

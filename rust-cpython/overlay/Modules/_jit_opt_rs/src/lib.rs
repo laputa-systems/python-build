@@ -3,6 +3,7 @@ mod leaf;
 mod cache;
 mod loop_globals;
 mod store;
+mod loop_types;
 
 use std::mem::MaybeUninit;
 use std::slice;
@@ -11,6 +12,45 @@ pub use leaf::{LeafOpcodes, LeafStep, LeafUop, OpcodeRange, plan_leaf_calls};
 pub use cache::{CacheUop, plan_cache};
 pub use loop_globals::{LoopOpcodes, LoopStep, LoopUop, plan_loop_globals};
 pub use store::{StoreOpcodes, StoreStep, StoreUop, plan_stores};
+pub use loop_types::{LocalOpcodes, LocalStep, LocalUop, plan_loop_types};
+
+/// Plans inductive root-local type guards for a closed numeric loop. Only a
+/// positive result writes output; zero preserves the trace and -1 rejects
+/// inconsistent descriptors. Allocation failure and short capacity preserve output.
+///
+/// # Safety
+///
+/// Inputs must point to initialized live descriptors and a generated opcode map.
+/// `local_kinds` describes `local_count` fast locals; `initial_depth` is the
+/// logical entry operand-stack depth. Output is separate aligned writable storage
+/// for `capacity` steps. Runtime guards must use exact non-null type checks and
+/// side exits; pending handlers must not return into the assumed warm cycle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn _PyJitOpt_PlanLoopTypes(
+    uops: *const LocalUop,
+    length: usize,
+    opcodes: *const LocalOpcodes,
+    local_kinds: *const u16,
+    local_count: usize,
+    initial_depth: usize,
+    output: *mut LocalStep,
+    capacity: usize,
+) -> isize {
+    // SAFETY: the caller supplies initialized live input arrays and matching metadata.
+    let (uops, opcodes, local_kinds) = unsafe {
+        (slice::from_raw_parts(uops, length), &*opcodes, slice::from_raw_parts(local_kinds, local_count))
+    };
+    match plan_loop_types(uops, opcodes, local_kinds, initial_depth) {
+        Ok(Some(plan)) if plan.len() <= capacity && plan.len() <= isize::MAX as usize => {
+            // SAFETY: the caller supplies separate aligned writable output storage.
+            let output = unsafe { slice::from_raw_parts_mut(output.cast::<MaybeUninit<LocalStep>>(), capacity) };
+            for (slot, step) in output.iter_mut().zip(&plan) { slot.write(*step); }
+            plan.len() as isize
+        }
+        Ok(_) => 0,
+        Err(Inconsistent) => -1,
+    }
+}
 
 /// Plans local-store stencil fusion. Positive results write a complete plan;
 /// zero preserves the trace, and -1 rejects inconsistent descriptors. Allocation

@@ -2482,6 +2482,18 @@ dummy_func(
 
         /* Entry failures must use a side exit: the cold executor detaches
            self-targets before resuming ENTER_EXECUTOR, guaranteeing progress. */
+        tier2 op(_GUARD_LOCAL_INT, (--)) {
+            _PyStackRef value = GETLOCAL(oparg);
+            EXIT_IF(PyStackRef_IsNull(value) || PyStackRef_IsTaggedInt(value));
+            EXIT_IF(!PyLong_CheckExact(PyStackRef_AsPyObjectBorrow(value)));
+        }
+
+        tier2 op(_GUARD_LOCAL_FLOAT, (--)) {
+            _PyStackRef value = GETLOCAL(oparg);
+            EXIT_IF(PyStackRef_IsNull(value) || PyStackRef_IsTaggedInt(value));
+            EXIT_IF(!PyFloat_CheckExact(PyStackRef_AsPyObjectBorrow(value)));
+        }
+
         tier2 op(_GUARD_LOOP_GLOBALS_VERSION, (version/2 --)) {
             PyDictObject *dict = (PyDictObject *)GLOBALS();
             EXIT_IF(!PyDict_CheckExact(dict));

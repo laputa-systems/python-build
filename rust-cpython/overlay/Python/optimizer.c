@@ -2042,12 +2042,12 @@ unbox_values(_PyUOpInstruction *buffer, int length,
 typedef struct {
     uint16_t first;
     uint16_t last;
-} _PyJitLeafRange;
+} _PyJitOpcodeRange;
 
 typedef struct {
-    _PyJitLeafRange init;
-    _PyJitLeafRange load_fast;
-    _PyJitLeafRange load_borrow;
+    _PyJitOpcodeRange init;
+    _PyJitOpcodeRange load_fast;
+    _PyJitOpcodeRange load_borrow;
     uint16_t save_return;
     uint16_t push_frame;
     uint16_t return_value;
@@ -2361,6 +2361,158 @@ fuse_local_stores(_PyUOpInstruction *buffer, int length)
 #endif
 }
 
+typedef struct {
+    uint16_t start, warm, jump, nop, set_ip, validity, periodic, resume;
+    _PyJitOpcodeRange load, borrow, store, small_int, copy, swap, bit_set, bit_unset;
+    uint16_t constant, constant_borrow, pop, pop_borrow, pop_int, pop_float, pop_unicode;
+    uint16_t tos_float, nos_float, tos_int, nos_int, tos_exact_int, tos_overflow, nos_overflow;
+    uint16_t float_binary[4], int_binary[3];
+    uint16_t float_compare, int_compare, bool_bool, bool_int;
+    uint16_t iter_check, iter_exhaustion, iter_next, globals, builtins, entry_globals;
+    uint16_t local_int, local_float, push_null;
+} _PyJitLocalOpcodes;
+
+typedef struct {
+    uint16_t opcode, oparg, constant_kind;
+} _PyJitLocalUop;
+
+typedef struct {
+    uint16_t opcode, oparg;
+    uint32_t source;
+} _PyJitLocalStep;
+
+static_assert(sizeof(_PyJitLocalOpcodes) == 116, "local opcode map matches Rust");
+static_assert(sizeof(_PyJitLocalUop) == 6, "local descriptors match Rust");
+static_assert(sizeof(_PyJitLocalStep) == 8, "local steps match Rust");
+static_assert(offsetof(_PyJitLocalStep, source) == 4, "local source offset matches Rust");
+static_assert(_GUARD_LOCAL_INT != 0 && _GUARD_LOCAL_FLOAT != 0, "zero denotes an unknown kind");
+
+extern Py_ssize_t _PyJitOpt_PlanLoopTypes(
+    const _PyJitLocalUop *, size_t, const _PyJitLocalOpcodes *, const uint16_t *,
+    size_t, size_t, _PyJitLocalStep *, size_t);
+
+static uint16_t
+loop_scalar_kind(PyObject *value)
+{
+    if (PyLong_CheckExact(value)) {
+        return _GUARD_LOCAL_INT;
+    }
+    return PyFloat_CheckExact(value) ? _GUARD_LOCAL_FLOAT : 0;
+}
+
+static int
+guard_loop_locals(_PyUOpInstruction *buffer, int length, _PyInterpreterFrame *frame,
+                  PyCodeObject *code, int initial_depth)
+{
+#if !defined(Py_GIL_DISABLED) && !defined(WITH_DTRACE)
+    if (code != _PyFrame_GetCode(frame) || code != (PyCodeObject *)_PyFrame_GetFunction(frame)->func_code ||
+        code->co_ncellvars != 0 || code->co_nfreevars != 0 || code->co_nlocalsplus <= 0 ||
+        code->co_nlocalsplus > UINT16_MAX || initial_depth < 0 ||
+        (code->co_flags & (CO_GENERATOR | CO_COROUTINE | CO_ASYNC_GENERATOR))) {
+        return length;
+    }
+    static const _PyJitLocalOpcodes opcodes = {
+        .start = _START_EXECUTOR, .warm = _MAKE_WARM, .jump = _JUMP_TO_TOP,
+        .nop = _NOP, .set_ip = _SET_IP, .validity = _CHECK_VALIDITY,
+        .periodic = _CHECK_PERIODIC, .resume = _TIER2_RESUME_CHECK,
+        .load = {_LOAD_FAST, _LOAD_FAST_7}, .borrow = {_LOAD_FAST_BORROW, _LOAD_FAST_BORROW_7},
+        .store = {_SWAP_FAST, _SWAP_FAST_7}, .small_int = {_LOAD_SMALL_INT, _LOAD_SMALL_INT_3},
+        .copy = {_COPY, _COPY_3}, .swap = {_SWAP, _SWAP_3},
+        .bit_set = {_GUARD_BIT_IS_SET_POP, _GUARD_BIT_IS_SET_POP_7},
+        .bit_unset = {_GUARD_BIT_IS_UNSET_POP, _GUARD_BIT_IS_UNSET_POP_7},
+        .constant = _LOAD_CONST_INLINE, .constant_borrow = _LOAD_CONST_INLINE_BORROW,
+        .pop = _POP_TOP, .pop_borrow = _POP_TOP_NOP, .pop_int = _POP_TOP_INT,
+        .pop_float = _POP_TOP_FLOAT, .pop_unicode = _POP_TOP_UNICODE,
+        .tos_float = _GUARD_TOS_FLOAT, .nos_float = _GUARD_NOS_FLOAT,
+        .tos_int = _GUARD_TOS_INT, .nos_int = _GUARD_NOS_INT,
+        .tos_exact_int = _GUARD_TOS_EXACT_INT,
+        .tos_overflow = _GUARD_TOS_OVERFLOWED, .nos_overflow = _GUARD_NOS_OVERFLOWED,
+        .float_binary = {_BINARY_OP_ADD_FLOAT, _BINARY_OP_SUBTRACT_FLOAT,
+                         _BINARY_OP_MULTIPLY_FLOAT, _BINARY_OP_TRUEDIV_FLOAT},
+        .int_binary = {_BINARY_OP_ADD_INT, _BINARY_OP_SUBTRACT_INT, _BINARY_OP_MULTIPLY_INT},
+        .float_compare = _COMPARE_OP_FLOAT, .int_compare = _COMPARE_OP_INT,
+        .bool_bool = _TO_BOOL_BOOL, .bool_int = _TO_BOOL_INT,
+        .iter_check = _ITER_CHECK_RANGE, .iter_exhaustion = _GUARD_NOT_EXHAUSTED_RANGE,
+        .iter_next = _ITER_NEXT_RANGE, .globals = _GUARD_GLOBALS_VERSION,
+        .builtins = _GUARD_BUILTINS_IS_CANONICAL, .entry_globals = _GUARD_LOOP_GLOBALS_VERSION,
+        .local_int = _GUARD_LOCAL_INT, .local_float = _GUARD_LOCAL_FLOAT,
+        .push_null = _PUSH_NULL,
+    };
+    size_t locals = (size_t)code->co_nlocalsplus;
+    size_t capacity = (size_t)length + locals;
+    _PyJitLocalUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
+    _PyJitLocalStep *steps = PyMem_RawMalloc(capacity * sizeof(*steps));
+    uint16_t *kinds = PyMem_RawCalloc(locals, sizeof(*kinds));
+    _PyUOpInstruction *rewritten = PyMem_RawMalloc(UOP_MAX_TRACE_LENGTH * sizeof(*rewritten));
+    if (uops == NULL || steps == NULL || kinds == NULL || rewritten == NULL) {
+        goto done;
+    }
+    _PyStackRef *fast = _PyFrame_GetLocalsArray(frame);
+    for (size_t i = 0; i < locals; i++) {
+        if (!PyStackRef_IsNull(fast[i]) && !PyStackRef_IsTaggedInt(fast[i])) {
+            kinds[i] = loop_scalar_kind(PyStackRef_AsPyObjectBorrow(fast[i]));
+        }
+    }
+    for (int i = 0; i < length; i++) {
+        uint16_t opcode = buffer[i].opcode;
+        uint16_t kind = 0;
+        if (opcode == _LOAD_CONST_INLINE || opcode == _LOAD_CONST_INLINE_BORROW) {
+            /* Cached addresses can outlive invalidation. Classify only an
+               object owned by the active code's immutable constant tuple. */
+            for (Py_ssize_t j = 0; j < PyTuple_GET_SIZE(code->co_consts); j++) {
+                PyObject *literal = PyTuple_GET_ITEM(code->co_consts, j);
+                if ((uintptr_t)literal == buffer[i].operand0) {
+                    kind = loop_scalar_kind(literal);
+                    break;
+                }
+            }
+        }
+        uops[i] = (_PyJitLocalUop){opcode, buffer[i].oparg, kind};
+    }
+    Py_ssize_t count = _PyJitOpt_PlanLoopTypes(uops, (size_t)length, &opcodes, kinds,
+                                            locals, (size_t)initial_depth, steps, capacity);
+    if (count <= 0 || count >= UOP_MAX_TRACE_LENGTH) {
+        goto done;
+    }
+    size_t boxed_bound = 0;
+    for (Py_ssize_t i = 0; i < count; i++) {
+        const _PyJitLocalStep *step = &steps[i];
+        assert(step->source < (uint32_t)length);
+        rewritten[i] = buffer[step->source];
+        rewritten[i].opcode = step->opcode;
+        rewritten[i].oparg = step->oparg;
+        if (step->opcode == _GUARD_LOCAL_INT || step->opcode == _GUARD_LOCAL_FLOAT) {
+            assert(step->source == 0 && step->oparg < locals);
+            rewritten[i].operand0 = rewritten[i].operand1 = 0;
+        }
+        else if (step->opcode == _NOP) {
+            rewritten[i].oparg = 0;
+            rewritten[i].operand0 = rewritten[i].operand1 = 0;
+        }
+        if (step->opcode != _NOP) {
+            /* Boxed allocation adds at most one cache transition and one
+               stub of each exit/error kind. Unboxed expansion can fall back
+               only to a boxed recipe that fits the original buffer. */
+            uint32_t flags = _PyUop_Flags[step->opcode];
+            boxed_bound += 2;
+            boxed_bound += (flags & (HAS_EXIT_FLAG | HAS_DEOPT_FLAG | HAS_PERIODIC_FLAG)) != 0;
+            boxed_bound += (flags & HAS_ERROR_FLAG) != 0;
+            if (boxed_bound >= UOP_MAX_TRACE_LENGTH) {
+                goto done;
+            }
+        }
+    }
+    memcpy(buffer, rewritten, (size_t)count * sizeof(*buffer));
+    length = (int)count;
+done:
+    PyMem_RawFree(uops);
+    PyMem_RawFree(steps);
+    PyMem_RawFree(kinds);
+    PyMem_RawFree(rewritten);
+#endif
+    return length;
+}
+
 static int
 uop_optimize(
     _PyInterpreterFrame *frame,
@@ -2423,6 +2575,9 @@ uop_optimize(
         fuse_leaf_calls(buffer, length);
         hoist_loop_globals(buffer, length, _tstate->jit_tracer_state->initial_state.func,
                            (PyCodeObject *)_tstate->jit_tracer_state->initial_state.code, &dependencies);
+        length = guard_loop_locals(buffer, length, frame,
+                                   (PyCodeObject *)_tstate->jit_tracer_state->initial_state.code,
+                                   curr_stackentries);
         fuse_local_stores(buffer, length);
     }
     OPT_HIST(effective_trace_length(buffer, length), optimized_trace_length_hist);
