@@ -1,10 +1,41 @@
 mod unbox;
 mod leaf;
+mod cache;
 
 use std::mem::MaybeUninit;
 use std::slice;
 
 pub use leaf::{LeafOpcodes, LeafStep, LeafUop, OpcodeRange, plan_leaf_calls};
+pub use cache::{CacheUop, plan_cache};
+
+/// Plans whole-trace input cache depths. A positive result writes that many
+/// depths, 0 preserves the current allocator, and -1 rejects inconsistent input.
+/// Allocation failure and insufficient output capacity leave output unchanged.
+///
+/// # Safety
+///
+/// `uops` must point to `length` initialized descriptors from the matching generated
+/// cache table. `output` must be aligned and writable for `capacity` bytes and must
+/// not overlap input. Initial cache depth is zero; skipped uops have no effects.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn _PyJitOpt_PlanCache(
+    uops: *const CacheUop,
+    length: usize,
+    output: *mut u8,
+    capacity: usize,
+) -> isize {
+    // SAFETY: the caller supplies initialized live input descriptors.
+    let uops = unsafe { slice::from_raw_parts(uops, length) };
+    match plan_cache(uops) {
+        Ok(Some(plan)) if plan.len() <= capacity && plan.len() <= isize::MAX as usize => {
+            // SAFETY: the caller supplies disjoint writable storage; u8 permits every bit pattern.
+            unsafe { std::ptr::copy_nonoverlapping(plan.as_ptr(), output, plan.len()) };
+            plan.len() as isize
+        }
+        Ok(_) => 0,
+        Err(Inconsistent) => -1,
+    }
+}
 
 /// Plans frame-free exact-argument leaf calls. A positive result writes that
 /// many steps; 0 leaves the trace and output unchanged, and -1 rejects inconsistent

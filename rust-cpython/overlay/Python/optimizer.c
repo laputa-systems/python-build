@@ -1679,9 +1679,53 @@ int effective_trace_length(_PyUOpInstruction *buffer, int length)
 #endif
 
 
+typedef struct {
+    int8_t output[4];
+    uint8_t preferred[4];
+    uint8_t skip;
+} _PyJitCacheUop;
+
+static_assert(MAX_CACHED_REGISTER == 3, "Rust cache planner uses four generated depths");
+static_assert(sizeof(_PyJitCacheUop) == 9, "_PyJitCacheUop matches Rust CacheUop");
+
+extern Py_ssize_t _PyJitOpt_PlanCache(const _PyJitCacheUop *, size_t, uint8_t *, size_t);
+
+static uint8_t *
+plan_cache_inputs(const _PyUOpInstruction *buffer, int length)
+{
+    _PyJitCacheUop *uops = PyMem_RawCalloc(length, sizeof(_PyJitCacheUop));
+    uint8_t *inputs = PyMem_RawMalloc(length);
+    if (uops == NULL || inputs == NULL) {
+        PyMem_RawFree(uops);
+        PyMem_RawFree(inputs);
+        return NULL;
+    }
+    for (int i = 0; i < length; i++) {
+        int opcode = buffer[i].opcode;
+        if (opcode == _NOP) {
+            uops[i].skip = 1;
+            continue;
+        }
+        const _PyUopCachingInfo *info = &_PyUop_Caching[opcode];
+        for (int depth = 0; depth <= MAX_CACHED_REGISTER; depth++) {
+            uops[i].output[depth] = info->entries[depth].output;
+            uops[i].preferred[depth] = info->best[depth];
+        }
+    }
+    Py_ssize_t planned = _PyJitOpt_PlanCache(uops, length, inputs, length);
+    PyMem_RawFree(uops);
+    assert(planned >= 0);
+    if (planned != length) {
+        PyMem_RawFree(inputs);
+        return NULL;
+    }
+    return inputs;
+}
+
 static int
 stack_allocate(_PyUOpInstruction *buffer, _PyUOpInstruction *output, int length,
-               const _PyUnboxedSlots *unboxed_in, _PyUnboxedSlots *unboxed_out)
+               const _PyUnboxedSlots *unboxed_in, _PyUnboxedSlots *unboxed_out,
+               bool optimize_cache)
 {
     assert(buffer[0].opcode == _START_EXECUTOR);
     /* The input buffer and output buffers will overlap.
@@ -1697,6 +1741,7 @@ stack_allocate(_PyUOpInstruction *buffer, _PyUOpInstruction *output, int length,
     else {
         assert(output + UOP_MAX_TRACE_LENGTH == buffer);
     }
+    uint8_t *cache_inputs = optimize_cache ? plan_cache_inputs(buffer, length) : NULL;
     int depth = 0;
     _PyUOpInstruction *write = output;
     for (int i = 0; i < length; i++) {
@@ -1704,7 +1749,7 @@ stack_allocate(_PyUOpInstruction *buffer, _PyUOpInstruction *output, int length,
         if (uop == _NOP) {
             continue;
         }
-        int new_depth = _PyUop_Caching[uop].best[depth];
+        int new_depth = cache_inputs == NULL ? _PyUop_Caching[uop].best[depth] : cache_inputs[i];
         if (new_depth != depth) {
             write->opcode = _PyUop_SpillsAndReloads[depth][new_depth];
             assert(write->opcode != 0);
@@ -1727,6 +1772,7 @@ stack_allocate(_PyUOpInstruction *buffer, _PyUOpInstruction *output, int length,
         write++;
         depth = _PyUop_Caching[uop].entries[depth].output;
     }
+    PyMem_RawFree(cache_inputs);
     return (int)(write - output);
 }
 
@@ -2175,12 +2221,14 @@ uop_optimize(
     int prepared = prepare_for_execution(
         output,
         stack_allocate(buffer, output, length,
-                       unboxed == NULL ? NULL : unboxed + UOP_MAX_TRACE_LENGTH, unboxed),
+                       unboxed == NULL ? NULL : unboxed + UOP_MAX_TRACE_LENGTH, unboxed,
+                       !is_noopt),
         unboxed);
     if (prepared < 0) {
         memcpy(buffer, original, original_length * sizeof(_PyUOpInstruction));
         prepared = prepare_for_execution(
-            output, stack_allocate(buffer, output, original_length, NULL, NULL), NULL);
+            output, stack_allocate(buffer, output, original_length, NULL, NULL,
+                                   !is_noopt), NULL);
     }
     PyMem_RawFree(unboxed);
     PyMem_RawFree(original);
