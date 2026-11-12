@@ -5020,9 +5020,6 @@ dummy_func(
             EXIT_IF(!current_executor->vm_data.valid);
             uintptr_t iversion = FT_ATOMIC_LOAD_UINTPTR_ACQUIRE(code->_co_instrumentation_version);
             EXIT_IF(_Py_atomic_load_uintptr_relaxed(&tstate->eval_breaker) != iversion);
-            for (int i = 0; i < oparg; i++) {
-                EXIT_IF(!PyFloat_CheckExact(PyStackRef_AsPyObjectBorrow(args[i])));
-            }
             INPUTS_DEAD();
             SAVE_STACK();
             /* The checked callee reservation stays unallocated until error.

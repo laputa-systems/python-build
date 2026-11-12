@@ -178,7 +178,10 @@ enum FloatState {
 enum VirtualValue {
     BorrowedReceiver,
     ManagedReceiver,
-    Attribute,
+    OwnedUnknown,
+    BorrowedArgument(u16),
+    CopiedArgument(u16),
+    BorrowedConstant,
     BorrowedFloat,
     BorrowedLocal(u16),
     ArgumentCopy,
@@ -190,11 +193,35 @@ enum VirtualValue {
 
 impl VirtualValue {
     fn is_float(self) -> bool {
-        !matches!(self, Self::BorrowedReceiver | Self::ManagedReceiver | Self::Attribute | Self::Null | Self::ReallocatedOperand)
+        matches!(self, Self::BorrowedFloat | Self::BorrowedLocal(_) | Self::ArgumentCopy | Self::UniqueFloat | Self::SharedFloat)
     }
 
     fn is_receiver(self) -> bool {
         matches!(self, Self::BorrowedReceiver | Self::ManagedReceiver)
+    }
+
+    fn float_is_proven(self, arguments: &[bool]) -> bool {
+        match self {
+            Self::BorrowedArgument(index) | Self::CopiedArgument(index) => arguments[usize::from(index)],
+            _ => self.is_float(),
+        }
+    }
+
+    fn narrow_float(self, arguments: &mut [bool]) -> Option<Self> {
+        match self {
+            Self::BorrowedArgument(index) => {
+                arguments[usize::from(index)] = true;
+                Some(Self::BorrowedFloat)
+            }
+            Self::CopiedArgument(index) => {
+                arguments[usize::from(index)] = true;
+                Some(Self::ArgumentCopy)
+            }
+            Self::BorrowedConstant => Some(Self::BorrowedFloat),
+            Self::OwnedUnknown => Some(Self::SharedFloat),
+            Self::BorrowedFloat | Self::BorrowedLocal(_) | Self::ArgumentCopy | Self::UniqueFloat | Self::SharedFloat => Some(self),
+            Self::BorrowedReceiver | Self::ManagedReceiver | Self::ReallocatedOperand | Self::Null => None,
+        }
     }
 }
 
@@ -204,11 +231,17 @@ struct VirtualChange {
     oparg: u16,
 }
 
+struct VirtualGuard {
+    index: usize,
+    opcode: u16,
+}
+
 struct VirtualBody {
     end: usize,
     changes: Vec<VirtualChange>,
     local_count: u32,
     bound: bool,
+    guards: Vec<VirtualGuard>,
 }
 
 fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
@@ -227,13 +260,18 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
     let mut values = Vec::new();
     let mut changes = Vec::new();
     let mut locals = Vec::new();
+    let mut arguments = Vec::new();
+    let mut guards = Vec::new();
     if values.try_reserve_exact(uops.len()).is_err()
         || changes.try_reserve_exact(uops.len()).is_err()
         || locals.try_reserve_exact(local_count).is_err()
+        || arguments.try_reserve_exact(argc as usize).is_err()
+        || guards.try_reserve_exact(uops.len().saturating_mul(2)).is_err()
     {
         return Ok(None);
     }
     locals.resize(local_count, false);
+    arguments.resize(argc as usize, false);
     let mut resumed = false;
     let mut operations = 0;
     for (index, uop) in uops.iter().enumerate().skip(at + 3) {
@@ -255,7 +293,12 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                     values.push(VirtualValue::BorrowedReceiver);
                 }
                 else {
-                    values.push(if borrowed { VirtualValue::BorrowedFloat } else { VirtualValue::ArgumentCopy });
+                    values.push(match (borrowed, arguments[usize::from(uop.oparg)]) {
+                        (true, true) => VirtualValue::BorrowedFloat,
+                        (false, true) => VirtualValue::ArgumentCopy,
+                        (true, false) => VirtualValue::BorrowedArgument(uop.oparg),
+                        (false, false) => VirtualValue::CopiedArgument(uop.oparg),
+                    });
                 }
                 replacement = if borrowed { ops.virtual_argument } else { ops.virtual_argument_copy };
             }
@@ -264,6 +307,12 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                 values.push(if borrowed { VirtualValue::BorrowedLocal(uop.oparg) } else { VirtualValue::SharedFloat });
                 replacement = opcode;
             }
+        }
+        else if [ops.load_const, ops.load_const_borrow].contains(&opcode) && uop.effectful == 0 {
+            ResultSource::Constant(uop.operand).encode()?;
+            values.push(if opcode == ops.load_const { VirtualValue::OwnedUnknown }
+                        else { VirtualValue::BorrowedConstant });
+            replacement = opcode;
         }
         else if ops.store_fast.contains(opcode) {
             if u32::from(uop.oparg) < argc { return Ok(None) }
@@ -282,12 +331,9 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
             let depth = if opcode == ops.guard_tos_float { 1 } else { 2 };
             if values.len() < depth { return Err(Inconsistent) }
             let position = values.len() - depth;
-            if values[position] == VirtualValue::Attribute {
-                values[position] = VirtualValue::SharedFloat;
-                replacement = opcode;
-            }
-            else if values[position].is_float() { replacement = ops.nop }
-            else { return Ok(None) }
+            replacement = if values[position].float_is_proven(&arguments) { ops.nop } else { opcode };
+            let Some(narrowed) = values[position].narrow_float(&mut arguments) else { return Ok(None) };
+            values[position] = narrowed;
         }
         else if [ops.type_version, ops.type_version_locked, ops.managed_values].contains(&opcode)
             && uop.effectful == 0
@@ -302,12 +348,20 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
             if !owner.is_receiver() || (opcode == ops.load_instance && owner != VirtualValue::ManagedReceiver) {
                 return Ok(None);
             }
-            values.extend([VirtualValue::Attribute, owner]);
+            values.extend([VirtualValue::OwnedUnknown, owner]);
             replacement = opcode;
         }
         else if ops.virtual_arithmetic(opcode) {
             if values.len() < 2 || u32::try_from(uop.operand).ok().filter(|offset| *offset != 0).is_none() {
                 return Err(Inconsistent);
+            }
+            for (depth, guard) in [(2, ops.guard_nos_float), (1, ops.guard_tos_float)] {
+                let position = values.len() - depth;
+                if !values[position].float_is_proven(&arguments) {
+                    guards.push(VirtualGuard { index, opcode: guard });
+                }
+                let Some(narrowed) = values[position].narrow_float(&mut arguments) else { return Ok(None) };
+                values[position] = narrowed;
             }
             let mut right = values.pop().unwrap();
             let mut left = values.pop().unwrap();
@@ -354,7 +408,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                 return Ok(None);
             }
             changes.push(VirtualChange { index, opcode: ops.virtual_return, oparg: 0 });
-            return Ok(Some(VirtualBody { end: index, changes, local_count: local_count as u32, bound }));
+            return Ok(Some(VirtualBody { end: index, changes, local_count: local_count as u32, bound, guards }));
         }
         else { return Ok(None) }
         changes.push(VirtualChange { index, opcode: replacement, oparg: uop.oparg });
@@ -611,6 +665,7 @@ pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
                               source: index as u32, result: 0 });
     }
     let mut changed = false;
+    let mut guards = Vec::new();
     let mut at = 0;
     while at + 2 < uops.len() {
         if !ops.init.contains(uops[at].opcode)
@@ -652,6 +707,8 @@ pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
             None => virtual_body(uops, at, ops, true)?,
         };
         if let Some(body) = virtual_call {
+            if guards.try_reserve_exact(body.guards.len()).is_err() { return Ok(None) }
+            guards.extend(body.guards);
             steps[at].opcode = ops.nop;
             steps[at + 2] = LeafStep { opcode: ops.virtual_begin, oparg: uops[at].oparg,
                 source: (at - 1) as u32,
@@ -685,7 +742,21 @@ pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
         changed = true;
         at = body.end + 1;
     }
-    Ok(changed.then_some(steps))
+    if !changed { return Ok(None) }
+    if guards.is_empty() { return Ok(Some(steps)) }
+    let mut expanded = Vec::new();
+    if expanded.try_reserve_exact(steps.len().saturating_add(guards.len())).is_err() {
+        return Ok(None);
+    }
+    let mut guards = guards.into_iter().peekable();
+    for (index, step) in steps.into_iter().enumerate() {
+        while guards.peek().is_some_and(|guard| guard.index == index) {
+            let guard = guards.next().unwrap();
+            expanded.push(LeafStep { opcode: guard.opcode, oparg: 0, source: index as u32, result: 0 });
+        }
+        expanded.push(step);
+    }
+    Ok(Some(expanded))
 }
 
 #[cfg(test)]
@@ -1183,11 +1254,14 @@ mod tests {
                 }
             }
             let guard = input.iter().position(|uop| uop.opcode == ops.guard_nos_float).unwrap();
-            assert_eq!(plan[guard + 1].opcode, ops.nop);
+            assert_eq!(plan[guard + 1].opcode, ops.guard_tos_float);
             assert_eq!(plan.last().unwrap().opcode, ops.virtual_return);
             let mut unproved = input.clone();
             unproved[guard].opcode = ops.nop;
-            assert!(plan_leaf_calls(&unproved, &ops).unwrap().is_none());
+            let repaired = plan_leaf_calls(&unproved, &ops).unwrap().unwrap();
+            assert_eq!(repaired.len(), unproved.len() + 1);
+            assert_eq!(repaired[guard + 2], LeafStep { opcode: ops.guard_nos_float,
+                oparg: 0, source: (guard + 2) as u32, result: 0 });
             let mut callback = input.clone();
             callback[7].effectful = 1;
             assert!(plan_leaf_calls(&callback, &ops).unwrap().is_none());
@@ -1203,6 +1277,43 @@ mod tests {
             large[2].oparg = u16::MAX;
             assert_eq!(plan_leaf_calls(&large, &ops).unwrap().unwrap()[4].result,
                        (1 << 32) | 65_536);
+        }
+    }
+
+    #[test]
+    fn constants_and_unproved_arguments_get_original_pc_guards_transactionally() {
+        let ops = opcodes();
+        for borrowed in [false, true] {
+            let mut input = float_call();
+            input[2].oparg = 3;
+            input[7] = LeafUop { opcode: if borrowed { ops.load_const_borrow } else { ops.load_const },
+                oparg: 0, effectful: 0, operand: 0x1000 };
+            input[8].opcode = ops.nop;
+            input[9].opcode = ops.nop;
+            input[11].opcode = if borrowed { ops.pop_borrow } else { ops.pop_float };
+            let plan = plan_leaf_calls(&input, &ops).unwrap().unwrap();
+            assert_eq!(plan.len(), input.len() + 2);
+            assert_eq!(plan[4].result, 3);
+            assert_eq!(plan[7].opcode, input[7].opcode);
+            assert_eq!(plan[10], LeafStep { opcode: ops.guard_nos_float, oparg: 0, source: 10, result: 0 });
+            assert_eq!(plan[11], LeafStep { opcode: ops.guard_tos_float, oparg: 0, source: 10, result: 0 });
+            assert_eq!(plan[12].opcode, ops.float_add);
+            assert_eq!(plan[12].source, 10);
+            assert_eq!(input[10].operand, 3);
+            let untouched = LeafStep { opcode: 999, oparg: 99, source: 99, result: 99 };
+            let mut output = vec![untouched; plan.len()];
+            // SAFETY: separate initialized inputs and writable output match their lengths.
+            let refused = unsafe { crate::_PyJitOpt_PlanLeafCalls(input.as_ptr(), input.len(),
+                &ops, output.as_mut_ptr(), input.len()) };
+            assert_eq!(refused, 0);
+            assert!(output.iter().all(|step| *step == untouched));
+            // SAFETY: separate initialized inputs and writable output match their lengths.
+            let count = unsafe { crate::_PyJitOpt_PlanLeafCalls(input.as_ptr(), input.len(),
+                &ops, output.as_mut_ptr(), output.len()) };
+            assert_eq!(count as usize, plan.len());
+            assert_eq!(output, plan);
+            input[7].operand = 3;
+            assert!(matches!(plan_leaf_calls(&input, &ops), Err(Inconsistent)));
         }
     }
 

@@ -1007,6 +1007,40 @@ callback-capable bodies still use concrete frames. The full correctness pass
 was followed by the strengthened held-method regression; compiled sources
 did not change. Independent source/generated/native review approves.
 
+**Constants and argument use-site guards (2026-11-12).** Virtual float
+bodies now retain inline constants and accept unused arguments of arbitrary
+type. Begin no longer requires every explicit argument to be an exact float.
+The Rust proof keeps required float guards and inserts missing guards
+immediately before arithmetic, using that operation's original callee PC.
+Failure reconstructs its full pre-operation stack without replaying earlier
+arithmetic. Successful argument guards also prove later loads of that same
+immutable parameter.
+
+Type proof does not change ownership. Borrowed constants and arguments stay
+borrowed; copied arguments may still be borrowed until heap safety is explicit;
+owned constants and attributes become shared floats. Constants remain opaque
+addresses to Rust. Unknown values cannot enter extra locals, generic cleanup
+or the return result. Held unused arguments are released in reverse order
+after all scratch reads; they can invoke Python or change the callee code.
+
+Guard insertion exercises the private leaf planner's existing variable-length
+output contract. C checks output count, source indices and the complete
+spill/exit/error bound before writing. Every output instruction comes from
+an immutable original snapshot; inserted guards retain the arithmetic target
+and clear unused caches. Allocation failure or insufficient capacity leaves
+the original recipe unchanged. The returned length reaches every following
+optimizer pass; private ABI layouts are unchanged.
+
+The regression checks constants, unused objects, non-float fallback after an
+assigned float local, later division errors and second-operation allocation
+failure. Two last-reference unused arguments finalize in reverse order; the
+first callback changes the callee from three parameters to one, invokes nested
+JIT code and collects garbage before the remaining argument is closed. Six
+activity samples and exact source counts pass in JIT-on/off and disabled
+optimization modes. Rust tests cover owned/borrowed constants and expanded-
+output refusal without partial writes. Independent source/generated/native
+review approves; performance acceptance remains deferred under OD16.
+
 **Loop globals prologue (2026-11-11).** The Rust planner in
 `Modules/_jit_opt_rs/src/loop_globals.rs` moves one root-frame globals guard
 before `_MAKE_WARM`. It requires a closed loop, an existing globals watcher,
@@ -2080,7 +2114,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | Bound float methods and original-PC materialization are integrated; unboxing now remains available outside boxed virtual-call regions. Next: broader scalar types, constants and call/lookup/allocation/loop shapes. Performance acceptance deferred under OD16 | Regional-unboxing slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 58 Rust tests; 11 new active-JIT prefix/error/exit cases plus prior integrations and assertion-enabled tail validation; independent source/native review approves |
+| J | active | Virtual float calls now retain constants and guard arguments at arithmetic use sites; unused generic arguments can finalize after scratch retirement. Outer regional unboxing remains available. Next: integer and mixed scalar bodies, then broader call/lookup/allocation/loop shapes. Performance acceptance deferred under OD16 | Constants slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 59 Rust tests; 6 new active-JIT constant/error/finalizer cases plus prior integrations and assertion-enabled tail validation; independent source/generated/native review approves |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | feature complete | C3 integrated with refreshed main dependencies; performance acceptance deferred under OD16. Routing/API owner reviews remain asynchronous; nothing pushed | Integrated normal and verify runs each execute 52,102 tests, with exactly the matched reference's five failing files and 0 compiler mismatches; native 11-case integration passes; C3 corpus and independent reviews remain valid |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -2120,7 +2154,7 @@ requested): CinderX 3.15 steady JIT uplift `S = 0.7960`, held-out 1.0621, beside
 M2 ≤ 0.48, M3 ≤ 0.38, M4 ≤ 0.25. T2 does not wait for an answer.
 
 J continuation builds use `.work/wt/jit-pair`; its `perf-jit-pair` stage
-was rebuilt incrementally for the store, list, float-call, loop-type, inline-instance-getter, virtual-float, virtual-local, virtual-exit, bound-method and regional-unboxing slices after
+was rebuilt incrementally for the store, list, float-call, loop-type, inline-instance-getter, virtual-float, virtual-local, virtual-exit, bound-method, regional-unboxing and constants/use-site-guard slices after
 the tuple slice. Earlier reports and suite logs were archived under
 `.work/tmp/tuple-tested-report.json`, `tuple-accepted/`,
 `glue-tested-report.json`, `glue-accepted/`, `list-tested-report.json`
@@ -2131,7 +2165,8 @@ and `list-accepted/`, plus `arith-tested-report.json` and
 `virtual-accepted/`, then `virtual-locals-tested-report.json` and
 `virtual-locals-accepted/`, then `virtual-exits-tested-report.json` and
 `virtual-exits-accepted/`, then `bound-floats-tested-report.json` and
-`bound-floats-accepted/`, before reuse. Each ledger row
+`bound-floats-accepted/`, then `regional-tested-report.json` and
+`regional-accepted/`, before reuse. Each ledger row
 has distinct digest-result directories and source identities. The committed
 `4b66ce3` reference in `.work/wt/jit-integrate` remains unchanged.
 
@@ -2178,6 +2213,15 @@ have separate Rust states. Guard exits preserve their original callee targets;
 self cleanup follows all scratch reads. Independent source/generated/native
 review approves the held-method mutation and finalizer regressions. Performance acceptance remains
 deferred under OD16.
+
+**Owner queue:** T3 constant/use-site proofs (async review). Begin's
+all-float argument gate is replaced by original-PC use-site guards; unused
+arguments may now finalize during success cleanup. Type and ownership proofs
+remain separate. C now consumes variable-length private leaf plans from an
+immutable snapshot with transactional count/source/capacity checks; layouts
+are unchanged. Independent source/generated/native review approves reverse
+argument finalization with code-arity changes and later errors. Performance
+acceptance remains deferred under OD16.
 
 **Owner queue:** T3 loop-global prologue (async review). New private
 `_PyJitOpt_PlanLoopGlobals` ABI and `_GUARD_LOOP_GLOBALS_VERSION` entry guard;
@@ -2575,3 +2619,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-12 | e891 | J | T3 | materialize virtual calls on power side exits, preserving cached operands and original callee resumption PC | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 56 Rust tests; 29 active-JIT complex/error/progress cases and prior integrations; assertion-enabled tail checker; independent source/generated/native review approves | `rust-cpython/results/perf-bench/20261112T122325Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T122452Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/virtual-exits-feature-acceptance.json`; incremental stage based on `2720c27` with this slice; debug tail policy checked directly |
 | 2026-11-12 | e891 | J | T3 | virtualize bound float methods with guarded receiver attributes and original-PC storage/type materialization | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 57 Rust tests; 20 active-JIT method/mutation/error/finalizer cases and prior integrations; independent source/generated/native review approves | `rust-cpython/results/perf-bench/20261112T131439Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T131913Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/bound-floats-feature-acceptance.json`, `.work/tmp/bound-floats-native.log`; incremental stage based on `e8cf127` with this slice |
 | 2026-11-12 | e891 | J | T4 | preserve independent outer unboxing around opaque boxed virtual-call regions and box live caller prefixes before entry | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 58 Rust tests; 11 active-JIT prefix/error/complex-exit cases and prior integrations; independent source/native review approves | `rust-cpython/results/perf-bench/20261112T132914Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T133046Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/regional-feature-acceptance.json`; incremental stage based on `df56e47` with this slice |
+| 2026-11-12 | e891 | J | T3 | retain scalar constants and guard virtual-call arguments at their original arithmetic PCs, allowing unused generic arguments | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 59 Rust tests; 6 active-JIT constant/fallback/error/OOM/reverse-finalizer cases and prior integrations; independent source/generated/native review approves | `rust-cpython/results/perf-bench/20261112T134732Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T134902Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/constants-feature-acceptance.json`; incremental stage based on `e61add3` with this slice |

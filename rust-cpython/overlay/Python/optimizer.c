@@ -2197,7 +2197,7 @@ static_assert(_LOAD_FAST_7 - _LOAD_FAST == 8 && _LOAD_FAST_BORROW_7 - _LOAD_FAST
 extern Py_ssize_t _PyJitOpt_PlanLeafCalls(
     const _PyJitLeafUop *, size_t, const _PyJitLeafOpcodes *, _PyJitLeafStep *, size_t);
 
-static void
+static int
 fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
 {
 #if !defined(Py_GIL_DISABLED) && !defined(WITH_DTRACE)
@@ -2257,11 +2257,11 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         .type_version_locked = _GUARD_TYPE_VERSION_LOCKED,
     };
     _PyJitLeafUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
-    _PyJitLeafStep *steps = PyMem_RawMalloc((size_t)length * sizeof(*steps));
+    _PyJitLeafStep *steps = PyMem_RawMalloc(UOP_MAX_TRACE_LENGTH * sizeof(*steps));
     if (uops == NULL || steps == NULL) {
         PyMem_RawFree(uops);
         PyMem_RawFree(steps);
-        return;
+        return length;
     }
     for (int i = 0; i < length; i++) {
         uint16_t opcode = buffer[i].opcode;
@@ -2282,15 +2282,20 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         };
     }
     Py_ssize_t count = _PyJitOpt_PlanLeafCalls(uops, (size_t)length, &opcodes,
-                                             steps, (size_t)length);
-    if (count == length) {
+                                             steps, UOP_MAX_TRACE_LENGTH);
+    if (count > 0 && count < UOP_MAX_TRACE_LENGTH) {
         bool has_virtual = false;
-        for (int i = 0; i < length; i++) {
+        for (int i = 0; i < count; i++) {
+            if (steps[i].source >= (uint32_t)length) {
+                PyMem_RawFree(uops);
+                PyMem_RawFree(steps);
+                return length;
+            }
             has_virtual |= steps[i].opcode == _BEGIN_VIRTUAL_FLOAT_CALL;
         }
         if (has_virtual) {
             size_t bound = 0;
-            for (int i = 0; i < length; i++) {
+            for (int i = 0; i < count; i++) {
                 uint16_t opcode = steps[i].opcode;
                 if (opcode != _NOP) {
                     uint32_t flags = _PyUop_Flags[opcode];
@@ -2302,16 +2307,24 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
             if (bound >= UOP_MAX_TRACE_LENGTH) {
                 PyMem_RawFree(uops);
                 PyMem_RawFree(steps);
-                return;
+                return length;
             }
         }
-        for (int i = 0; i < length; i++) {
+        _PyUOpInstruction *original = PyMem_RawMalloc((size_t)length * sizeof(*original));
+        if (original == NULL) {
+            PyMem_RawFree(uops);
+            PyMem_RawFree(steps);
+            return length;
+        }
+        memcpy(original, buffer, (size_t)length * sizeof(*original));
+        for (int i = 0; i < count; i++) {
             const _PyJitLeafStep *step = &steps[i];
             assert(step->source < (uint32_t)length);
+            buffer[i] = original[step->source];
             if (step->opcode == _CALL_PY_LEAF || step->opcode == _CALL_PY_LEAF_PAIR ||
                 step->opcode == _CALL_PY_FLOAT_LEAF || step->opcode == _CHECK_LEAF_GLOBALS_VERSION ||
                 step->opcode == _BEGIN_VIRTUAL_FLOAT_CALL) {
-                _PyUOpInstruction source = buffer[step->source];
+                _PyUOpInstruction source = original[step->source];
                 assert(source.opcode == _CHECK_RECURSION_REMAINING);
                 buffer[i] = source;
                 buffer[i].opcode = step->opcode;
@@ -2322,6 +2335,7 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
             else if (step->opcode == _LOAD_VIRTUAL_FLOAT_ARGUMENT ||
                      step->opcode == _COPY_VIRTUAL_FLOAT_ARGUMENT ||
                      step->opcode == _RETURN_VIRTUAL_FLOAT_CALL || step->opcode == _POP_TOP_FLOAT ||
+                     step->opcode == _GUARD_TOS_FLOAT || step->opcode == _GUARD_NOS_FLOAT ||
                      step->opcode == _BINARY_OP_ADD_FLOAT || step->opcode == _BINARY_OP_SUBTRACT_FLOAT ||
                      step->opcode == _BINARY_OP_MULTIPLY_FLOAT || step->opcode == _BINARY_OP_TRUEDIV_FLOAT) {
                 buffer[i].opcode = step->opcode;
@@ -2336,10 +2350,13 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
                 buffer[i].operand1 = 0;
             }
         }
+        PyMem_RawFree(original);
+        length = (int)count;
     }
     PyMem_RawFree(uops);
     PyMem_RawFree(steps);
 #endif
+    return length;
 }
 
 typedef struct {
@@ -2706,7 +2723,7 @@ uop_optimize(
     code_buffer->next = code_buffer->start;
 
     if (!is_noopt) {
-        fuse_leaf_calls(buffer, length);
+        length = fuse_leaf_calls(buffer, length);
         hoist_loop_globals(buffer, length, _tstate->jit_tracer_state->initial_state.func,
                            (PyCodeObject *)_tstate->jit_tracer_state->initial_state.code, &dependencies);
         length = guard_loop_locals(buffer, length, frame,
