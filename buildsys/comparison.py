@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 from .generations import GenerationError, active_generation
-from .inputs import Cache, InputError, load_lock, safe_extract
+from .inputs import Cache, InputError, locked_inputs, safe_extract
 from .package import PackageError, extract_package_archive, publish_files
 from .targets import Target
 
@@ -20,7 +20,7 @@ class ComparisonError(Exception):
 
 
 def _reference_pin(lock_path: Path, target: Target):
-    entries = load_lock(lock_path)
+    entries = locked_inputs(lock_path)
     qualified = f"reference-pbs-{target.triple}"
     for entry in entries:
         if entry.name == qualified:

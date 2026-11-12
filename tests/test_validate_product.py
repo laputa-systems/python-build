@@ -8,16 +8,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from buildsys.macho import (
-    CPU_TYPE_ARM64,
-    LC_BUILD_VERSION,
-    LC_ID_DYLIB,
-    LC_LOAD_DYLIB,
-    LC_RPATH,
-    MH_DYLIB,
-    MH_EXECUTE,
-    MH_PIE,
-)
 from buildsys.product import PRODUCT
 from buildsys.targets import TARGETS
 from buildsys.validate_product import (
@@ -26,6 +16,15 @@ from buildsys.validate_product import (
     run_validation,
     version_and_abi,
 )
+
+CPU_TYPE_ARM64 = 0x0100000C
+LC_BUILD_VERSION = 0x32
+LC_ID_DYLIB = 0x0D
+LC_LOAD_DYLIB = 0x0C
+LC_RPATH = 0x8000001C
+MH_DYLIB = 6
+MH_EXECUTE = 2
+MH_PIE = 0x00200000
 
 
 def _command(command: int, payload: bytes) -> bytes:

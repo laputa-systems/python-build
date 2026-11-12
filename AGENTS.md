@@ -36,6 +36,9 @@ and defaults to the host. Releases come from `.github/workflows/release.yml`; th
 
 ## Invariants
 
+- `laputa-buildlib` reaches `buildsys` only through `buildsys/wheel.py`: change its version in
+  `sources.lock.json`, `pyproject.toml`, and `uv.lock` together. Import it after `buildsys` in scripts,
+  or through `buildsys` re-exports, because importing `buildsys` is what makes the wheel importable.
 - Keep exactly the three production targets, platform CPU baselines, and the
   declared dependency closure.
 - Do not add platforms, production dependencies, product versions, or change

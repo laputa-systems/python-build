@@ -5,7 +5,6 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
-import lzma
 import os
 import re
 import shutil
@@ -14,8 +13,19 @@ import tempfile
 from pathlib import Path
 from urllib.parse import quote
 
+from buildlib import release
+from buildlib.hashing import sha256_file
+from buildlib.locks import LockError, load_budgets
+from buildlib.release import ReleaseError
+
 from .generations import GenerationError, active_generation
-from .product import PRODUCT
+from .package import (
+    SOURCE_DATE_EPOCH,
+    PackageError,
+    extract_package_archive,
+    write_manifest,
+)
+from .product import PRODUCT, PRODUCT_NAME
 from .targets import TARGETS
 
 VERSION = PRODUCT.version_string
@@ -43,7 +53,6 @@ class UvMirrorError(Exception):
 SOURCES_LOCK = Path(__file__).resolve().parents[1] / "sources.lock.json"
 RELEASE_TAG_PREFIX = "release-"
 _BUILD_ID = re.compile(r"[0-9]{8}")
-_XZ_PRESET = 9
 
 
 def asset_name(build: str, triple: str) -> str:
@@ -77,14 +86,6 @@ def metadata_entry(triple: str, build: str, release_tag: str, url_base: str, sha
         "variant": None,
         "build": build,
     }
-
-
-def sha256_of(path: Path) -> str:
-    digest = hashlib.sha256()
-    with Path(path).open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _payload_facts(path: Path) -> tuple[str, int]:
@@ -178,7 +179,7 @@ def _load_manifest_from(
     archive_path = directory / filename
     if archive_path.is_symlink() or not archive_path.is_file():
         raise UvMirrorError(f"{triple}: packaged archive is missing: {archive_path}")
-    actual_hash = sha256_of(archive_path)
+    actual_hash = sha256_file(archive_path)
     actual_size = archive_path.stat().st_size
     if archive.get("sha256") != actual_hash or archive.get("size_bytes") != actual_size:
         raise UvMirrorError(f"{triple}: artifact archive digest or size does not match its manifest")
@@ -239,27 +240,21 @@ def record_runtime_container(
     )
     if not manifest["qualification"]["ok"]:
         raise UvMirrorError(f"{triple}: runtime smoke did not preserve qualification")
-    from .package import write_manifest
-
     write_manifest(package_directory / "artifact.json", manifest)
     return manifest
 
 
 def _load_budgets(path: Path) -> dict[str, dict[str, int]]:
     try:
-        document = json.loads(Path(path).read_text())
-    except (OSError, json.JSONDecodeError) as error:
+        loaded = load_budgets(path)
+    except LockError as error:
         raise UvMirrorError(f"release size budgets are missing or invalid: {error}") from error
-    if not isinstance(document, dict) or document.get("schema_version") != 1:
-        raise UvMirrorError("release size budget file has an unsupported schema")
-    targets = document.get("targets")
-    if not isinstance(targets, dict):
-        raise UvMirrorError("release size budget file has an unsupported schema")
     result = {}
     for triple in TARGETS:
-        entry = targets.get(triple)
-        if not isinstance(entry, dict):
-            raise UvMirrorError(f"{triple}: no reviewed compressed and unpacked size budget")
+        try:
+            entry = loaded.for_target(triple)
+        except LockError:
+            raise UvMirrorError(f"{triple}: no reviewed compressed and unpacked size budget") from None
         compressed = entry.get("archive_size_bytes")
         unpacked = entry.get("payload_size_bytes")
         if any(type(value) is not int or value < 1 for value in (compressed, unpacked)):
@@ -270,7 +265,7 @@ def _load_budgets(path: Path) -> dict[str, dict[str, int]]:
             "archive_size_bytes": compressed,
             "payload_size_bytes": unpacked,
         }
-    if set(targets) != set(TARGETS):
+    if set(loaded.targets) != set(TARGETS):
         raise UvMirrorError("release size budgets do not match the supported target set")
     return result
 
@@ -284,14 +279,11 @@ def _metadata(build: str, release_tag: str, url_base: str, hashes: dict[str, str
     }
 
 
-def _write_xz_archive(source: Path, destination: Path) -> None:
-    compressor = lzma.LZMACompressor(format=lzma.FORMAT_XZ, check=lzma.CHECK_CRC64, preset=_XZ_PRESET)
+def _write_release_archive(source: Path, destination: Path, scratch: Path) -> None:
     try:
-        with gzip.open(source, "rb") as reader, destination.open("wb") as writer:
-            for chunk in iter(lambda: reader.read(1 << 20), b""):
-                writer.write(compressor.compress(chunk))
-            writer.write(compressor.flush())
-    except (OSError, EOFError) as error:
+        extracted = extract_package_archive(source, scratch / destination.stem)
+        release.create_archive(extracted / "python", destination, mtime=SOURCE_DATE_EPOCH, prefix="python")
+    except (OSError, EOFError, PackageError, ReleaseError) as error:
         raise UvMirrorError(f"cannot recompress artifact {source}: {error}") from error
 
 
@@ -304,24 +296,25 @@ def _release_manifest(
     compat_sha256: str,
     build: str,
 ) -> dict:
-    return {
-        "schema_version": 1,
-        "product": "cpython",
-        "version": PRODUCT.version_string,
-        "target": triple,
-        "source_revision": revision,
-        "sources_lock_sha256": sources_lock_sha256,
-        "archive": {
-            "filename": archive.name,
-            "sha256": sha256_of(archive),
-            "size_bytes": archive.stat().st_size,
+    return release.build_manifest(
+        product=PRODUCT_NAME,
+        version=PRODUCT.version_string,
+        target=triple,
+        source_revision=revision,
+        sources_lock_sha256=sources_lock_sha256,
+        extra={
+            "archive": {
+                "filename": archive.name,
+                "sha256": sha256_file(archive),
+                "size_bytes": archive.stat().st_size,
+            },
+            "standalone_compat": {
+                "build": build,
+                "filename": compat_name,
+                "sha256": compat_sha256,
+            },
         },
-        "standalone_compat": {
-            "build": build,
-            "filename": compat_name,
-            "sha256": compat_sha256,
-        },
-    }
+    )
 
 
 def assemble(
@@ -341,7 +334,7 @@ def assemble(
     revision = _expected_revision(expected_revision)
     release_tag = f"{RELEASE_TAG_PREFIX}{revision}"
     try:
-        sources_lock_sha256 = sha256_of(sources_lock_path)
+        sources_lock_sha256 = sha256_file(sources_lock_path)
     except OSError as error:
         raise UvMirrorError(f"cannot read the source lock: {error}") from error
     budgets = _load_budgets(budgets_path)
@@ -374,28 +367,30 @@ def assemble(
     output.parent.mkdir(parents=True, exist_ok=True)
     if output.exists() or output.is_symlink():
         raise UvMirrorError(f"refusing to overwrite existing release directory {output}")
-    with tempfile.TemporaryDirectory(prefix=f".{output.name}-", dir=output.parent) as temporary:
+    with (
+        tempfile.TemporaryDirectory(prefix=f".{output.name}-", dir=output.parent) as temporary,
+        tempfile.TemporaryDirectory(prefix=f".{output.name}-extract-", dir=output.parent) as scratch,
+    ):
         staging = Path(temporary)
         hashes: dict[str, str] = {}
         for triple, (source, manifest_path, manifest) in prepared.items():
             name = asset_name(build, triple)
             compat = staging / name
             shutil.copyfile(source, compat)
-            compat_sha256 = sha256_of(compat)
+            compat_sha256 = sha256_file(compat)
             hashes[name] = compat_sha256
             shutil.copyfile(manifest_path, staging / f"artifact-{triple}.json")
             archive = staging / PRODUCT.release_archive_name(triple)
-            _write_xz_archive(source, archive)
-            (staging / PRODUCT.release_manifest_name(triple)).write_text(
-                json.dumps(
+            _write_release_archive(source, archive, Path(scratch) / triple)
+            try:
+                release.write_manifest(
+                    staging,
                     _release_manifest(
                         triple, revision, sources_lock_sha256, archive, name, compat_sha256, build
                     ),
-                    indent=2,
-                    sort_keys=True,
                 )
-                + "\n"
-            )
+            except ReleaseError as error:
+                raise UvMirrorError(f"{triple}: cannot write the release manifest: {error}") from error
         release_base = f"https://github.com/{repo}/releases/download"
         (staging / "download-metadata.json").write_text(
             json.dumps(_metadata(build, release_tag, release_base, hashes), indent=2) + "\n"
@@ -412,11 +407,6 @@ def assemble(
             "out": str(output),
         }
         (staging / "assembly.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
-        (staging / "SHA256SUMS").write_text(
-            "".join(
-                f"{sha256_of(path)}  {path.name}\n"
-                for path in sorted(staging.iterdir(), key=lambda entry: entry.name)
-            )
-        )
+        release.write_sha256sums(staging)
         os.replace(staging, output)
     return report

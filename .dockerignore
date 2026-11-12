@@ -21,6 +21,8 @@ build/**
 !.cache/bootstrap/apk/
 !.cache/bootstrap/apk/**/
 !.cache/bootstrap/apk/**/*.apk
+!.cache/bootstrap/buildlib/
+!.cache/bootstrap/buildlib/*.whl
 !tests/
 tests/**
 !tests/test_inputs.py

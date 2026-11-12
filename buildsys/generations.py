@@ -20,6 +20,8 @@ import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 
+from buildlib.hashing import digest_file
+
 GENERATIONS = "generations"
 ACTIVE = "ACTIVE"
 RECORD = "GENERATION.json"
@@ -87,7 +89,7 @@ def active_generation(target_directory: Path) -> Path:
         path = directory / name
         if path.is_symlink() or not path.is_file():
             raise GenerationError(f"{directory}: {name} is not a regular file")
-        digest, size = _digest(path)
+        digest, size = digest_file(path)
         if not isinstance(facts, dict) or (digest, size) != (
             facts.get("sha256"), facts.get("size_bytes")
         ):
@@ -166,13 +168,3 @@ def _sync_directory(path: Path) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
-
-
-def _digest(path: Path) -> tuple[str, int]:
-    digest = hashlib.sha256()
-    size = 0
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(_CHUNK), b""):
-            digest.update(chunk)
-            size += len(chunk)
-    return digest.hexdigest(), size

@@ -7,7 +7,7 @@ import ssl
 import tempfile
 from pathlib import Path
 
-from .inputs import Cache, InputError, load_lock, safe_extract
+from .inputs import Cache, InputError, locked_inputs, safe_extract
 from .product import PRODUCT
 
 INPUT_NAME = "certifi-ca"
@@ -26,7 +26,7 @@ def install_fallback_ca_bundle(
     lock_path: Path,
 ) -> dict[str, object]:
     """Verify, validate, and install only certifi's PEM and license files."""
-    entries = [entry for entry in load_lock(lock_path) if entry.name == INPUT_NAME]
+    entries = [entry for entry in locked_inputs(lock_path) if entry.name == INPUT_NAME]
     if len(entries) != 1:
         raise CABundleError(f"expected one {INPUT_NAME!r} entry in {lock_path}")
     entry = entries[0]

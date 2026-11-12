@@ -118,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     for sha in missing:
         pin = pins[sha]
         entry = Input(
-            name=Path(pin.url).name or sha, version="pinned", url=pin.url,
+            name=Path(pin.url).name or sha, version="pinned", urls=(pin.url,),
             sha256=pin.sha256, size=pin.size, role="build-source",
         )
         path = cache.fetch(entry, timeout=600.0)

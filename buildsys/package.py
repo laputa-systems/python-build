@@ -5,6 +5,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+import lzma
 import os
 import posixpath
 import re
@@ -16,8 +17,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from buildlib.hashing import digest_file
+from buildlib.release import ReleaseError
+from buildlib.release import create_archive as create_release_archive
+
 from .deporder import dependency_order
-from .inputs import canonical_json, load_lock
+from .inputs import canonical_json, locked_inputs, pin_identity
 from .notices import bundled_native_names
 from .product import Product
 from .targets import Target
@@ -68,41 +73,6 @@ def _regular_mode(mode: int) -> int:
     return 0o755 if mode & 0o111 else 0o644
 
 
-def _archive_info(path: Path, name: str) -> tarfile.TarInfo:
-    info = tarfile.TarInfo(name)
-    info.uid = 0
-    info.gid = 0
-    info.uname = ""
-    info.gname = ""
-    info.mtime = SOURCE_DATE_EPOCH
-    metadata = path.lstat()
-    info.mode = stat.S_IMODE(metadata.st_mode)
-    if stat.S_ISDIR(metadata.st_mode):
-        info.type = tarfile.DIRTYPE
-        info.mode = 0o755
-    elif stat.S_ISLNK(metadata.st_mode):
-        info.type = tarfile.SYMTYPE
-        info.linkname = os.readlink(path)
-        info.mode = 0o777
-    elif stat.S_ISREG(metadata.st_mode):
-        info.type = tarfile.REGTYPE
-        info.size = metadata.st_size
-        info.mode = _regular_mode(metadata.st_mode)
-    else:
-        raise PackageError(f"unsupported payload entry: {path}")
-    return info
-
-
-def _sha256(path: Path) -> tuple[str, int]:
-    digest = hashlib.sha256()
-    size = 0
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1 << 20), b""):
-            digest.update(chunk)
-            size += len(chunk)
-    return digest.hexdigest(), size
-
-
 def _payload_facts(path: Path) -> tuple[str, int]:
     digest = hashlib.sha256()
     size = 0
@@ -119,23 +89,20 @@ def create_archive(install: Path, archive_path: Path) -> ArchiveFacts:
     if not install.is_dir():
         raise PackageError(f"install tree does not exist: {install}")
     archive_path.parent.mkdir(parents=True, exist_ok=True)
-    with archive_path.open("wb") as raw, gzip.GzipFile(             filename="", mode="wb", compresslevel=9,             fileobj=raw, mtime=SOURCE_DATE_EPOCH,         ) as compressed, tarfile.open(             fileobj=compressed, mode="w", format=tarfile.PAX_FORMAT         ) as archive:
-        root_info = tarfile.TarInfo("python")
-        root_info.type = tarfile.DIRTYPE
-        root_info.mode = 0o755
-        root_info.uid = root_info.gid = 0
-        root_info.uname = root_info.gname = ""
-        root_info.mtime = SOURCE_DATE_EPOCH
-        archive.addfile(root_info)
-        for path in sorted(install.rglob("*"), key=lambda item: item.relative_to(install).as_posix()):
-            relative = path.relative_to(install).as_posix()
-            info = _archive_info(path, f"python/{relative}")
-            if info.isreg():
-                with path.open("rb") as stream:
-                    archive.addfile(info, stream)
-            else:
-                archive.addfile(info)
-    sha256, size_bytes = _sha256(archive_path)
+    with tempfile.TemporaryDirectory(prefix="archive-", dir=archive_path.parent) as scratch:
+        try:
+            tarball = create_release_archive(
+                install, Path(scratch) / "payload.tar.xz", mtime=SOURCE_DATE_EPOCH, prefix="python"
+            )
+        except ReleaseError as error:
+            raise PackageError(str(error)) from error
+        with (
+            lzma.open(tarball, "rb") as reader,
+            archive_path.open("wb") as raw,
+            gzip.GzipFile(filename="", mode="wb", compresslevel=9, fileobj=raw, mtime=SOURCE_DATE_EPOCH) as compressed,
+        ):
+            shutil.copyfileobj(reader, compressed, 1 << 20)
+    sha256, size_bytes = digest_file(archive_path)
     payload_sha256, payload_size_bytes = _payload_facts(archive_path)
     return ArchiveFacts(sha256, size_bytes, payload_sha256, payload_size_bytes)
 
@@ -150,7 +117,7 @@ def _tree_inventory(root: Path) -> dict[str, tuple]:
         elif stat.S_ISLNK(metadata.st_mode):
             inventory[relative] = ("symlink", 0o777, os.readlink(path))
         elif stat.S_ISREG(metadata.st_mode):
-            digest, size = _sha256(path)
+            digest, size = digest_file(path)
             inventory[relative] = ("file", _regular_mode(metadata.st_mode), size, digest)
         else:
             raise PackageError(f"unsupported extracted payload entry: {path}")
@@ -389,7 +356,7 @@ def gil_enabled(qualification: dict) -> bool:
 def _component_manifest(
     lock_path: Path, target: Target, qualification: dict
 ) -> dict:
-    entries = {entry.name: entry for entry in load_lock(lock_path)}
+    entries = {entry.name: entry for entry in locked_inputs(lock_path)}
     bundled = []
     for name in ("cpython", "certifi-ca", *bundled_native_names(target)):
         entry = entries.get(name)
@@ -475,7 +442,7 @@ def build_manifest(
         for path in sorted(Path(package_patches_directory).glob("*.patch"))
     ]
     bundle = next(
-        (entry for entry in load_lock(lock_path) if entry.name == "certifi-ca"),
+        (entry for entry in locked_inputs(lock_path) if entry.name == "certifi-ca"),
         None,
     )
     if bundle is None:
@@ -513,7 +480,7 @@ def build_manifest(
                 "sha256": bundle.sha256,
                 "size": bundle.size,
                 "license": bundle.license,
-                "identity": bundle.identity(),
+                "identity": pin_identity(bundle),
             },
         },
         "recipe_identity": recipe_identity,
@@ -622,7 +589,7 @@ def validate_build_record(
     }:
         raise PackageError("CPython staged build record names a different product")
 
-    pins = [entry for entry in load_lock(lock_path) if entry.name == "cpython"]
+    pins = [entry for entry in locked_inputs(lock_path) if entry.name == "cpython"]
     if len(pins) != 1:
         raise PackageError("source lock must contain exactly one CPython pin")
     pin = pins[0]
@@ -634,7 +601,7 @@ def validate_build_record(
     }:
         raise PackageError("CPython staged build record does not match the locked source")
 
-    pins_by_name = {entry.name: entry for entry in load_lock(lock_path)}
+    pins_by_name = {entry.name: entry for entry in locked_inputs(lock_path)}
     dependency_names = tuple(
         name for name in dependency_order(target) if name != "pkgconf"
     )
@@ -647,7 +614,7 @@ def validate_build_record(
             "name": entry.name,
             "version": entry.version,
             "sha256": entry.sha256,
-            "identity": entry.identity(),
+            "identity": pin_identity(entry),
         })
     if record.get("dependencies") != expected_dependencies:
         raise PackageError("CPython staged build record has stale dependency inputs")

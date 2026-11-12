@@ -14,7 +14,7 @@ from buildsys.ca_bundle import (
     CABundleError,
     install_fallback_ca_bundle,
 )
-from buildsys.inputs import Cache, load_lock
+from buildsys.inputs import Cache, locked_inputs
 from buildsys.product import PRODUCT
 
 
@@ -50,7 +50,7 @@ class InstallFallbackCABundleTests(unittest.TestCase):
         lock = root / "sources.lock.json"
         lock.write_text(json.dumps({"schema_version": 1, "inputs": [entry]}))
         cache_root = root / "cache"
-        Cache(cache_root).store(archive, load_lock(lock)[0])
+        Cache(cache_root).store(archive, locked_inputs(lock)[0])
         return lock, cache_root
 
     def test_installs_only_validated_bundle_and_license_from_locked_source(self) -> None:

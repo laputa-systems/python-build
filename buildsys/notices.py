@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 
 from .deporder import dependency_order
-from .inputs import Cache, Input, InputError, load_lock, safe_extract
+from .inputs import Cache, Input, InputError, locked_inputs, safe_extract
 from .targets import Target
 
 LICENSE_DIRECTORY = Path("share/licenses/python-build")
@@ -81,7 +81,7 @@ def install_notices(
     rtls_revision: str,
     rtls_source_sha256: str,
 ) -> dict[str, object]:
-    locked = {entry.name: entry for entry in load_lock(lock_path)}
+    locked = {entry.name: entry for entry in locked_inputs(lock_path)}
     names = bundled_native_names(target)
     missing = [name for name in ("cpython", *names) if name not in locked]
     unknown = [name for name in names if name not in NATIVE_NOTICES]
@@ -125,7 +125,7 @@ def install_notices(
 
 
 def verify_notices(install: Path, target: Target, lock_path: Path) -> dict[str, object]:
-    locked = {entry.name: entry for entry in load_lock(lock_path)}
+    locked = {entry.name: entry for entry in locked_inputs(lock_path)}
     install = Path(install)
     missing = []
     for relative in expected_notice_paths(target, locked):

@@ -20,7 +20,7 @@ sys.path.insert(0, str(REPO))
 
 from buildsys.bootstrap import BootstrapError, lto_smoke_test, toolchain_for
 from buildsys.deporder import dependency_order
-from buildsys.inputs import Cache, InputError, load_lock
+from buildsys.inputs import Cache, InputError, locked_inputs
 from buildsys.recipes import (
     RECIPE_LAYOUTS,
     BuildError,
@@ -150,7 +150,7 @@ def main() -> int:
     prefix = (REPO / "build" / "prefix").resolve()
     logs = REPO / "build" / "logs"
     cache = Cache(REPO / ".cache")
-    lock = {e.name: e for e in load_lock(REPO / "sources.lock.json")}
+    lock = {e.name: e for e in locked_inputs(REPO / "sources.lock.json")}
     try:
         target = native_target()
         toolchain = toolchain_for(target, REPO / "bootstrap.lock.json")

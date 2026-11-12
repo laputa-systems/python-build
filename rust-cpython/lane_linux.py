@@ -137,7 +137,7 @@ class LinuxToolchain:
         return Input(
             name="llvm-linux-x86_64",
             version=self.llvm_version,
-            url=self.llvm_archive_url,
+            urls=(self.llvm_archive_url,),
             sha256=self.llvm_archive_sha256,
             size=self.llvm_archive_size,
             role="build-source",
@@ -150,7 +150,7 @@ class LinuxToolchain:
         return Input(
             name="llvm-linux-x86_64-provenance",
             version=self.llvm_version,
-            url=self.llvm_attestation_url,
+            urls=(self.llvm_attestation_url,),
             sha256=self.llvm_attestation_sha256,
             size=self.llvm_attestation_size,
             role="build-source",
@@ -162,7 +162,7 @@ class LinuxToolchain:
         return Input(
             name="libicu70-lld-runtime",
             version=self.icu_runtime["package"].split("=", 1)[1],
-            url=self.icu_runtime["url"],
+            urls=(self.icu_runtime["url"],),
             sha256=self.icu_runtime["sha256"],
             size=self.icu_runtime["size"],
             role="build-source",

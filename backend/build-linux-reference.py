@@ -19,7 +19,7 @@ sys.path.insert(0, str(REPO))
 from buildsys.bootstrap import BootstrapError, toolchain_for
 from buildsys.ca_bundle import CABundleError, install_fallback_ca_bundle
 from buildsys.cpython import configuration
-from buildsys.inputs import Cache, InputError, load_lock, safe_extract
+from buildsys.inputs import Cache, InputError, locked_inputs, safe_extract
 from buildsys.patches import PatchError, apply_patch_set
 from buildsys.product import PRODUCT
 from buildsys.recipes import RECIPE_LAYOUTS, Recipe, Toolchain, build_recipe, run
@@ -641,7 +641,7 @@ def main(argv: list[str] | None = None) -> int:
         os.environ["HOME"] = str(run_dir / "home")
         toolchain = reference_toolchain(target, args.jobs)
         verify_thin_lto(toolchain, target, run_dir)
-        entries = {entry.name: entry for entry in load_lock(REPO / "sources.lock.json")}
+        entries = {entry.name: entry for entry in locked_inputs(REPO / "sources.lock.json")}
         cache = Cache(common_root / ".cache")
         openssl_prefix = build_openssl(run_dir, cache, entries, target, toolchain)
         prefix = build_cpython_reference(

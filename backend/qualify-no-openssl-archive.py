@@ -1278,9 +1278,9 @@ def run_archive_contracts(
         and all(isinstance(row, dict) and row.get("status") not in {"failed", "reference_unavailable"} for row in modern_matrix)
     )
 
-    from buildsys.inputs import Cache, load_lock, safe_extract
+    from buildsys.inputs import Cache, locked_inputs, safe_extract
 
-    ca_pin = next(pin for pin in load_lock(COMMON_ROOT / "sources.lock.json") if pin.name == "certifi-ca")
+    ca_pin = next(pin for pin in locked_inputs(COMMON_ROOT / "sources.lock.json") if pin.name == "certifi-ca")
     ca_source = safe_extract(
         Cache(COMMON_ROOT / ".cache").require(ca_pin), contracts / "pinned CA source",
     )
@@ -1520,7 +1520,7 @@ def build_experimental_manifest(
     research_driver,
 ) -> dict:
     from buildsys.deporder import dependency_order
-    from buildsys.inputs import Cache, canonical_json, load_lock
+    from buildsys.inputs import Cache, canonical_json, locked_inputs, pin_identity
 
     source_dir = base_build_run_dir / "cpython-source" / f"Python-{PRODUCT.version_string}"
     build_directory = base_build_run_dir / "cpython-build"
@@ -1663,7 +1663,7 @@ def build_experimental_manifest(
                 f"Linux CPython configure flags omit the candidate {arch['cpu_baseline']} floor"
             )
 
-    pins = {entry.name: entry for entry in load_lock(COMMON_ROOT / "sources.lock.json")}
+    pins = {entry.name: entry for entry in locked_inputs(COMMON_ROOT / "sources.lock.json")}
     c_names = tuple(
         name for name in dependency_order(target) if name not in {"pkgconf", "openssl"}
     )
@@ -1683,7 +1683,7 @@ def build_experimental_manifest(
                 "size": pin.size,
                 "license": pin.license,
                 "purpose": pin.purpose,
-                "pin_identity": pin.identity(),
+                "pin_identity": pin_identity(pin),
                 "cached_bytes_sha256": sha256_file(object_path),
             }
         )

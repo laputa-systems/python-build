@@ -17,12 +17,14 @@ from buildsys.bootstrap import (
     load_linux_bootstrap,
     load_macos_toolchain,
 )
-from buildsys.inputs import Cache, InputError, load_lock
+from buildsys.inputs import Cache, InputError, locked_inputs
 from buildsys.llvm import (
     extract_llvm_archive,
     verify_llvm_attestation_metadata,
 )
 from buildsys.targets import native_target, target_for_triple
+from buildsys.wheel import INPUT_NAME as BUILDLIB_INPUT
+from buildsys.wheel import VIEW_RELATIVE_PATH as BUILDLIB_VIEW
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -32,7 +34,7 @@ def main(argv: list[str] | None = None) -> int:
     target = target_for_triple(args.target)
     source_cache = Cache(REPO / ".cache")
     try:
-        inputs = load_lock(REPO / "sources.lock.json")
+        inputs = locked_inputs(REPO / "sources.lock.json")
         for entry in inputs:
             if entry.role == "reference":
                 continue
@@ -103,7 +105,10 @@ def main(argv: list[str] | None = None) -> int:
                 [(locked.llvm.archives[target.alpine_arch].input(target.triple),
                   locked.llvm.archives[target.alpine_arch].filename)],
             )
+            wheel = next(entry for entry in inputs if entry.name == BUILDLIB_INPUT)
+            _publish_view(source_cache, REPO / BUILDLIB_VIEW, [(wheel, f"{wheel.sha256}.whl")])
             print(f"ready   offline LLVM toolchain -> {toolchain_view}")
+            print(f"ready   buildlib wheel -> {REPO / BUILDLIB_VIEW}")
             print(f"ready   offline Alpine APK closure -> {view}")
     except (BootstrapError, InputError, OSError, ValueError) as error:
         print(f"FAIL: {error}", file=sys.stderr)

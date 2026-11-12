@@ -6,6 +6,7 @@ FROM alpine-${TARGETARCH} AS toolchain
 ARG TARGETARCH
 COPY .cache/bootstrap/apk/${TARGETARCH}/ /opt/bootstrap/apk/
 COPY .cache/bootstrap/toolchain/${TARGETARCH}/ /opt/bootstrap/toolchain/
+COPY .cache/bootstrap/buildlib/ /opt/bootstrap/buildlib/
 COPY build/patch_llvm_stack.py /opt/bootstrap/patch_llvm_stack.py
 COPY bootstrap.lock.json /opt/bootstrap/bootstrap.lock.json
 
@@ -13,7 +14,7 @@ RUN set -eu \
     && mkdir -p /opt/bootstrap \
     && cp /etc/alpine-release /opt/bootstrap/alpine-release \
     && apk info -v | sort > /opt/bootstrap/base-packages.txt \
-    && set -- /opt/bootstrap/apk/*.apk /opt/bootstrap/toolchain/* \
+    && set -- /opt/bootstrap/apk/*.apk /opt/bootstrap/toolchain/* /opt/bootstrap/buildlib/*.whl \
     && [ -f "$1" ] \
     && for input in "$@"; do \
         name="${input##*/}"; \
@@ -77,7 +78,8 @@ ENV PATH="/opt/llvm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:
 USER builder
 WORKDIR /work
 
-RUN MARCH="$(PYTHONPATH=/opt/bootstrap python3 -c 'from targets import native_target; print(native_target().cpu_baseline_cflag)')" \
+RUN set -- /opt/bootstrap/buildlib/*.whl \
+    && MARCH="$(PYTHONPATH="/opt/bootstrap:$1" python3 -c 'from targets import native_target; print(native_target().cpu_baseline_cflag)')" \
     && printf '%s\n' 'int answer(void) { return 42; }' > "$TMPDIR/lto-library.c" \
     && printf '%s\n' 'extern int answer(void); int main(void) { return answer() != 42; }' > "$TMPDIR/lto-main.c" \
     && clang -O3 $MARCH -fno-omit-frame-pointer -flto=thin -c "$TMPDIR/lto-library.c" -o "$TMPDIR/lto-library.o" \

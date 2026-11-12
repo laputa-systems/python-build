@@ -23,7 +23,6 @@ Three things are deliberately *not* pinned here:
 
 from __future__ import annotations
 
-import json
 import platform
 import plistlib
 import re
@@ -32,7 +31,9 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .inputs import LOCK_SCHEMA_VERSION, Input, InputError
+from buildlib.locks import LockError, load_bootstrap
+
+from .inputs import Input, InputError
 from .recipes import Toolchain
 
 
@@ -101,7 +102,7 @@ class MacOSToolchain:
         return Input(
             name="llvm-macos-aarch64",
             version=self.llvm_version,
-            url=self.llvm_archive_url,
+            urls=(self.llvm_archive_url,),
             sha256=self.llvm_archive_sha256,
             size=self.llvm_archive_size,
             role="build-source",
@@ -115,7 +116,7 @@ class MacOSToolchain:
         return Input(
             name="llvm-macos-aarch64-provenance",
             version=self.llvm_version,
-            url=self.llvm_attestation_url,
+            urls=(self.llvm_attestation_url,),
             sha256=self.llvm_attestation_sha256,
             size=self.llvm_attestation_size,
             role="build-source",
@@ -242,7 +243,7 @@ class APKPackage:
         return Input(
             name=f"apk-{self.name}-{self.version}-{self.arch}",
             version=self.version,
-            url=self.url,
+            urls=(self.url,),
             sha256=self.sha256,
             size=self.size,
             role="build-source",
@@ -265,7 +266,7 @@ class PinnedArchive:
         return Input(
             name=self.name,
             version=self.version,
-            url=self.url,
+            urls=(self.url,),
             sha256=self.sha256,
             size=self.size,
             role="build-source",
@@ -331,13 +332,9 @@ def _require(document: dict, key: str, where: str):
 
 def load_linux_bootstrap(path: Path) -> LinuxBootstrap:
     try:
-        document = json.loads(Path(path).read_text())
-    except (OSError, json.JSONDecodeError) as error:
-        raise BootstrapError(f"cannot read bootstrap lock {path}: {error}") from error
-    if not isinstance(document, dict):
-        raise BootstrapError(f"{path}: expected a top-level object")
-    if document.get("schema_version") != LOCK_SCHEMA_VERSION:
-        raise BootstrapError(f"{path}: unsupported lock schema_version {document.get('schema_version')!r}")
+        document = load_bootstrap(path)
+    except LockError as error:
+        raise BootstrapError(f"cannot read bootstrap lock: {error}") from error
     section = document.get("linux_toolchain")
     if not isinstance(section, dict):
         raise BootstrapError(f"{path}: no linux_toolchain section")
@@ -554,13 +551,9 @@ def _resolve_xcode_facts() -> XcodeFacts:
 def load_macos_toolchain(path: Path) -> MacOSToolchain:
     """Read the macOS toolchain section of the bootstrap lock."""
     try:
-        document = json.loads(Path(path).read_text())
-    except (OSError, json.JSONDecodeError) as error:
-        raise BootstrapError(f"cannot read bootstrap lock {path}: {error}") from error
-    if not isinstance(document, dict):
-        raise BootstrapError(f"{path}: expected a top-level object")
-    if document.get("schema_version") != LOCK_SCHEMA_VERSION:
-        raise BootstrapError(f"{path}: unsupported lock schema_version {document.get('schema_version')!r}")
+        document = load_bootstrap(path)
+    except LockError as error:
+        raise BootstrapError(f"cannot read bootstrap lock: {error}") from error
     section = document.get("macos_toolchain")
     if not isinstance(section, dict):
         raise BootstrapError(f"{path}: no macos_toolchain section")

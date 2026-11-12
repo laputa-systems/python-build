@@ -9,7 +9,7 @@ from buildsys.deporder import (
     LINUX_DEPENDENCY_ORDER,
     MACOS_DEPENDENCY_ORDER,
 )
-from buildsys.inputs import load_lock
+from buildsys.inputs import locked_inputs
 from buildsys.product import PRODUCT
 from buildsys.scope import (
     EXCLUDED_SCRIPT_PREFIXES,
@@ -42,13 +42,13 @@ class ScopeTests(unittest.TestCase):
         self.assertFalse(GUI_CLOSURE.intersection(LINUX_DEPENDENCY_ORDER))
         self.assertFalse(GUI_CLOSURE.intersection(MACOS_DEPENDENCY_ORDER))
         lock = Path(__file__).resolve().parents[1] / "sources.lock.json"
-        self.assertFalse(GUI_CLOSURE.intersection(item.name for item in load_lock(lock)))
+        self.assertFalse(GUI_CLOSURE.intersection(item.name for item in locked_inputs(lock)))
 
     def test_packaging_components_are_not_locked_inputs(self):
         # pip was removed from the lock by the 2026-09-18 decision: an input
         # that is never acquired, built, or shipped does not belong there.
         lock = Path(__file__).resolve().parents[1] / "sources.lock.json"
-        names = {item.name for item in load_lock(lock)}
+        names = {item.name for item in locked_inputs(lock)}
         self.assertNotIn("pip", names)
 
     def test_macos_does_not_build_libraries_the_platform_provides(self):

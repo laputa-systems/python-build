@@ -33,7 +33,7 @@ from buildsys.elf import (
     writable_executable_loads_report,
 )
 from buildsys.generations import active_generation, publish_generation
-from buildsys.inputs import InputError, load_lock
+from buildsys.inputs import InputError, locked_inputs
 from buildsys.package import (
     PackageError,
     build_manifest,
@@ -133,7 +133,7 @@ def require_macos_pgo_recipe() -> dict:
     if not Path(optimization.get("llvm_profdata", "")).is_file():
         raise PackagingError("macOS PGO recipe's llvm-profdata is not present")
     source = recipe.get("source", {})
-    cpython = [entry for entry in load_lock(REPO / "sources.lock.json") if entry.name == "cpython"]
+    cpython = [entry for entry in locked_inputs(REPO / "sources.lock.json") if entry.name == "cpython"]
     if len(cpython) != 1:
         raise PackagingError("source lock must contain exactly one CPython pin")
     pin = cpython[0]
