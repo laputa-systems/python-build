@@ -2175,6 +2175,7 @@ typedef struct {
     uint16_t guard_tos_exact_int;
     uint16_t unary_negative;
     uint16_t unary_negative_float_inplace;
+    uint16_t unary_invert;
 } _PyJitLeafOpcodes;
 
 typedef struct {
@@ -2191,7 +2192,7 @@ typedef struct {
     uint64_t result;
 } _PyJitLeafStep;
 
-static_assert(sizeof(_PyJitLeafOpcodes) == 158, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
+static_assert(sizeof(_PyJitLeafOpcodes) == 160, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
 static_assert(_Alignof(PyObject) >= 4, "leaf result tags use two object-alignment bits");
 static_assert(sizeof(_PyJitLeafUop) == 16, "_PyJitLeafUop matches Rust LeafUop");
 static_assert(offsetof(_PyJitLeafUop, operand) == 8, "LeafUop operand offset matches Rust");
@@ -2275,6 +2276,7 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         .guard_tos_exact_int = _GUARD_TOS_EXACT_INT,
         .unary_negative = _UNARY_NEGATIVE,
         .unary_negative_float_inplace = _UNARY_NEGATIVE_FLOAT_INPLACE,
+        .unary_invert = _UNARY_INVERT,
     };
     _PyJitLeafUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
     _PyJitLeafStep *steps = PyMem_RawMalloc(UOP_MAX_TRACE_LENGTH * sizeof(*steps));
@@ -2290,7 +2292,7 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         bool arithmetic = (float_node(opcode, &kind, &detail) && kind == JIT_OPT_KIND_FLOAT_ARITH)
                           || (int_node(opcode, &kind, &detail) && kind == JIT_OPT_KIND_INT_ARITH)
                           || opcode == _BINARY_OP_POWER_FLOAT || opcode == _BINARY_OP_ADD_FLOAT_INT
-                          || opcode == _UNARY_NEGATIVE;
+                          || opcode == _UNARY_NEGATIVE || opcode == _UNARY_INVERT;
         uops[i] = (_PyJitLeafUop){
             .opcode = opcode,
             .oparg = buffer[i].oparg,

@@ -80,12 +80,13 @@ pub struct LeafOpcodes {
     pub guard_tos_exact_int: u16,
     pub unary_negative: u16,
     pub unary_negative_float_inplace: u16,
+    pub unary_invert: u16,
 }
 
 impl LeafOpcodes {
     fn virtual_arithmetic(&self, opcode: u16) -> bool {
         self.virtual_kind(opcode).is_some() || opcode == self.unary_negative
-            || opcode == self.unary_negative_float_inplace
+            || opcode == self.unary_negative_float_inplace || opcode == self.unary_invert
     }
 
     fn virtual_kind(&self, opcode: u16) -> Option<ScalarKind> {
@@ -439,7 +440,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
             values.extend([VirtualValue::OwnedUnknown, owner]);
             replacement = opcode;
         }
-        else if opcode == ops.unary_negative || opcode == ops.unary_negative_float_inplace {
+        else if opcode == ops.unary_negative || opcode == ops.unary_negative_float_inplace || opcode == ops.unary_invert {
             let Some(value) = values.pop() else { return Err(Inconsistent) };
             let kind = match value {
                 VirtualValue::Scalar(kind, _) => kind,
@@ -449,6 +450,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                 }
                 _ => return Ok(None),
             };
+            if opcode == ops.unary_invert && !kind.implies(ScalarKind::ExactInt) { return Ok(None) }
             let Some(value) = value.narrow_scalar(kind, &mut arguments) else { return Ok(None) };
             if opcode == ops.unary_negative_float_inplace {
                 if value != VirtualValue::Scalar(ScalarKind::Float, ScalarOwnership::Fresh) {
@@ -460,7 +462,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                 if u32::try_from(uop.operand).ok().filter(|offset| *offset != 0).is_none() {
                     return Err(Inconsistent);
                 }
-                values.extend([VirtualValue::Scalar(kind, ScalarOwnership::Fresh), value]);
+                values.extend([VirtualValue::Scalar(if opcode == ops.unary_invert { ScalarKind::ExactInt } else { kind }, ScalarOwnership::Fresh), value]);
             }
             replacement = opcode;
             operations += 1;
@@ -909,7 +911,7 @@ mod tests {
             int_inplace_right: [92, 93, 94], guard_tos_int: 95, guard_nos_int: 96,
             overflow_tos: 97, overflow_nos: 98, pop_int: 100,
             float_add_int: 101, guard_tos_exact_int: 102,
-            unary_negative: 103, unary_negative_float_inplace: 104,
+            unary_negative: 103, unary_negative_float_inplace: 104, unary_invert: 105,
         }
     }
 
@@ -1066,7 +1068,7 @@ mod tests {
         assert!(output.iter().all(|step| *step == untouched));
         assert_eq!(std::mem::size_of::<LeafUop>(), 16);
         assert_eq!(std::mem::size_of::<LeafStep>(), 16);
-        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 158);
+        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 160);
     }
 
     fn pair() -> Vec<LeafUop> {
@@ -1265,6 +1267,40 @@ mod tests {
         input[14].opcode = ops.unary_negative_float_inplace;
         input[13].opcode = ops.store_fast.first;
         assert!(virtual_body(&input, 2, &ops, false).unwrap().is_none());
+    }
+
+    #[test]
+    fn virtual_invert_drops_compact_proof_and_preserves_cleanup_and_targets() {
+        let ops = opcodes();
+        for guard in [ops.guard_tos_int, ops.guard_tos_exact_int] {
+            for load in [ops.load_borrow.first, ops.load_fast.first] {
+                let mut input = float_call()[..6].to_vec();
+                input.extend([uop(load, 0), uop(guard, 0),
+                    LeafUop { opcode: ops.unary_invert, oparg: 0, effectful: 1, operand: 9 },
+                    uop(if load == ops.load_borrow.first { ops.pop_borrow } else { ops.pop_int }, 0),
+                    uop(ops.load_borrow.first, 0), uop(ops.overflow_nos, 0),
+                    uop(ops.overflow_tos, 0),
+                    LeafUop { opcode: ops.int_arithmetic[2], oparg: 0, effectful: 1, operand: 17 },
+                    uop(ops.pop_borrow, 0), uop(ops.pop_int, 0),
+                    uop(ops.heap_safe, 0), uop(ops.return_value, 0)]);
+                let body = virtual_body(&input, 2, &ops, false).unwrap().unwrap();
+                assert_eq!(body.changes[3].opcode, ops.unary_invert);
+                assert_eq!(body.changes[3].index, 8);
+                assert_eq!(body.changes[4].opcode, input[9].opcode);
+                assert!(body.guards.iter().any(|g| g.index == 11 && g.opcode == ops.guard_nos_int));
+                let plan = plan_leaf_calls(&input, &ops).unwrap().unwrap();
+                assert!(plan.iter().any(|step| step.opcode == ops.guard_nos_int && step.source == 11));
+                assert!(plan.iter().any(|step| step.opcode == ops.unary_invert && step.source == 8));
+                assert_eq!((input[8].operand, input[13].operand), (9, 17));
+                input[7].opcode = ops.guard_tos_float;
+                assert!(virtual_body(&input, 2, &ops, false).unwrap().is_none());
+                input[7].opcode = ops.nop;
+                assert!(virtual_body(&input, 2, &ops, false).unwrap().is_none());
+                input[7].opcode = guard;
+                input[8].operand = 0;
+                assert!(matches!(virtual_body(&input, 2, &ops, false), Err(Inconsistent)));
+            }
+        }
     }
 
     #[test]
