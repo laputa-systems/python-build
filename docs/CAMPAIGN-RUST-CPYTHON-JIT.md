@@ -2549,7 +2549,7 @@ Next slice: virtualize existing `_BINARY_OP_ADD_FLOAT_INT`; refine `CompactInt` 
 Parked compiler work: `campaign/c0` (pre-existing report committed as `e2b4fde`), `campaign/c2-layout`, `campaign/c2-memgate`; historical/unreviewed alternatives, not required for closed C3. Review against main before any reuse or integration.
 Parked J/reference work: `campaign/t2-store`, `campaign/t3-pending` (array-store experiment), `campaign/t3-inline` (dropped linked-frame experiment), `campaign/r1` (older CinderX study), `campaign/jit-main-ref` (matched C3 reference). Reopen only for an explicit feature/reference review.
 Protected `.work/wt/` trees: `c2`, `c3`, `j3`, `jit-loop`, `r0` retain compiler/epoch/per-step gate stages; `jit-integrate` retains frozen `4b66ce3` oracle; `jit-main-ref` retains matched C3/pins; `jit-pair` retains current candidate/evidence; `c0`, `r1`, `t2-unbox` retain parked report/source and their evidence.
-Cleanup candidates `.work/wt/r1b` and `.work/wt/t3-measure` are integrated, completed analysis lanes; preserve useful ignored reports/artifacts before retirement. A requested cleanup worker follows this pause; preserve all protected stages and parked source.
+Cleanup complete: retired `.work/wt/r1b` and `.work/wt/t3-measure`; verified archives and report at `.work/campaign-archive/winddown-20261112/cleanup-report.md`. Protected stage identities and interpreter imports pass; root scratch remains. `campaign/r1b` is retained after the helper’s upstream branch-deletion refusal; no force used.
 Owner routing/API reviews remain asynchronous in **Owner decisions**; acceptance details are in the feature sections and **Ledger**. No campaign runner, cron or feature agent remains active.
 
 ## CinderX catalog
