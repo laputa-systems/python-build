@@ -1443,7 +1443,7 @@ Targets stand unless the owner moves them; T2 does not wait for an answer.
 
 - CPython 3.15.1 from the root `sources.lock.json` archive (sha256
   `673ae723…f99b`): `./configure --prefix=$PWD/.work/r1/install
-  --with-ensurepip=install`, `make`, `make install`.
+  --with-ensurepip=install`, `make`, then the install step.
 - CinderX `e48f370dfcc045db32ac19142419043342b10cfb`: `python3 setup.py
   bdist_wheel` with that interpreter, then install the wheel into it. Closure:
   CinderX MIT, asmjit Zlib, and fmt, parallel-hashmap, usdt, capstone, and
@@ -1488,7 +1488,7 @@ the pinned toolchain.
 
 **Vetting result (2026-11-10).** Archive sha256
 `4db43e58bd6f3b7e46728f686c7482d4404b61fe5143371642e1940041d3e84b`, 3,445,293
-bytes. `cargo test -p serc --locked` passes 8,624 tests on `nightly-2026-09-15`
+bytes. `cargo test --locked` in the serc crate passes 8,624 tests on `nightly-2026-09-15`
 with the locked clang 23.1.4, against CPython 3.12-3.15 oracles. The non-dev
 closure is 97 crates, all permissive (MIT, Apache-2.0, BSD, Unicode, Zlib,
 Unlicense), plus `ruff_python_parser` at git `9d0f58b1`. Three constraints
@@ -1517,7 +1517,7 @@ the lock holds only the library's 97 normal and 19 build-only crates; the CLI,
 benchmark crates, `mimalloc`, and `rayon` stay in Serc's own test workspace.
 `build.py fetch` verifies the archive, applies `serc-overlay/`, and caches the
 lane lock and the Serc test workspace from `https://index.crates.io` in the
-private Cargo home. Offline `cargo test -p serc --locked --no-fail-fast` runs
+private Cargo home. Offline `cargo test --locked --no-fail-fast` in the serc crate runs
 8,624 tests on `nightly-2026-09-15` with the locked LLVM: with
 `SERC_TEST_PYTHON` naming CPython 3.14.5, 6,777 pass and the other 1,847
 fail only their oracle precondition: the 3.13 and 3.15 oracles must be
@@ -1575,8 +1575,8 @@ every case: 3,045 files, 9,135 cases, 9,102 exact, 0 mismatches, 0 Serc
 refusals. The other 33 cases are 11 files the oracle itself rejects with
 `SyntaxError`, at each level. `python3 rust-cpython/tests/serc_parity.py`
 rebuilds the CLI offline from the cached archive plus `serc-overlay/` and
-reruns the census; it exits nonzero on any mismatch. `cargo test -p serc -p
-serc-cli --locked --offline` passes with every `SERC_TEST_PYTHON*` oracle
+reruns the census; it exits nonzero on any mismatch. `cargo test --locked --offline` in the serc and
+serc-cli crates passes with every `SERC_TEST_PYTHON*` oracle
 set, `SERC_TEST_PYTHON_316` naming `perf-upstream`. Each 3.16 codegen
 change carries a test pinning Serc's marshal bytes to oracle output in
 `serc-overlay/crates/serc/tests/fixtures/python316_parity/`.
@@ -1683,7 +1683,7 @@ address all of them:
   nested f-strings route, and a thread with under 2 MiB of C stack compiles
   with the C compiler.
 
-Checked on `b4c2a8a`: `cargo test -p serc --lib` passes 1,257;
+Checked on `b4c2a8a`: `cargo test --lib` in the serc crate passes 1,257;
 `tests/test_serc_compile.py` passes 7; `test_compile test_grammar
 test_syntax test_patma test_exceptions` pass under `--serc-verify`; every
 review reproducer behaves as on the C compiler. With the Serc CLI against the
@@ -1807,7 +1807,7 @@ path was removed. Six marshal fixtures pin the crashing and skipping repros
 `return_in_else_finally_under_finally`,
 `return_in_finally_under_finally_no_raise`); `serc_parity.py` now generates
 270 `try`/`finally`/`except`/`with`/`for`/`while` programs (nesting depth up to
-3, `return`/`break`/`continue`). `cargo test -p serc --lib` passes 1,250;
+3, `return`/`break`/`continue`). `cargo test --lib` in the serc crate passes 1,250;
 `perf-rust-serc-v3` builds clean; both review repros equal the C compiler; the
 parity census reports 0 mismatches in 10,005 cases; the full suite fails
 exactly the e891 set.
@@ -1821,7 +1821,7 @@ with `--serc-verify` that set plus `test_compile`. The in-process census
 (the C compiler, same source) and `perf-upstream` in all 9,135 cases, with and
 without `PYTHONSERCVERIFY=1`. `serc_parity.py --oracle` against `perf-rust`,
 whose corpus also holds that build's overlay modules, has 9,195 cases, 9,162
-exact, 0 mismatches and 33 oracle refusals. `cargo test -p serc --lib` passes
+exact, 0 mismatches and 33 oracle refusals. `cargo test --lib` in the serc crate passes
 1,243 tests, `tests.test_perf` and `tests.test_build` pass 200, and
 `tests/test_serc_compile.py` passes on `perf-rust-serc`.
 
@@ -1882,7 +1882,7 @@ pins it. The review-relevant bytes are in `rust-cpython/serc-overlay` only.
 
 Evidence for this round, on macOS arm64 from an empty bytecode cache.
 `perf.py build --name perf-rust-serc-v3 --serc` exits 0 (58 release Rust
-extensions verified, 374s). `cargo test -p serc --lib` passes 1,260, including
+extensions verified, 374s). `cargo test --lib` in the serc crate passes 1,260, including
 the three new marshal fixtures. `PYTHONSERCVERIFY=1` compiles each repro
 (`l7src.py`, `r_or.py`, `r_9andtrue.py`) with `same`. `python -m test
 test_compile test_grammar test_syntax test_patma test_exceptions` under verify
@@ -1955,7 +1955,7 @@ observed the same effects. The four `with` cases are one `NOP` CPython keeps
 at the manager-merge label, which changes code size, jumps and the exception
 table's target offsets but no handler depth or protected instruction.
 
-Evidence: `cargo test -p serc --lib` passes 1,243 tests (the new fixture fails
+Evidence: `cargo test --lib` in the serc crate passes 1,243 tests (the new fixture fails
 on the unpatched analysis); with the fixed Serc CLI the async corpus drops
 from 65 to 57 differing, and the five observable programs and the three latent
 sibling-target programs become exact; the C1 corpus census against

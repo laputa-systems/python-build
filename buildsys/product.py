@@ -75,8 +75,14 @@ class Product:
     def local_archive_name(self, target: str, revision: str) -> str:
         return f"cpython-{self.version_string}-{target}-{revision}.tar.gz"
 
-    def mirror_archive_name(self, tag: str, target: str) -> str:
-        return f"cpython-{self.version_string}+{tag}-{target}-install_only_stripped.tar.gz"
+    def mirror_archive_name(self, build: str, target: str) -> str:
+        return f"cpython-{self.version_string}+{build}-{target}-install_only_stripped.tar.gz"
+
+    def release_archive_name(self, target: str) -> str:
+        return f"cpython-{self.version_string}-{target}.tar.xz"
+
+    def release_manifest_name(self, target: str) -> str:
+        return f"cpython-{self.version_string}-{target}.manifest.json"
 
 
 def load_product(lock_path: Path = SOURCE_LOCK) -> Product:

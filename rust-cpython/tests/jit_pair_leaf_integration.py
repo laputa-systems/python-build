@@ -3,7 +3,6 @@ import os
 import subprocess
 import sys
 
-
 PROGRAM = r'''
 import _opcode
 import gc
@@ -167,7 +166,7 @@ def run(jit, kind):
     program = program.replace("__PAIR_TYPE__", kind)
     completed = subprocess.run([sys.executable, "-s", "-c", program],
         env=dict(os.environ, PYTHON_JIT="1" if jit else "0"),
-        capture_output=True, text=True, timeout=30)
+        capture_output=True, text=True, timeout=30, check=False)
     assert completed.returncode == 0, (jit, completed.returncode, completed.stderr)
     return json.loads(completed.stdout)
 

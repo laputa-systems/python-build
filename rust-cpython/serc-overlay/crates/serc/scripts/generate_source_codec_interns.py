@@ -120,7 +120,7 @@ def generate(checkout: Path, version: str) -> tuple[Path, str]:
     blocks = re.findall(
         r"static\s+(?:struct\s+)?(PyMethodDef|PyMemberDef|PyGetSetDef)\s+(\w+)\[\]\s*=\s*\{(.*?)\};",
         native,
-        re.S,
+        re.DOTALL,
     )
     expected_blocks = {
         "codecctx_getsets",
@@ -159,7 +159,7 @@ def generate(checkout: Path, version: str) -> tuple[Path, str]:
     for codec, module in (("euc_jp", "jp"), ("big5", "tw")):
         cjk = sources[f"Modules/cjkcodecs/_codecs_{module}.c"]
         mapping_list = re.search(
-            r"BEGIN_MAPPINGS_LIST\((\d+)\)(.*?)END_MAPPINGS_LIST", cjk, re.S
+            r"BEGIN_MAPPINGS_LIST\((\d+)\)(.*?)END_MAPPINGS_LIST", cjk, re.DOTALL
         )
         if not mapping_list:
             raise ValueError("missing CJK mapping list")

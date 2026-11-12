@@ -1,13 +1,12 @@
-from pathlib import Path
 import re
 import shlex
 import subprocess
 import sys
 import sysconfig
 import tempfile
+from pathlib import Path
 
 from test.support import SuppressCrashReport
-
 
 LANE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LANE))
@@ -16,7 +15,7 @@ import perf
 
 def compile_validator(source, directory):
     checker = source[source.index("#define CHECK(PRED)"):source.index("#undef CHECK")]
-    terminator = re.search(r"static int\nis_terminator\(.*?\n}\n", source, re.S)
+    terminator = re.search(r"static int\nis_terminator\(.*?\n}\n", source, re.DOTALL)
     assert terminator is not None
     program = r'''
 #include "Python.h"
@@ -73,7 +72,7 @@ int main(int argc, char **argv)
         "-I" + str(paths["build"]), "-I" + str(original / "Include"),
         "-I" + str(original / "Include/internal"), str(cfile), "-o", str(binary),
         *shlex.split(sysconfig.get_config_var("LDFLAGS") or "")]
-    result = subprocess.run(command, capture_output=True, text=True, timeout=60)
+    result = subprocess.run(command, capture_output=True, text=True, timeout=60, check=False)
     assert result.returncode == 0, (result.stdout, result.stderr)
     return binary
 
@@ -86,7 +85,7 @@ def main():
         binary = compile_validator(source, Path(directory))
         with SuppressCrashReport():
             for case in range(4):
-                result = subprocess.run([str(binary), str(case)], capture_output=True, text=True, timeout=10)
+                result = subprocess.run([str(binary), str(case)], capture_output=True, text=True, timeout=10, check=False)
                 if case < 3:
                     assert result.returncode == 0, (case, result.returncode, result.stderr)
                 else:

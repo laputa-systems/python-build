@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
+import lzma
 import shutil
 import tempfile
 import unittest
@@ -49,13 +51,18 @@ class NamingTests(unittest.TestCase):
 
     def test_metadata_entry_encodes_build_separator(self) -> None:
         entry = metadata_entry(
-            "aarch64-apple-darwin", "20261022", "https://example.invalid/dl", "0" * 64
+            "aarch64-apple-darwin",
+            "20261022",
+            f"release-{REVISION}",
+            "https://example.invalid/dl",
+            "0" * 64,
         )
         self.assertEqual(
             entry["url"],
-            "https://example.invalid/dl/20261022/"
+            f"https://example.invalid/dl/release-{REVISION}/"
             + asset_name("20261022", "aarch64-apple-darwin").replace("+", "%2B"),
         )
+        self.assertEqual(entry["build"], "20261022")
         self.assertEqual((entry["major"], entry["minor"], entry["patch"]), PRODUCT.version)
 
 
@@ -159,19 +166,44 @@ class AssembleTests(unittest.TestCase):
             )
 
             self.assertEqual(report["source_revision"], REVISION)
+            self.assertEqual(report["release_tag"], f"release-{REVISION}")
+            self.assertEqual(report["build"], "20261022")
             self.assertEqual(set(report["assets"]), {
                 *[asset_name("20261022", triple) for triple in TARGETS],
                 *[f"artifact-{triple}.json" for triple in TARGETS],
+                *[PRODUCT.release_archive_name(triple) for triple in TARGETS],
+                *[PRODUCT.release_manifest_name(triple) for triple in TARGETS],
+                "download-metadata.json",
+                "smoke-metadata.json",
             })
             sums = (output / "SHA256SUMS").read_text()
+            listed = [line.split("  ", 1)[1] for line in sums.splitlines()]
+            self.assertEqual(listed, sorted(listed))
+            self.assertEqual(
+                set(listed), {path.name for path in output.iterdir()} - {"SHA256SUMS"}
+            )
+            for line in sums.splitlines():
+                digest, name = line.split("  ", 1)
+                self.assertEqual(hashlib.sha256((output / name).read_bytes()).hexdigest(), digest)
+            lock_sha256 = hashlib.sha256((REPO / "sources.lock.json").read_bytes()).hexdigest()
             for triple in TARGETS:
-                archive_name = asset_name("20261022", triple)
-                self.assertEqual(
-                    hashlib.sha256((output / archive_name).read_bytes()).hexdigest(),
-                    next(line.split()[0] for line in sums.splitlines() if line.endswith(archive_name)),
-                )
                 artifact = json.loads((output / f"artifact-{triple}.json").read_text())
                 self.assertEqual(artifact["source_revision"], REVISION)
+                with gzip.open(output / asset_name("20261022", triple)) as legacy:
+                    expected_tar = legacy.read()
+                with lzma.open(output / PRODUCT.release_archive_name(triple)) as standard:
+                    self.assertEqual(standard.read(), expected_tar)
+                manifest = json.loads((output / PRODUCT.release_manifest_name(triple)).read_text())
+                self.assertEqual(manifest["schema_version"], 1)
+                self.assertEqual(manifest["product"], "cpython")
+                self.assertEqual(manifest["version"], PRODUCT.version_string)
+                self.assertEqual(manifest["target"], triple)
+                self.assertEqual(manifest["source_revision"], REVISION)
+                self.assertEqual(manifest["sources_lock_sha256"], lock_sha256)
+                self.assertEqual(
+                    manifest["archive"]["sha256"],
+                    hashlib.sha256((output / PRODUCT.release_archive_name(triple)).read_bytes()).hexdigest(),
+                )
             release = json.loads((output / "download-metadata.json").read_text())
             smoke = json.loads((output / "smoke-metadata.json").read_text())
             self.assertEqual(set(release), set(smoke))
@@ -179,11 +211,25 @@ class AssembleTests(unittest.TestCase):
                 release[f"cpython-{PRODUCT.version_string}-darwin-aarch64-none"]["sha256"],
                 smoke[f"cpython-{PRODUCT.version_string}-darwin-aarch64-none"]["sha256"],
             )
+            smoke_entry = smoke[f"cpython-{PRODUCT.version_string}-darwin-aarch64-none"]
+            self.assertTrue(smoke_entry["url"].startswith(f"{CANONICAL_PREFIX}/release-{REVISION}/"))
+            self.assertEqual(smoke_entry["build"], "20261022")
             self.assertTrue(
-                smoke[f"cpython-{PRODUCT.version_string}-darwin-aarch64-none"]["url"].startswith(
-                    CANONICAL_PREFIX
+                release[f"cpython-{PRODUCT.version_string}-darwin-aarch64-none"]["url"].startswith(
+                    f"https://github.com/owner/name/releases/download/release-{REVISION}/"
                 )
             )
+
+    def test_rejects_a_build_id_that_is_not_a_date(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            dist, budgets = self._input_tree(root)
+            self._budgets(budgets)
+            with self.assertRaisesRegex(UvMirrorError, "YYYYMMDD"):
+                assemble(
+                    f"release-{REVISION}", "owner/name", dist, root / "release",
+                    expected_revision=REVISION, budgets_path=budgets,
+                )
 
     def test_rejects_revision_mismatch_and_preserves_existing_output(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -3,7 +3,6 @@ import os
 import subprocess
 import sys
 
-
 PROGRAM = r'''
 import _opcode
 import _testcapi
@@ -171,7 +170,7 @@ def run(jit, optimize=True):
     completed = subprocess.run([sys.executable, "-s", "-c", PROGRAM],
         env=dict(os.environ, PYTHON_JIT="1" if jit else "0",
                  PYTHON_UOPS_OPTIMIZE="1" if optimize else "0"),
-        capture_output=True, text=True, timeout=120)
+        capture_output=True, text=True, timeout=120, check=False)
     assert completed.returncode == 0, (jit, optimize, completed.returncode, completed.stderr)
     return json.loads(completed.stdout)
 
@@ -183,15 +182,15 @@ def main():
     results = reference["results"]
     assert results["constants"] == [float(1).hex(), 7000, 0]
     assert results["zero"][:3] == ["ZeroDivisionError", "division by zero", "outer"]
-    assert results["zero"][-1][-1][-1] == {"a": float(1.25).hex(), "unused": "unused", "first": float(3.75).hex()}
+    assert results["zero"][-1][-1][-1] == {"a": 1.25.hex(), "unused": "unused", "first": 3.75.hex()}
     assert results["zero progress"] == [7016, 0]
     assert results["fallback"] == [float(12).hex(), 7016, 0]
     assert results["allocation"][:3] == ["MemoryError", "", "None"]
-    assert results["allocation"][-1][-1][-1] == {"a": float(2.5).hex(), "unused": "unused", "first": float(5).hex()}
-    assert results["finalizer"] == [float(1.25).hex(), 14032, 0]
-    assert results["events"][0] == ["arithmetic", {"a": float(1.25).hex(), "b": "unused", "unused": "unused", "first": float(3.75).hex()}, float(3.75).hex()]
+    assert results["allocation"][-1][-1][-1] == {"a": 2.5.hex(), "unused": "unused", "first": float(5).hex()}
+    assert results["finalizer"] == [1.25.hex(), 14032, 0]
+    assert results["events"][0] == ["arithmetic", {"a": 1.25.hex(), "b": "unused", "unused": "unused", "first": 3.75.hex()}, 3.75.hex()]
     assert results["events"][-3][:2] == ["finalizer", "second"]
-    assert results["events"][-2] == ["nested", float(1.25).hex()]
+    assert results["events"][-2] == ["nested", 1.25.hex()]
     assert results["events"][-1][:2] == ["finalizer", "first"]
     assert candidate["active"] == [True] * 6, candidate["active"]
     for label, entries in candidate["traces"].items():

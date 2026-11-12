@@ -304,7 +304,7 @@ class ToolchainSelectionTests(unittest.TestCase):
 class LinuxBootstrapLockTests(unittest.TestCase):
     def test_repository_lock_has_complete_exact_architecture_closures(self) -> None:
         locked = load_linux_bootstrap(LOCK)
-        self.assertEqual(locked.release, "3.25.0_alpha20260805")
+        self.assertEqual(locked.release, "3.24.2")
         self.assertEqual(locked.images["amd64"].platform, "linux/amd64")
         self.assertEqual(locked.images["arm64"].platform, "linux/arm64")
         self.assertEqual(locked.llvm.version, "23.1.5")

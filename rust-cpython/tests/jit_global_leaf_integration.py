@@ -3,7 +3,6 @@ import os
 import subprocess
 import sys
 
-
 PROGRAM = r'''
 import _opcode
 import _testinternalcapi
@@ -184,7 +183,7 @@ print(json.dumps({"results": RESULTS, "active": ACTIVE, "traces": TRACES}, sort_
 def run(jit):
     completed = subprocess.run([sys.executable, "-s", "-c", PROGRAM],
         env=dict(os.environ, PYTHON_JIT="1" if jit else "0"),
-        capture_output=True, text=True, timeout=120)
+        capture_output=True, text=True, timeout=120, check=False)
     if completed.returncode:
         raise AssertionError(f"JIT={int(jit)} exited {completed.returncode}:\n{completed.stderr}")
     return json.loads(completed.stdout)

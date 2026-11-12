@@ -1,7 +1,8 @@
 import os
-from pathlib import Path
 import ssl
 import tempfile
+from pathlib import Path
+
 import test
 
 

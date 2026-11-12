@@ -44,7 +44,7 @@ Unlicense), including `psm` 0.1.32 through `stacker` 0.1.25 and
 `ruff_python_parser` 0.0.15 at git `9d0f58b1`. Every lane cargo invocation
 exports `HOST_CC`, `HOST_CXX`, and `HOST_AR` as the locked LLVM tools because
 cc-rs prefers them over `CC`; `psm` compiles its assembly through that clang.
-`cargo test -p serc --locked` runs offline in the assembled archive tree
+`cargo test --locked` in the serc crate runs offline in the assembled archive tree
 (`work/source/serc` after a build) on `nightly-2026-09-15`.
 `python3 tests/serc_parity.py` builds Serc's CLI from the same archive and
 overlay under `work/serc-census/` and compares its 3.16 bytecode with

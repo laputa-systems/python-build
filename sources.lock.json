@@ -1,5 +1,5 @@
 {
-  "comment": "Project source lock. Hashes verified against downloaded bytes before use.",
+  "schema_version": 1,
   "inputs": [
     {
       "name": "cpython",

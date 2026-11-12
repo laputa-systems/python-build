@@ -35,7 +35,7 @@ def make_input(**overrides):
 class LockTests(unittest.TestCase):
     def write_lock(self, root: Path, document) -> Path:
         path = root / "lock.json"
-        path.write_text(json.dumps(document))
+        path.write_text(json.dumps({"schema_version": 1, **document}))
         return path
 
     def test_bdb_metadata_is_version_specific(self):
@@ -72,6 +72,15 @@ class LockTests(unittest.TestCase):
             inputs = load_lock(path)
             self.assertEqual(len(inputs), 1)
             self.assertEqual(inputs[0].name, "sample")
+
+    def test_missing_or_unsupported_schema_version_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "lock.json"
+            for document in ({"inputs": []}, {"schema_version": 2, "inputs": []}):
+                with self.subTest(document=document):
+                    path.write_text(json.dumps(document))
+                    with self.assertRaisesRegex(InputError, "schema_version"):
+                        load_lock(path)
 
     def test_malformed_lock_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:

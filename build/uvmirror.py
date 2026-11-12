@@ -13,8 +13,8 @@ from buildsys.uvmirror import UvMirrorError, assemble
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Assemble uv-compatible release assets")
-    parser.add_argument("--tag", required=True, help="release/build tag, e.g. 20260923")
+    parser = argparse.ArgumentParser(description="Assemble release assets and uv-compatible metadata")
+    parser.add_argument("--build", required=True, help="uv build id, a UTC date such as 20260923")
     parser.add_argument("--repo", required=True, help="owner/name of this repository")
     parser.add_argument("--dist", default="dist", help="per-triple dist/ root")
     parser.add_argument("--out", default="release", help="output directory")
@@ -22,7 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         report = assemble(
-            args.tag,
+            args.build,
             args.repo,
             Path(args.dist),
             Path(args.out),

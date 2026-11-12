@@ -350,7 +350,7 @@ else:
 def run(jit: bool) -> dict[str, object]:
     env = dict(os.environ, PYTHON_JIT="1" if jit else "0")
     completed = subprocess.run([sys.executable, "-c", PROGRAM], env=env,
-                               capture_output=True, text=True, timeout=600)
+                               capture_output=True, text=True, timeout=600, check=False)
     if completed.returncode != 0:
         raise AssertionError(f"PYTHON_JIT={int(jit)} exited {completed.returncode}:\n"
                              f"{completed.stderr[-4000:]}")
@@ -361,7 +361,7 @@ def literal_checks() -> str | None:
     for jit in ("1", "0"):
         completed = subprocess.run([sys.executable, "-c", LITERAL_CHECKS],
                                    env=dict(os.environ, PYTHON_JIT=jit),
-                                   capture_output=True, text=True, timeout=60)
+                                   capture_output=True, text=True, timeout=60, check=False)
         if completed.returncode != 0:
             return f"PYTHON_JIT={jit}: {completed.stderr[-4000:]}"
     return None

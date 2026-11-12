@@ -32,7 +32,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .inputs import Input, InputError
+from .inputs import LOCK_SCHEMA_VERSION, Input, InputError
 from .recipes import Toolchain
 
 
@@ -336,6 +336,8 @@ def load_linux_bootstrap(path: Path) -> LinuxBootstrap:
         raise BootstrapError(f"cannot read bootstrap lock {path}: {error}") from error
     if not isinstance(document, dict):
         raise BootstrapError(f"{path}: expected a top-level object")
+    if document.get("schema_version") != LOCK_SCHEMA_VERSION:
+        raise BootstrapError(f"{path}: unsupported lock schema_version {document.get('schema_version')!r}")
     section = document.get("linux_toolchain")
     if not isinstance(section, dict):
         raise BootstrapError(f"{path}: no linux_toolchain section")
@@ -557,6 +559,8 @@ def load_macos_toolchain(path: Path) -> MacOSToolchain:
         raise BootstrapError(f"cannot read bootstrap lock {path}: {error}") from error
     if not isinstance(document, dict):
         raise BootstrapError(f"{path}: expected a top-level object")
+    if document.get("schema_version") != LOCK_SCHEMA_VERSION:
+        raise BootstrapError(f"{path}: unsupported lock schema_version {document.get('schema_version')!r}")
     section = document.get("macos_toolchain")
     if not isinstance(section, dict):
         raise BootstrapError(f"{path}: no macos_toolchain section")

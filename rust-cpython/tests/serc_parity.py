@@ -17,6 +17,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(REPO), str(REPO / "rust-cpython")]
 
 import perf
+
 from benchmarks.harness.inputs import (
     LINUX_CP316_LOCK_PATH,
     MACOS_CP316_LOCK_PATH,
@@ -333,7 +334,7 @@ def run_serc(binary: Path, corpus: Path, files: list[Path], work: Path,
         log = work / f"serc-{optimize}.log"
         lines: list[str] = []
 
-        def compile_one(path: Path) -> tuple[Path, str, str]:
+        def compile_one(path: Path, optimize: int = optimize) -> tuple[Path, str, str]:
             relative = path.relative_to(corpus)
             pyc_path(path, optimize, mode).unlink(missing_ok=True)
             command = [
@@ -350,7 +351,8 @@ def run_serc(binary: Path, corpus: Path, files: list[Path], work: Path,
                 "--quiet",
             ]
             result = subprocess.run(
-                command, cwd=corpus, capture_output=True, text=True
+                command, cwd=corpus, capture_output=True, text=True,
+                check=False,
             )
             return (relative, *classify_serc(result.returncode, result.stderr, relative))
 
@@ -398,6 +400,7 @@ def run_oracle(oracle: Path, corpus: Path, files: list[Path], work: Path,
         [str(oracle), str(script), str(manifest), str(results)],
         capture_output=True,
         text=True,
+        check=False,
     )
     if result.returncode != 0:
         raise SystemExit(f"oracle batch failed: {result.stderr[-2000:]}")

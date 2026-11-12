@@ -3,7 +3,6 @@ import os
 import subprocess
 import sys
 
-
 PROGRAM = r'''
 import _opcode
 import dis
@@ -45,7 +44,7 @@ else:
 def run(jit, expression):
     completed = subprocess.run([sys.executable, "-s", "-c", PROGRAM.replace("__EXPRESSION__", expression)],
         env=dict(os.environ, PYTHON_JIT="1" if jit else "0"),
-        capture_output=True, text=True, timeout=20)
+        capture_output=True, text=True, timeout=20, check=False)
     assert completed.returncode == 0, (jit, completed.returncode, completed.stderr)
     return json.loads(completed.stdout)
 

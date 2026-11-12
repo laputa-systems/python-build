@@ -110,8 +110,8 @@ impl Error for ParsePythonVersionError {}
 /// General powers still use the host math library. Callers must qualify the
 /// selected artifact in the same math-library and floating-point environment;
 /// a matching Python version, compiler name, or profile alone does not establish
-/// byte-for-byte compatibility. See `docs/cpython-build-profiles.md` for the
-/// qualified artifact identities and environment requirements.
+/// byte-for-byte compatibility. The qualified artifact identities and
+/// environment requirements are recorded with each artifact.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum NativeBuildProfile {
     #[default]

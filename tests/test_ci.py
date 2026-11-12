@@ -4,40 +4,12 @@ import json
 import re
 import sys
 import unittest
-from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / ".github" / "scripts"))
 
-from resolve_release import resolve_release_tag, verify_existing_tag_target
 from verify_uv_python import verify_identity
-
-
-class ReleaseTagTests(unittest.TestCase):
-    def test_empty_tag_defaults_to_utc_date(self) -> None:
-        commit = "a" * 40
-        now = datetime(2026, 10, 22, 1, tzinfo=UTC)
-        self.assertEqual(resolve_release_tag("", commit, commit, now), "20261022")
-
-    def test_valid_tag_requires_matching_checkout_and_existing_ref(self) -> None:
-        commit = "a" * 40
-        self.assertEqual(
-            resolve_release_tag("3.15.1-20261022", commit, commit),
-            "3.15.1-20261022",
-        )
-        verify_existing_tag_target("3.15.1-20261022", commit, commit)
-
-    def test_invalid_tag_and_mismatched_commit_fail(self) -> None:
-        commit = "a" * 40
-        with self.assertRaisesRegex(ValueError, "invalid release tag"):
-            resolve_release_tag("$(touch bad)", commit, commit)
-        with self.assertRaisesRegex(ValueError, "checked out commit"):
-            resolve_release_tag("20261022", commit, "b" * 40)
-        with self.assertRaisesRegex(ValueError, "different commit"):
-            verify_existing_tag_target("20261022", commit, "b" * 40)
-        with self.assertRaisesRegex(ValueError, "full commit hash"):
-            resolve_release_tag("20261022", "deadbeef", "deadbeef")
 
 
 class UvInterpreterTests(unittest.TestCase):
@@ -83,7 +55,7 @@ class UvInterpreterTests(unittest.TestCase):
 
 class WorkflowContractTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.workflow = (ROOT / ".github" / "workflows" / "build.yml").read_text()
+        self.workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
 
     def test_all_actions_use_full_commit_pins(self) -> None:
         references = re.findall(r"^\s+uses: ([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)@([^\s]+)", self.workflow, re.MULTILINE)
@@ -92,30 +64,43 @@ class WorkflowContractTests(unittest.TestCase):
             with self.subTest(action=action):
                 self.assertRegex(revision, r"\A[0-9a-f]{40}\Z")
 
-    def test_preflight_validates_tag_and_runs_tests_before_builds(self) -> None:
+    def test_preflight_and_tests_run_before_builds(self) -> None:
+        self.assertFalse((ROOT / ".github" / "workflows" / "build.yml").exists())
+        preflight = self.workflow.index("  preflight:")
         tests = self.workflow.index("- name: Run fast controller tests")
         macos_build = self.workflow.index("  build-macos:")
         linux_build = self.workflow.index("  build-linux:")
+        self.assertLess(preflight, tests)
         self.assertLess(tests, macos_build)
         self.assertLess(tests, linux_build)
-        self.assertIn("RELEASE_TAG_INPUT: ${{ inputs.release_tag }}", self.workflow)
-        self.assertIn("python3.15 .github/scripts/resolve_release.py", self.workflow)
-        self.assertIn("needs: [prepare]", self.workflow)
-        self.assertNotIn('TAG="${{ inputs.release_tag }}"', self.workflow)
+        self.assertEqual(self.workflow.count("needs: [preflight, test]"), 2)
+        self.assertIn("workflow_dispatch:\n\npermissions: {}", self.workflow)
+        self.assertIn('"$REF" != "refs/heads/$default_branch"', self.workflow)
 
     def test_targets_and_release_gate_use_current_contract(self) -> None:
         self.assertIn('PYTHON_VERSION: "3.15.1"', self.workflow)
         self.assertEqual(self.workflow.count("runs-on: xcode-27"), 2)
-        self.assertIn("runs-on: ubuntu-24.04", self.workflow)
-        self.assertIn("runs-on: ubuntu-24.04-arm", self.workflow)
+        self.assertIn("- runs-on: ubuntu-26.04\n", self.workflow)
+        self.assertIn("runs-on: ubuntu-26.04-arm", self.workflow)
+        self.assertNotRegex(self.workflow, r"ubuntu-(latest|24\.04)")
         self.assertIn("aarch64-apple-darwin", self.workflow)
         self.assertIn("x86_64-unknown-linux-musl", self.workflow)
         self.assertIn("aarch64-unknown-linux-musl", self.workflow)
         self.assertIn("backend/build-no-openssl.py", self.workflow)
         self.assertIn("backend/docker-linux.py", self.workflow)
         self.assertIn("build/promote_openssl_free.py", self.workflow)
-        self.assertIn('gh release create "$RELEASE_TAG" --target "$GITHUB_SHA"', self.workflow)
-        self.assertNotIn("GH_TOKEN", self.workflow.split("  publish:", 1)[0])
+        self.assertIn('gh release create "$RELEASE_TAG" release/*', self.workflow)
+        self.assertIn('--target "$GITHUB_SHA"', self.workflow)
+        self.assertIn("--prerelease --verify-tag", self.workflow)
+        self.assertIn('--notes-file "$RUNNER_TEMP/release-notes.md"', self.workflow)
+        self.assertIn("- name: Write release notes", self.workflow)
+        self.assertEqual(
+            set(re.findall(r"RELEASE_TAG: (.+)", self.workflow)),
+            {"release-${{ github.sha }}"},
+        )
+        self.assertIn("(cd release && sha256sum -c SHA256SUMS)", self.workflow)
+        self.assertIn('--build "$build_id"', self.workflow)
+        self.assertNotIn("GH_TOKEN", self.workflow.split("  assemble:", 1)[1].split("  release:", 1)[0])
         self.assertNotIn("3.14", self.workflow)
         self.assertNotIn("macos-26", self.workflow)
         self.assertNotIn("1.2x", self.workflow)
