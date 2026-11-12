@@ -1168,7 +1168,7 @@ fn load_private_key(
     if selected_key_is_encrypted(pem_data)? {
         let (_, der) = pem_rfc7468::decode_vec(pem_data)
             .map_err(|error| format!("Invalid encrypted private key PEM: {error}"))?;
-        let info = pkcs8::EncryptedPrivateKeyInfo::try_from(der.as_slice())
+        let info = pkcs8::EncryptedPrivateKeyInfoRef::try_from(der.as_slice())
             .map_err(|error| format!("Invalid encrypted PKCS#8: {error}"))?;
         validate_key_encryption(&info.encryption_algorithm)?;
         let password = password.ok_or_else(|| "Private key is encrypted but no password was provided".to_string())?;
@@ -1200,7 +1200,7 @@ fn selected_key_is_encrypted(pem_data: &[u8]) -> Result<bool, String> {
     Ok(pem_data.starts_with(b"-----BEGIN ENCRYPTED PRIVATE KEY-----"))
 }
 
-fn validate_key_encryption(scheme: &pkcs8::pkcs5::EncryptionScheme<'_>) -> Result<(), String> {
+fn validate_key_encryption(scheme: &pkcs8::pkcs5::EncryptionScheme) -> Result<(), String> {
     use pkcs8::pkcs5::{pbes2::{EncryptionScheme, Kdf, Pbkdf2Prf}, EncryptionScheme as Scheme};
     let Scheme::Pbes2(parameters) = scheme else {
         return Err("Unsupported private key encryption; PBES2 is required".into());

@@ -93,9 +93,11 @@ Each lane works in its own worktree `.work/wt/<item>` on branch
   builds and tests share the host and gives a measurement exclusive use across
   all worktrees. Work outside `perf.py` (CinderX and Serc test builds) never
   runs while `perf.py status` shows a measurement holding the lease.
-- Until **Close**, timing gates are waived (OD14): no step waits for a quiet
-  host or a `perf-gate-ready` window, and no step lands or is rejected on a
-  timing result. The rules below apply to the timing gates **Close** runs.
+- During feature completion, performance gates are deferred (OD16): no step
+  waits for a quiet host or a `perf-gate-ready` window. Correctness, parity
+  and independent review still gate feature completion. Performance acceptance
+  stays open until the unchanged gates can run; a waiver is never a pass.
+  The rules below apply when **Close** resumes performance measurements.
 - Gate evidence counts only when `perf-gate-ready` exits 0 immediately before
   and `perf-gate-ready -1` exits 0 immediately after. If the gate refuses
   three times at least 20 minutes apart, record "perf gate deferred: host
@@ -204,8 +206,8 @@ them goes to the **Owner queue**.
 | `perf-serc-<item>` | `--serc` | C candidate |
 | `perf-rust-jit-serc` | `--jit --serc` | combined build at Close |
 
-`--serc` does not exist yet; C2 adds it to `perf.py build` and
-`rust-cpython/build.py build`. Serc is linked only into `--serc` builds.
+C2 added `--serc` to `perf.py build` and `rust-cpython/build.py build`.
+Serc is linked only into `--serc` builds.
 "Rebuild clean" means `perf.py clean --name <build>` then `perf.py build`
 with the table's flags at `main`'s head.
 
@@ -711,6 +713,68 @@ attribute and global inline caches whose invalidation honours descriptors,
 mutation, inheritance, lazy imports, and subinterpreters. Remove non-escaping
 allocations. Lengthen traces with loop peeling and invariant-guard hoisting.
 
+**Frame-free leaf calls (2026-11-11).** The Rust planner
+`Modules/_jit_opt_rs/src/leaf.rs` fuses a complete, guarded exact-argument
+call whose optimized body returns an argument, constant or preguarded slot. The new
+`_CALL_PY_LEAF` consumes the caller's arguments and produces the result
+without constructing a callee frame. Existing function-version, recursion,
+stack-space and PEP 523 checks remain before the call. The fused instruction
+also checks argument shape, executor validity and instrumentation before
+consuming anything; every refusal resumes the original call in tier 1.
+`_SAVE_RETURN_OFFSET` remains so finalizers observe the original caller IP.
+The result is made heap-safe before releasing arguments in reverse order,
+then self, function and executable. No guard, callback, allocation or side
+exit remains inside the removed body. Other callees keep ordinary frames.
+
+The private `_PyJitOpt_PlanLeafCalls` ABI takes opcode identities from C's
+generated table and returns transactional rewrite steps. Its two 32-bit
+instruction caches hold a constant address or a tagged argument index with an
+optional slot byte offset; Rust never dereferences Python objects. Unsupported bodies and
+allocation failure preserve the original trace. The pass is disabled for
+free-threaded and DTrace builds. Future bucket-(a) profiles must count
+`_CALL_PY_LEAF` as call work, alongside retained guards.
+
+`jit_leaf_integration.py` checks seven fused traces, including bound self,
+six arguments and a `None` result, against both JIT-off results and absolute
+expectations. It checks code rebinding and executor invalidation, argument,
+function and code finalizers, caller frame and exception state, tracing,
+profiling, monitoring, generator callers and threads. Three additional
+upstream instruction-shape assertions are named in
+`CLIMB_SUPERSEDED_UOP_ASSERTIONS`: `test_func_guards_removed_or_reduced` and
+`test_func_version_guarded_on_change` require `_PUSH_FRAME`, and
+`test_make_heap_safe_optimized_immortal` requires `_RETURN_VALUE`. Their
+replacement behavior and guards are covered by the integration test under
+the existing owner ruling.
+
+Slot getters are eligible only when the optimized body loads a borrowed
+argument, reads its slot and discards the borrowed owner before returning.
+Any surviving type guard rejects fusion: the existing optimizer must already
+have proved the owner layout before the call. The fused instruction reads the
+slot before consuming arguments and deopts at the original call if it is
+missing. Tier 1 then constructs the getter frame and raises the original
+exception. The slot result acquires its own reference before the receiver can
+be finalized. `jit_slot_leaf_integration.py` checks five getter traces,
+including an argument getter, inherited and unrelated owner layouts, descriptor invalidation,
+tracing/monitoring, and a finalizer that deletes the slot while the caller is
+running in the JIT. The latter must retain the getter's traceback frame.
+
+Global-return getters retain a pre-call `_CHECK_LEAF_GLOBALS_VERSION` that
+reads the called function's globals dictionary. The Rust planner moves one
+remaining globals guard from the pure callee body to the original call site;
+it keeps the existing dictionary watcher dependencies and constant result.
+The guard and the leaf call both retry at the caller's call instruction.
+Dictionary value replacement invalidates the executor before the old object
+is decref'd, so the call's validity check protects cached mortal results.
+Unresolved lazy imports and dictionary-subclass lookups remain ordinary
+calls because their loads are not constant-folded by the existing optimizer.
+`jit_global_leaf_integration.py` checks separate caller/callee dictionaries,
+shared-code functions, replacement, deletion, clear/update, builtin fallback,
+cached object collection, dictionary callbacks, lazy lookup errors and
+observer frames.
+
+General virtual frames, remaining lookup caches, loop
+peeling and invariant-guard hoisting remain T3 work.
+
 **Inline frames (dropped 2026-11-10, CORRECT; code parked on branch
 `campaign/t3-inline`, whose paths the citations below refer to).** A trace call site is
 elidable when `_INIT_CALL_PY_EXACT_ARGS*`, `_SAVE_RETURN_OFFSET` and
@@ -850,6 +914,29 @@ explained before it is ranked.
 
 Revisit whole-trace register allocation (the a1 attempt cut spills 8% for no
 measurable gain), then reduce stencil glue.
+
+**Whole-trace cache allocation (2026-11-11).**
+`Modules/_jit_opt_rs/src/cache.rs` chooses among generated input-cache
+variants with a four-state dynamic program. It minimizes explicit
+spill/reload stencils, then transferred stack references, while preserving
+the original final cache depth. An alternative may spill earlier, but never
+reloads more than the generated greedy choice requires at that depth; it
+cannot prefetch below the live operand stack. `_START_EXECUTOR` and
+`_JUMP_TO_TOP` keep their generated zero-depth boundaries. Omitted `_NOP`s
+do not carry transitions.
+
+The private `_PyJitOpt_PlanCache` ABI takes generated output and preferred
+depths and returns one chosen input depth per original instruction. C owns
+opcode selection and emission. Side exits use the selected variant's exit
+depth, and unboxed masks stay attached to the original instruction.
+Allocation failure, equal-cost plans and disabled optimization retain the
+existing allocator. Exhaustive short-trace tests compare the result with
+every permitted plan, including final depth and the no-prefetch constraint.
+Native `jit_cache_integration.py` covers arithmetic, calls, generators and
+exception exits, with an optional comparison of emitted spill/reload counts
+against a matched reference. These counts establish the rewrite mechanism;
+runtime and resource acceptance remain deferred under OD16. Stencil glue
+outside these explicit transitions remains separate T4 work.
 
 ### J acceptance
 
@@ -1105,6 +1192,407 @@ measured loss.
 
 The hook, the `--serc` flags, and the new workloads go to the **Owner queue**.
 
+**Implemented; exit not met (2026-11-10).** `perf.py build --serc` and
+`build.py build --serc` define `Py_SERC` and make the static carrier's
+optional `serc` feature a default, linking `overlay/serc-lane` (the C entry
+points) and Serc into `libpython`. A default build is unaffected: at the C2
+head every `libpython` section, rebase/bind/export table, and non-debug
+symbol equals a `perf-rust` built before C2 (only the debug-map UUID differs),
+and `libcpython_rust_staticlib.a` is byte-identical.
+`overlay/Python/pythonrun.c` routes source-mode `exec` requests to Serc by the
+rule in `rust-cpython/README.md` (In-process Serc): string or bytes input,
+flags limited to the source-form bits, an exact `str` filename, bytes that
+CPython decodes as UTF-8 without the codec registry, and no grammar only
+CPython's parser defines (the `barry_as_FLUFL` future, or nesting deeper than
+200). `eval`, `single`, AST, `FILE *`, flagged and inherited-future requests
+stay on the C compiler. The C compiler is the diagnostic authority: on a Serc
+refusal it runs only to raise CPython's exception, and the hook raises
+`SystemError` instead of returning C's code when C accepts; when Serc's scan
+finds a construct CPython may warn about, C runs for its warnings and its
+code is discarded. `PYTHONSERCVERIFY=1` (and `perf.py test --serc-verify`)
+compiles every Serc request with both and raises on any difference in the
+re-marshalled code or on a source C rejects. Serc's bytes load without the
+`marshal.loads` audit event and with CPython's object identity for 1-byte and
+1-character objects. C2 also committed the C1 3.16 target tables that the
+root `target/` ignore rule had kept out of C1's commits.
+
+After Serc's parse, source forms Ruff accepts but CPython rejects are left to
+CPython's parser: a parenthesized assignment-expression target, a `__debug__`
+match capture, a format spec nested deeper than CPython's three replacements,
+tab/space indentation its tokenizer rejects (and any module mixing tabs with
+backslash continuations, whose continuation-line check Serc does not model),
+and a module whose estimated parser stack reaches 5,000 of CPython's 6,000
+slots. The estimate sums the module's deepest bracket nesting at 27 slots, its
+deepest block nesting at 7, and its deepest expression nesting and longest
+`if`/`elif` chain at 1 each, weights measured on the C path. A long `elif`
+chain, deeply bracketed arms and deep `def` nesting all overflow there, and
+each overflow measured raises CPython's `MemoryError` on Serc too. A `\N{...}` escape missing from
+Ruff's `unicode_names2` 1.3.0 table (23,955 of Unicode 18's 172,808 names) is
+likewise left to CPython's name table, so no name raises `SystemError` and an
+unknown name raises CPython's `SyntaxError`.
+
+Evidence at `dbacf66`: an in-process census over the C1 corpus
+(`marshal.dumps(compile())` per file and level) equals `perf-upstream` in all
+9,135 cases, with and without `PYTHONSERCVERIFY=1`; the 26 frozen modules that
+`_freeze_module` compiles through Serc equal the default build's;
+`tests/test_serc_compile.py` passes on `perf-rust-serc`. `cold_python_startup`,
+`cold_import_django`, and `cold_import_app_stack` exist (run only when named,
+`-B -X frozen_modules=off` and a fresh empty `PYTHONPYCACHEPREFIX`, each child
+checking that only the import bootstrap is frozen and nothing came from a
+cache); `cold_import_app_stack` is unavailable like `import_app_stack`, so the
+exit's gate command must drop it until that closure is locked.
+
+The exit was met on `campaign/c2` rebased onto `main` `bd964f6` (2026-11-11,
+macOS arm64, empty bytecode cache), before the review fixes below changed
+Serc: `perf.py test --name perf-rust-serc-v3 --all` and `--all --serc-verify`
+each failed exactly `perf-rust`'s set, the e891 five (52,102 tests, 2,877
+skipped), plus one host-load flake in
+`test_concurrent_futures.test_process_pool` (2 of 5 isolated runs fail on
+`perf-rust` itself). `serc_parity.py --oracle perf-rust` reported 10,005
+cases, 0 mismatches. The memory bar is met under OD15. The close-out below
+repeats both full-suite runs and the census after the fixes.
+
+**Independent re-review (2026-11-11) and fixes.** The adversarial review of
+`d02ebce`..`b1ffca1` found nine defects; `852831a`, `b327c5c` and `b4c2a8a`
+address all of them:
+
+- *Finally exits (two segfaults, skipped finally bodies and `__exit__`
+  calls, a `range_iterator` left in `sys.exception()`).* Serc reconstructs
+  codegen.c's fblock unwind order from separate depth stacks and gets nested
+  exceptional finalizers wrong. On 3.16 a `return` inside a `finally` body,
+  or a `break`/`continue` that leaves one, now routes to the C compiler
+  (`cpython_only::compiler_rules`, `CompileError::RequiresCpythonCompiler`).
+  CPython warns on all of these (PEP 765), so the hook already ran the C
+  compiler for them. The Serc code paths for these shapes remain for
+  3.12-3.15 and are dead on 3.16.
+- *Folded Boolean discard lines (b1ffca1) and chained-comparison break
+  jumps (d02ebce)* match CPython in verify mode again; see `b327c5c`.
+- *Routing:* parameter defaults weigh into the parser-stack estimate, 150
+  nested f-strings route, and a thread with under 2 MiB of C stack compiles
+  with the C compiler.
+
+Checked on `b4c2a8a`: `cargo test -p serc --lib` passes 1,257;
+`tests/test_serc_compile.py` passes 7; `test_compile test_grammar
+test_syntax test_patma test_exceptions` pass under `--serc-verify`; every
+review reproducer behaves as on the C compiler. With the Serc CLI against the
+C compiler (scratch harness, not committed), the review's corpora show no
+behaviour difference in 10,533 programs (5,331 now routed) and no layout
+difference absent from the pre-review build. Layout differences that
+predate this campaign remain: 19 targeted, 184/719/42 in the three random
+control-flow corpora, 164 in the comparison grid (down from 288), plus
+`a and False and b` statements, a decisive folded discard ending a try body
+at a function's end, and a chained-comparison break in a `while` inside
+`finally`. These are verify-mode-only (line tables, exception tables, jump
+shapes).
+
+**Close-out verification at `8930b8a` (2026-11-11, macOS arm64).** An
+incremental `perf.py build --name perf-rust-serc-v3 --serc --incremental`
+records the clean committed overlay and verifies 58 release Rust extensions.
+`perf.py test --name perf-rust-serc-v3 --all` and the same command with
+`--serc-verify` each report 457 test files OK and exactly the five failing
+files in the existing `perf-rust` baseline: `test_asyncio.test_sendfile`,
+`test_asyncio.test_sslproto`, `test_multiprocessing_forkserver.test_misc`,
+`test_ssl` and `test_support`. Each runs 52,102 tests with 2,878 skipped.
+The process-pool flake does not recur. The verify run uses a fresh bytecode
+cache and reports no compiler difference. Logs are
+`rust-cpython/logs/perf-rust-serc-v3-all.log` and
+`rust-cpython/logs/perf-rust-serc-v3-all-serc-verify.log` in the C2 worktree.
+
+`serc_parity.py --oracle rust-cpython/stage-perf-rust/bin/python3.16`
+reports 10,005 cases: 9,159 exact matches, 813 Serc refusals under the
+finally-exit routing rule, and 33 oracle syntax refusals across 11 files.
+There are zero mismatches, panics or other Serc errors. The census exits 0;
+its result is `.work/tmp/c2-close-parity.json` in the C2 worktree.
+Timing gates remain deferred to **Close** under OD14.
+
+The independent close-out review of `b1ffca1..8930b8a` finds no new defect
+in the fixes or the compile-hook assumptions they use. The 2 MiB stack
+cutoff relies on the empirical headroom analysis. The regression test covers
+a 64 KiB thread, not the cutoff boundary or continued Serc use above it.
+C2 closes on `campaign/c2`, and C3 feature acceptance closes on `campaign/c3`
+(see C3's exit evidence). Continue J's T3/T4 feature backlog under OD16.
+The routing rules, compiler API and private hook changes remain in the
+asynchronous owner queue. Nothing is pushed.
+
+**Parity.** The eight Serc 3.16 defect classes the first full-suite runs found
+are fixed in `serc-overlay`, each pinned by a Serc test against
+`perf-upstream` (marshal fixtures in `tests/fixtures/python316_parity/`,
+refusal tests in `compiler/tests.rs`):
+
+- slice constants intern their identifier-like strings (gh-129724), sharing
+  the interned identity of equal names and constants;
+- annotation text writes a tuple comprehension target without parentheses
+  (`for i, _ in`) and keeps a generator's parentheses inside a subscript;
+- f- and t-string value patterns are refused;
+- a new pass, `compiler/static_blocks.rs`, refuses a code unit with more than
+  `CO_MAXBLOCKS` (21) active frame blocks; it mirrors each
+  `_PyCompile_PushFBlock` site in `codegen.c`, including an inlined
+  comprehension that saves locals (gh-156091). `__classdict__` is refused as
+  a type-parameter name;
+- annotation scopes are never async, so an async comprehension in an
+  annotation is refused even inside an async function; a name local to an
+  inlined comprehension in an annotation scope loads as a global elsewhere
+  in that scope (the `UnboundLocalError`);
+- a comprehension in a class-visible annotation scope passes its iterable to
+  the comprehension function, which calls `GET_ITER` itself from 3.15 (the
+  `expression changed stack depth` error); a module-level generic class
+  header keeps its type parameters fast and allocates comprehension slots
+  before cells;
+- a statement-level Boolean expression folds its constant operands, with
+  CPython's locations for a deciding constant and for a fold that leaves one
+  operand (`9and x`);
+- `try: pass` on the `try` line before `except*` keeps the `pass` location on
+  its terminal exit;
+- a bare name annotation such as `(y): int`, which emits no code, leaves a
+  class epilogue its class location (`test_ignore_non_simple_annotations`
+  under verify).
+
+A second round fixed the remaining verify-only classes but two, the open
+fuzzing defects, and one more that fuzzing found, each pinned by a marshal
+fixture from `perf-rust` (the C compiler, same source):
+
+- wrong code: an inlined async comprehension excluded everything from its
+  `CLEANUP_THROW` to its `END_ASYNC_FOR` from the coroutine's
+  `StopIteration` region, and in emission order that span holds the loop
+  body. With a target that binds no name (`[1 async for o.a in r()]`) no
+  restore handler covered the body, so a `StopIteration` from the store
+  escaped the coroutine instead of becoming `RuntimeError`. Only
+  `CLEANUP_THROW` is excluded now;
+- wrong code: a comprehension filter's rejection jump was excluded from an
+  enclosing `with` on the same assumption, so with a nameless target an
+  exception at that back edge's eval-breaker check (a signal, an async
+  exception) skipped `__exit__`;
+- `expression changed stack depth`: an assignment's deferred restore applied
+  to every async comprehension compiled under it; only the stored one defers
+  now. Its removed `SWAP` counts toward CPython's four-instruction exit-copy
+  limit, so a terminal `y = [... async for ...]` keeps CPython's
+  `JUMP_FORWARD` (the multi-line async list comprehension in `test_compile`);
+- a `try`/`finally` whose body is only `pass`, nested in an exceptional
+  `finally` copy, leaves its surviving marker without an exception owner;
+- a NOP whose block predecessor has its line is dropped, as
+  `basicblock_remove_redundant_nops` does, unless a label separates them, and
+  a folded `while False:` marks its loop header. This removes the NOP after
+  the module's deferred-annotation setup (`test_type_annotations`). The rule
+  brings `assembler/passes/control_flow.rs` into the overlay, otherwise
+  unchanged;
+- `global` and `nonlocal`, which emit nothing, no longer locate an `except` or
+  `except*` handler's normal cleanup;
+- a `with` body ending in `if`/`elif`/`else` whose other arms leave by
+  `break`, `continue`, `return` or `raise` keeps its `POP_BLOCK` marker with
+  the remaining arm's line, also in a loop with an `else` suite;
+- a folded constant jump is never a small-exit copy site on 3.16, since
+  CPython folds it after `inline_small_or_no_lineno_blocks` has run.
+
+**Abrupt exits from `finally` (2026-11-10).** A `return` in an exceptional
+finalizer now follows `codegen.c`'s fblock order: iterators entered inside the
+finalizer are discarded before `FINALLY_END`, enclosing `finally` bodies and
+`with` exits run before the value is returned, and the handler region covers
+the finalizer's `POP_TOP` but not its `POP_EXCEPT`. The separate direct-return
+path was removed. Six marshal fixtures pin the crashing and skipping repros
+(`try_finally_loop_return_under_except`,
+`try_finally_direct_return_under_except`,
+`try_finally_loop_return_under_handler`, `return_in_finally_under_finally`,
+`return_in_else_finally_under_finally`,
+`return_in_finally_under_finally_no_raise`); `serc_parity.py` now generates
+270 `try`/`finally`/`except`/`with`/`for`/`while` programs (nesting depth up to
+3, `return`/`break`/`continue`). `cargo test -p serc --lib` passes 1,250;
+`perf-rust-serc-v3` builds clean; both review repros equal the C compiler; the
+parity census reports 0 mismatches in 10,005 cases; the full suite fails
+exactly the e891 set.
+
+Evidence at `52091c9`, from an empty bytecode cache on macOS arm64:
+`perf.py test --name perf-rust-serc --all` fails exactly the e891 set
+(`test_asyncio.test_sendfile`, `test_asyncio.test_sslproto`,
+`test_multiprocessing_forkserver.test_misc`, `test_ssl`, `test_support`), and
+with `--serc-verify` that set plus `test_compile`. The in-process census
+(`marshal.dumps(compile())` per C1 corpus file and level) equals `perf-rust`
+(the C compiler, same source) and `perf-upstream` in all 9,135 cases, with and
+without `PYTHONSERCVERIFY=1`. `serc_parity.py --oracle` against `perf-rust`,
+whose corpus also holds that build's overlay modules, has 9,195 cases, 9,162
+exact, 0 mismatches and 33 oracle refusals. `cargo test -p serc --lib` passes
+1,243 tests, `tests.test_perf` and `tests.test_build` pass 200, and
+`tests/test_serc_compile.py` passes on `perf-rust-serc`.
+
+Under verify, `test_compile` now matches the C compiler.
+`test_condition_expression_with_redundant_comparisons_compiles` (`if 9<9<9and
+9or 9:9` and its longer forms) is fixed: CPython threads the comparison's jump
+through the folded `and 9` jump, drops that now unreachable block, and then
+removes the cleanup's jump to the block that follows. Serc removed redundant
+forward jumps before the folded jump's retained NOP was compacted, so a
+zero-length `JUMP_FORWARD` stayed after the cleanup's `POP_TOP`. The linear
+pipeline now repeats the redundant-jump scan after the final NOP and borrow
+marker compaction. `tests/fixtures/python316_parity/redundant_comparison_condition.py`
+pins the comparison forms and `x or 0 and y`.
+
+`test_try_except_in_while_with_chained_condition_compiles`
+(`while name_3 <= name_2 > name_1:` around `try: raise` with `except` and
+`finally`) now matches. Two causes, both in the small-exit copy:
+
+- CPython's first loop-body block (the two try-setup records, the `try` NOP and
+  `RAISE_VARARGS`) is a small exit, so `inline_small_or_no_lineno_blocks` copies
+  it onto the chained comparison's `JUMP end` and the comparison cleanup lands
+  after the raise. Serc marked every non-jumping final comparison's fallthrough
+  jump as ineligible (`prevent_jump_inlining`), so it jumped over the cleanup.
+  That jump now carries the retained-NOP policy the copy needs, and the copy
+  leaves the jump a NOP, as CPython's does.
+- The finalizer's converted `POP_BLOCK` had no line. Its sole normal
+  predecessor is the handler's implicit return, which neither the folded-exit
+  donor (which requires a terminating prefix, absent for a bare `raise`) nor any
+  other donor covered. `sole_handler_normal_exit_range` supplies that handler
+  tail's line.
+
+`tests/fixtures/python316_parity/while_chained_try_finally.py` pins the result;
+it fails on the unpatched assembly (exit 101, `co_code` and both tables differ)
+and passes with these changes.
+
+Evidence for the small-exit round, on macOS arm64 from an empty bytecode cache.
+`perf.py build --name perf-rust-serc-v3 --serc` exits 0 (58 release Rust
+extensions verified). `perf.py test --name perf-rust-serc-v3 --suite
+test_compile --serc-verify` left exactly the four
+`test_condition_expression_with_redundant_comparisons_compiles` subtests.
+`perf.py test --name perf-rust-serc-v3 --all --serc-verify` fails six files:
+the e891 set plus `test_compile` only (456 OK, 52,102 tests, 2,877 skipped).
+`serc_parity.py --oracle stage-perf-rust/bin/python3.16` reports 9,195 cases,
+9,162 exact, **0 mismatches** and 33 oracle refusals, exit 0.
+
+The three verify classes are fixed. A statement-level Boolean that folds to a
+constant (`9 and True`) keeps CPython's end boundary between the selected
+constant and the discard; a terminal Boolean ending in a nested deciding
+operand (`x or 0 and y`) lays its fallthrough and short-circuit joins out
+separately, and the folded operand's location remains the fallthrough donor.
+`tests/fixtures/python316_parity/folded_boolean_statement.py` and
+`redundant_comparison_condition.py` pin them. An abrupt `return` in a nested
+finalizer (`try: pass` / `finally: try: return finally: pass`) keeps the outer
+handler region through the `FINALLY_END` `POP_TOP`: the cold-block pass now
+keeps a region end at its exact boundary label instead of the containing
+block's first label. `tests/fixtures/python316_parity/nested_finally_return_in_finally.py`
+pins it. The review-relevant bytes are in `rust-cpython/serc-overlay` only.
+
+Evidence for this round, on macOS arm64 from an empty bytecode cache.
+`perf.py build --name perf-rust-serc-v3 --serc` exits 0 (58 release Rust
+extensions verified, 374s). `cargo test -p serc --lib` passes 1,260, including
+the three new marshal fixtures. `PYTHONSERCVERIFY=1` compiles each repro
+(`l7src.py`, `r_or.py`, `r_9andtrue.py`) with `same`. `python -m test
+test_compile test_grammar test_syntax test_patma test_exceptions` under verify
+reports `Result: SUCCESS` (857 tests, 5 skipped). `serc_parity.py --oracle
+stage-perf-rust/bin/python3.16` reports 10,005 cases, 9,972 exact, **0
+mismatches** and 33 oracle refusals, exit 0.
+
+Earlier differential fuzzing (300 deep-nesting programs and 120 Boolean
+statements against `perf-upstream`) agreed on every static-block refusal.
+Fuzzing against `perf-rust` still finds pre-existing differences outside the
+CPython suite and the C1 corpus; none is new after this round:
+
+- Boolean expression statements whose last operand folds to a constant
+  (`9 and True`: CPython keeps `LOAD_CONST True; POP_TOP` because the Boolean's
+  end label stops its pair removal, Serc drops both) or ends in a nested
+  deciding constant (`x or 0 and y`: Serc leaves the fallthrough exit copy
+  unlocated) differ in code or line table;
+- generated programs: async comprehensions with nameless targets and nested
+  comprehensions, 65 of 1,200 differ; Boolean conditions with constant and
+  chained operands, 74 of 600; `with` bodies ending in conditional exits inside
+  loops, 4 of 500.
+
+The third round classified all 143 by running each program's top-level
+function on both stage interpreters (`stage-perf-rust` and
+`stage-perf-rust-serc`, verify unset) with an exception injected at every
+instrumented operation (attribute load/store, call, iteration, await,
+`__enter__`/`__exit__`) and comparing results, exception types and messages,
+and side-effect logs, over three truth profiles. A code difference was
+compared after collapsing `NOP`s and mapping jumps and exception ranges to
+instruction indices, so cache, line-table and NOP placement do not count as
+semantic.
+
+| family | differ | layout-only | behaviour-identical, shape/latent delta | observable |
+| --- | ---: | ---: | ---: | ---: |
+| async comprehensions | 65 | 44 | 16 | 5 |
+| Boolean statements | 74 | 34 | 40 | 0 |
+| `with` in a loop | 4 | 4 | 0 | 0 |
+
+In the exit's two classes, 5 of the 143 observe a difference and 138 are
+behaviour-identical, 82 of them pure layout.
+
+The five observable async programs all read a comprehension target whose
+binding belongs to a sibling comprehension: Serc resolved it to the enclosing
+function's fast local or cell (`LOAD_FAST_CHECK`/`LOAD_DEREF`), CPython to the
+global (`LOAD_GLOBAL`). In normal mode this is silent wrong code: the fuzzed
+programs raised `UnboundLocalError` where CPython read the global (one of them
+inside an `async with`, so the manager's `__aexit__` saw a different
+exception), and a program with a global of that name would read the wrong
+value. The minimal repro is
+`tests/fixtures/python316_parity/nested_comprehension_sibling_target.py`:
+`def f(): return [[k for i.a.b in r] for j in q if [i for i in q]]`. The
+scope analysis treated any binding found anywhere in a comprehension
+expression, including one owned by a nested comprehension, as bound in the
+enclosing comprehension, so no outside reference was recorded. The overlay
+now carries `compiler/scope.rs`; `own_bound` is the current comprehension's
+generator targets, and only those enter the seen-target set.
+
+Sixteen async programs were behaviour-identical but not layout-only; three of
+them shared the sibling-target cause and are now byte-identical. The
+remaining thirteen are latent: twelve keep an extra comprehension cell
+(`MAKE_CELL` and `co_cellvars` gain the target; some never read it, others
+read it with `LOAD_DEREF` only in a generator expression the program never
+executes) and one uses `LOAD_FAST` where CPython keeps `LOAD_FAST_CHECK`; no
+executed path observes either. The forty Boolean shape deltas come from
+CPython folding constant operands such as `1 and b` before the later jump and
+exit cleanup; Serc evaluates the constant and folds later. The differing
+instructions are constant loads, copies, jumps, pops and exits; the
+non-constant loads, calls and stores keep their order, and the harness
+observed the same effects. The four `with` cases are one `NOP` CPython keeps
+at the manager-merge label, which changes code size, jumps and the exception
+table's target offsets but no handler depth or protected instruction.
+
+Evidence: `cargo test -p serc --lib` passes 1,243 tests (the new fixture fails
+on the unpatched analysis); with the fixed Serc CLI the async corpus drops
+from 65 to 57 differing, and the five observable programs and the three latent
+sibling-target programs become exact; the C1 corpus census against
+`stage-perf-rust` is 9,195 cases, 9,162 exact, 0 mismatches, 33 oracle
+refusals.
+
+**Memory.** Peak RSS regresses on every C2 workload, and its cause is Serc's
+code size, not how it is loaded. Linking Serc grows `libpython` `__text` from
+3,037,592 to 11,040,560 bytes (+7.6 MiB) and the file from 7,349,056 to
+21,965,984 bytes. Peak RSS on
+macOS counts clean text pages, so each process pays for every Serc page it
+executes while its physical footprint barely moves. Page residency (each
+16 KiB page of `libpython`'s `__TEXT` split into its own map entry by
+alternating `madvise` advice, then read with `vmmap`) shows:
+
+- `python_startup`'s memory command is `-c "import time; time.sleep(0.12)"`,
+  and Serc compiles that string: it makes 212 more `__TEXT` pages resident
+  (3.3 MiB) than the same interpreter running a `.pyc`, where the C compiler
+  adds 26 (0.4 MiB). Linking alone, with no Serc compile, adds 224 KiB of
+  dirty `__DATA_CONST` (rebased pointers) and 304 KiB of `__LINKEDIT`.
+- A cold startup (`-B -X frozen_modules=off`, empty cache) makes 419 of the
+  496 pages of Serc's text region resident (6.5 MiB).
+
+A separately loaded image, mapped on first compile, would therefore change no
+gated ratio: every C2 workload compiles through Serc, and only the 0.5 MiB of
+link-time pages would move to first use. Reordering functions would help the
+one-line `-c` compile, never a workload that compiles the stdlib. Shrinking
+the code is the only lever: Serc's own CLI build (fat LTO, one codegen unit)
+has 7,357,092 bytes of `__text` at `opt-level=3`, 5,734,732 at `s` (-22%) and
+3,694,152 at `z` (-50%), and `z` spends about 50% more CPU compiling the
+stdlib (one noisy pair of runs). Halved, a cold startup would still carry about
+3.3 MiB per process, against a 1% verdict floor of about 0.4 MiB on
+`cold_python_startup`'s 41.9 MiB peak RSS and 0.14 MiB on `python_startup`.
+The bar cannot be met while Serc runs in the measured processes, so this run
+changes neither the loading model nor the build profile.
+
+OD15 makes that peak RSS a recorded cost and gates physical footprint
+within +8% (`memory-only-serc-cost` in `perf_verdict.py`). With clean builds of
+`perf-rust-serc` at `52091c9` and `perf-rust` at `7492896` (the same `overlay/`),
+`perf.py bench --baseline perf-rust --candidate perf-rust-serc --memory-only
+--matched-prefix --workload python_startup --workload cold_python_startup
+--workload cold_import_django --workload compileall_source --runs 2` is
+WITHIN-BUDGET under that policy with matching digests. Physical footprint:
+`python_startup` 1.046 (CI95 1.041-1.060), `cold_python_startup` 1.035
+(1.021-1.059), `cold_import_django` 0.979 (0.969-0.998), `compileall_source`
+1.058 (1.041-1.063). Recorded peak RSS cost: 1.236, 1.345, 1.164 and 1.295.
+An earlier pair at `7492896` read the same within noise (footprint
+0.980-1.058).
+
 ### C3: all source modes
 
 Extend the Serc path to `eval` and `single`, with C1's oracle extended to those
@@ -1114,17 +1602,39 @@ scope.
 
 **Exit:** done-criterion 4 and a C3 ledger row.
 
+**Exit evidence (2026-11-11).** Feature correctness is complete on
+`campaign/c3` at `fb131e1`; performance acceptance stays deferred under OD16.
+Both full default-resource suites on `perf-serc-c3`, normal and
+`--serc-verify`, run 52,102 tests and match the non-Serc baseline's five-file
+failure set: `test_asyncio.test_sendfile`, `test_asyncio.test_sslproto`,
+`test_multiprocessing_forkserver.test_misc`, `test_ssl` and `test_support`.
+There is no compiler verification difference. The expanded 12-suite focus,
+including interactive compilation, Unicode lookup, unpacking and audit
+behavior, passes with verification enabled, as do all 11 native integration
+tests. The Serc census compares 30,318 cases across `exec`, `eval` and
+`single`: 9,678 exact matches, 813 intentional finally routes, and 19,827
+cases refused by the oracle, with no mismatch or uncovered mode. All 101
+named source-mode fixtures compile directly through Serc at optimization
+levels 0, 1 and 2. The 1,260 library tests, 24 CLI unit tests and mode/cache
+integration pass. Independent reviews approve the glue, audit semantics and
+parity corrections; the final review also checks 48 small differential
+probes against CPython's exact marshal bytes. Native logs are in the C3
+worktree's `rust-cpython/logs/perf-serc-c3-{all,all-serc-verify}.log`; the census
+is `.work/tmp/c3-census-final.json` (release ThinLTO override recorded).
+
 ### C acceptance
 
 A track C change lands only when, on `perf-serc-<item>`: the C1 corpus has zero
 mismatches; `perf.py test --all` fails exactly `perf-rust`'s set; from C2 on,
 the full-suite verify run reports no difference; and an independent reviewer
-approves any change to FFI, ownership, or the compile hook. Under OD14 the C2
-and C3 exits are met without their timing gates, which run at **Close**.
+approves any change to FFI, ownership, or the compile hook. Under OD16 the C2
+and C3 feature-completion exits do not wait for performance gates. Their
+performance acceptance remains deferred to **Close**.
 
 ## Close
 
-Close first runs every timing gate OD14 deferred, on a quiet host: the
+When performance acceptance resumes, Close first runs every deferred timing
+gate on a quiet host: the
 **Milestone gate** for the stacked J incumbent and the C2 and C3 cold-import
 gates. A J regression found here is bisected
 over the landed J steps and the offending steps reverted or fixed. Then, when
@@ -1170,6 +1680,16 @@ A/A spread, and `S0`. Scores compare only within an epoch.
 - **OD14 (2026-11-10):** feature completeness first. Timing gates are waived
   until **Close**; correctness, parity, memory, and code-size checks still
   gate every landing.
+- **OD15 (2026-11-10):** peak RSS on `--serc` builds against a non-Serc
+  baseline is a recorded known cost, as OD4 makes it for the JIT; a
+  memory-only comparison of that pair gates physical footprint within +8%
+  (`memory-only-serc-cost`).
+- **OD16 (2026-11-11):** the host will remain busy. Finish feature completion
+  with performance gates deferred, including gates otherwise due at **Close**.
+  Keep correctness, corpus parity and independent review required. Preserve
+  every performance threshold and report performance acceptance as deferred
+  until measurements can resume; do not claim M4 or campaign completion from
+  this waiver.
 - **Parked:** a method-based frontend (withdrawn PEP 836 prototype, observed
   head `04a79098`) opens only by owner decision.
 
@@ -1232,14 +1752,71 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | T3 inline-frame elision implemented and CORRECT; measured no bucket-(a) fall, dropped under P1. Next: virtual-frame inlining or T3 attribute/global caches | Inline frames: incumbent-named bucket (a) richards 24.0% → 17.2%, raytrace 11.6% → 9.6%, but including the new `_INLINE_*` call/frame uops 23.9% → 24.6% and 11.5% → 11.7%; CORRECT (5 incumbent superseded assertions; new `jit_inline_integration`), advisory 1.0123 |
+| J | active | T3 frame-free argument/constant/slot/global getters and T4 whole-trace cache allocation integrated with refreshed main dependencies; next: remaining T3 allocation and loop work. Performance acceptance deferred under OD16 | Integrated stack against matched C3 reference: all 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 8 superseded suite assertions; independent reviews approve |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
-| C | active | C2 in-process `exec` | C0, marshal parity and C1 landed: census 9,102 / 9,135 exact, 0 mismatches on e891 |
+| C | feature complete | C3 integrated with refreshed main dependencies; performance acceptance deferred under OD16. Routing/API owner reviews remain asynchronous; nothing pushed | Integrated normal and verify runs each execute 52,102 tests, with exactly the matched reference's five failing files and 0 compiler mismatches; native 11-case integration passes; C3 corpus and independent reviews remain valid |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
+
+**Current integration (2026-11-11):** `campaign/jit-integrate` combines
+`main` at `604ba93` with C3 and the four JIT slices `0b9a462`, `6acf8d2`,
+`e7c970c` and `a03814c`. Main's version pins are preserved; the combined
+Cargo-lock SHA-256 is
+`bea6331da746e3a54a9d9184b1591392faffda038ab221b5638c5b8af4e4f846`.
+The dependency refresh required three research `_ssl_rs` API adapters:
+borrowed encrypted PKCS#8 decoding, the owned encryption-scheme type, and
+discarding an entire malformed SAN extension as the earlier parser did.
+Correct/wrong/no-password and malformed-SAN regressions pass on old and new
+libraries; independent review confirms trust and verification paths are unchanged.
+
+The matched reference is closed C3 plus those same main pins/adapters in
+`.work/wt/jit-main-ref` (`perf-jit-main-ref`); the candidate is
+`.work/wt/jit-integrate` (`perf-jit-integrated`). Both builds completed
+incrementally after adapter correction; their reports identify the staged
+merge over `604ba93` with dirty overlays. This is correctness evidence, not
+a clean performance acceptance rebuild. All benchmark source files match
+between these two trees. The candidate's JIT suites include descriptor,
+lazy-import and eval-hook coverage; only the eight named superseded uop
+assertions differ from JIT-off. Every training, held-out and guard digest
+matches. Full compiler runs use `PYTHON_JIT=0`: both normal runs and the
+candidate's verify run retain only `test_asyncio.test_sendfile`,
+`test_asyncio.test_sslproto`, `test_multiprocessing_forkserver.test_misc`,
+`test_ssl` and `test_support` failures. Evidence is in
+`.work/tmp/integration-feature-acceptance.json`, `.work/tmp/full-compiler.json`,
+`.work/tmp/native-serc-integration.log` and `rust-cpython/logs/perf-jit-integrated-all*.log`.
+Continue J feature work from the integrated tree; keep both reference stages
+and earlier campaign stages for the deferred performance work. Nothing is pushed.
 
 **Owner queue:** R1 reference report (informational, no target change
 requested): CinderX 3.15 steady JIT uplift `S = 0.7960`, held-out 1.0621, beside
 M2 ≤ 0.48, M3 ≤ 0.38, M4 ≤ 0.25. T2 does not wait for an answer.
+
+**Owner queue:** T3 leaf calls (on `campaign/j3`, async review). New private
+`_PyJitOpt_PlanLeafCalls` ABI and `_CALL_PY_LEAF` tagged result caches;
+ownership, pre-call deopts and frame elision independently reviewed. Seven
+native leaf cases, five slot-getter traces and the ten unboxing kernels pass
+together. The result tags now distinguish aligned constant addresses,
+argument indices and slot offsets; the slot load requires the existing
+optimizer's discharged layout proof and retries missing slots before the call.
+The three
+new named upstream uop-shape exclusions follow the existing owner ruling;
+an independent run bypassed only those obsolete assertions and passed every
+remaining original assertion. Performance acceptance is deferred under OD16.
+
+**Owner queue:** T3 global getters (on `campaign/j3`, async review). The
+private leaf opcode map now includes a pre-call callee-dictionary version
+guard. Existing watcher dependencies protect cached mortal values; a native
+reentrant-finalizer regression receives the replacement value after the old
+global is collected. Independent source/native review approves. Dictionary
+subclasses and unresolved lazy loads keep concrete calls. Performance
+acceptance remains deferred under OD16.
+
+**Owner queue:** T4 cache allocation (on `campaign/j3`, async review). New
+private `_PyJitOpt_PlanCache` ABI selects generated cache depths across the
+trace without speculative stack prefetch. Independent source/native review
+approves, including disabled optimization and unboxed exits. The native call
+fixture emits 7 spill/reload stencils against J3's 13; the float fixture emits
+2 against 3. These are instruction counts, with performance acceptance
+deferred under OD16.
 
 **Owner queue:** T1 thread-state (landed, async review). Every overlay build
 now regenerates the interpreter cases from `bytecodes.c` with a 3.11+
@@ -1323,6 +1900,65 @@ opcodes `BINARY_OP_SUBSCR_ARRAY_D`/`_I`; new uops
 `_PyArray_GetSpecializationKind`, `_PyArray_ReadDoubleItem` and
 `_PyArray_ReadIntItem`, defined in `Python/specialize.c`. The
 `BINARY_OP` cache carries the recorded type version in `external_cache[0..1]`.
+
+**Owner queue (C2 contract changes, on `campaign/c2`, not yet on `main`):**
+
+- The compile hook in `overlay/Python/pythonrun.c` and `marshal.c` (compiled
+  only under `Py_SERC`), the `serc-lane` C ABI, and its routing rule.
+  Owner-accepted (2026-11-10): "A Serc error raises; it is never retried on
+  the C compiler" is implemented with the C compiler as the diagnostic
+  authority (it runs on a Serc refusal only to raise CPython's exception, and
+  its code is never returned), and sources with the `barry_as_FLUFL` future or
+  nesting deeper than 200 go to the C compiler by rule after Serc parses them.
+- Routing added after the re-review, awaiting owner review: on 3.16, Serc
+  leaves to the C compiler any `return` in a `finally` body and any `break` or
+  `continue` that leaves one (the public `serc::CompileError` gains
+  `RequiresCpythonCompiler`), and `serc_routes` sends requests from threads
+  with under 2 MiB of C stack to the C compiler.
+- `--serc` on `perf.py build` and `build.py build`, and `perf.py test
+  --serc-verify`.
+- `cold_python_startup`, `cold_import_django`, `cold_import_app_stack`: they
+  add `-X frozen_modules=off` to the doc's `-B` and fresh empty
+  `PYTHONPYCACHEPREFIX`, so the frozen startup modules compile too
+  (owner-accepted, 2026-11-10), and they stay out of the default realworld and
+  full suites.
+- Serc API additions in `serc-overlay`: filenames as `surrogatepass` bytes,
+  `decodes_as_utf8`, `CompiledModule::may_warn`, and `RequiresCpythonParser`.
+- Code size: `libpython` `__text` +7.6 MiB on `--serc` builds.
+- Serc now refuses sources with more than 21 statically nested blocks
+  (`compiler/static_blocks.rs`); the hook then raises CPython's
+  `SyntaxError` through the C compiler, as for every refusal.
+- Memory (OD15, owner ruling 2026-11-10): peak RSS on `--serc` builds
+  against a non-Serc baseline is a recorded known cost, and physical footprint
+  gates within +8% (`memory-only-serc-cost`, `dabf1bf`). The C2 memory-only
+  bench is WITHIN-BUDGET at `52091c9` (footprint 0.979-1.058, peak RSS
+  1.164-1.345 recorded); no loading-model change was made (see C2).
+- Independent re-review found nine defects, fixed in `852831a`..`b4c2a8a`.
+  The close-out review of those fixes and their FFI/compile-hook assumptions
+  finds no new defect; the empirical stack-cutoff validation limit is recorded
+  in C2. Owner acceptance of the routing/API changes remains pending.
+
+**Owner queue (C3, on `campaign/c3`):** `serc::CompileMode` and
+`CompileOptions.mode` select `exec`, `eval` or `single`; the default stays
+`exec`, and non-exec modes currently require the 3.16 target.
+`ParseCompileModeError` reports invalid mode spellings. The private C ABI
+`_PySerc_CompileSource` replaces `_PySerc_CompileModule` and receives the
+CPython parser start symbol. Source-mode routing now admits all three modes;
+AST, `FILE *`, flags, decoding, stack and finally-exit boundaries stay as in
+C2. The CLI adds `--mode` and separate non-exec cache names. The hook/FFI
+reviews approve the glue, compiler API and CLI; the full suites match the
+baseline failure set with no verification difference. Source entry points emit one `compile`
+audit event before choosing a compiler, including verification and diagnostic
+paths. The new Py_SERC-only private parser helper
+`_PyParser_ASTFromStringWithoutAudit` requires that event to have been emitted
+by its caller; an audit veto aborts before parsing. `PyRun_String` uses the C
+parser if auditing changes the module-name snapshot or if dictionary keys can
+invoke Python comparisons, preserving warning context and reference lifetime.
+Sources containing `\N{` also use C so the interpreter owns Unicode-name
+lookup and its import failures; this conservative test includes raw strings
+and comments containing that spelling. Independent review approves these
+rules and the source-mode parity fixes. C3's feature acceptance is complete;
+performance acceptance remains deferred.
 
 **Epoch e891** (`main` `e891a911`, pinned 2026-11-10) opened at R0 on macOS
 arm64:
@@ -1468,6 +2104,12 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-11-02 | a1 | J | M0 | instrument | `perf-rust-jit` | — → 0.7474 | A/A max 0.19% | MEASURED | `rust-cpython/results/perf-bench/20261102T174650Z-perf-climb-ref-vs-perf-rust-jit` |
 | 2026-11-10 | e891 | J | M0 | instrument | `perf-rust-jit` | — → 0.7748 | A/A max 1.19% | MEASURED | `rust-cpython/results/perf-bench/20261110T041724Z-perf-climb-ref-vs-perf-rust-jit` |
+| 2026-11-11 | e891 | C | C2 | in-process source-mode `exec`, nine re-review defects fixed; finally-exit and small-stack routing | `perf-rust` | timing deferred (OD14); prior memory bar met (OD15) | — | CORRECT on `campaign/c2`: both full suites match baseline five-file failure set; no verify difference; census 0 mismatches; independent close-out review finds no new defect | `8930b8a`; C2 worktree `rust-cpython/logs/perf-rust-serc-v3-all{,-serc-verify}.log`, `.work/tmp/c2-close-parity.json` |
+| 2026-11-11 | e891 | C | C3 | source-mode `eval` and `single`, exact mode-aware CLI/census, compile audits and interactive parity | `perf-rust` | performance deferred (OD16) | — | CORRECT on `campaign/c3`: both full suites match baseline five-file failures; no verify difference; 30,318 census cases with 0 mismatches; independent reviews approve | `fb131e1`; C3 exit evidence above |
+| 2026-11-11 | e891 | J | T3 | fuse complete exact-argument calls returning an argument or constant without a physical callee frame | clean `perf-jit-c3-ref` on `d52991a` | performance deferred (OD16) | — | CORRECT: 31 workload digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; targeted suites plus `test_capi.test_eval` differ only by 8 named superseded uop assertions; 30 Rust tests, 7 leaf traces, 10 unboxed kernels; independent review approves | `rust-cpython/results/perf-bench/20261112T041852Z-perf-jit-c3-ref-vs-perf-jit-j3`, `20261112T042029Z-perf-jit-c3-ref-vs-perf-jit-j3`; `.work/tmp/j3-feature-acceptance.json` |
+| 2026-11-11 | e891 | J | T4 | whole-trace Rust cache-depth planning minimizes explicit spill/reload stencils, then stack-reference transfers; preserves greedy endpoint and forbids speculative prefetch | `perf-jit-j3` | performance deferred (OD16) | call fixture 13 → 7 stencils, float fixture 3 → 2; instruction counts only | CORRECT: 31 workload digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 8 superseded suite assertions; 32 Rust tests including 15,625 exhaustive traces; native cache, leaf and unboxing checks pass; independent source/native review approves, including disabled optimization | `rust-cpython/results/perf-bench/20261112T043205Z-perf-jit-j3-vs-perf-jit-j4`, `20261112T043347Z-perf-jit-j3-vs-perf-jit-j4`; `.work/tmp/j4-feature-acceptance.json` |
+| 2026-11-11 | e891 | J | T3 | extend frame-free calls to preguarded borrowed-argument slot getters; missing slots retry the original call before consuming inputs | `perf-jit-j4` | performance deferred (OD16) | — | CORRECT: 31 workload digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 8 superseded assertions; descriptor suite passes JIT on/off; 33 Rust tests, 5 getter traces plus prior integration checks; independent source/native review approves, including an unrelated owner with a different slot layout | `rust-cpython/results/perf-bench/20261112T044643Z-perf-jit-j4-vs-perf-jit-j5`, `20261112T044811Z-perf-jit-j4-vs-perf-jit-j5`; `.work/tmp/j5-feature-acceptance.json`, `.work/tmp/j5-descr-{on,off}.log` |
+| 2026-11-11 | e891 | J | T3 | fuse global-return getters while preserving a pre-call guard against the callee's dictionary and existing watcher dependencies | `perf-jit-j5` | performance deferred (OD16) | — | CORRECT: 31 workload digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 8 superseded assertions; lazy-import suite passes both modes; 34 Rust tests and three native global-getter traces plus prior integrations; independent source/native review approves, including reentrant lookup during old-value finalization | `rust-cpython/results/perf-bench/20261112T045911Z-perf-jit-j5-vs-perf-jit-j6`, `20261112T050048Z-perf-jit-j5-vs-perf-jit-j6`; `.work/tmp/j6-feature-acceptance.json` |
 | 2026-11-10 | 3.15.1 | R1 | R1 | CinderX steady JIT vs off | `cinderx-e48f370d` | — → 0.7960 (held-out 1.0621) | — | MEASURED | `.work/r1` |
 | 2026-11-10 | e891 | J | T1 | thread-state: executor tstate to float/int freelists (`_tlv_get_addr` 4.61% of samples, targeted chains 1.36% → 0%) | `perf-rust-jit` | timing deferred (OD14) | — | CORRECT | `campaign/t1-tstate` |
 | 2026-11-10 | e891 | J | T2 | float unboxing across binary ops and compares (float boxing 8.9-38.6% of samples; float-op chains nbody 27.5% → 26.3%, fft 11.4% → 9.5%) | `perf-rust-jit` | timing deferred (OD14); advisory 0.9962 | — | CORRECT (4 named superseded `test_capi.test_opt` uop assertions, owner ruling) | `aadaf25` |

@@ -4015,6 +4015,61 @@ fn python316_marshal_matches_cpython_for_nested_comprehension() {
 }
 
 #[test]
+fn python316_marshal_matches_cpython_for_while_chained_try_finally() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/while_chained_try_finally.py"),
+        include_str!("../../tests/fixtures/python316_parity/while_chained_try_finally.marshal.hex"),
+    );
+}
+
+
+#[test]
+fn python316_marshal_matches_cpython_for_redundant_comparison_condition() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/redundant_comparison_condition.py"),
+        include_str!(
+            "../../tests/fixtures/python316_parity/redundant_comparison_condition.marshal.hex"
+        ),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_folded_boolean_statement() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/folded_boolean_statement.py"),
+        include_str!("../../tests/fixtures/python316_parity/folded_boolean_statement.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_folded_boolean_discard_contexts() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/folded_boolean_discard_contexts.py"),
+        include_str!("../../tests/fixtures/python316_parity/folded_boolean_discard_contexts.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_chained_comparison_break_in_finally() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/chained_comparison_break_in_finally.py"),
+        include_str!("../../tests/fixtures/python316_parity/chained_comparison_break_in_finally.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_nested_comprehension_sibling_target() {
+    assert_python316_marshal(
+        include_str!(
+            "../../tests/fixtures/python316_parity/nested_comprehension_sibling_target.py"
+        ),
+        include_str!(
+            "../../tests/fixtures/python316_parity/nested_comprehension_sibling_target.marshal.hex"
+        ),
+    );
+}
+
+#[test]
 fn python316_marshal_matches_cpython_for_format_parameter() {
     assert_python316_marshal(
         include_str!("../../tests/fixtures/python316_parity/format_parameter.py"),
@@ -4108,4 +4163,336 @@ fn python316_marshal_matches_cpython_for_class_qualname() {
         include_str!("../../tests/fixtures/python316_parity/class_qualname.py"),
         include_str!("../../tests/fixtures/python316_parity/class_qualname.marshal.hex"),
     );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_slice_strings() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/slice_strings.py"),
+        include_str!("../../tests/fixtures/python316_parity/slice_strings.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_annotation_comprehension_target() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/annotation_comprehension_target.py"),
+        include_str!("../../tests/fixtures/python316_parity/annotation_comprehension_target.marshal.hex"),
+    );
+}
+
+fn assert_python316_rejects(source: &str) {
+    let error = crate::compile_with_options(
+        source,
+        "t.py",
+        &crate::CompileOptions {
+            python_version: crate::PythonVersion::Py316,
+            ..crate::CompileOptions::default()
+        },
+    )
+    .err()
+    .unwrap_or_else(|| panic!("CPython rejects this source:\n{source}"));
+    assert!(
+        matches!(
+            error,
+            crate::CompileError::InvalidPattern { .. }
+                | crate::CompileError::InvalidSyntax { .. }
+                | crate::CompileError::Parse(_)
+        ),
+        "expected a syntax refusal, found {error:?}"
+    );
+}
+
+#[test]
+fn python316_rejects_interpolated_string_patterns() {
+    for pattern in [
+        "f\"\"",
+        "f\"{x}\"",
+        "\"a\" f\"b\"",
+        "t\"\"",
+        "f\"\" | 1",
+        "{\"k\": f\"x\"}",
+        "[f\"x\"]",
+        "C(a=f\"x\")",
+        "(f\"x\" as z)",
+    ] {
+        assert_python316_rejects(&format!("match x:\n    case {pattern}:\n        pass\n"));
+    }
+}
+
+#[test]
+fn python316_rejects_reserved_type_parameter_name() {
+    for source in [
+        "class A[__classdict__]: pass\n",
+        "def f[__classdict__](): pass\n",
+        "type T[__classdict__] = tuple[__classdict__]\n",
+        "class A[*__classdict__]: pass\n",
+        "def f[**__classdict__](): pass\n",
+        "class A:\n    def f[T, __classdict__](self): pass\n",
+    ] {
+        assert_python316_rejects(source);
+    }
+    for name in ["__class__", "__classcell__", "__classdictcell__"] {
+        assert_python316_compiles(&format!("class A:\n    class B[{name}]: pass\n"));
+    }
+}
+
+fn assert_python316_compiles(source: &str) {
+    crate::compile_with_options(
+        source,
+        "t.py",
+        &crate::CompileOptions {
+            python_version: crate::PythonVersion::Py316,
+            ..crate::CompileOptions::default()
+        },
+    )
+    .unwrap();
+}
+
+#[test]
+fn python316_limits_statically_nested_blocks() {
+    let with_managers = |count: usize| {
+        let mut source = String::from("def bug():\n    with (\n    a\n");
+        for index in 0..count {
+            source.push_str(&format!("    as a{index}, a\n"));
+        }
+        source.push_str("): yield a\n");
+        source
+    };
+    let async_with_managers = |count: usize| {
+        let mut source = String::from("async def bug():\n    async with (\n    a\n");
+        for index in 0..count {
+            source.push_str(&format!("    as a{index}, a\n"));
+        }
+        source.push_str("): pass\n");
+        source
+    };
+    let inlined_comprehensions = |depth: usize| {
+        let mut element = String::from("i for i in r");
+        for _ in 1..depth {
+            element = format!("[{element}] for i in r");
+        }
+        format!("x = [{element}]\n")
+    };
+    let named_handlers = |depth: usize| {
+        let mut source = String::new();
+        for level in 0..depth {
+            let indent = "    ".repeat(level);
+            source.push_str(&format!(
+                "{indent}try:\n{indent}    raise Exception\n{indent}except Exception as e:\n"
+            ));
+        }
+        source.push_str(&"    ".repeat(depth));
+        source.push_str("pass\n");
+        source
+    };
+    let while_loops = |depth: usize| {
+        let mut source = String::new();
+        for level in 0..depth {
+            source.push_str(&format!("{}while {level}:\n", " ".repeat(level)));
+        }
+        source.push_str(&" ".repeat(depth));
+        source.push_str("pass\n");
+        source
+    };
+    for count in [0, 10, 19] {
+        assert_python316_compiles(&with_managers(count));
+        assert_python316_compiles(&async_with_managers(count));
+    }
+    for count in [20, 21, 24] {
+        assert_python316_rejects(&with_managers(count));
+        assert_python316_rejects(&async_with_managers(count));
+    }
+    assert_python316_compiles(&inlined_comprehensions(21));
+    assert_python316_rejects(&inlined_comprehensions(22));
+    assert_python316_compiles(&named_handlers(10));
+    assert_python316_rejects(&named_handlers(11));
+    assert_python316_compiles(&while_loops(21));
+    assert_python316_rejects(&while_loops(22));
+}
+
+#[test]
+fn python316_rejects_async_comprehensions_in_annotation_scopes() {
+    for prelude in ["", "class X:\n ", "def f():\n ", "async def f():\n "] {
+        for comprehension in ["[y async for y in x]", "{y async for y in x}", "{y: y async for y in x}"] {
+            assert_python316_rejects(&format!("{prelude}def func(x: {comprehension}): ...\n"));
+            assert_python316_rejects(&format!("{prelude}(x): {comprehension}\n"));
+            assert_python316_rejects(&format!("{prelude}x: {comprehension}\n"));
+        }
+    }
+    assert_python316_rejects("async def f():\n def g(x: [[y async for y in x] for z in w]): ...\n");
+    assert_python316_compiles("async def f():\n def g(x: (y async for y in x)): ...\n");
+    assert_python316_compiles("async def f():\n def g(x=[y async for y in z]): ...\n");
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_annotation_comprehension_scope() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/annotation_comprehension_scope.py"),
+        include_str!("../../tests/fixtures/python316_parity/annotation_comprehension_scope.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_generic_header_comprehension() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/generic_header_comprehension.py"),
+        include_str!("../../tests/fixtures/python316_parity/generic_header_comprehension.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_class_scope_annotation_comprehension() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/class_scope_annotation_comprehension.py"),
+        include_str!(
+            "../../tests/fixtures/python316_parity/class_scope_annotation_comprehension.marshal.hex"
+        ),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_constant_boolean_statement() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/constant_boolean_statement.py"),
+        include_str!("../../tests/fixtures/python316_parity/constant_boolean_statement.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_except_star_same_line_pass() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/except_star_same_line_pass.py"),
+        include_str!("../../tests/fixtures/python316_parity/except_star_same_line_pass.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_class_unstored_annotation() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/class_unstored_annotation.py"),
+        include_str!("../../tests/fixtures/python316_parity/class_unstored_annotation.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_async_comprehension_unbound_target() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/async_comprehension_unbound_target.py"),
+        include_str!(
+            "../../tests/fixtures/python316_parity/async_comprehension_unbound_target.marshal.hex"
+        ),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_async_comprehension_nested() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/async_comprehension_nested.py"),
+        include_str!("../../tests/fixtures/python316_parity/async_comprehension_nested.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_async_comprehension_terminal_assignment() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/async_comprehension_terminal_assignment.py"),
+        include_str!(
+            "../../tests/fixtures/python316_parity/async_comprehension_terminal_assignment.marshal.hex"
+        ),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_exceptional_finally_nested_pass_try() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/exceptional_finally_nested_pass_try.py"),
+        include_str!(
+            "../../tests/fixtures/python316_parity/exceptional_finally_nested_pass_try.marshal.hex"
+        ),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_same_line_nop_after_store() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/same_line_nop_after_store.py"),
+        include_str!("../../tests/fixtures/python316_parity/same_line_nop_after_store.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_handler_declaration_cleanup() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/handler_declaration_cleanup.py"),
+        include_str!("../../tests/fixtures/python316_parity/handler_declaration_cleanup.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_with_chained_arms_in_loop() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/with_chained_arms_in_loop.py"),
+        include_str!("../../tests/fixtures/python316_parity/with_chained_arms_in_loop.marshal.hex"),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_folded_while_header_after_annotation_setup() {
+    assert_python316_marshal(
+        include_str!(
+            "../../tests/fixtures/python316_parity/folded_while_header_after_annotation_setup.py"
+        ),
+        include_str!(
+            "../../tests/fixtures/python316_parity/folded_while_header_after_annotation_setup.marshal.hex"
+        ),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_folded_constant_jump_keeps_exit() {
+    assert_python316_marshal(
+        include_str!("../../tests/fixtures/python316_parity/folded_constant_jump_keeps_exit.py"),
+        include_str!(
+            "../../tests/fixtures/python316_parity/folded_constant_jump_keeps_exit.marshal.hex"
+        ),
+    );
+}
+
+#[test]
+fn python316_marshal_matches_cpython_for_with_filtered_comprehension_unbound_target() {
+    assert_python316_marshal(
+        include_str!(
+            "../../tests/fixtures/python316_parity/with_filtered_comprehension_unbound_target.py"
+        ),
+        include_str!(
+            "../../tests/fixtures/python316_parity/with_filtered_comprehension_unbound_target.marshal.hex"
+        ),
+    );
+}
+
+#[test]
+fn python316_control_flow_leaving_a_finally_body_is_left_to_cpython() {
+    for source in [
+        include_str!("../../tests/fixtures/python316_parity/nested_finally_return_in_finally.py"),
+        include_str!("../../tests/fixtures/python316_parity/try_finally_loop_return_under_except.py"),
+        include_str!("../../tests/fixtures/python316_parity/try_finally_direct_return_under_except.py"),
+        include_str!("../../tests/fixtures/python316_parity/try_finally_loop_return_under_handler.py"),
+        include_str!("../../tests/fixtures/python316_parity/return_in_finally_under_finally.py"),
+        include_str!("../../tests/fixtures/python316_parity/return_in_else_finally_under_finally.py"),
+        include_str!("../../tests/fixtures/python316_parity/return_in_finally_under_finally_no_raise.py"),
+    ] {
+        let result = crate::compile_with_options(
+            source,
+            "t.py",
+            &crate::CompileOptions {
+                python_version: crate::PythonVersion::Py316,
+                ..crate::CompileOptions::default()
+            },
+        );
+        assert!(
+            matches!(result, Err(crate::CompileError::RequiresCpythonCompiler(_))),
+            "{source}"
+        );
+    }
 }

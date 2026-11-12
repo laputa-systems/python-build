@@ -4840,6 +4840,78 @@ dummy_func(
             LLTRACE_RESUME_FRAME();
         }
 
+        tier2 op(_CHECK_LEAF_GLOBALS_VERSION, (version/2, callable, unused, unused[oparg] -- callable, unused, unused[oparg])) {
+            PyObject *callable_o = PyStackRef_AsPyObjectBorrow(callable);
+            assert(PyFunction_Check(callable_o));
+            PyDictObject *dict = (PyDictObject *)((PyFunctionObject *)callable_o)->func_globals;
+            DEOPT_IF(!PyDict_CheckExact(dict));
+            PyDictKeysObject *keys = FT_ATOMIC_LOAD_PTR_ACQUIRE(dict->ma_keys);
+            DEOPT_IF(FT_ATOMIC_LOAD_UINT32_RELAXED(keys->dk_version) != version);
+        }
+
+        tier2 op(_CALL_PY_LEAF, (result_low/2, result_high/2, callable, self_or_null, args[oparg] -- res)) {
+            uint64_t result = (uint64_t)result_low | ((uint64_t)result_high << 32);
+            PyFunctionObject *func = (PyFunctionObject *)PyStackRef_AsPyObjectBorrow(callable);
+            assert(PyFunction_Check(func));
+            PyCodeObject *code = (PyCodeObject *)func->func_code;
+            int has_self = !PyStackRef_IsNull(self_or_null);
+            DEOPT_IF(code->co_argcount != oparg + has_self);
+            DEOPT_IF(code->co_kwonlyargcount != 0);
+            DEOPT_IF(code->co_flags & (CO_GENERATOR | CO_COROUTINE | CO_ASYNC_GENERATOR |
+                                       CO_VARARGS | CO_VARKEYWORDS));
+            DEOPT_IF(!current_executor->vm_data.valid);
+            uintptr_t iversion = FT_ATOMIC_LOAD_UINTPTR_ACQUIRE(code->_co_instrumentation_version);
+            DEOPT_IF(_Py_atomic_load_uintptr_relaxed(&tstate->eval_breaker) != iversion);
+            unsigned int kind = result & 3;
+            DEOPT_IF(kind == 3);
+            uint64_t argument = (result >> 2) & UINT16_MAX;
+            DEOPT_IF(kind != 0 && argument >= (uint64_t)code->co_argcount);
+            _PyStackRef selected = PyStackRef_NULL;
+            PyObject *slot = NULL;
+            if (kind != 0) {
+                selected = has_self && argument == 0 ? self_or_null : args[argument - has_self];
+            }
+            if (kind == 2) {
+                /* The original slot load has no remaining type guard: the
+                   optimizer proved its owner layout before the call. */
+                PyObject *owner = PyStackRef_AsPyObjectBorrow(selected);
+                uint16_t offset = (result >> 18) & UINT16_MAX;
+                slot = *(PyObject **)((char *)owner + offset);
+                DEOPT_IF(slot == NULL);
+            }
+
+            Py_INCREF(code);
+            _PyStackRef value;
+            if (kind == 1) {
+                value = PyStackRef_DUP(selected);
+            }
+            else if (kind == 2) {
+                value = PyStackRef_FromPyObjectNew(slot);
+                STAT_INC(LOAD_ATTR, hit);
+            }
+            else {
+                value = PyStackRef_FromPyObjectNew((PyObject *)(uintptr_t)result);
+            }
+            _PyStackRef returned = PyStackRef_MakeHeapSafe(value);
+            _PyStackRef leaf_callable = callable;
+            _PyStackRef leaf_self = self_or_null;
+            _PyStackRef *leaf_args = args;
+            INPUTS_DEAD();
+            SAVE_STACK();
+            /* Frame clearing releases locals in reverse order, then the function
+               and finally its executable; finalizers observe the caller's stack. */
+            for (int i = oparg; --i >= 0; ) {
+                PyStackRef_CLOSE(leaf_args[i]);
+            }
+            PyStackRef_XCLOSE(leaf_self);
+            PyStackRef_CLOSE(leaf_callable);
+            Py_DECREF(code);
+            RELOAD_STACK();
+            STAT_INC(CALL, hit);
+            CALL_STAT_INC(inlined_py_calls);
+            res = returned;
+        }
+
         macro(CALL_BOUND_METHOD_EXACT_ARGS) =
             _RECORD_BOUND_METHOD +
             unused/1 + // Skip over the counter

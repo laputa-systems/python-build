@@ -83,7 +83,8 @@ GATE_WORKLOADS = (
 )
 # Registered workloads whose 3.16 input closures do not exist yet.
 UNAVAILABLE_WORKLOADS = frozenset({
-    "pylint_source", "pycparser_source", "import_app_stack", "pip_install_wheelhouse",
+    "pylint_source", "pycparser_source", "import_app_stack", "cold_import_app_stack",
+    "pip_install_wheelhouse",
 })
 # Configure selects Cargo's dev profile whenever --enable-optimizations is
 # absent. Every make invocation, including `make install`, must override it:
@@ -133,7 +134,10 @@ CLIMB_SUPERSEDED_UOP_ASSERTIONS = frozenset({
     "test.test_capi.test_opt.TestUopsOptimization.test_float_inplace_chain_propagation",
     "test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_inplace_unique_lhs",
     "test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_unique_result_enables_inplace",
+    "test.test_capi.test_opt.TestUopsOptimization.test_func_guards_removed_or_reduced",
+    "test.test_capi.test_opt.TestUopsOptimization.test_func_version_guarded_on_change",
     "test.test_capi.test_opt.TestUopsOptimization.test_int_inplace_chain_propagation",
+    "test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_optimized_immortal",
 })
 CLIMB_FROZEN_PREFIXES = ("benchmarks/",)
 CLIMB_FROZEN_FILES = ("rust-cpython/perf_verdict.py", "rust-cpython/tests/jit_fuzz.py")
@@ -709,7 +713,8 @@ def _upstream_compression_setup(setup_local: str) -> str:
     return "".join(kept)
 
 
-def _stage_overlay(paths: dict[str, Path], route: CompressionRoute) -> tuple[dict[str, Any], list[str]]:
+def _stage_overlay(paths: dict[str, Path], route: CompressionRoute, *,
+                   serc: bool) -> tuple[dict[str, Any], list[str]]:
     # Copy the overlay into a scratch tree with the coverage builder's own
     # validation (no Lib/test edits, no symlinks), then diff from there.
     staging = paths["overlay_staging"]
@@ -722,6 +727,8 @@ def _stage_overlay(paths: dict[str, Path], route: CompressionRoute) -> tuple[dic
             (staging / omitted).unlink()
         setup_local = staging / "Modules" / "Setup.local"
         setup_local.write_text(_upstream_compression_setup(setup_local.read_text()))
+    if serc:
+        lb._link_serc(staging)
     files = sorted(path.relative_to(staging).as_posix()
                    for path in staging.rglob("*") if path.is_file())
     return overlay, files
@@ -899,11 +906,12 @@ class OverlaySync(NamedTuple):
     changes: dict[str, list[str]]
 
 
-def _plan_overlay_sync(paths: dict[str, Path], route: CompressionRoute) -> OverlaySync:
+def _plan_overlay_sync(paths: dict[str, Path], route: CompressionRoute, *,
+                       serc: bool) -> OverlaySync:
     source = _existing_source(paths["source_parent"])
     if not (paths["build"] / "Makefile").is_file() or not paths["overlay_manifest"].is_file():
         raise LaneError("the previous build tree is incomplete; run a clean build")
-    overlay, files = _stage_overlay(paths, route)
+    overlay, files = _stage_overlay(paths, route, serc=serc)
     staged = {item: (paths["overlay_staging"] / item).read_bytes() for item in files}
     current = {item: ((source / item).read_bytes() if (source / item).is_file() else None)
                for item in files}
@@ -944,10 +952,12 @@ def _worker_count(jobs: int | None) -> int:
 
 
 def _build_environment(toolchain, target, paths: dict[str, Path], *, workers: int, sandbox,
-                       jit: bool = False) -> dict[str, str]:
+                       jit: bool = False, serc: bool = False) -> dict[str, str]:
     env = lb._environment(toolchain, offline=True, build_dir=paths["build"])
     env.update(_perf_flags(toolchain, target, stage=paths["stage"]))
     env.update(lb.jit_configuration(toolchain, jit=jit).environment)
+    if serc:
+        env["CFLAGS_NODIST"] = lb.SERC_CFLAGS_NODIST
     env.update({
         "PY_CC": str(toolchain.llvm_prefix / "bin" / "clang"),
         "PY_CPPFLAGS": env["CPPFLAGS"],
@@ -978,7 +988,8 @@ def cargo(*, name: str, arguments: list[str]) -> int:
             raise LaneError(f"{_tag(name)} is the pristine control and has no overlay to run cargo on")
         if not previous.get("configured"):
             raise LaneError(f"no configured candidate build named {name!r}; run a clean build")
-        sync = _plan_overlay_sync(paths, _report_route(previous))
+        serc = bool(previous.get("serc", False))
+        sync = _plan_overlay_sync(paths, _report_route(previous), serc=serc)
         _refuse_unsyncable(sync.changes)
         _copy_changed_overlay(paths, sync.source, sync.changes)
         lb._apply_serc_source(sync.source)
@@ -987,7 +998,7 @@ def cargo(*, name: str, arguments: list[str]) -> int:
         lb._llvm_ready(toolchain)
         env = _build_environment(toolchain, target, paths, workers=_worker_count(None),
                                  sandbox=lb._sealed_sandbox(),
-                                 jit=bool(previous.get("jit", False)))
+                                 jit=bool(previous.get("jit", False)), serc=serc)
         return subprocess.run([str(lb.CARGO_HOME / "bin" / "cargo"),
                                *lb.LANE_CARGO_SOURCE_ARGS, *arguments],
                               cwd=sync.source, env=env, check=False).returncode
@@ -995,7 +1006,7 @@ def cargo(*, name: str, arguments: list[str]) -> int:
 
 def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
           incremental: bool = False, upstream_compression: bool = False,
-          jit: bool = False, pystats: bool = False) -> int:
+          jit: bool = False, pystats: bool = False, serc: bool = False) -> int:
     _check_name(name)
     if jobs is not None and jobs < 1:
         raise LaneError("build jobs must be positive")
@@ -1003,6 +1014,8 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
         raise LaneError("--pystats collects tier-2 statistics and requires --jit")
     if incremental and empty_overlay:
         raise LaneError("the pristine control is always a clean build")
+    if serc and empty_overlay:
+        raise LaneError("--serc links the lane's Serc crate; the pristine control has no overlay")
     if upstream_compression and (incremental or empty_overlay):
         raise LaneError("--upstream-compression selects the route of a clean candidate build; "
                         "an incremental build keeps its recorded route and the control has no overlay")
@@ -1027,23 +1040,27 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
             if bool(previous.get("pystats", False)) != pystats:
                 raise LaneError("incremental build refused: the pystats flag changed; "
                                 "run a clean build")
+            if bool(previous.get("serc", False)) != serc:
+                raise LaneError("incremental build refused: the Serc flag changed; "
+                                "run a clean build")
             configured = True
             route = _report_route(previous)
         _write_json(paths["report"], {"status": "building", "name": _tag(name),
                                       "pristine": empty_overlay, "configured": configured,
-                                      "jit": jit, "pystats": pystats, "compression_route": route})
+                                      "jit": jit, "pystats": pystats, "serc": serc,
+                                      "compression_route": route})
         state = {"configured": configured}
         if incremental:
             state["previous"] = previous
         try:
             report = _build_locked(name, paths, empty_overlay=empty_overlay, jobs=jobs,
                                    incremental=incremental, state=state, route=route, jit=jit,
-                                   pystats=pystats)
+                                   pystats=pystats, serc=serc)
         except BaseException as error:
             _write_json(paths["report"], {"status": "failed", "name": _tag(name),
                                           "pristine": empty_overlay, "configured": state["configured"],
-                                          "jit": jit, "pystats": pystats, "compression_route": route,
-                                          "error": str(error)})
+                                          "jit": jit, "pystats": pystats, "serc": serc,
+                                          "compression_route": route, "error": str(error)})
             raise
         report["build_seconds"] = round(time.monotonic() - started, 1)
         report["phase_seconds"] = phase_seconds
@@ -1059,7 +1076,7 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
 def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, jobs: int | None,
                   incremental: bool, state: dict[str, Any],
                   route: CompressionRoute = "private", jit: bool = False,
-                  pystats: bool = False) -> dict[str, Any]:
+                  pystats: bool = False, serc: bool = False) -> dict[str, Any]:
     toolchain, target = lb._toolchain()
     lb._llvm_ready(toolchain)
     git_state = _git_state()
@@ -1068,7 +1085,8 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
     placement_modes: dict[str, bool] = {}
     placement_original: bytes | None = None
     if incremental:
-        source, overlay, files, staged, current, changes = _plan_overlay_sync(paths, route)
+        source, overlay, files, staged, current, changes = _plan_overlay_sync(paths, route,
+                                                                              serc=serc)
         setup = "Modules/Setup.stdlib.in"
         if changes["changed"] == [setup] and not changes["removed"]:
             placement_original = _original_setup_template()
@@ -1126,7 +1144,7 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
         if empty_overlay:
             overlay, files = {"files": 0, "sha256": None, "pristine": True}, []
         else:
-            overlay, files = _stage_overlay(paths, route)
+            overlay, files = _stage_overlay(paths, route, serc=serc)
             for item in files:
                 _copy_file(paths["overlay_staging"] / item, source / item)
     if not empty_overlay:
@@ -1149,7 +1167,8 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
         )
     workers = _worker_count(jobs)
     sandbox = lb._sealed_sandbox()
-    env = _build_environment(toolchain, target, paths, workers=workers, sandbox=sandbox, jit=jit)
+    env = _build_environment(toolchain, target, paths, workers=workers, sandbox=sandbox, jit=jit,
+                             serc=serc)
     jit_config = lb.jit_configuration(toolchain, jit=jit)
     configure = [str(source / "configure"), f"--prefix={paths['stage']}", "--enable-shared",
                  jit_config.argument, "--with-tail-call-interp=no",
@@ -1289,6 +1308,7 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
         "cflags": env["CFLAGS"],
         "jit": jit,
         "pystats": pystats,
+        "serc": serc,
         "cargo_profile": None if empty_overlay else "release",
         "cargo_profile_selected_by": None if empty_overlay else
             "make command-line override on build and install "
@@ -1316,7 +1336,7 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
 
 
 def test(*, name: str, suites: list[str], all_suites: bool = False,
-         jobs: int | None = None) -> int:
+         jobs: int | None = None, serc_verify: bool = False) -> int:
     # Module focus (--suite test_zlib) and full-suite (--all) correctness
     # checks for a perf build. Suites run unsealed like the coverage
     # runner: measurement isolation belongs to the benchmark passes.
@@ -1334,22 +1354,32 @@ def test(*, name: str, suites: list[str], all_suites: bool = False,
     build_python = _build_python(paths["build"])
     if not build_python.is_file():
         raise LaneError(f"perf build interpreter is missing: {build_python}")
+    if serc_verify and not report.get("serc"):
+        raise LaneError(f"--serc-verify needs a --serc build; {_tag(name)} has no Serc")
     toolchain, _target = lb._toolchain()
     env = lb._test_environment(toolchain)
     scope = "all" if all_suites else "suite"
     label = "all" if all_suites else "-".join(suites)
     if len(label) > 160:
         label = f"{'-'.join(suites[:3])}-{hashlib.sha256(label.encode()).hexdigest()[:16]}"
+    if serc_verify:
+        label += "-serc-verify"
     log = lb.LOGS / f"{_tag(name)}-{label}.log"
     workers = jobs if jobs is not None else lb._test_jobs()
-    with host_lease("test", f"test {_tag(name)} {label}"):
+    with host_lease("test", f"test {_tag(name)} {label}"), contextlib.ExitStack() as scratch:
+        if serc_verify:
+            SCRATCH.mkdir(parents=True, exist_ok=True)
+            env["PYTHONSERCVERIFY"] = "1"
+            env["PYTHONPYCACHEPREFIX"] = scratch.enter_context(
+                tempfile.TemporaryDirectory(prefix="serc-verify-pycache-", dir=SCRATCH))
         for stale in (paths["build"] / "build").glob("test_python_*"):
             _remove_tree(stale)
         result = lb._run_python_test(
             [str(build_python), "-m", "test", "-j", str(workers), "--timeout=900", *suites],
             cwd=paths["build"], env=env, log=log,
         )
-    report["tests"] = {"scope": scope, "suites": suites, "git": _git_state(), **result}
+    report["tests"] = {"scope": scope, "suites": suites, "serc_verify": serc_verify,
+                       "git": _git_state(), **result}
     report["status"] = f"{scope}-passed" if result["returncode"] == 0 else f"{scope}-failed"
     _write_json(paths["report"], report)
     if result["returncode"] != 0:
@@ -1415,6 +1445,8 @@ def _label(side: dict[str, Any]) -> str:
         flags.append("jit")
     if report.get("pystats"):
         flags.append("pystats")
+    if report.get("serc"):
+        flags.append("serc")
     if report.get("incremental"):
         flags.append("incremental")
     if report.get("compression_route") == "upstream":
@@ -1440,6 +1472,13 @@ def _gate_checks(baseline: dict[str, Any], candidate: dict[str, Any]) -> None:
         if result.returncode != 0:
             raise LaneError(f"challenger {challenger[:10]} does not contain incumbent {incumbent[:10]}; "
                             "rebase on the incumbent commit and rebuild")
+
+
+def _serc_candidate_pair(baseline: dict[str, Any], candidate: dict[str, Any], *,
+                         memory_only: bool, self_compare: bool) -> bool:
+    return (memory_only and not self_compare
+            and bool(candidate["report"].get("serc"))
+            and not bool(baseline["report"].get("serc")))
 
 
 def eligible_workloads() -> list[str]:
@@ -1612,6 +1651,7 @@ def _measure(*, baseline_ref: str, candidate_ref: str, workloads: list[str], mod
     early_rejection = (memory_only and not gate and not self_compare and not record_baselines
                        and not slug_prefix and runs >= 2)
     stopped_after: dict[str, Any] | None = None
+    serc_pair = False
 
     def replicated_regression(name: str) -> bool:
         # Only completed replication can make the remaining samples unnecessary.
@@ -1620,7 +1660,8 @@ def _measure(*, baseline_ref: str, candidate_ref: str, workloads: list[str], mod
             return False
         entity = perf_verdict.entity_verdict(observations[name])
         decision = perf_verdict.decide({name: entity}, targets=[name], runs=runs,
-                                       quiet=None, gate=False, memory_only=True)
+                                       quiet=None, gate=False, memory_only=True,
+                                       serc_pair=serc_pair)
         return bool(decision["regressions"])
 
     started = time.monotonic()
@@ -1637,6 +1678,8 @@ def _measure(*, baseline_ref: str, candidate_ref: str, workloads: list[str], mod
         # replace a stage between this check and the last measurement.
         baseline = resolve(baseline_ref)
         candidate = baseline if self_compare else resolve(candidate_ref)
+        serc_pair = _serc_candidate_pair(baseline, candidate, memory_only=memory_only,
+                                         self_compare=self_compare)
         if not self_compare and baseline["stage"] == candidate["stage"]:
             raise LaneError("baseline and candidate are the same stage; use `perf.py calibrate`")
         if gate:
@@ -1709,7 +1752,8 @@ def _measure(*, baseline_ref: str, candidate_ref: str, workloads: list[str], mod
                     phase_seconds["workload_runs"] += time.monotonic() - phase_started
                     observations[workload].append(perf_verdict.mismatch_observation("workload")
                                                   if summary is None else perf_verdict.run_observation(
-                                                      summary, memory_only=memory_only))
+                                                      summary, memory_only=memory_only,
+                                                      serc_pair=serc_pair))
                     if replicated_regression(workload):
                         stopped_after = {"run": run, "entity": workload}
                         break
@@ -1759,7 +1803,8 @@ def _measure(*, baseline_ref: str, candidate_ref: str, workloads: list[str], mod
                                             memory_only=memory_only)
     else:
         decision = perf_verdict.decide(decision_entities, targets=targets, runs=runs, quiet=quiet, gate=gate,
-                                       known_mismatches=known, memory_only=memory_only)
+                                       known_mismatches=known, memory_only=memory_only,
+                                       serc_pair=serc_pair)
     goals = ({name: perf_verdict.goal_status(entities[name], memory_only=memory_only)
               for name in evaluated_modules if name in entities}
              if baseline["ref"] == "@control" and not self_compare else {})
@@ -2705,6 +2750,9 @@ def main(argv: list[str] | None = None) -> int:
     build_parser.add_argument("--pystats", action="store_true",
                               help="enable CPython's specialization and tier-2 statistics; "
                                    "requires --jit")
+    build_parser.add_argument("--serc", action="store_true",
+                              help="link Serc into libpython and compile source-mode "
+                                   "requests with it")
     cargo_parser = commands.add_parser(
         "cargo", help="run the pinned cargo in a perf build's assembled source, after an overlay sync")
     cargo_parser.add_argument("--name", required=True, help="isolated build name to run cargo in")
@@ -2716,6 +2764,10 @@ def main(argv: list[str] | None = None) -> int:
     test_parser.add_argument("--jobs", type=int, metavar="N", help="parallel test workers")
     test_parser.add_argument("--suite", action="append", default=[], metavar="TEST_NAME",
                              help="complete CPython test module or package; repeatable")
+    test_parser.add_argument("--serc-verify", action="store_true",
+                             help="on a --serc build, compile every source-mode request "
+                                  "with both Serc and the C compiler from an empty bytecode "
+                                  "cache, raising on any difference")
     for command, help_text in (("bench", "paired measurement with a hill-climbing verdict"),
                                ("calibrate", "self-compare one build; every workload must read within budget")):
         sub = commands.add_parser(command, help=help_text)
@@ -2811,11 +2863,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "build":
             return build(name=args.name, empty_overlay=args.empty_overlay, jobs=args.jobs,
                          incremental=args.incremental, upstream_compression=args.upstream_compression,
-                         jit=args.jit, pystats=args.pystats)
+                         jit=args.jit, pystats=args.pystats, serc=args.serc)
         if args.command == "cargo":
             return cargo(name=args.name, arguments=args.cargo_args)
         if args.command == "test":
-            return test(name=args.name, suites=args.suite, all_suites=args.all, jobs=args.jobs)
+            return test(name=args.name, suites=args.suite, all_suites=args.all, jobs=args.jobs,
+                        serc_verify=args.serc_verify)
         if args.command == "bench":
             return bench(baseline_ref=args.baseline, candidate_ref=args.candidate,
                          workloads=args.workload, gate=args.gate, runs=args.runs,

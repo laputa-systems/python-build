@@ -75,7 +75,9 @@ def _result(operation_count: int, digest: str, elapsed_seconds: float) -> dict[s
     }
 
 
-def _run_child(command: list[str], *, timeout: int = 300) -> subprocess.CompletedProcess[str]:
+def _run_child(
+    command: list[str], *, timeout: int = 300, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     """Run one isolated child and retain its output for correctness checks."""
     try:
         completed = subprocess.run(
@@ -85,6 +87,7 @@ def _run_child(command: list[str], *, timeout: int = 300) -> subprocess.Complete
             text=True,
             timeout=timeout,
             check=False,
+            env=env,
         )
     except (OSError, subprocess.TimeoutExpired) as error:
         raise WorkloadError(f"could not complete child command {command[0]!r}: {error}") from error
@@ -141,6 +144,66 @@ def import_django(iterations: int) -> dict[str, int | float | str]:
 def import_app_stack(iterations: int) -> dict[str, int | float | str]:
     """Import the representative Django, FastAPI/Pydantic, and SQLAlchemy stack."""
     return _import_fresh_process(_APP_STACK_IMPORTS, iterations, "import_app_stack")
+
+
+_COLD_SOURCE_CHECK = (
+    "import os, sys\n"
+    "_specs = [m.__spec__ for m in list(sys.modules.values())\n"
+    "          if getattr(m, '__spec__', None) is not None]\n"
+    "_frozen = {s.name for s in _specs if s.origin == 'frozen'}\n"
+    "_cached = [s.cached for s in _specs if s.cached]\n"
+    "_prefix = (sys.pycache_prefix or '\\0') + os.sep\n"
+    "if _frozen - {'_frozen_importlib', '_frozen_importlib_external', '_pybuiltins', 'zipimport'}:\n"
+    "    raise SystemExit('frozen modules loaded: ' + ', '.join(sorted(_frozen)))\n"
+    "if not _cached or any(not c.startswith(_prefix) or os.path.exists(c) for c in _cached):\n"
+    "    raise SystemExit('a module was not compiled from source into an empty cache')\n"
+    "print('COLD_SOURCES:' + str(len(_cached)))\n"
+)
+
+
+def _cold_process(script: str, iterations: int, scenario: str) -> float:
+    """Run fresh children that compile every module they import, stdlib included, from source."""
+    command = [sys.executable, "-B", "-X", "frozen_modules=off", "-c", script + _COLD_SOURCE_CHECK]
+    elapsed = 0.0
+    for _ in range(iterations):
+        with tempfile.TemporaryDirectory(prefix="cold-pycache-") as prefix:
+            env = {**os.environ, "PYTHONPYCACHEPREFIX": prefix}
+            started = time.perf_counter()
+            completed = _run_child(command, env=env)
+            elapsed += time.perf_counter() - started
+            if any(Path(prefix).iterdir()):
+                raise WorkloadError(f"{scenario} child wrote to its bytecode cache")
+        last = completed.stdout.splitlines()[-1] if completed.stdout.splitlines() else ""
+        if not last.startswith("COLD_SOURCES:") or int(last.removeprefix("COLD_SOURCES:")) < 1:
+            raise WorkloadError(f"{scenario} child did not confirm its source compilations")
+    return elapsed
+
+
+def cold_python_startup(iterations: int) -> dict[str, int | float | str]:
+    """Start a fresh interpreter whose startup modules all compile from source."""
+    elapsed = _cold_process("", iterations, "cold_python_startup")
+    return _result(iterations, _digest({"scenario": "cold_python_startup"}), elapsed)
+
+
+def _import_cold_process(modules: tuple[str, ...], iterations: int, scenario: str) -> dict[str, int | float | str]:
+    """Import a fixed module set once in each fresh process, compiling every module from source."""
+    script = (
+        "import importlib\n"
+        f"for _name in {modules!r}:\n"
+        "    importlib.import_module(_name)\n"
+    )
+    elapsed = _cold_process(script, iterations, scenario)
+    return _result(iterations, _digest({"scenario": scenario, "modules": modules}), elapsed)
+
+
+def cold_import_django(iterations: int) -> dict[str, int | float | str]:
+    """Import Django's entry points with every module compiled from source."""
+    return _import_cold_process(_DJANGO_IMPORTS, iterations, "cold_import_django")
+
+
+def cold_import_app_stack(iterations: int) -> dict[str, int | float | str]:
+    """Import the Django, FastAPI/Pydantic, and SQLAlchemy stack with every module compiled from source."""
+    return _import_cold_process(_APP_STACK_IMPORTS, iterations, "cold_import_app_stack")
 
 
 def _normalized_distribution_name(name: str) -> str:
@@ -353,6 +416,9 @@ _SCENARIOS: dict[str, Callable[[int], dict[str, int | float | str]]] = {
     "python_startup_no_site": lambda count: python_startup(count, no_site=True),
     "import_django": import_django,
     "import_app_stack": import_app_stack,
+    "cold_python_startup": cold_python_startup,
+    "cold_import_django": cold_import_django,
+    "cold_import_app_stack": cold_import_app_stack,
     "pip_install_wheelhouse": pip_install_wheelhouse,
     "serialization_roundtrip": serialization_roundtrip,
     "multiprocess_pool": multiprocess_pool,

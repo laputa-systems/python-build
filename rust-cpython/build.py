@@ -82,6 +82,9 @@ RUST_CHANNEL = "nightly-2026-09-15"
 SOURCE_LOCK = LANE / "sources.lock.json"
 OVERLAY = LANE / "overlay"
 SERC_OVERLAY = LANE / "serc-overlay"
+SERC_CARRIER_MANIFEST = Path("Modules/cpython-rust-staticlib/Cargo.toml")
+SERC_CARRIER_FEATURE = '[features]\nserc = ["dep:serc-lane"]\n'
+SERC_CFLAGS_NODIST = "-DPy_SERC"
 BOOTSTRAP_LOCK = REPO / "bootstrap.lock.json"
 LINUX_TOOLCHAIN_LOCK = LANE / "linux-toolchain.lock.json"
 CACHE_ROOT = REPO / ".cache"
@@ -760,36 +763,6 @@ def _copy_overlay_tree(overlay: Path, destination: Path) -> dict[str, Any]:
     return {"files": count, "sha256": digest.hexdigest()}
 
 
-def _serc_lane_manifest() -> str:
-    return (
-        "[package]\n"
-        'name = "serc-lane"\n'
-        'version = "0.0.0"\n'
-        'edition = "2024"\n'
-        "publish = false\n\n"
-        "[lib]\n"
-        'name = "serc_lane"\n'
-        'path = "src/lib.rs"\n\n'
-        "[dependencies]\n"
-        'serc = { path = "../serc/crates/serc" }\n'
-    )
-
-
-def _write_serc_lane_anchor(source: Path) -> dict[str, Any]:
-    anchor = source / "serc-lane"
-    manifest = anchor / "Cargo.toml"
-    library = anchor / "src" / "lib.rs"
-    manifest.parent.mkdir(parents=True, exist_ok=True)
-    library.parent.mkdir(parents=True, exist_ok=True)
-    manifest_text = _serc_lane_manifest()
-    library_text = "pub use serc;\n"
-    if not manifest.is_file() or manifest.read_text() != manifest_text:
-        manifest.write_text(manifest_text)
-    if not library.is_file() or library.read_text() != library_text:
-        library.write_text(library_text)
-    return {"manifest": manifest_text, "library": library_text}
-
-
 def _apply_serc_source(source: Path) -> dict[str, Any]:
     metadata, entry = _read_serc_lock()
     blob = Cache(CACHE_ROOT).require(entry)
@@ -813,9 +786,20 @@ def _apply_serc_source(source: Path) -> dict[str, Any]:
             "Serc Cargo.lock digest disagrees with the source lock: "
             f"{found_lock_hash} != {metadata['cargo_lock_sha256']}"
         )
-    overlay = _copy_overlay_tree(SERC_OVERLAY, destination)
-    anchor = _write_serc_lane_anchor(source)
-    return {"overlay": overlay, "anchor": anchor}
+    return {"overlay": _copy_overlay_tree(SERC_OVERLAY, destination)}
+
+
+def serc_carrier_manifest(manifest: str) -> str:
+    """Return the static carrier manifest of a `--serc` build: `serc` is a default feature."""
+    if manifest.count(SERC_CARRIER_FEATURE) != 1:
+        raise LaneError(f"{SERC_CARRIER_MANIFEST} must declare its optional serc feature once")
+    return manifest.replace(
+        SERC_CARRIER_FEATURE, '[features]\ndefault = ["serc"]\nserc = ["dep:serc-lane"]\n')
+
+
+def _link_serc(source: Path) -> None:
+    manifest = source / SERC_CARRIER_MANIFEST
+    manifest.write_text(serc_carrier_manifest(manifest.read_text()))
 
 
 def _llvm_layout():
@@ -1243,7 +1227,8 @@ def jit_configuration(toolchain, *, jit: bool) -> JitConfiguration:
     )
 
 
-def _configuration(toolchain, target, *, jit: bool = False) -> tuple[list[str], dict[str, str]]:
+def _configuration(toolchain, target, *, jit: bool = False,
+                   serc: bool = False) -> tuple[list[str], dict[str, str]]:
     platform_flags = _platform_flags(toolchain, target)
     jit_config = jit_configuration(toolchain, jit=jit)
     args = [
@@ -1257,6 +1242,8 @@ def _configuration(toolchain, target, *, jit: bool = False) -> tuple[list[str], 
     env = _environment(toolchain, offline=True)
     env.update(platform_flags)
     env.update(jit_config.environment)
+    if serc:
+        env["CFLAGS_NODIST"] = SERC_CFLAGS_NODIST
     return args, env
 
 
@@ -1737,7 +1724,7 @@ def _build_mpdecimal(toolchain, target, jobs: int, sandbox) -> dict[str, str]:
 
 def _configure_source(source: Path, toolchain, target, jobs: int,
                       sandbox: SealedRun, overlay: dict[str, Any], *,
-                      jit: bool) -> dict[str, Any]:
+                      jit: bool, serc: bool) -> dict[str, Any]:
     rustup = _require_nightly()
     _rust_tool_wrappers(rustup)
     for path in (BUILD, STAGE):
@@ -1745,7 +1732,7 @@ def _configure_source(source: Path, toolchain, target, jobs: int,
             shutil.rmtree(path)
         path.mkdir(parents=True)
     _write_cargo_source_config(BUILD)
-    args, env = _configuration(toolchain, target, jit=jit)
+    args, env = _configuration(toolchain, target, jit=jit, serc=serc)
     if jit:
         env["PATH"] = f"{_jit_llvm_tools(toolchain)}:{env['PATH']}"
     if IS_LINUX:
@@ -1820,6 +1807,7 @@ def _configure_source(source: Path, toolchain, target, jobs: int,
         "cflags": env["CFLAGS"],
         "cargo_profile": cargo_profile,
         "jit": jit,
+        "serc": serc,
         "interpreter": module,
         "build_interpreter": str(_build_python()),
         "rust": _rust_identity(rustup),
@@ -1842,7 +1830,7 @@ def _platform_sdk_report(toolchain) -> dict[str, Any]:
     }
 
 
-def build(*, jobs: int | None = None, jit: bool = False) -> int:
+def build(*, jobs: int | None = None, jit: bool = False, serc: bool = False) -> int:
     _require_host()
     if jobs is not None and jobs < 1:
         raise LaneError("build jobs must be positive")
@@ -1852,6 +1840,8 @@ def build(*, jobs: int | None = None, jit: bool = False) -> int:
     _llvm_ready(toolchain)
     source = _extract_fresh(SOURCE)
     overlay = _apply_overlay(source)
+    if serc:
+        _link_serc(source)
     _verify_cargo_lock(source)
     env = _environment(toolchain, offline=True)
     _require_command(
@@ -1861,7 +1851,8 @@ def build(*, jobs: int | None = None, jit: bool = False) -> int:
     )
     sandbox = _sealed_sandbox()
     workers = jobs if jobs is not None else max(1, (os.cpu_count() or 4) - 1)
-    report = _configure_source(source, toolchain, target, workers, sandbox, overlay, jit=jit)
+    report = _configure_source(source, toolchain, target, workers, sandbox, overlay,
+                               jit=jit, serc=serc)
     print(f"OK    debug CPython {report['interpreter']['version'].split()[0]} -> {STAGE}")
     return 0
 
@@ -1954,6 +1945,8 @@ def main(argv: list[str] | None = None) -> int:
     build_parser.add_argument("--jobs", type=int, metavar="N", help="parallel build jobs")
     build_parser.add_argument("--jit", action="store_true",
                               help="build the experimental JIT with the locked LLVM")
+    build_parser.add_argument("--serc", action="store_true",
+                              help="link Serc and compile source-mode exec requests with it")
     test_parser.add_argument("--all", action="store_true", help="run all default-resource CPython tests")
     test_parser.add_argument("--jobs", type=int, metavar="N", help="parallel test workers")
     test_parser.add_argument("--suite", action="append", default=[], metavar="TEST_NAME",
@@ -1965,7 +1958,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "fetch":
             return fetch()
         if args.command == "build":
-            return build(jobs=args.jobs, jit=args.jit)
+            return build(jobs=args.jobs, jit=args.jit, serc=args.serc)
         if args.command == "test":
             return test(args.suite, all_suites=args.all, jobs=args.jobs)
         return clean()

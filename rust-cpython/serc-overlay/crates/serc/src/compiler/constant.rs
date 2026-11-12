@@ -13,7 +13,7 @@ use ruff_text_size::Ranged;
 use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 use smallvec::SmallVec;
 
-use super::{LOAD_CONST, LOAD_SMALL_INT, NOP, STORE_NAME};
+use super::{LOAD_COMMON_CONSTANT, LOAD_CONST, LOAD_SMALL_INT, NOP, STORE_NAME};
 use crate::assembler::{FoldAdmissionId, Label, OperandPatchId};
 use crate::target::operands::{BinaryOperation, Conversion};
 use crate::{CompileError, PythonVersion};
@@ -700,8 +700,8 @@ impl Compiler<'_> {
             self.record_folded_operands(expression)?;
         }
         let operand_folds = first_operand_fold..self.output.deferred_constants.len();
-        let double_ellipsis = double_negated_ellipsis(expression);
-        if let Some(inner) = double_ellipsis {
+        let double_literal = double_negated_literal(expression);
+        if let Some(inner) = double_literal {
             // The flowgraph keeps the folded load in the inner `not` slot and leaves
             // the outer operation's line marker after it.
             self.assembler
@@ -770,7 +770,7 @@ impl Compiler<'_> {
             self.assembler
                 .record_last_uniform_fold_owner_slots(hidden_owner_slots);
         }
-        if let Some(inner) = double_ellipsis
+        if let Some(inner) = double_literal
             && self.source_location(expression.range()).line
                 != self.source_location(inner.range).line
         {
@@ -852,7 +852,7 @@ impl Compiler<'_> {
                             self.record_folded_value(bound)?;
                         }
                     }
-                } else if !matches!(
+                } else if self.context.python_version >= PythonVersion::Py316 || !matches!(
                     self.context.fold_constant(&subscript.slice),
                     Some(Constant::Int(value)) if u8::try_from(value).is_ok()
                 ) {
@@ -1074,8 +1074,8 @@ impl Compiler<'_> {
                 }
             }
             Expr::UnaryOp(unary) if unary.op == UnaryOp::Not => {
-                let double_ellipsis = double_negated_ellipsis(expression).is_some();
-                if double_ellipsis {
+                let double_literal = double_negated_literal(expression).is_some();
+                if double_literal {
                     // A later tuple fold also removes the inner surviving load, while
                     // both negation locations still precede the tuple's own load.
                     self.emit_folded_tuple_not_nops(&unary.operand)?;
@@ -1154,6 +1154,8 @@ impl Compiler<'_> {
         self.record_folded_operands(expression)?;
         if let Some(constant) = self.source_aware_fold_constant(expression)
             && !matches!(constant, Constant::Int(value) if u8::try_from(value).is_ok())
+            && !(self.context.python_version >= PythonVersion::Py316
+                && matches!(&constant, Constant::Tuple(values) if values.is_empty()))
         {
             self.record_fresh_empty_bytes_fold(expression, &constant);
             self.output.deferred_constants.push((None, constant));
@@ -1362,6 +1364,15 @@ impl Compiler<'_> {
         &mut self,
         constant: Constant,
     ) -> Result<(), CompileError> {
+        if self.context.python_version >= PythonVersion::Py316
+            && matches!(&constant, Constant::Tuple(values) if values.is_empty())
+        {
+            return self.emit(
+                LOAD_COMMON_CONSTANT,
+                crate::target::operands316::CommonConstant::EMPTY_TUPLE.argument(),
+                1,
+            );
+        }
         self.apply_compiler_stack_effect(LOAD_CONST, 0, 1)?;
         let instruction = self
             .assembler
@@ -2198,13 +2209,13 @@ fn negated_ellipsis_depth(mut expression: &Expr) -> Option<usize> {
     matches!(expression, Expr::EllipsisLiteral(_)).then_some(depth)
 }
 
-/// Finds the inner operation when exactly two negations are applied to Ellipsis.
-pub(super) fn double_negated_ellipsis(expression: &Expr) -> Option<&ExprUnaryOp> {
+/// Finds the inner operation when exactly two negations are applied to a literal.
+pub(super) fn double_negated_literal(expression: &Expr) -> Option<&ExprUnaryOp> {
     if let Expr::UnaryOp(outer) = expression
         && outer.op == UnaryOp::Not
         && let Expr::UnaryOp(inner) = outer.operand.as_ref()
         && inner.op == UnaryOp::Not
-        && matches!(inner.operand.as_ref(), Expr::EllipsisLiteral(_))
+        && literal_constant(&inner.operand).is_some()
     {
         Some(inner)
     } else {
@@ -2220,7 +2231,9 @@ pub(super) fn instruction_folded_ellipsis_depth(expression: &Expr) -> Option<usi
     {
         Some(1)
     } else {
-        double_negated_ellipsis(expression).map(|_| 2)
+        double_negated_literal(expression)
+            .filter(|inner| matches!(inner.operand.as_ref(), Expr::EllipsisLiteral(_)))
+            .map(|_| 2)
     }
 }
 
@@ -2334,6 +2347,12 @@ pub(super) fn fold_constant_with_profile(
                 None
             }
             UnaryOp::Not => {
+                if boolean_sequence_repetition
+                    && let Some(inner) = double_negated_literal(expression)
+                    && let Some(value) = literal_constant(&inner.operand)
+                {
+                    return Some(Constant::Bool(value.is_truthy()));
+                }
                 // This flag also distinguishes modern instruction folding from the
                 // neutral legacy AST folding used by `fold_constant`.
                 let ellipsis_depth = if boolean_sequence_repetition {

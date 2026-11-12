@@ -19,9 +19,11 @@ that cannot bound the ratio, leave it `inconclusive`. The allowance is
 is faster or smaller.
 
 Memory-only acceptance evaluates module load footprint and working peak,
-and supported workload peak memory, with peak RSS required. Output equality,
-complete memory evidence, and independent replication remain mandatory;
-CPU, wall time, and host quietness cannot qualify or block acceptance.
+and supported workload peak memory, with peak RSS required. A candidate that
+links Serc over a non-Serc baseline records peak RSS as a known cost and
+decides on physical footprint at a +8% allowance. Output equality, complete
+memory evidence, and independent replication remain mandatory; CPU, wall
+time, and host quietness cannot qualify or block acceptance.
 """
 
 from __future__ import annotations
@@ -33,6 +35,11 @@ from typing import Any
 PRACTICAL_FLOOR = 0.01
 BOOTSTRAP_CONFIDENCE = 0.95
 BENCH_MEMORY_METRICS = ("peak_rss", "peak_private", "peak_pss")
+PHYSICAL_FOOTPRINT = "peak_phys_footprint"
+SERC_MEMORY_ALLOWANCE = 0.08
+SERC_RECORDED_COSTS = ("peak_rss",)
+SERC_MEMORY_METRICS = ("peak_private", "peak_pss", PHYSICAL_FOOTPRINT)
+SERC_ACCEPTANCE_POLICY = "memory-only-serc-cost"
 WORKLOAD_IMPROVABLE = ("wall", "cpu", "peak_rss")
 GOAL_CEILING = 1.0
 GOAL_FLOOR = 0.9
@@ -130,8 +137,20 @@ def _memory_interval(metric: Mapping[str, Any]) -> list[float] | None:
     return [1.0 + (change - noise) / median, 1.0 + (change + noise) / median]
 
 
+def _physical_footprint_samples(workload: Mapping[str, Any]) -> tuple[list[float], list[float]]:
+    sides = {}
+    for side in ("baseline", "candidate"):
+        memory = workload.get(side)
+        rounds = memory.get("memory", {}).get("rounds", ()) if isinstance(memory, Mapping) else ()
+        sides[side] = [float(record[PHYSICAL_FOOTPRINT]) for record in rounds
+                       if isinstance(record, Mapping)
+                       and isinstance(record.get(PHYSICAL_FOOTPRINT), (int, float))
+                       and not isinstance(record.get(PHYSICAL_FOOTPRINT), bool)]
+    return sides["baseline"], sides["candidate"]
+
+
 def run_observation(workload: Mapping[str, Any], *, floor: float = PRACTICAL_FLOOR,
-                    memory_only: bool = False) -> dict[str, Any]:
+                    memory_only: bool = False, serc_pair: bool = False) -> dict[str, Any]:
     """One bench.py run of one application workload."""
     metrics: dict[str, Any] = {}
     if not memory_only:
@@ -157,6 +176,12 @@ def run_observation(workload: Mapping[str, Any], *, floor: float = PRACTICAL_FLO
             interval = _memory_interval(metric)
             metrics[name] = {"ratios": [ratio] if isinstance(ratio, (int, float)) else [],
                              "ci95": interval, "class": classify(interval, floor=floor)}
+    if memory_only and serc_pair:
+        baseline_footprint, candidate_footprint = _physical_footprint_samples(workload)
+        if baseline_footprint and candidate_footprint:
+            detail = _metric(_paired(baseline_footprint, candidate_footprint))
+            detail["class"] = classify(detail["ci95"], floor=SERC_MEMORY_ALLOWANCE)
+            metrics[PHYSICAL_FOOTPRINT] = detail
     return {"kind": "workload", "metrics": metrics, "mismatch": False}
 
 
@@ -214,20 +239,23 @@ def entity_verdict(runs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _policy_metrics(verdict: Mapping[str, Any]) -> Sequence[str]:
-    return MODULE_MEMORY_METRICS if verdict["kind"] == "module" else BENCH_MEMORY_METRICS
+def _policy_metrics(verdict: Mapping[str, Any], *, serc_pair: bool = False) -> Sequence[str]:
+    if verdict["kind"] == "module":
+        return MODULE_MEMORY_METRICS
+    return SERC_MEMORY_METRICS if serc_pair else BENCH_MEMORY_METRICS
 
 
 def _unmeasured(detail: Mapping[str, Any] | None) -> bool:
     return detail is None or all(interval is None for interval in detail["per_run_ci95"])
 
 
-def _missing_memory(entities: Mapping[str, Mapping[str, Any]]) -> list[str]:
+def _missing_memory(entities: Mapping[str, Mapping[str, Any]], *, serc_pair: bool = False) -> list[str]:
     missing = []
     for name, verdict in entities.items():
         if verdict["mismatch"]:
             continue
-        required = (MODULE_MEMORY_METRICS if verdict["kind"] == "module" else ("peak_rss",))
+        required = (MODULE_MEMORY_METRICS if verdict["kind"] == "module"
+                    else ("peak_rss", PHYSICAL_FOOTPRINT) if serc_pair else ("peak_rss",))
         for metric in required:
             if _unmeasured(verdict["metrics"].get(metric)):
                 missing.append(f"{name} {metric}")
@@ -274,7 +302,8 @@ def _every(runs: int) -> str:
 
 def decide(entities: Mapping[str, Mapping[str, Any]], *, targets: Sequence[str],
            runs: int, quiet: bool | None, gate: bool,
-           known_mismatches: Sequence[str] = (), memory_only: bool = False) -> dict[str, Any]:
+           known_mismatches: Sequence[str] = (), memory_only: bool = False,
+           serc_pair: bool = False) -> dict[str, Any]:
     """Decide one attempt from replicated entity verdicts.
 
     Memory-only decisions select memory metrics for targets and guards,
@@ -298,7 +327,7 @@ def decide(entities: Mapping[str, Mapping[str, Any]], *, targets: Sequence[str],
                 mismatches.append(name)
             continue
         for metric, detail in verdict["metrics"].items():
-            if memory_only and metric not in _policy_metrics(verdict):
+            if memory_only and metric not in _policy_metrics(verdict, serc_pair=serc_pair):
                 continue
             if detail["verdict"] == RUN_REGRESSED:
                 regressions.append(f"{name} {metric}")
@@ -313,10 +342,11 @@ def decide(entities: Mapping[str, Mapping[str, Any]], *, targets: Sequence[str],
                 for metric in entities[name]["improvable"])
     )
     if memory_only:
-        insufficient = _missing_memory(entities)
+        insufficient = _missing_memory(entities, serc_pair=serc_pair)
     improved = sorted(
         f"{name} {metric}" for name in targets if name in entities
-        for metric in (_policy_metrics(entities[name]) if memory_only else entities[name]["improvable"])
+        for metric in (_policy_metrics(entities[name], serc_pair=serc_pair)
+                       if memory_only else entities[name]["improvable"])
         if entities[name]["metrics"].get(metric, {}).get("verdict") == RUN_IMPROVED
     )
     if mismatches:
@@ -349,11 +379,18 @@ def decide(entities: Mapping[str, Mapping[str, Any]], *, targets: Sequence[str],
                    if entities.get(name, {}).get("mismatch"))
     if known:
         reasons.append("documented output differences, not timed: " + ", ".join(known))
+    if memory_only and serc_pair:
+        reasons.append("Serc build: peak RSS is a recorded cost of linking Serc and does not "
+                       "decide; physical footprint rejects above +8%")
     if not gate:
         reasons.append("exploratory: not acceptance evidence")
+    acceptance_policy = ("memory-only" if memory_only else "all-metrics")
+    if memory_only and serc_pair:
+        acceptance_policy = SERC_ACCEPTANCE_POLICY
     return {
         "decision": decision,
-        "acceptance_policy": "memory-only" if memory_only else "all-metrics",
+        "acceptance_policy": acceptance_policy,
+        "recorded_costs": list(SERC_RECORDED_COSTS) if memory_only and serc_pair else [],
         "gate": gate,
         "runs": runs,
         "quiet": quiet,
@@ -444,21 +481,28 @@ def render(entities: Mapping[str, Mapping[str, Any]], decision: Mapping[str, Any
     """One line per entity, then the decision and commit-message-ready reasons."""
     lines = []
     width = max([len(name) for name in entities] + [12]) + 1
+    recorded = set(decision.get("recorded_costs") or ())
     for name, verdict in sorted(entities.items(), key=lambda item: (item[1]["kind"], item[0])):
         marker = "*" if name in decision["targets"] else " "
         goal = f"  GOAL {goals[name]['status']}" if goals and name in goals else ""
         if verdict["mismatch"]:
             body = "outputs differ from the baseline; not timed"
         else:
-            body = " | ".join(_format_metric(metric, detail) for metric, detail in verdict["metrics"].items())
+            body = " | ".join(_format_metric(metric, detail)
+                              + (" (recorded cost)" if metric in recorded else "")
+                              for metric, detail in verdict["metrics"].items())
         lines.append(f"{marker}{name:<{width}} {body}{goal}")
     lines.append("")
-    quietness = ("not checked" if decision.get("acceptance_policy") == "memory-only"
+    policy = decision.get("acceptance_policy")
+    quietness = ("not checked" if policy in {"memory-only", SERC_ACCEPTANCE_POLICY}
                  else "yes" if decision["quiet"] else "no")
     lines.append(f"DECISION: {decision['decision']} ({'gate' if decision['gate'] else 'explore'}, "
                  f"{decision['runs']} run(s), floor {decision['practical_floor']:.0%}, "
                  f"quiet={quietness}; * = target; ratios candidate/baseline)")
-    if decision.get("acceptance_policy") == "memory-only":
+    if policy == SERC_ACCEPTANCE_POLICY:
+        lines.append("POLICY: memory-only Serc vs non-Serc; peak RSS is a recorded cost of "
+                     "linking Serc and does not decide; physical footprint rejects above +8%")
+    elif policy == "memory-only":
         lines.append("POLICY: memory-only; CPU and wall time do not qualify or block")
     lines.extend(f"  - {reason}" for reason in decision["reasons"])
     return "\n".join(lines)

@@ -12,6 +12,7 @@ import json
 import os
 import sys
 import tempfile
+import tomllib
 import unittest
 from contextlib import ExitStack, nullcontext, redirect_stdout
 from pathlib import Path
@@ -901,6 +902,81 @@ class MemoryOnlyTests(unittest.TestCase):
                 self.assertTrue(call.call_args.kwargs["memory_only"])
 
 
+class SercMemoryPolicyTests(unittest.TestCase):
+    baseline_bytes = 100_000_000
+
+    def workload(self, footprint_ratio, *, rounds=2):
+        memory = {"peak_rss": {"ratio_candidate_over_baseline": 1.25,
+                               "absolute_change": 25_000_000, "noise_allowance": 1_000_000,
+                               "baseline": {"median": self.baseline_bytes}, "status": "fail"}}
+
+        def side(value):
+            return {"memory": {"rounds": [{"peak_phys_footprint": value} for _ in range(rounds)]}}
+
+        return {"comparison": {"memory": {"metrics": memory}},
+                "baseline": side(self.baseline_bytes),
+                "candidate": side(int(self.baseline_bytes * footprint_ratio))}
+
+    def entity(self, footprint_ratio, *, serc_pair=True):
+        observation = pv.run_observation(self.workload(footprint_ratio),
+                                         memory_only=True, serc_pair=serc_pair)
+        return observation, pv.entity_verdict([observation, observation])
+
+    def decision(self, entity, *, serc_pair=True):
+        return pv.decide({"python_startup": entity}, targets=["python_startup"], runs=2,
+                         quiet=False, gate=True, memory_only=True, serc_pair=serc_pair)
+
+    def test_peak_rss_is_a_recorded_cost_when_footprint_stays_within_allowance(self):
+        observation, entity = self.entity(1.04)
+        self.assertEqual(observation["metrics"]["peak_rss"]["class"], "regressed")
+        self.assertEqual(entity["metrics"]["peak_phys_footprint"]["verdict"], "within budget")
+        decision = self.decision(entity)
+        self.assertEqual(decision["decision"], pv.WITHIN_BUDGET)
+        self.assertEqual(decision["regressions"], [])
+        self.assertEqual(decision["recorded_costs"], ["peak_rss"])
+        self.assertEqual(decision["acceptance_policy"], "memory-only-serc-cost")
+        rendered = pv.render({"python_startup": entity}, decision)
+        self.assertIn("peak_rss", rendered)
+        self.assertIn("recorded cost", rendered)
+        self.assertIn("physical footprint rejects above +8%", rendered)
+
+    def test_footprint_above_eight_percent_rejects(self):
+        _, entity = self.entity(1.09)
+        decision = self.decision(entity)
+        self.assertEqual(decision["decision"], pv.REJECT)
+        self.assertEqual(decision["regressions"], ["python_startup peak_phys_footprint"])
+
+    def test_footprint_at_eight_percent_is_within_allowance(self):
+        _, entity = self.entity(1.08)
+        self.assertEqual(self.decision(entity)["decision"], pv.WITHIN_BUDGET)
+
+    def test_non_serc_pair_still_rejects_peak_rss_as_before(self):
+        observation, entity = self.entity(1.04, serc_pair=False)
+        self.assertNotIn("peak_phys_footprint", observation["metrics"])
+        decision = self.decision(entity, serc_pair=False)
+        self.assertEqual(decision["decision"], pv.REJECT)
+        self.assertEqual(decision["regressions"], ["python_startup peak_rss"])
+        self.assertEqual(decision["recorded_costs"], [])
+        self.assertEqual(decision["acceptance_policy"], "memory-only")
+
+    def test_missing_footprint_on_serc_pair_is_inconclusive(self):
+        workload = self.workload(1.04)
+        workload["candidate"] = {"memory": {"rounds": []}}
+        observation = pv.run_observation(workload, memory_only=True, serc_pair=True)
+        entity = pv.entity_verdict([observation, observation])
+        self.assertEqual(self.decision(entity)["decision"], pv.INCONCLUSIVE)
+
+    def test_only_a_serc_candidate_over_a_non_serc_baseline_is_special(self):
+        serc = {"report": {"serc": True}}
+        plain = {"report": {}}
+        self.assertTrue(perf._serc_candidate_pair(plain, serc, memory_only=True, self_compare=False))
+        self.assertFalse(perf._serc_candidate_pair(serc, plain, memory_only=True, self_compare=False))
+        self.assertFalse(perf._serc_candidate_pair(serc, serc, memory_only=True, self_compare=False))
+        self.assertFalse(perf._serc_candidate_pair(plain, plain, memory_only=True, self_compare=False))
+        self.assertFalse(perf._serc_candidate_pair(plain, serc, memory_only=False, self_compare=False))
+        self.assertFalse(perf._serc_candidate_pair(plain, serc, memory_only=True, self_compare=True))
+
+
 class IncrementalPlanTests(unittest.TestCase):
     def test_changed_removed_and_clean_only(self):
         plan = perf.incremental_plan(
@@ -1050,7 +1126,8 @@ class CargoCommandTests(unittest.TestCase):
             if staged is None:
                 staged = {"Modules/_fixture_rs/src/lib.rs": b"new"}
             self.cargo_runs = 0
-            def stage(_paths, _route):
+            def stage(_paths, _route, *, serc):
+                self.assertEqual(serc, bool((report or {}).get("serc")))
                 for name, data in staged.items():
                     target = paths["overlay_staging"] / name
                     target.parent.mkdir(parents=True, exist_ok=True)
@@ -1143,7 +1220,7 @@ class IncrementalRecipeTests(unittest.TestCase):
     def exercise(self, incremental, *, bad_install=False, failed_install=False, source_std=True,
                  empty_overlay=False, missing_current_member=False, aggregate=True, missing_aggregate=False,
                  late_placement_failure=False, abrupt_placement_failure=False, route="private",
-                 linux=False, jit=False, pystats=False):
+                 linux=False, jit=False, pystats=False, serc=False):
         with tempfile.TemporaryDirectory() as temp, ExitStack() as patches:
             root = Path(temp)
             if linux:
@@ -1222,7 +1299,8 @@ class IncrementalRecipeTests(unittest.TestCase):
                 "_install_source_aggregate": lambda *a: {"fixture": "verified"},
                 "_git_state": lambda: {"commit": "fixture"},
                 "_existing_source": lambda parent: source,
-                "_stage_overlay": lambda paths, route: ({"sha256": "fixture"}, ["Lib/pickle.py"]),
+                "_stage_overlay": lambda paths, route, *, serc: (
+                    {"sha256": "fixture", "serc": serc}, ["Lib/pickle.py"]),
                 "_builtin_artifact_verifier": lambda: (proof, []),
                 "_perf_flags": lambda *a, **k: {"CPPFLAGS": "", "CFLAGS": "fixture flags"},
                 "_overlay_members": lambda route: {"_fixture_rs"},
@@ -1349,8 +1427,13 @@ class IncrementalRecipeTests(unittest.TestCase):
             else:
                 report = perf._build_locked("fixture", paths, empty_overlay=empty_overlay, jobs=4,
                                             incremental=incremental, state={"configured": True},
-                                            route=route, jit=jit, pystats=pystats)
+                                            route=route, jit=jit, pystats=pystats, serc=serc)
                 self.assertEqual(report["compression_route"], route)
+                self.assertEqual(report["serc"], serc)
+                self.assertEqual([environment.get("CFLAGS_NODIST") for environment in configure_environments],
+                                 [] if incremental else ["-DPy_SERC" if serc else None])
+                if not empty_overlay:
+                    self.assertEqual(report["overlay"].get("serc"), serc)
                 self.assertEqual(engines.call_count, int(route == "upstream"))
                 self.assertEqual(upstream_proof.call_count, int(route == "upstream"))
                 if route == "upstream":
@@ -1413,6 +1496,9 @@ class IncrementalRecipeTests(unittest.TestCase):
         report = self.exercise(False, jit=True)
         self.assertFalse(report["pystats"])
         self.assertNotIn("--enable-pystats", report["configure_arguments"])
+
+    def test_serc_build_defines_the_hook_and_requests_serc_staging(self):
+        self.exercise(False, serc=True)
 
     def test_no_jit_build_records_disabled_jit(self):
         report = self.exercise(False)
@@ -1909,10 +1995,32 @@ class UpstreamCompressionRouteTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as temp, \
                     mock.patch.object(perf.lb, "_apply_overlay", side_effect=apply_overlay):
                 paths = {"overlay_staging": Path(temp) / "staging"}
-                _, staged = perf._stage_overlay(paths, route)
+                _, staged = perf._stage_overlay(paths, route, serc=False)
                 self.assertEqual(staged, expected)
                 setup = (paths["overlay_staging"] / "Modules/Setup.local").read_text()
                 self.assertEqual("_zlib_rs" in setup, route == "private")
+
+    def test_staging_links_serc_into_the_static_carrier_on_serc_builds_only(self):
+        carrier = ('[dependencies]\nserc-lane = { path = "../../serc-lane", optional = true }\n\n'
+                   '[features]\nserc = ["dep:serc-lane"]\n\n[lib]\ncrate-type = ["staticlib"]\n')
+        def apply_overlay(staging):
+            manifest = staging / "Modules/cpython-rust-staticlib/Cargo.toml"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(carrier)
+            return {"files": 1}
+        for serc in (False, True):
+            with self.subTest(serc=serc), tempfile.TemporaryDirectory() as temp, \
+                    mock.patch.object(perf.lb, "_apply_overlay", side_effect=apply_overlay):
+                paths = {"overlay_staging": Path(temp) / "staging"}
+                perf._stage_overlay(paths, "private", serc=serc)
+                staged = tomllib.loads(
+                    (paths["overlay_staging"] / "Modules/cpython-rust-staticlib/Cargo.toml").read_text())
+                self.assertEqual(staged["features"].get("default"), ["serc"] if serc else None)
+                self.assertEqual(staged["features"]["serc"], ["dep:serc-lane"])
+
+    def test_serc_carrier_without_its_feature_is_refused(self):
+        with self.assertRaisesRegex(perf.LaneError, "optional serc feature"):
+            perf.lb.serc_carrier_manifest('[features]\ndefault = ["serc"]\n')
 
     def test_required_members_exclude_private_adapters_on_the_upstream_route_only(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -1958,11 +2066,12 @@ class UpstreamCompressionRouteTests(unittest.TestCase):
                     self.assertRaisesRegex(perf.LaneError, "private adapters"):
                 perf.verify_upstream_compression(Path(temp), None)
 
-    def test_cargo_syncs_overlay_with_the_recorded_route(self):
+    def test_cargo_syncs_overlay_with_the_recorded_route_and_serc_flag(self):
         with tempfile.TemporaryDirectory() as temp, ExitStack() as patches:
             paths = {"report": Path(temp) / "report.json"}
             paths["report"].write_text(json.dumps(
-                {"configured": True, "pristine": False, "compression_route": "upstream"}))
+                {"configured": True, "pristine": False, "compression_route": "upstream",
+                 "serc": True}))
             sync = patches.enter_context(mock.patch.object(
                 perf, "_plan_overlay_sync", side_effect=LookupError("stop after planning")))
             patches.enter_context(mock.patch.object(perf, "_paths", return_value=paths))
@@ -1970,7 +2079,7 @@ class UpstreamCompressionRouteTests(unittest.TestCase):
             patches.enter_context(mock.patch.object(perf.lb, "IS_LINUX", False))
             with self.assertRaises(LookupError):
                 perf.cargo(name="fixture", arguments=["metadata"])
-            sync.assert_called_once_with(paths, "upstream")
+            sync.assert_called_once_with(paths, "upstream", serc=True)
 
 
 class JitSelectionTests(unittest.TestCase):
@@ -2034,6 +2143,30 @@ class JitSelectionTests(unittest.TestCase):
                 built.assert_not_called()
 
 
+    def test_incremental_refuses_a_serc_flag_change(self):
+        for previous, requested in ((False, True), (True, False)):
+            with self.subTest(previous=previous), tempfile.TemporaryDirectory() as temp, \
+                    ExitStack() as patches:
+                report = Path(temp) / "report.json"
+                report.write_text(json.dumps({"configured": True, "pristine": False,
+                                              "serc": previous}))
+                patches.enter_context(mock.patch.object(perf, "_paths",
+                                                        return_value={"report": report}))
+                patches.enter_context(mock.patch.object(perf.lb, "doctor_report",
+                                                        return_value={"ok": True}))
+                patches.enter_context(mock.patch.object(perf, "host_lease",
+                                                        return_value=nullcontext()))
+                built = patches.enter_context(mock.patch.object(perf, "_build_locked"))
+                with self.assertRaisesRegex(perf.LaneError, "Serc flag changed"):
+                    perf.build(name="fixture", empty_overlay=False, incremental=True,
+                               serc=requested)
+                built.assert_not_called()
+
+    def test_serc_needs_the_overlay(self):
+        with mock.patch.object(perf.lb, "doctor_report", return_value={"ok": True}), \
+                self.assertRaisesRegex(perf.LaneError, "pristine control has no overlay"):
+            perf.build(name="fixture", empty_overlay=True, serc=True)
+
     def test_pystats_requires_jit(self):
         with mock.patch.object(perf.lb, "doctor_report", return_value={"ok": True}), \
                 self.assertRaisesRegex(perf.LaneError, "requires --jit"):
@@ -2095,6 +2228,54 @@ class StaleTestDirectoryTests(unittest.TestCase):
             patches.enter_context(mock.patch.object(perf, "_write_json"))
             self.assertEqual(perf.test(name="fixture", suites=["test_pathlib"]), 0)
             self.assertEqual(seen, [False])
+
+
+class SercVerifySuiteTests(unittest.TestCase):
+    def run_suite(self, report: dict, **options):
+        with tempfile.TemporaryDirectory() as temp, ExitStack() as patches:
+            build = Path(temp)
+            runs = []
+            def run(argv, *, env, log, **kwargs):
+                prefix = env["PYTHONPYCACHEPREFIX"]
+                runs.append({"verify": env.get("PYTHONSERCVERIFY"), "log": log.name,
+                             "prefix": prefix,
+                             "empty_prefix": Path(prefix).is_dir() and not any(Path(prefix).iterdir())})
+                return {"returncode": 0}
+            patches.enter_context(mock.patch.object(perf, "_paths", return_value={
+                "build": build, "report": build / "report.json"}))
+            patches.enter_context(mock.patch.object(perf, "_read_report", return_value=report))
+            patches.enter_context(mock.patch.object(perf, "_build_python",
+                                                    return_value=Path(__file__)))
+            patches.enter_context(mock.patch.object(perf.lb, "_toolchain",
+                                                    return_value=(mock.Mock(), mock.Mock())))
+            patches.enter_context(mock.patch.object(perf.lb, "_test_environment",
+                                                    return_value={"PYTHONPYCACHEPREFIX": "/shared"}))
+            patches.enter_context(mock.patch.object(perf.lb, "_run_python_test", side_effect=run))
+            patches.enter_context(mock.patch.object(perf, "host_lease", return_value=nullcontext()))
+            patches.enter_context(mock.patch.object(perf, "_git_state", return_value={}))
+            patches.enter_context(mock.patch.object(perf, "SCRATCH", build / "scratch"))
+            written = patches.enter_context(mock.patch.object(perf, "_write_json"))
+            perf.test(name="fixture", suites=["test_compile"], **options)
+            return runs, written.call_args.args[1]["tests"]
+
+    def test_verify_run_sets_the_mode_and_starts_from_an_empty_cache(self) -> None:
+        runs, tests = self.run_suite({"status": "built", "serc": True}, serc_verify=True)
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(runs[0]["verify"], "1")
+        self.assertTrue(runs[0]["empty_prefix"])
+        self.assertFalse(Path(runs[0]["prefix"]).exists())
+        self.assertEqual(runs[0]["log"], "perf-fixture-test_compile-serc-verify.log")
+        self.assertTrue(tests["serc_verify"])
+
+    def test_plain_run_keeps_the_shared_cache_and_no_verify_mode(self) -> None:
+        runs, tests = self.run_suite({"status": "built", "serc": True})
+        self.assertEqual([(run["verify"], run["prefix"], run["log"]) for run in runs],
+                         [(None, "/shared", "perf-fixture-test_compile.log")])
+        self.assertFalse(tests["serc_verify"])
+
+    def test_verify_run_needs_a_serc_build(self) -> None:
+        with self.assertRaisesRegex(perf.LaneError, "needs a --serc build"):
+            self.run_suite({"status": "built"}, serc_verify=True)
 
 
 class JitStatsTests(unittest.TestCase):

@@ -364,6 +364,27 @@ fn has_jump_eval_check(instruction: &Instruction) -> bool {
         || (is_unconditional_jump(instruction.opcode) && instruction.jump_policy.is_interruptible())
 }
 
+/// Whether CPython copies this original array for each predecessor while resolving line
+/// numbers: every instruction is unlocated and the array leaves the scope or checks the eval
+/// breaker. Exception-table splits do not end an original array.
+fn is_unlocated_exit_or_eval_check(graph: &BlockGraph, blocks: &[BasicBlockId]) -> bool {
+    let mut eval_check = false;
+    let mut last = None;
+    for instruction in blocks
+        .iter()
+        .flat_map(|&block| graph[block].items())
+        .filter_map(Item::as_instruction)
+    {
+        if instruction.location.line >= 0 {
+            return false;
+        }
+        eval_check |= has_jump_eval_check(instruction)
+            || instruction.no_location_policy.is_artificial_eval_break();
+        last = Some(instruction);
+    }
+    last.is_some_and(|instruction| eval_check || ends_scope(instruction.opcode))
+}
+
 /// Propagates lines through copied records in the same original instruction array.
 fn propagate_planned_array_locations(
     graph: &mut BlockGraph,
@@ -4320,7 +4341,12 @@ impl OptimizationPipeline {
             let restore_size = order[start..=end]
                 .iter()
                 .map(|block| {
-                    graph[*block].items().iter().filter(|item| matches!(item, Item::Instruction(_))).count()
+                    graph[*block]
+                        .items()
+                        .iter()
+                        .filter_map(Item::as_instruction)
+                        .map(Instruction::pre_fusion_width)
+                        .sum::<usize>()
                 })
                 .sum::<usize>()
                 + order[start + 1..=end].iter().filter(|block| {
@@ -4328,12 +4354,11 @@ impl OptimizationPipeline {
                         !region.is_scope_fallback && graph.label_block(region.end) == Some(**block)
                     })
                 }).count();
-            let relocates_restore = if restores_locals {
-                restore_size <= 4
-            } else {
+            let relocates_restore = restore_size <= 4
+                && (restores_locals
                 // The outer exit must itself restore an inlined comprehension. An
                 // ordinary async-for's terminal finally suite stays after its handlers.
-                nested_async_cleanup_exits.contains(&order[position])
+                || nested_async_cleanup_exits.contains(&order[position])
                     && self
                         .exception_owner_provenance
                         .original_comprehension_normal_exits
@@ -4341,8 +4366,7 @@ impl OptimizationPipeline {
                         .any(|(entry, jump)| {
                             graph.label_block(*entry) == Some(target)
                                 && graph[order[position + 1]].last_instruction() == Some(jump)
-                        })
-            };
+                        }));
             (exits_scope == Some(true) && relocates_restore)
                 .then_some((position + 2, start, end))
         });
@@ -4392,8 +4416,12 @@ impl OptimizationPipeline {
                     index += 1;
                 }
                 let end = if index < region_order.len() {
-                    block_labels[region_order[index].index()]
-                        .expect("cold-block pass should label every ordered block")
+                    if graph.label_block(region.end) == Some(region_order[index]) {
+                        region.end
+                    } else {
+                        block_labels[region_order[index].index()]
+                            .expect("cold-block pass should label every ordered block")
+                    }
                 } else if let Some(label) = final_label {
                     label
                 } else {
@@ -10588,17 +10616,32 @@ impl OptimizationPipeline {
                 continue;
             }
             let target_position = positions[target.index()];
-            let predecessor = if target_position > 0
-                && block_has_fallthrough(graph[order[target_position - 1]].items())
-            {
-                Some(order[target_position - 1])
-            } else {
+            let fallthrough_source = (target_position > 0)
+                .then(|| {
+                    order[..target_position]
+                        .iter()
+                        .rposition(|block| graph[*block].last_instruction().is_some())
+                })
+                .flatten()
+                .filter(|position| {
+                    order[*position + 1..target_position]
+                        .iter()
+                        .all(|block| {
+                            graph[*block]
+                                .items()
+                                .iter()
+                                .all(|item| matches!(item, Item::Label(_)))
+                        })
+                        && block_has_fallthrough(graph[order[*position]].items())
+                })
+                .map(|position| order[position]);
+            let predecessor = fallthrough_source.or_else(|| {
                 jump_sources[target.index()].iter().copied().find(|source| {
                     block_jump_target(graph[*source].items())
                         .and_then(|label| graph.label_block(label))
                         == Some(target)
                 })
-            };
+            });
             let Some(location) = predecessor.and_then(|source| {
                 if remaining_predecessors[target.index()] == 1
                     && predecessors[target.index()] > 1
@@ -10697,8 +10740,22 @@ impl OptimizationPipeline {
             }) else {
                 continue;
             };
+            let unlocated_exit_or_eval_check = is_unlocated_exit_or_eval_check(
+                graph,
+                metadata_split_exit_chain(
+                    graph,
+                    &order,
+                    target_position,
+                    &predecessors,
+                    &exception_split_labels,
+                ),
+            );
             if let Some(instruction) = graph.instructions_mut(target).next()
-                && !instruction.no_location_policy.preserves_location()
+                && (!instruction.no_location_policy.preserves_location()
+                    || (instruction
+                        .no_location_policy
+                        .copy_inherits_shared_predecessor()
+                        && unlocated_exit_or_eval_check))
             {
                 instruction.location = location;
             }

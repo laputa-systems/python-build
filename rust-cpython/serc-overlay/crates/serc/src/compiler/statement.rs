@@ -16,7 +16,6 @@ use super::{
     PUSH_EXC_INFO, PUSH_NULL, RAISE_VARARGS, RETURN_VALUE, SEND, SET_ADD, STORE_ATTR, STORE_SLICE,
     STORE_SUBSCR, SWAP, TO_BOOL, WITH_EXCEPT_START, YIELD_VALUE,
 };
-use crate::CompileError;
 use crate::assembler::{
     Assembler, BooleanValueMarkerScan, EmittedInstruction, EmittedJump, ExceptionPolicy, Label,
     NameReturnBorrowExit, SourceLocation,
@@ -29,6 +28,7 @@ use crate::target::opcodes::{POP_ITER, RERAISE, STORE_FAST};
 use crate::target::operands::{
     BinaryIntrinsic, BinaryOperation, CommonConstant, ResumeLocation, SpecialMethod, UnaryIntrinsic,
 };
+use crate::{CompileError, CompileMode};
 
 use super::constant::{
     FirstConstant, first_literal_constant, first_suite_constant, fold_constant,
@@ -68,6 +68,9 @@ struct LoopContext {
     iterator_cleanup: IteratorCleanup,
     // The final AST statement whose normal exit reaches a synchronous FOR_ITER.
     iterator_body_tail: Option<TextRange>,
+    // The final AST statement of the loop body, whose fallthrough shares a block with the
+    // loop's back edge.
+    body_tail: Option<TextRange>,
     has_orelse: bool,
     prevent_break_exit_inlining: bool,
     with_depth: usize,
@@ -595,6 +598,10 @@ pub(super) struct ConditionState {
     pub(super) retained_chained_comparison_exit: Option<TextRange>,
     // The selected arm of a runtime conditional can thread its own empty join.
     pub(super) retained_conditional_comparison_arm: Option<TextRange>,
+    // The final leaf of a conditional test whose first arm only breaks out of a synchronous
+    // iterator loop. The break's NOP and two iterator pops already fill CPython's small-exit
+    // copy size, so that leaf's fallthrough jump to the arm is never inlined.
+    pub(super) iterator_break_comparison_arm: Option<TextRange>,
     // Declaration-only terminal arms retain their comparison cleanup until exit copying.
     pub(super) empty_terminal_comparison_arms: Vec<TextRange>,
     // A direct conditional-expression assertion outside an iterator loop that begins below the
@@ -1110,6 +1117,7 @@ impl<'source> Compiler<'source> {
 
     fn loop_context(
         &self,
+        body: &[Stmt],
         continue_label: Label,
         break_label: Label,
         iterator_cleanup: IteratorCleanup,
@@ -1122,6 +1130,7 @@ impl<'source> Compiler<'source> {
             break_label,
             iterator_cleanup,
             iterator_body_tail: None,
+            body_tail: body.last().map(Ranged::range),
             has_orelse: false,
             prevent_break_exit_inlining: iterator_cleanup != IteratorCleanup::None
                 && self.control.statements.context.followed_by_tuple_return,
@@ -2324,6 +2333,19 @@ impl<'source> Compiler<'source> {
                 .is_some_and(|statement| self.context.is_elided_statement(statement));
         let mut next_runtime_statement = 0;
         for (index, statement) in body.iter().enumerate() {
+            // The interactive top level displays every expression statement, including
+            // ones inside compound suites; nested functions and classes keep their discard.
+            if self.unit.mode == CompileMode::Single
+                && matches!(self.unit.scope, Scope::Module)
+                && let Stmt::Expr(expression) = statement
+            {
+                self.compile_expression(&expression.value)?;
+                self.assembler
+                    .set_location(self.source_location(statement.range()));
+                self.emit_unary_intrinsic(UnaryIntrinsic::PRINT)?;
+                self.emit(POP_TOP, 0, -1)?;
+                continue;
+            }
             if legacy_protected_sync_manager_body
                 && matches!(statement, Stmt::Pass(_))
                 && next_runtime_statement <= index
@@ -2919,7 +2941,21 @@ impl<'source> Compiler<'source> {
                         continue;
                     }
                     Stmt::Expr(expression)
-                        if matches!(expression.value.as_ref(), Expr::BoolOp(_)) =>
+                        if matches!(expression.value.as_ref(), Expr::BoolOp(boolean)
+                            if straight_boolean_operand(boolean)
+                                == Some(StraightBooleanOperand::Decisive)) =>
+                    {
+                        self.compile_expression(&expression.value)?;
+                        self.assembler
+                            .set_location(self.source_location(expression.value.range()));
+                        self.emit(POP_TOP, 0, -1)?;
+                        self.emit_implicit_return()?;
+                        self.control.statements.emitted_fallthrough_return = true;
+                        continue;
+                    }
+                    Stmt::Expr(expression)
+                        if matches!(expression.value.as_ref(), Expr::BoolOp(boolean)
+                            if terminal_bool_expression_keeps_jumps(boolean)) =>
                     {
                         let Expr::BoolOp(expression) = expression.value.as_ref() else {
                             unreachable!();
@@ -3048,7 +3084,14 @@ impl<'source> Compiler<'source> {
                 // An authored continuation keeps this Pass in its protected original array.
                 // At a true suite end, normal cleanup can still absorb the omitted marker.
                 && (self.control.exceptions.active_exception_region_exclusions.is_empty()
-                    || self.control.finally.active_finally_end_blocks > 0
+                    || self.control.finally.finally_end_region_indices.last().is_some_and(|index| {
+                        index + 1
+                            == self
+                                .control
+                                .exceptions
+                                .active_exception_region_exclusions
+                                .len()
+                    })
                     // Both paths through the conditional reach the authored Pass
                     // before the manager runs its normal exit.
                     || (self.context.python_version >= crate::PythonVersion::Py314
@@ -4488,7 +4531,7 @@ impl<'source> Compiler<'source> {
             _ => LoopBreakPolicy::Return,
         };
         let context =
-            self.loop_context(start, condition_false, IteratorCleanup::None, break_policy);
+            self.loop_context(&statement.body, start, condition_false, IteratorCleanup::None, break_policy);
         let normalize_final_condition = matches!(
             statement.body.last(),
             Some(Stmt::If(tail))
@@ -4630,7 +4673,7 @@ impl<'source> Compiler<'source> {
             })
             .collect::<Result<Vec<_>, CompileError>>()?;
 
-        let context = self.loop_context(
+        let context = self.loop_context(&statement.body, 
             start,
             exits[0].1,
             IteratorCleanup::None,
@@ -6961,6 +7004,10 @@ impl<'source> Compiler<'source> {
 
         let mut short_circuits = Vec::with_capacity(leading.len());
         for value in leading {
+            if jump_constant_truthiness(value).is_some() {
+                self.record_folded_value(value)?;
+                continue;
+            }
             let short_circuit = self.assembler.label();
             let continue_outer = self.assembler.label();
             short_circuits.push(short_circuit);
@@ -7096,6 +7143,34 @@ impl<'source> Compiler<'source> {
         Ok(())
     }
 
+    fn folds_to_first_operand(&self, boolean: &ruff_python_ast::ExprBoolOp, expression: &Expr) -> bool {
+        boolean.values.len() > 1
+            && folded_bool_operand(expression, self.context.python_version)
+                .is_some_and(|(origin, _)| origin.range() == boolean.values[0].range())
+    }
+
+    fn with_iterator_break_arm<T>(
+        &mut self,
+        statement: &ruff_python_ast::StmtIf,
+        compile: impl FnOnce(&mut Self) -> Result<T, CompileError>,
+    ) -> Result<T, CompileError> {
+        let iterator_break_arm = (matches!(statement.body.as_slice(), [Stmt::Break(_)])
+            && self
+                .control
+                .loops
+                .contexts
+                .last()
+                .is_some_and(|context| context.iterator_cleanup == IteratorCleanup::Sync))
+        .then(|| final_condition_leaf(&statement.test))
+        .flatten()
+        .map(Ranged::range);
+        self.with_control_override(
+            |control| &mut control.conditions.iterator_break_comparison_arm,
+            iterator_break_arm,
+            compile,
+        )
+    }
+
     fn compile_statement(&mut self, statement: &Stmt) -> Result<(), CompileError> {
         self.compile_statement_with_return_successor(statement, None)
     }
@@ -7215,17 +7290,22 @@ impl<'source> Compiler<'source> {
                     } else {
                         None
                     };
+                let folds_to_straight_operand = matches!(expression.value.as_ref(),
+                    Expr::BoolOp(boolean)
+                        if straight_boolean_operand(boolean) == Some(StraightBooleanOperand::Final));
                 let preserve_no_location = matches!(
                     expression.value.as_ref(),
                     Expr::BoolOp(_) | Expr::If(_)
                 ) && folded_boolean_value.is_none()
+                    && !folds_to_straight_operand
                     || matches!(expression.value.as_ref(), Expr::Compare(compare) if compare.ops.len() > 1);
                 let optimized_generator_call = matches!(
                     expression.value.as_ref(),
                     Expr::Call(call) if optimized_generator_callable_for_target(call, self.context.python_version).is_some()
                 );
-                if let Expr::If(conditional) = expression.value.as_ref()
-                    && early_condition_truthiness(&conditional.test) == Some(false)
+                if (folds_to_straight_operand
+                    || matches!(expression.value.as_ref(), Expr::If(conditional)
+                        if early_condition_truthiness(&conditional.test) == Some(false)))
                     && let Some(location) = self.assembler.last_instruction_location()
                 {
                     // The false arm falls through its original join. Keep the selected value's
@@ -7252,17 +7332,39 @@ impl<'source> Compiler<'source> {
                         self.assembler.set_location(discard_location);
                     }
                 }
+                // At a loop tail the discard and back edge form an unlocated eval-check block
+                // that CPython copies onto each Boolean edge. A decisive first operand folds
+                // away the fallthrough edge, so only the short-circuit jump's copy survives.
                 let loop_tail_boolean = self.control.loops.suite_fallthrough_to_loop_backedge
                     && !self.control.statements.context.has_following
                     && matches!(expression.value.as_ref(), Expr::BoolOp(_));
+                // Only a discard directly in the loop body shares a block with the back edge.
+                let unlocated_loop_tail_discard = loop_tail_boolean
+                    && matches!(expression.value.as_ref(), Expr::BoolOp(boolean)
+                        if self.folds_to_first_operand(boolean, &expression.value))
+                    && self
+                        .control
+                        .loops
+                        .contexts
+                        .last()
+                        .is_none_or(|context| context.body_tail != Some(expression.range));
                 if loop_tail_boolean
                     && let Expr::BoolOp(boolean) = expression.value.as_ref()
                     && let Some(last) = boolean.values.last()
                 {
-                    self.assembler
-                        .set_location(self.source_location(last.range()));
+                    let location = if unlocated_loop_tail_discard {
+                        SourceLocation::NONE
+                    } else if self.folds_to_first_operand(boolean, &expression.value) {
+                        self.source_location(expression.value.range())
+                    } else {
+                        self.source_location(last.range())
+                    };
+                    self.assembler.set_location(location);
                 }
                 self.emit(POP_TOP, 0, -1)?;
+                if unlocated_loop_tail_discard {
+                    self.assembler.preserve_last_no_location();
+                }
                 if self.context.python_version >= crate::PythonVersion::Py314
                     && !self.control.statements.context.has_following
                     && self
@@ -7297,18 +7399,9 @@ impl<'source> Compiler<'source> {
                     if self.context.python_version >= crate::PythonVersion::Py314
                         && !self.control.statements.context.has_following
                         && matches!(expression.value.as_ref(), Expr::BoolOp(_))
-                        && (self.control.finally.active_normal_finally_bodies > 0
-                            || self.control.finally.active_copied_finally_bodies > 0
-                            || self.control.finally.active_finally_end_blocks > 0
-                            || self.control.in_exception_handler()
-                            || !self
-                                .control
-                                .exceptions
-                                .active_exception_region_exclusions
-                                .is_empty())
                     {
-                        // Copies of a protected discard inherit their own Boolean
-                        // operand's line. The original shared POP_TOP stays unlocated.
+                        // A terminal Boolean discard is the only exit of both its
+                        // fallthrough and each short-circuit jump.
                         self.assembler
                             .make_last_no_location_copy_inherit_shared_predecessor();
                     }
@@ -7317,7 +7410,9 @@ impl<'source> Compiler<'source> {
             Stmt::Pass(statement) => self
                 .assembler
                 .record_omitted_nop_targets(self.source_location(statement.range)),
-            Stmt::If(statement) => self.compile_if(statement)?,
+            Stmt::If(statement) => self.with_iterator_break_arm(statement, |compiler| {
+                compiler.compile_if(statement)
+            })?,
             Stmt::While(statement) => self.compile_while(statement)?,
             Stmt::For(statement) if statement.is_async => self.compile_async_for(statement)?,
             Stmt::For(statement) => self.compile_for(statement, None)?,
@@ -9209,23 +9304,15 @@ impl<'source> Compiler<'source> {
                     && self
                         .control
                         .finally
-                        .active_return_finally_contexts
-                        .is_empty()
-                    && self
-                        .control
-                        .finally
                         .preserved_return_value_contexts
                         .is_empty()
                     && self.control.exceptions.active_exception_handlers.is_empty()
                     && self.control.exceptions.active_exception_group_handlers == 0
-                    && self.control.exceptions.active_try_marker_slots.is_empty()
-                    && self
+                    && !self
                         .control
                         .exceptions
                         .active_exception_region_exclusions
-                        .len()
-                        == 1
-                    && self.control.withs.active_with_exits.is_empty())
+                        .is_empty())
                 .then(|| {
                     self.control
                         .loops
@@ -9235,17 +9322,20 @@ impl<'source> Compiler<'source> {
                 })
                 .flatten()
                 .filter(|&depth| {
+                    let exception_region_depth = self
+                        .control
+                        .exceptions
+                        .active_exception_region_exclusions
+                        .len();
                     self.control.loops.contexts[..depth].iter().all(|context| {
                         context.finally_end_depth == 0
-                            && context.exception_region_depth == 0
-                            && context.with_depth == 0
+                            && context.exception_region_depth < exception_region_depth
                     }) && self.control.loops.contexts[depth..]
                         .iter()
                         .any(|context| context.iterator_cleanup != IteratorCleanup::None)
                         && self.control.loops.contexts[depth..].iter().all(|context| {
                             context.finally_end_depth == 1
-                                && context.exception_region_depth == 1
-                                && context.with_depth == 0
+                                && context.exception_region_depth == exception_region_depth
                         })
                 });
                 if let Some(depth) = loops_before_finally_end {
@@ -9381,6 +9471,13 @@ impl<'source> Compiler<'source> {
                 } else {
                     self.emit_finally_end_unwind(0, preserve_tos, None)?
                 };
+                let finally_end_unwind_end = (finally_end_unwind_start.is_some()
+                    && deferred_finally_end_start.is_none())
+                .then(|| {
+                    let end = self.assembler.label();
+                    self.assembler.mark(end);
+                    end
+                });
                 let outer_finally_pop_end = returning_finally_region.map(|_| {
                     let end = self.assembler.label();
                     self.assembler.mark(end);
@@ -10502,7 +10599,7 @@ impl<'source> Compiler<'source> {
                 // The saved depths identify two adjacent regions with no intervening
                 // handler, manager, iterator, or ordinary try to unwind.
                 let tracks_finally_end_before_outer_finally = self.context.python_version
-                    <= crate::PythonVersion::Py313
+                    <= crate::PythonVersion::Py316
                     && !return_is_overridden
                     && self.control.finally.active_finally_end_blocks == 1
                     && self.control.finally.active_normal_finally_bodies == 0
@@ -15966,6 +16063,21 @@ impl<'source> Compiler<'source> {
                                 },
                                 |(_, start)| start,
                             );
+                        let exclusion_start = if let (Some(end), Some(owner)) = (
+                            finally_end_unwind_end,
+                            self.control.finally.finally_end_region_indices.last().copied(),
+                        ) && owner < region_count
+                        {
+                            if index == owner {
+                                finally_end_unwind_start.unwrap_or(end)
+                            } else if index < owner {
+                                end
+                            } else {
+                                exclusion_start
+                            }
+                        } else {
+                            exclusion_start
+                        };
                         let exclusion_start = handler_region_unwind_starts
                             .as_ref()
                             .and_then(|starts| starts[index])
@@ -16069,6 +16181,8 @@ impl<'source> Compiler<'source> {
     ) -> Result<(), CompileError> {
         let unpacked = if let [target] = assignment.targets.as_slice()
             && let Expr::Tuple(value) = assignment.value.as_ref()
+            && !(self.context.python_version >= crate::PythonVersion::Py316
+                && value.elts.is_empty())
             // Legacy AST folding replaces constant tuples before code generation,
             // so their LOAD_CONST remains followed by UNPACK_SEQUENCE.
             && !(self.context.python_version <= crate::PythonVersion::Py313
@@ -21012,13 +21126,15 @@ impl<'source> Compiler<'source> {
                     },
                 )?;
                 let start = self.assembler.item_count();
-                let tail = self.compile_loop_tail_if(
-                    statement,
-                    restart,
-                    split_short_circuit,
-                    mode,
-                    leading,
-                )?;
+                let tail = self.with_iterator_break_arm(statement, |compiler| {
+                    compiler.compile_loop_tail_if(
+                        statement,
+                        restart,
+                        split_short_circuit,
+                        mode,
+                        leading,
+                    )
+                })?;
                 if self.context.python_version == crate::PythonVersion::Py314
                     && statement.elif_else_clauses.is_empty()
                 {
@@ -22865,7 +22981,7 @@ impl<'source> Compiler<'source> {
             )?;
 
             let context =
-                self.loop_context(start, restart, IteratorCleanup::None, LoopBreakPolicy::Jump);
+                self.loop_context(&statement.body, start, restart, IteratorCleanup::None, LoopBreakPolicy::Jump);
             let body_start = self.assembler.instruction_count();
             let tail_jumps = self.with_loop_context(context, |compiler| {
                 compiler.compile_while_tail_suite(&statement.body, start)
@@ -22921,7 +23037,7 @@ impl<'source> Compiler<'source> {
 
         self.assembler.mark(body_label);
         self.set_depth(base_depth);
-        let context = self.loop_context(
+        let context = self.loop_context(&statement.body, 
             start,
             break_exit.unwrap_or(restart),
             IteratorCleanup::None,
@@ -25949,7 +26065,7 @@ impl<'source> Compiler<'source> {
         }
         self.compile_jump_if(&statement.test, false, anchor)?;
         self.assembler.mark(body);
-        let context = self.loop_context(
+        let context = self.loop_context(&statement.body, 
             start,
             end,
             IteratorCleanup::None,
@@ -26070,6 +26186,8 @@ impl<'source> Compiler<'source> {
                 // The eliminated loop body leaves a CFG boundary that CPython's borrowed-load
                 // optimizer does not traverse into the following block.
                 self.assembler.set_strict_owned_loads(true);
+                let header = self.assembler.label();
+                self.assembler.mark(header);
                 self.assembler
                     .set_location(self.source_location(statement.test.range()));
                 self.emit(NOP, 0, 0)?;
@@ -26125,7 +26243,7 @@ impl<'source> Compiler<'source> {
             // including CPython's shadowed index for IMPORT_FROM and similar opcodes.
             self.assembler.record_borrow_analysis_block_boundary(body);
             self.assembler.mark(body);
-            let mut context = self.loop_context(
+            let mut context = self.loop_context(&statement.body, 
                 start,
                 end,
                 IteratorCleanup::None,
@@ -26920,7 +27038,7 @@ impl<'source> Compiler<'source> {
         }
         // The loop condition's fallthrough begins a separate original body array.
         self.assembler.record_short_circuit_owner_continuation();
-        let mut context = self.loop_context(
+        let mut context = self.loop_context(&statement.body, 
             start,
             end,
             IteratorCleanup::None,
@@ -27248,7 +27366,7 @@ impl<'source> Compiler<'source> {
         self.bind_native_source_label(NativeRole::ForEnd(statement.range), end);
         self.assembler.record_for_target_owner_prefix(body);
 
-        let mut context = self.loop_context(
+        let mut context = self.loop_context(&statement.body, 
             start,
             end,
             IteratorCleanup::Sync,
@@ -27646,7 +27764,7 @@ impl<'source> Compiler<'source> {
         self.assembler
             .add_hidden_exception_owner_slots_at(target_start, 1);
 
-        let mut context = self.loop_context(
+        let mut context = self.loop_context(&statement.body, 
             start,
             end,
             IteratorCleanup::Async,
@@ -35709,11 +35827,16 @@ impl<'source> Compiler<'source> {
                             .last_instruction_location()
                             .unwrap_or(SourceLocation::NONE),
                     );
-                } else if !handler_body_has_instructions
-                    && let Some(statement) = handler.body.last()
-                {
-                    self.assembler
-                        .set_location(self.source_location(statement.range()));
+                } else if !handler_body_has_instructions && !handler.body.is_empty() {
+                    let location = handler
+                        .body
+                        .iter()
+                        .rev()
+                        .find(|statement| !is_scope_declaration(statement))
+                        .map_or(SourceLocation::NONE, |statement| {
+                            self.source_location(statement.range())
+                        });
+                    self.assembler.set_location(location);
                 // CPython leaves cleanup after these direct trailing compound joins unlocated so
                 // every incoming edge can inline its own copy with the predecessor's line.
                 } else if handler_ends_with_unlocated_cleanup {
@@ -36267,7 +36390,13 @@ impl<'source> Compiler<'source> {
         } else {
             None
         };
-        if !terminal && let Some(location) = body_noop_location {
+        let body_noop_on_statement_line = statement.orelse.is_empty()
+            && body_noop_location.is_some_and(|location| {
+                location.line == self.source_location(statement.range).line
+            });
+        if (!terminal || body_noop_on_statement_line)
+            && let Some(location) = body_noop_location
+        {
             self.assembler.set_location(location);
             self.emit(NOP, 0, 0)?;
         }
@@ -36429,7 +36558,9 @@ impl<'source> Compiler<'source> {
             } else {
                 handler
                     .body
-                    .last()
+                    .iter()
+                    .rev()
+                    .find(|statement| !is_scope_declaration(statement))
                     .map_or(SourceLocation::NONE, |statement| {
                         self.source_location(statement.range())
                     })
@@ -42106,15 +42237,15 @@ impl<'source> Compiler<'source> {
         } else {
             None
         };
+        let pop_donor = folded_try_body_handler_exit_range(self, statement)
+            .or_else(|| sole_handler_normal_exit_range(self, statement))
+            .map(|range| self.source_location(range));
         self.assembler.set_location(
             sole_else_pop_location
                 .or(while_else_pop_location)
                 .or(handler_else_pop_location)
                 .or(body_pass_pop_location)
-                .or_else(|| {
-                    folded_try_body_handler_exit_range(self, statement)
-                        .map(|range| self.source_location(range))
-                })
+                .or(pop_donor)
                 .or(comprehension_store_location)
                 .unwrap_or(SourceLocation::NONE),
         );
@@ -44458,23 +44589,11 @@ impl<'source> Compiler<'source> {
             .exceptions
             .active_exception_region_exclusions
             .push(Vec::new());
-        let explicit_handler_end = self.with_native_finally_copy(
+        self.with_native_finally_copy(
             statement.range,
             FinallyCopy::Exceptional,
             |compiler| {
-                let mut explicit_handler_end = None;
-                let has_enclosing_finally_cleanup = compiler.control.finally.active_finally_try_bodies > 0
-                    || compiler.control.finally.active_normal_finally_bodies > 0
-                    || compiler.control.finally.active_finally_end_blocks > 0
-                    || compiler.control.finally.active_copied_finally_bodies > 0;
-                if let Some((Stmt::Return(return_statement), leading)) = statement.finalbody.split_last()
-                    && has_enclosing_finally_cleanup
-                    && !compiler.control.finally.copies_terminating_finally_returns
-                {
-                    compiler.compile_suite(leading)?;
-                    explicit_handler_end =
-                        Some(compiler.compile_return_from_exception_handler(return_statement)?);
-                } else if let [Stmt::If(final_if)] = statement.finalbody.as_slice()
+                if let [Stmt::If(final_if)] = statement.finalbody.as_slice()
                     && final_if.elif_else_clauses.is_empty()
                 {
                     let condition_false = if compiler.control.in_synchronous_with()
@@ -44580,16 +44699,11 @@ impl<'source> Compiler<'source> {
                         compiler.emit_reraise(ReraiseStackState::ActiveExceptionHandler)?;
                     }
                 }
-                Ok(explicit_handler_end)
+                Ok(())
             },
         )?;
-        let handler_end = if let Some(handler_end) = explicit_handler_end {
-            handler_end
-        } else {
-            let handler_end = self.assembler.label();
-            self.assembler.mark(handler_end);
-            handler_end
-        };
+        let handler_end = self.assembler.label();
+        self.assembler.mark(handler_end);
         let handler_exclusions = self
             .control
             .exceptions
@@ -44701,82 +44815,6 @@ impl<'source> Compiler<'source> {
         self.emit_reraise(ReraiseStackState::HandlerCleanup)?;
         self.set_depth(base_depth);
         Ok(())
-    }
-
-    fn compile_return_from_exception_handler(
-        &mut self,
-        statement: &ruff_python_ast::StmtReturn,
-    ) -> Result<Label, CompileError> {
-        let preserve_value = statement
-            .value
-            .as_deref()
-            .is_some_and(|value| !self.return_value_is_constant(value));
-        if preserve_value {
-            self.compile_expression(
-                statement
-                    .value
-                    .as_deref()
-                    .expect("preserved return has a value"),
-            )?;
-            self.emit(SWAP, 2, 0)?;
-        } else {
-            let range = statement
-                .value
-                .as_deref()
-                .map_or(statement.range, Ranged::range);
-            self.assembler.set_location(self.source_location(range));
-        }
-
-        self.emit(POP_TOP, 0, -1)?;
-        if preserve_value {
-            self.emit(SWAP, 2, 0)?;
-        }
-        let handler_end = self.assembler.label();
-        self.assembler.mark(handler_end);
-        self.emit(POP_EXCEPT, 0, -1)?;
-        self.emit_loop_iterator_cleanup(0, self.control.loops.contexts.len(), preserve_value)?;
-
-        let pass_finally_unwind_start = (!self
-            .control
-            .finally
-            .active_pass_finally_locations
-            .is_empty())
-        .then(|| {
-            let start = self.assembler.label();
-            self.assembler.mark(start);
-            start
-        });
-        self.emit_pass_finally_nops()?;
-
-        if !preserve_value {
-            if let Some(value) = &statement.value {
-                self.compile_expression(value)?;
-            } else {
-                let none = self.add_constant(Constant::None)?;
-                self.emit(LOAD_CONST, none, 1)?;
-            }
-        }
-        self.emit(RETURN_VALUE, 0, -1)?;
-        if let Some(pass_finally_unwind_start) = pass_finally_unwind_start {
-            let unwind_end = self.assembler.label();
-            self.assembler.mark(unwind_end);
-            let outer_region_count = self
-                .control
-                .exceptions
-                .active_exception_region_exclusions
-                .len()
-                .saturating_sub(1);
-            for exclusions in self
-                .control
-                .exceptions
-                .active_exception_region_exclusions
-                .iter_mut()
-                .take(outer_region_count)
-            {
-                exclusions.push((pass_finally_unwind_start, unwind_end));
-            }
-        }
-        Ok(handler_end)
     }
 
     fn compile_with_statement(
@@ -45446,7 +45484,6 @@ impl<'source> Compiler<'source> {
                     if !remaining.is_empty()
                         || self.unit.flags & (CO_GENERATOR | CO_COROUTINE | CO_ASYNC_GENERATOR) != 0
                         || !shares_loop_cleanup
-                        || context.has_orelse
                         || context.break_policy != LoopBreakPolicy::Jump
                         || !self.control.exceptions.active_exception_handlers.is_empty()
                         || self.control.finally.active_normal_finally_bodies != 0
@@ -47283,6 +47320,38 @@ fn if_contains_copied_nested_handler_exit(
         })
 }
 
+/// Finds the sole handler donating the finalizer's `POP_BLOCK` line when the body always exits.
+fn sole_handler_normal_exit_range(
+    compiler: &Compiler<'_>,
+    statement: &ruff_python_ast::StmtTry,
+) -> Option<TextRange> {
+    if compiler.context.python_version < crate::PythonVersion::Py313
+        || statement.is_star
+        || !statement.orelse.is_empty()
+        || statement.handlers.is_empty()
+    {
+        return None;
+    }
+    let (abrupt, _prefix) = statement.body.split_last()?;
+    if !matches!(
+        abrupt,
+        Stmt::Break(_) | Stmt::Continue(_) | Stmt::Raise(_) | Stmt::Return(_)
+    ) {
+        return None;
+    }
+    let mut continuing = statement
+        .handlers
+        .iter()
+        .filter_map(ruff_python_ast::ExceptHandler::as_except_handler)
+        .filter(|handler| !suite_terminates_before_constant_folding(&handler.body));
+    let last = continuing.next()?.body.last()?;
+    (continuing.next().is_none()
+        && (matches!(last, Stmt::Pass(_) | Stmt::Assign(_))
+            || matches!(last, Stmt::Expr(expression)
+                if matches!(expression.value.as_ref(), Expr::Call(_) | Expr::Await(_)))))
+    .then(|| implicit_return_range(compiler, last))
+}
+
 /// Finds the sole handler donating the finalizer's `POP_BLOCK` line when folding hides an exit.
 fn folded_try_body_handler_exit_range(
     compiler: &Compiler<'_>,
@@ -48354,11 +48423,19 @@ fn with_chained_manager_exit_location(
     {
         return None;
     }
+    let runtime_tests = condition_has_only_runtime_tests(&statement.test)
+        && statement.elif_else_clauses.iter().all(|clause| {
+            clause
+                .test
+                .as_ref()
+                .is_none_or(condition_has_only_runtime_tests)
+        });
     let mut location = None;
     for arm in if_suites(statement) {
         if suite_terminates(arm) {
             if !(matches!(arm.last(), Some(Stmt::Return(_) | Stmt::Raise(_)))
-                || allow_break && matches!(arm.last(), Some(Stmt::Break(_))))
+                || allow_break && matches!(arm.last(), Some(Stmt::Break(_)))
+                || runtime_tests && matches!(arm.last(), Some(Stmt::Continue(_))))
             {
                 return None;
             }
@@ -48375,15 +48452,9 @@ fn with_chained_manager_exit_location(
                 manager.items[0].context_expr.range()
             }
             fallthrough @ (Stmt::Expr(_) | Stmt::Assign(_) | Stmt::Delete(_) | Stmt::Pass(_))
-                if condition_has_only_runtime_tests(&statement.test)
-                    && statement.elif_else_clauses.iter().all(|clause| {
-                        clause
-                            .test
-                            .as_ref()
-                            .is_none_or(condition_has_only_runtime_tests)
-                    })
+                if runtime_tests
                     && (matches!(fallthrough, Stmt::Expr(expression)
-                        if matches!(expression.value.as_ref(), Expr::Call(_)))
+                        if matches!(expression.value.as_ref(), Expr::Call(_) | Expr::Name(_)))
                         || matches!(fallthrough, Stmt::Assign(_) | Stmt::Delete(_))
                         || (compiler.context.python_version >= crate::PythonVersion::Py314
                             && matches!(fallthrough, Stmt::Pass(_)))) =>
@@ -49797,6 +49868,15 @@ fn terminal_while_break_exit_range(statement: &ruff_python_ast::StmtWhile) -> Op
     match body.last()? {
         Stmt::Break(statement) => Some(statement.range),
         _ => None,
+    }
+}
+
+/// The last operand a condition evaluates before falling through to its first arm.
+fn final_condition_leaf(test: &Expr) -> Option<&Expr> {
+    match test {
+        Expr::BoolOp(boolean) => final_condition_leaf(boolean.values.last()?),
+        Expr::UnaryOp(unary) if unary.op == ruff_python_ast::UnaryOp::Not => None,
+        leaf => Some(leaf),
     }
 }
 
@@ -54953,6 +55033,14 @@ fn condition_has_completed_set_comparison(expression: &Expr) -> bool {
         })
 }
 
+fn is_scope_declaration(statement: &Stmt) -> bool {
+    match statement {
+        Stmt::Global(declaration) => !declaration.names.is_empty(),
+        Stmt::Nonlocal(_) => true,
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod protected_iterator_erased_else_tests {
     use ruff_python_ast::Stmt;
@@ -59187,6 +59275,42 @@ mod tests {
             );
         }
     }
+}
+
+fn terminal_bool_expression_keeps_jumps(expression: &ruff_python_ast::ExprBoolOp) -> bool {
+    if straight_boolean_operand(expression).is_some() {
+        return false;
+    }
+    let Some((last, leading)) = expression.values.split_last() else {
+        return false;
+    };
+    leading
+        .iter()
+        .all(|value| jump_constant_truthiness(value) != Some(expression.op == BoolOp::Or))
+        && !matches!(last, Expr::BoolOp(inner) if !terminal_bool_expression_keeps_jumps(inner))
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum StraightBooleanOperand {
+    Decisive,
+    Final,
+}
+
+fn straight_boolean_operand(
+    expression: &ruff_python_ast::ExprBoolOp,
+) -> Option<StraightBooleanOperand> {
+    let (last, leading) = expression.values.split_last()?;
+    for value in leading {
+        match jump_constant_truthiness(value)? {
+            truthiness if truthiness == (expression.op == BoolOp::Or) => {
+                return Some(StraightBooleanOperand::Decisive);
+            }
+            _ => {}
+        }
+    }
+    (!matches!(last, Expr::BoolOp(_) | Expr::If(_))
+        && !matches!(last, Expr::Compare(compare) if compare.ops.len() > 1))
+    .then_some(StraightBooleanOperand::Final)
 }
 
 #[cfg(test)]

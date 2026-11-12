@@ -28,6 +28,8 @@ lb = perf.lb
 TOOLING_CORPUS = REPO / "benchmarks" / "workloads" / "fixtures" / "tooling" / "python_corpus"
 DEFAULT_ORACLE = lb.LANE / f"stage-{perf.CONTROL}" / "bin" / "python3.16"
 OPT_LEVELS = (0, 1, 2)
+MODES = ("exec", "eval", "single")
+MODE_CASES = lb.SERC_OVERLAY / "crates" / "serc" / "tests" / "fixtures" / "source_modes.json"
 
 ORACLE_SCRIPT = r'''
 import json
@@ -109,7 +111,7 @@ def main():
             code = compile(
                 source,
                 item["filename"],
-                "exec",
+                item["mode"],
                 dont_inherit=True,
                 optimize=item["optimize"],
             )
@@ -174,10 +176,116 @@ def prepare_corpus(oracle: Path, corpus: Path) -> Path:
     lock = LINUX_CP316_LOCK_PATH if lb.IS_LINUX else MACOS_CP316_LOCK_PATH
     prepare_site(oracle, corpus / "site", groups={"django"}, lock=load_lock(lock))
     shutil.copytree(TOOLING_CORPUS, corpus / "tooling", ignore=ignore)
+    write_generated_corpus(corpus / "generated_try_finally")
     return corpus
 
 
-def pyc_path(source: Path, optimize: int) -> Path:
+def prepare_mode_sources(corpus: Path) -> dict[str, list[Path]]:
+    files = {mode: [] for mode in MODES}
+    for case in json.loads(MODE_CASES.read_text()):
+        mode = case["mode"]
+        path = corpus / "source_modes" / mode / f"{case['name']}.py"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(case["source"])
+        files[mode].append(path)
+    return files
+
+
+GENERATED_EXITS = {
+    "return_const": ["return 1"],
+    "return_expr": ["return x + 1"],
+    "for_return_const": ["for i in range(2):", "    return 1"],
+    "for_return_name": ["for i in range(2):", "    return x"],
+    "while_return_const": ["while True:", "    return 1"],
+    "for_cond_return": ["for i in range(2):", "    if i:", "        return 1"],
+    "for_cond_continue_return": [
+        "for i in range(2):",
+        "    if i:",
+        "        continue",
+        "    return x",
+    ],
+    "for_cond_break_return": ["for i in range(2):", "    if i:", "        break", "return 1"],
+    "nested_try_return": [
+        "try:",
+        '    log.append("nested")',
+        "except ValueError:",
+        "    pass",
+        "return 1",
+    ],
+}
+
+GENERATED_INNERS = {
+    "raise": ['raise KeyError("k")'],
+    "pass": ["pass"],
+    "raise_else": [
+        "try:",
+        '    raise KeyError("k")',
+        "except ValueError:",
+        "    pass",
+        "else:",
+        '    log.append("else")',
+    ],
+}
+
+GENERATED_WRAPPERS = {
+    "except": (["try:"], ["except KeyError:", '    log.append("caught")']),
+    "finally": (["try:"], ["finally:", '    log.append("outer")']),
+    "with": (["with CM(log):"], []),
+    "for": (["for j in range(2):"], []),
+    "while": (["while True:"], []),
+}
+
+GENERATED_CHAINS = [
+    [],
+    ["except"],
+    ["finally"],
+    ["with"],
+    ["for"],
+    ["while"],
+    ["finally", "except"],
+    ["with", "finally"],
+    ["for", "finally"],
+    ["while", "with"],
+]
+
+GENERATED_CLASS = (
+    "class CM:\n"
+    "    def __init__(self, log): self.log = log\n"
+    "    def __enter__(self): return self\n"
+    '    def __exit__(self, *a): self.log.append("exit"); return False\n'
+)
+
+
+def indent_generated(lines: list[str], amount: int) -> list[str]:
+    pad = " " * amount
+    return [pad + line if line else line for line in lines]
+
+
+def wrap_generated(lines: list[str], kind: str) -> list[str]:
+    open_lines, close_lines = GENERATED_WRAPPERS[kind]
+    return indent_generated(open_lines + indent_generated(lines, 4) + close_lines, 4)
+
+
+def build_generated_program(chain: list[str], inner: list[str], exit_lines: list[str]) -> str:
+    core = ["try:"] + indent_generated(inner, 4) + ["finally:"] + indent_generated(exit_lines, 4)
+    body = indent_generated(core, 4)
+    for kind in reversed(chain):
+        body = wrap_generated(body, kind)
+    return GENERATED_CLASS + "\ndef f(log, x):\n" + "\n".join(body) + "\n"
+
+
+def write_generated_corpus(root: Path) -> None:
+    root.mkdir(parents=True)
+    index = 0
+    for chain in GENERATED_CHAINS:
+        for inner in GENERATED_INNERS.values():
+            for exit_lines in GENERATED_EXITS.values():
+                index += 1
+                source = build_generated_program(chain, inner, exit_lines)
+                (root / f"try_finally_{index:04d}.py").write_text(source)
+
+
+def pyc_path(source: Path, optimize: int, mode: str) -> Path:
     name = source.name
     separator = name.rfind(".")
     if separator == 0:
@@ -186,7 +294,8 @@ def pyc_path(source: Path, optimize: int) -> Path:
         stem = name[:separator]
     else:
         stem = name
-    suffix = "cpython-316.pyc" if optimize == 0 else f"cpython-316.opt-{optimize}.pyc"
+    tag = "cpython-316" if mode == "exec" else f"cpython-316.{mode}"
+    suffix = f"{tag}.pyc" if optimize == 0 else f"{tag}.opt-{optimize}.pyc"
     return source.parent / "__pycache__" / f"{stem}.{suffix}"
 
 
@@ -205,12 +314,17 @@ def classify_serc(returncode: int, stderr: str, relative: Path) -> tuple[str, st
         for marker in markers:
             index = line.find(marker)
             if index >= 0:
-                return "refused", line[index + len(marker) :].strip()
+                reason = line[index + len(marker) :].strip()
+                if reason.startswith(("this source requires CPython's parser:",
+                                      "this source requires CPython's compiler:")):
+                    return "routed", reason
+                return "refused", reason
     detail = next((line for line in reversed(stderr.splitlines()) if line.strip()), "")
-    return "refused", f"serc exited {returncode}: {detail.strip()}"
+    return "error", f"serc exited {returncode}: {detail.strip()}"
 
 
-def run_serc(binary: Path, corpus: Path, files: list[Path], work: Path) -> tuple[dict, dict]:
+def run_serc(binary: Path, corpus: Path, files: list[Path], work: Path,
+             mode: str) -> tuple[dict, dict]:
     """Compile every file in its own process so a refusal cannot abort the census."""
     outcomes: dict[tuple[str, int], tuple[str, str]] = {}
     summary = {}
@@ -221,12 +335,15 @@ def run_serc(binary: Path, corpus: Path, files: list[Path], work: Path) -> tuple
 
         def compile_one(path: Path) -> tuple[Path, str, str]:
             relative = path.relative_to(corpus)
+            pyc_path(path, optimize, mode).unlink(missing_ok=True)
             command = [
                 str(binary),
                 "compile",
                 str(relative),
                 "--python-version",
                 "3.16",
+                "--mode",
+                mode,
                 "--optimize",
                 str(optimize),
                 "--force",
@@ -249,12 +366,15 @@ def run_serc(binary: Path, corpus: Path, files: list[Path], work: Path) -> tuple
         summary[str(optimize)] = {
             "exit": counts["panic"],
             "refused": counts["refused"],
+            "routed": counts["routed"],
+            "error": counts["error"],
             "compiled": counts["compiled"],
         }
     return summary, outcomes
 
 
-def run_oracle(oracle: Path, corpus: Path, files: list[Path], work: Path) -> dict:
+def run_oracle(oracle: Path, corpus: Path, files: list[Path], work: Path,
+               mode: str) -> dict:
     items = []
     for index, path in enumerate(files):
         for optimize in OPT_LEVELS:
@@ -265,7 +385,8 @@ def run_oracle(oracle: Path, corpus: Path, files: list[Path], work: Path) -> dic
                     "path": str(path),
                     "filename": str(path.relative_to(corpus)),
                     "optimize": optimize,
-                    "pyc": str(pyc_path(path, optimize)),
+                    "mode": mode,
+                    "pyc": str(pyc_path(path, optimize, mode)),
                 }
             )
     manifest = work / "oracle-manifest.json"
@@ -288,6 +409,8 @@ def census(
     files: list[Path],
     runs: dict,
     outcomes: dict[tuple[str, int], tuple[str, str]],
+    *,
+    require_serc: frozenset[str] = frozenset(),
 ) -> dict:
     classes = Counter()
     per_optimize = {
@@ -296,6 +419,7 @@ def census(
             "exact": 0,
             "mismatch": 0,
             "refused": 0,
+            "routed": 0,
             "serc_refused": 0,
             "serc_error": 0,
             "no_output": 0,
@@ -305,47 +429,61 @@ def census(
     mismatches = []
     refused = {}
     serc_refused = Counter()
+    serc_routes = Counter()
     serc_failures = []
     for record in records:
         level = str(record["optimize"])
         bucket = per_optimize[level]
         bucket["total"] += 1
         status = record["status"]
+        serc_status, serc_reason = outcomes.get(
+            (record["file"], record["optimize"]), ("missing", "no Serc outcome recorded")
+        )
+        failure = None
         if status == "refused":
             bucket["refused"] += 1
             refused.setdefault(record["file"], record["error"])
-            continue
-        serc_status, serc_reason = outcomes.get(
-            (record["file"], record["optimize"]), ("compiled", "")
-        )
-        if serc_status != "compiled":
-            bucket["serc_refused" if serc_status == "refused" else "serc_error"] += 1
-            if serc_status == "refused":
-                serc_refused[serc_reason] += 1
-            else:
-                serc_failures.append(
-                    {
-                        "file": record["file"],
-                        "optimize": record["optimize"],
-                        "status": serc_status,
-                        "reason": serc_reason,
-                    }
-                )
-            continue
-        if status == "match":
-            bucket["exact"] += 1
-        else:
+            if serc_status == "compiled":
+                failure = "oracle_refused"
+            elif serc_status in {"refused", "routed"}:
+                continue
+        elif serc_status == "routed":
+            bucket["routed"] += 1
+            serc_routes[serc_reason] += 1
+            if record["file"] not in require_serc:
+                continue
+            failure = "unexpected_route"
+        elif serc_status == "refused":
+            bucket["serc_refused"] += 1
+            serc_refused[serc_reason] += 1
+            failure = "serc_refused"
+        elif serc_status == "compiled":
+            if status == "match":
+                bucket["exact"] += 1
+                continue
             bucket["mismatch" if status == "mismatch" else "no_output"] += 1
-            name = record.get("class", "no_output")
-            classes[name] += 1
-            mismatches.append(
+            failure = record.get("class", "no_output")
+
+        if failure is None:
+            bucket["serc_error"] += 1
+            failure = "serc_error"
+            serc_failures.append(
                 {
                     "file": record["file"],
                     "optimize": record["optimize"],
-                    "class": name,
-                    "code_path": record.get("code_path", ""),
+                    "status": serc_status,
+                    "reason": serc_reason,
                 }
             )
+        classes[failure] += 1
+        mismatches.append(
+            {
+                "file": record["file"],
+                "optimize": record["optimize"],
+                "class": failure,
+                "code_path": record.get("code_path", ""),
+            }
+        )
     mismatches.sort(key=lambda item: (item["class"], item["file"], item["optimize"]))
     return {
         "total_files": len(files),
@@ -367,6 +505,11 @@ def census(
                 for reason, count in sorted(serc_refused.items())
             ],
         },
+        "serc_routes": {
+            "count": sum(serc_routes.values()),
+            "reasons": [{"reason": reason, "count": count}
+                        for reason, count in sorted(serc_routes.items())],
+        },
         "serc_errors": serc_failures,
         "mismatches": mismatches,
         "serc_exit": {level: summary["exit"] for level, summary in runs.items()},
@@ -379,6 +522,8 @@ def main() -> int:
     parser.add_argument("--oracle", type=Path, default=DEFAULT_ORACLE)
     parser.add_argument("--work", type=Path, default=lb.WORK / "serc-census")
     parser.add_argument("--json", type=Path, help="write the census JSON here")
+    parser.add_argument("--mode", choices=MODES, action="append",
+                        help="source mode to compare; repeatable, defaults to all three")
     args = parser.parse_args()
 
     work = args.work.resolve()
@@ -390,21 +535,49 @@ def main() -> int:
         binary = build_cli(work)
         corpus = prepare_corpus(args.oracle, work / "corpus")
         files = sorted(path for path in corpus.rglob("*.py") if path.is_file())
-        runs, outcomes = run_serc(binary, corpus, files, work)
-        records = run_oracle(args.oracle, corpus, files, work)
-    result = census(records, files, runs, outcomes)
+        mode_sources = prepare_mode_sources(corpus)
+        results = {}
+        for mode in dict.fromkeys(args.mode or MODES):
+            mode_work = work / mode
+            mode_work.mkdir(parents=True, exist_ok=True)
+            mode_files = files + mode_sources[mode]
+            runs, outcomes = run_serc(binary, corpus, mode_files, mode_work, mode)
+            records = run_oracle(args.oracle, corpus, mode_files, mode_work, mode)
+            results[mode] = census(
+                records, mode_files, runs, outcomes,
+                require_serc=frozenset(str(path.relative_to(corpus)) for path in mode_sources[mode]),
+            )
+    result = {
+        "modes": results,
+        "total_cases": sum(item["total_cases"] for item in results.values()),
+        "exact_matches": sum(item["exact_matches"] for item in results.values()),
+        "mismatch_total": sum(item["mismatch_total"] for item in results.values()),
+        "uncovered_modes": [mode for mode, item in results.items() if not item["exact_matches"]],
+    }
     result["oracle"] = str(args.oracle)
     result["corpus"] = str(corpus)
     result["serc"] = str(binary)
+    result["compiler_build_overrides"] = {
+        name: os.environ[name]
+        for name in ("CARGO_PROFILE_RELEASE_LTO",)
+        if name in os.environ
+    }
     text = json.dumps(result, indent=2)
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(text)
-    print(json.dumps({key: result[key] for key in (
-        "total_files", "total_cases", "exact_matches", "mismatch_total",
-        "classes", "per_optimize", "serc_refused", "serc_exit",
-    )}, indent=2))
-    return 0 if result["mismatch_total"] == 0 else 1
+    summary = {key: result[key] for key in (
+        "total_cases", "exact_matches", "mismatch_total", "uncovered_modes"
+    )}
+    summary["modes"] = {
+        mode: {key: item[key] for key in (
+            "total_files", "total_cases", "exact_matches", "mismatch_total", "classes",
+            "per_optimize", "serc_routes", "serc_refused", "serc_exit",
+        )}
+        for mode, item in results.items()
+    }
+    print(json.dumps(summary, indent=2))
+    return 0 if result["mismatch_total"] == 0 and not result["uncovered_modes"] else 1
 
 
 if __name__ == "__main__":

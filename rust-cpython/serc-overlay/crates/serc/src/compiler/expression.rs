@@ -41,7 +41,7 @@ use crate::target::{Opcode, is_scope_exit};
 use crate::{CompileError, PythonVersion};
 
 use super::constant::{
-    PercentFormatPart, bytes_constant, double_negated_ellipsis, explicit_surrogate_string,
+    PercentFormatPart, bytes_constant, double_negated_literal, explicit_surrogate_string,
     first_literal_constant, fold_constant, fold_constant_for_version, folded_bool_operand,
     folded_constant_owner_slots, is_small_literal_tuple_element, number_constant,
     optimized_percent_format, two_element_slice_optimization, unique_frozenset_constants,
@@ -2851,7 +2851,7 @@ impl Compiler<'_> {
             }
             let expression_location = self.source_location(expression.range());
             let origin_location = self.source_location(origin.range());
-            let folded_location = double_negated_ellipsis(origin)
+            let folded_location = double_negated_literal(origin)
                 .map_or(origin_location, |inner| self.source_location(inner.range));
             if expression_location.line != folded_location.line {
                 self.assembler.set_location(expression_location);
@@ -2859,16 +2859,22 @@ impl Compiler<'_> {
             }
             self.assembler.set_location(origin_location);
             self.emit_folded_constant(origin, constant)?;
+            if boolean
+                .values
+                .first()
+                .is_some_and(|first| first.range() == origin.range())
+                && boolean.values.len() > 1
+                && expression_location.line == folded_location.line
+            {
+                // CPython resolves lines while the folded conditional jump still
+                // separates the selected operand from the following join.
+                self.assembler.set_location(expression_location);
+                self.emit(NOP, 0, 0)?;
+            }
             for value in operands {
                 self.pre_register_short_circuited_operand(value)?;
             }
-            if boolean.values.len() > 1
-                && (boolean.values.len() > 2
-                    || boolean
-                        .values
-                        .first()
-                        .is_some_and(|first| first.range() == origin.range()))
-            {
+            if boolean.values.len() > 1 {
                 // A decisive first operand or an intermediate folded operand leaves
                 // an empty original block before the join. Keep pending call inputs
                 // in the preceding block, but let independent outer jumps reach the join.
@@ -4795,6 +4801,33 @@ impl Compiler<'_> {
                 discard_result,
             );
         }
+        let defers_restore = std::mem::take(
+            &mut self
+                .control
+                .comprehensions
+                .defer_async_comprehension_restore,
+        );
+        let result = self.compile_inlined_comprehension(
+            generators,
+            (key, value),
+            (build_opcode, add_opcode),
+            discard_result,
+            defers_restore,
+        );
+        self.control
+            .comprehensions
+            .defer_async_comprehension_restore = defers_restore;
+        result
+    }
+
+    fn compile_inlined_comprehension(
+        &mut self,
+        generators: &[ruff_python_ast::Comprehension],
+        (key, value): (Option<&Expr>, &Expr),
+        (build_opcode, add_opcode): (Opcode, Opcode),
+        discard_result: bool,
+        defers_restore: bool,
+    ) -> Result<(), CompileError> {
         let comprehension_cell_names = if self.unit.header_symbol_names_are_final {
             comprehension_cell_names_with_mangler(generators, key, value, &|name| {
                 self.symbol_analysis_name(name)
@@ -5350,11 +5383,8 @@ impl Compiler<'_> {
         }
         self.assembler.mark(normal_cleanup);
 
-        let deferred_normal_restore = self
-            .control
-            .comprehensions
-            .defer_async_comprehension_restore
-            && generators.iter().any(|generator| generator.is_async);
+        let deferred_normal_restore =
+            defers_restore && generators.iter().any(|generator| generator.is_async);
         self.set_depth(base_depth + i32::try_from(temporary_names.len()).unwrap() + 1);
         self.assembler.set_location(comprehension_location);
         if deferred_normal_restore {
@@ -5577,7 +5607,7 @@ impl Compiler<'_> {
         let child = child.finish_inner(false)?;
 
         self.emit_function_with_closure(child, &plan.freevars)?;
-        if self.context.python_version == PythonVersion::Py315 {
+        if self.context.python_version >= PythonVersion::Py315 {
             self.compile_expression(&generators[0].iter)?;
         } else {
             self.compile_iterable_expression(&generators[0].iter)?;
@@ -6260,7 +6290,7 @@ impl Compiler<'_> {
                     generator_location,
                 )?;
             }
-        } else if self.context.python_version == PythonVersion::Py315
+        } else if self.context.python_version >= PythonVersion::Py315
             && let Expr::Starred(starred) = element
         {
             self.compile_iterable_expression(&starred.value)?;
@@ -7162,6 +7192,11 @@ impl Compiler<'_> {
                 include_protected_region_exclusion,
             );
             if include_with_region_exclusion
+                && !self
+                    .control
+                    .comprehensions
+                    .active_comprehension_cleanups
+                    .is_empty()
                 && self
                     .control
                     .exceptions
@@ -7210,6 +7245,11 @@ impl Compiler<'_> {
             include_protected_region_exclusion,
         );
         if include_with_region_exclusion
+            && !self
+                .control
+                .comprehensions
+                .active_comprehension_cleanups
+                .is_empty()
             && self
                 .control
                 .exceptions
@@ -7657,12 +7697,10 @@ impl Compiler<'_> {
         } else {
             self.assembler.emit_backward(END_ASYNC_FOR, send);
         }
-        let async_cleanup_end = self.assembler.label();
-        self.assembler.mark(async_cleanup_end);
         self.control
             .generators
             .generator_region_exclusions
-            .push((cleanup_throw, async_cleanup_end));
+            .push((cleanup_throw, cleanup_throw_end));
         self.assembler.add_exception_region(
             protected_start,
             protected_before_cleanup_end,
@@ -10107,10 +10145,11 @@ impl Compiler<'_> {
                 self.assembler.preserve_inlined_jump_nop(exit);
                 self.assembler
                     .mark_folded_jump_borrow_fallthrough(exit, empty_folded_block);
-                if matches!(
-                    self.context.python_version,
-                    PythonVersion::Py314 | PythonVersion::Py315
-                ) && self.control.conditions.uncopied_assertion_condition_target == Some(label)
+                if self.context.python_version >= PythonVersion::Py316
+                    || matches!(
+                        self.context.python_version,
+                        PythonVersion::Py314 | PythonVersion::Py315
+                    ) && self.control.conditions.uncopied_assertion_condition_target == Some(label)
                 {
                     // This edge becomes unconditional only after CPython's early
                     // copy pass; a located assertion-condition target stays shared.
@@ -10310,7 +10349,11 @@ impl Compiler<'_> {
             let retained = self.control.conditions.retained_chained_comparison_exit;
             let conditional_arm = self.control.conditions.retained_conditional_comparison_arm
                 == Some(comparison.range);
-            if conditional_arm && jump_on {
+            if !jump_on
+                && self.control.conditions.iterator_break_comparison_arm == Some(comparison.range)
+            {
+                self.assembler.prevent_jump_inlining(comparison_exit);
+            } else if conditional_arm && jump_on {
                 // A true-jumping arm falls through its own join before the return
                 // is copied. Thread the join while retaining the comparison line.
                 self.assembler
@@ -10320,7 +10363,10 @@ impl Compiler<'_> {
                 // neighboring terminal exit is copied through the optimized CFG.
                 self.assembler.preserve_inlined_jump_nop(comparison_exit);
             } else if !jump_on {
-                self.assembler.prevent_jump_inlining(comparison_exit);
+                // A non-jumping final comparison still ends its block with an
+                // unconditional jump, so a small exit is copied onto it exactly as
+                // `inline_small_or_no_lineno_blocks` does, leaving the jump a NOP.
+                self.assembler.preserve_inlined_jump_nop(comparison_exit);
             }
 
             self.assembler.mark(cleanup);

@@ -39,6 +39,11 @@ WORKLOADS: tuple[Workload, ...] = (
     Workload("import_django", "startup", "extra", "import process", 1, 1, ("Django",)),
     Workload("import_app_stack", "startup", "extra", "import process", 1, 1,
              ("Django", "FastAPI", "Pydantic", "SQLAlchemy")),
+    Workload("cold_python_startup", "startup", "extra", "process compiling from source", 1, 1),
+    Workload("cold_import_django", "startup", "extra", "import process compiling from source", 1, 1,
+             ("Django",)),
+    Workload("cold_import_app_stack", "startup", "extra", "import process compiling from source", 1, 1,
+             ("Django", "FastAPI", "Pydantic", "SQLAlchemy")),
     Workload("pip_install_wheelhouse", "packaging", "extra", "installation", 1, 1, ("pip",), "noisy"),
     Workload("rust_base64_small", "encoding", "rust_base64", "64-byte Base64 encode", 100_000, 1),
     Workload("rust_base64_large", "encoding", "rust_base64", "1-MiB Base64 encode", 16, 1),
@@ -117,6 +122,8 @@ JIT_HELDOUT: tuple[str, ...] = (
 
 JIT_KERNELS: tuple[str, ...] = (*JIT_SET, *JIT_HELDOUT)
 
+COLD_COMPILE: tuple[str, ...] = ("cold_python_startup", "cold_import_django", "cold_import_app_stack")
+
 BY_NAME = {workload.name: workload for workload in WORKLOADS}
 
 
@@ -134,7 +141,8 @@ def select_workloads(suite: str, profile: str, name: str | None, category: str |
             "multiprocess_pool",
         )]
     elif suite in {"realworld", "full"}:
-        selected = [w for w in WORKLOADS if name is not None or w.name not in JIT_KERNELS]
+        selected = [w for w in WORKLOADS
+                    if name is not None or w.name not in (*JIT_KERNELS, *COLD_COMPILE)]
         if profile == "quick" and name is None and category is None:
             quick = {"django_wsgi_request", "django_orm_10k", "pycparser_source", "python_startup", "serialization_roundtrip"}
             selected = [w for w in selected if w.name in quick]

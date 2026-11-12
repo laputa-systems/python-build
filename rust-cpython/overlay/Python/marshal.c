@@ -1259,6 +1259,9 @@ typedef struct {
     Py_ssize_t buf_size;
     PyObject *refs;  /* a list */
     int allow_code;
+#ifdef Py_SERC
+    int serc_identity;
+#endif
 } RFILE;
 
 static const char *
@@ -1618,6 +1621,41 @@ r_ref(PyObject *o, int flag, RFILE *p)
     return o;
 }
 
+#ifdef Py_SERC
+/* Marshal normally returns the shared singleton for a 1-byte bytes object or
+   a 1-character Latin-1 str. The C compiler instead gives each code object
+   its own 1-byte co_localspluskinds or co_linetable, and can make a
+   non-interned 1-character constant, while its 1-byte bytes literals are the
+   singleton. A module loaded from Serc's bytes keeps that object identity. */
+enum {
+    SERC_IDENTITY_OFF = 0,
+    SERC_IDENTITY_CONSTANTS = 1,
+    SERC_IDENTITY_CODE_BYTES = 2,
+};
+
+static PyObject *
+fresh_one_byte(const char *ptr)
+{
+    PyObject *v = PyBytes_FromStringAndSize(NULL, 1);
+    if (v != NULL) {
+        PyBytes_AS_STRING(v)[0] = ptr[0];
+    }
+    return v;
+}
+
+static PyObject *
+fresh_one_char(PyObject *v)
+{
+    Py_UCS4 ch = PyUnicode_READ_CHAR(v, 0);
+    Py_DECREF(v);
+    PyObject *fresh = PyUnicode_New(1, ch);
+    if (fresh != NULL) {
+        PyUnicode_WRITE(PyUnicode_KIND(fresh), PyUnicode_DATA(fresh), 0, ch);
+    }
+    return fresh;
+}
+#endif
+
 static PyObject *
 r_object(RFILE *p)
 {
@@ -1761,8 +1799,13 @@ r_object(RFILE *p)
             if (ptr == NULL) {
                 break;
             }
+#ifdef Py_SERC
+            retval = p->serc_identity == SERC_IDENTITY_CODE_BYTES && n == 1
+                     ? fresh_one_byte(ptr) : PyBytes_FromStringAndSize(ptr, n);
+#else
             // Get a singleton for 1-byte string
             retval = PyBytes_FromStringAndSize(ptr, n);  // can be NULL
+#endif
             R_REF(retval);
             break;
         }
@@ -1796,6 +1839,11 @@ r_object(RFILE *p)
             if (ptr == NULL)
                 break;
             v = PyUnicode_FromKindAndData(PyUnicode_1BYTE_KIND, ptr, n);
+#ifdef Py_SERC
+            if (v != NULL && p->serc_identity && !is_interned && n == 1) {
+                v = fresh_one_char(v);
+            }
+#endif
             if (v == NULL)
                 break;
             if (is_interned) {
@@ -1829,6 +1877,13 @@ r_object(RFILE *p)
             if (buffer == NULL)
                 break;
             v = PyUnicode_DecodeUTF8(buffer, n, "surrogatepass");
+#ifdef Py_SERC
+            if (v != NULL && p->serc_identity && !is_interned
+                && PyUnicode_GET_LENGTH(v) == 1 && PyUnicode_READ_CHAR(v, 0) < 256)
+            {
+                v = fresh_one_char(v);
+            }
+#endif
         }
         else {
             v = Py_GetConstant(Py_CONSTANT_EMPTY_STR);
@@ -2073,7 +2128,16 @@ r_object(RFILE *p)
             localsplusnames = r_object(p);
             if (localsplusnames == NULL)
                 goto code_error;
+#ifdef Py_SERC
+            int identity = p->serc_identity;
+            if (identity != SERC_IDENTITY_OFF) {
+                p->serc_identity = SERC_IDENTITY_CODE_BYTES;
+            }
+#endif
             localspluskinds = r_object(p);
+#ifdef Py_SERC
+            p->serc_identity = identity;
+#endif
             if (localspluskinds == NULL)
                 goto code_error;
             filename = r_object(p);
@@ -2088,7 +2152,15 @@ r_object(RFILE *p)
             firstlineno = (int)r_long(p);
             if (firstlineno == -1 && PyErr_Occurred())
                 goto code_error;
+#ifdef Py_SERC
+            if (identity != SERC_IDENTITY_OFF) {
+                p->serc_identity = SERC_IDENTITY_CODE_BYTES;
+            }
+#endif
             linetable = r_object(p);
+#ifdef Py_SERC
+            p->serc_identity = identity;
+#endif
             if (linetable == NULL)
                 goto code_error;
             exceptiontable = r_object(p);
@@ -2328,6 +2400,9 @@ PyMarshal_ReadObjectFromFile(FILE *fp)
     RFILE rf;
     PyObject *result;
     rf.allow_code = 1;
+#ifdef Py_SERC
+    rf.serc_identity = SERC_IDENTITY_OFF;
+#endif
     rf.fp = fp;
     rf.readable = NULL;
     rf.depth = 0;
@@ -2349,6 +2424,9 @@ PyMarshal_ReadObjectFromString(const char *str, Py_ssize_t len)
     RFILE rf;
     PyObject *result;
     rf.allow_code = 1;
+#ifdef Py_SERC
+    rf.serc_identity = SERC_IDENTITY_OFF;
+#endif
     rf.fp = NULL;
     rf.readable = NULL;
     rf.ptr = str;
@@ -2660,6 +2738,9 @@ marshal_load_impl(PyObject *module, PyObject *file, int allow_code)
     }
     else {
         rf.allow_code = allow_code;
+#ifdef Py_SERC
+        rf.serc_identity = SERC_IDENTITY_OFF;
+#endif
         rf.depth = 0;
         rf.fp = NULL;
         rf.readable = file;
@@ -2743,6 +2824,9 @@ marshal_loads_impl(PyObject *module, Py_buffer *bytes, int allow_code)
     if (rust_status > 0)
         return result;
     rf.allow_code = allow_code;
+#ifdef Py_SERC
+    rf.serc_identity = SERC_IDENTITY_OFF;
+#endif
     rf.fp = NULL;
     rf.readable = NULL;
     rf.ptr = s;
@@ -2847,3 +2931,35 @@ PyMarshal_Init(void)
 {
     return PyModuleDef_Init(&marshalmodule);
 }
+
+#ifdef Py_SERC
+PyObject *
+_PyMarshal_ReadObjectFromStringWithoutAudit(const char *data, Py_ssize_t size)
+{
+    RFILE rf;
+    rf.allow_code = 1;
+    rf.serc_identity = SERC_IDENTITY_CONSTANTS;
+    rf.fp = NULL;
+    rf.readable = NULL;
+    rf.ptr = data;
+    rf.end = data + size;
+    rf.buf = NULL;
+    rf.depth = 0;
+    rf.refs = PyList_New(0);
+    if (rf.refs == NULL) {
+        return NULL;
+    }
+    PyObject *result = read_object_no_audit(&rf);
+    Py_DECREF(rf.refs);
+    if (rf.buf != NULL) {
+        PyMem_Free(rf.buf);
+    }
+    return result;
+}
+
+PyObject *
+_PyMarshal_WriteObjectToStringWithoutAudit(PyObject *value, int version)
+{
+    return marshal_write_object_to_string_no_audit(value, version, 1);
+}
+#endif

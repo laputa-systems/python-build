@@ -4,6 +4,7 @@ import contextlib
 import io
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -27,6 +28,28 @@ class ExtraWorkloadTests(unittest.TestCase):
         result = extra._import_fresh_process(("json", "pathlib"), 1, "test_import")
         self.assertEqual(result["operation_count"], 1)
         self.assertEqual(len(result["digest"]), 64)
+
+    def test_cold_startup_compiles_every_loaded_module_from_an_empty_cache(self) -> None:
+        result = extra.cold_python_startup(1)
+        self.assertEqual(result["operation_count"], 1)
+        self.assertEqual(len(result["digest"]), 64)
+
+    def test_cold_import_helper_compiles_every_imported_module_from_source(self) -> None:
+        result = extra._import_cold_process(("json", "pathlib"), 1, "test_cold_import")
+        self.assertEqual(result["operation_count"], 1)
+
+    def test_cold_source_check_rejects_frozen_and_cached_modules(self) -> None:
+        for flags, env in (
+            (["-X", "frozen_modules=on"], {}),
+            (["-X", "frozen_modules=off"], {"PYTHONPYCACHEPREFIX": ""}),
+        ):
+            with self.subTest(flags=flags):
+                completed = subprocess.run(
+                    [sys.executable, "-B", *flags, "-c", extra._COLD_SOURCE_CHECK],
+                    env={**os.environ, **env}, capture_output=True, text=True, check=False,
+                )
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertNotIn("COLD_SOURCES:", completed.stdout)
 
     def test_serialization_roundtrip_preserves_deterministic_shared_graph(self) -> None:
         first = extra.serialization_roundtrip(2)

@@ -55,7 +55,7 @@ pub(crate) fn parse_cert_to_rust(der_bytes: &[u8]) -> Result<ParsedCert, String>
     let mut ca_issuers = Vec::new();
     let mut crl_distribution_points = Vec::new();
 
-    for ext in cert.extensions() {
+    'extensions: for ext in cert.extensions() {
         match ext.parsed_extension() {
             ParsedExtension::SubjectAlternativeName(san_ext) => {
                 let mut entries = Vec::new();
@@ -94,6 +94,8 @@ pub(crate) fn parse_cert_to_rust(der_bytes: &[u8]) -> Result<ParsedCert, String>
                         GeneralName::X400Address(_) | GeneralName::EDIPartyName(_) => {
                             continue;
                         }
+                        // Earlier parser versions rejected the entire SAN extension on invalid data.
+                        GeneralName::Invalid(_, _) => continue 'extensions,
                     };
                     entries.push(entry);
                 }

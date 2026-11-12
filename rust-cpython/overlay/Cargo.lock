@@ -1122,6 +1122,7 @@ dependencies = [
  "_posixpath_rs",
  "_random_rs",
  "_tempfile_rs",
+ "serc-lane",
 ]
 
 [[package]]

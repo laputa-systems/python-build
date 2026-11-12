@@ -12,9 +12,10 @@ pub(crate) const VERSIONS: [PythonVersion; 4] = [
     PythonVersion::Py315,
 ];
 
-pub(crate) const IDENTITY: &str = "import importlib.util, sys; expected = tuple(map(int, sys.argv[2].split('.'))) + (sys.argv[4], int(sys.argv[5])); actual = sys.version_info; magic = importlib.util.MAGIC_NUMBER.hex(); ok = sys.implementation.name == sys.argv[1] and actual == expected and sys.version.split()[0] == sys.argv[6] and magic == sys.argv[3]; print(f'{sys.implementation.name} {'.'.join(map(str, actual[:3]))} {actual.releaselevel} {actual.serial} magic {magic}', file=sys.stderr); raise SystemExit(not ok)";
+pub(crate) const IDENTITY: &str = "import importlib.util, sys; expected = tuple(map(int, sys.argv[2].split('.'))) + (sys.argv[4], int(sys.argv[5])); actual = sys.version_info; magic = importlib.util.MAGIC_NUMBER.hex(); ok = sys.implementation.name == sys.argv[1] and actual == expected and (sys.version.split()[0].split('+')[0] if expected[:2] == (3, 16) else sys.version.split()[0]) == sys.argv[6] and magic == sys.argv[3]; print(f'{sys.implementation.name} {'.'.join(map(str, actual[:3]))} {actual.releaselevel} {actual.serial} magic {magic}', file=sys.stderr); raise SystemExit(not ok)";
 
 static EXECUTABLES: [OnceLock<OsString>; 4] = [const { OnceLock::new() }; 4];
+static PYTHON_316: OnceLock<OsString> = OnceLock::new();
 
 fn executable(version: PythonVersion) -> &'static OsStr {
     let index = VERSIONS
@@ -72,6 +73,45 @@ fn executable(version: PythonVersion) -> &'static OsStr {
 /// Validate identity separately so the caller's script controls the marshal process's state.
 pub(crate) fn command(version: PythonVersion) -> Command {
     Command::new(executable(version))
+}
+
+pub(crate) fn command_316() -> Command {
+    let executable = PYTHON_316.get_or_init(|| {
+        let target = PythonVersion::Py316.target();
+        let executable = std::env::var_os("SERC_TEST_PYTHON_316")
+            .unwrap_or_else(|| "python3.16".into());
+        let output = Command::new(&executable)
+            .args([
+                "-I",
+                "-S",
+                "-c",
+                IDENTITY,
+                target.implementation,
+                &target.version_string(),
+                &target.magic_hex(),
+                "alpha",
+                "1",
+                target.tag.trim_start_matches('v'),
+            ])
+            .output()
+            .unwrap_or_else(|error| {
+                panic!(
+                    "failed to run SERC_TEST_PYTHON_316 ({}): {error}",
+                    executable.display()
+                )
+            });
+        assert!(
+            output.status.success(),
+            "SERC_TEST_PYTHON_316 must name CPython {} with magic {}: {}",
+            target.tag,
+            target.magic_hex(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+        executable
+    });
+    let mut command = Command::new(executable);
+    command.args(["-I", "-S"]);
+    command
 }
 
 pub(crate) fn run_with_input(command: &mut Command, input: &[u8]) -> Output {

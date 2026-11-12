@@ -1,7 +1,75 @@
 mod unbox;
+mod leaf;
+mod cache;
 
 use std::mem::MaybeUninit;
 use std::slice;
+
+pub use leaf::{LeafOpcodes, LeafStep, LeafUop, OpcodeRange, plan_leaf_calls};
+pub use cache::{CacheUop, plan_cache};
+
+/// Plans whole-trace input cache depths. A positive result writes that many
+/// depths, 0 preserves the current allocator, and -1 rejects inconsistent input.
+/// Allocation failure and insufficient output capacity leave output unchanged.
+///
+/// # Safety
+///
+/// `uops` must point to `length` initialized descriptors from the matching generated
+/// cache table. `output` must be aligned and writable for `capacity` bytes and must
+/// not overlap input. Initial cache depth is zero; skipped uops have no effects.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn _PyJitOpt_PlanCache(
+    uops: *const CacheUop,
+    length: usize,
+    output: *mut u8,
+    capacity: usize,
+) -> isize {
+    // SAFETY: the caller supplies initialized live input descriptors.
+    let uops = unsafe { slice::from_raw_parts(uops, length) };
+    match plan_cache(uops) {
+        Ok(Some(plan)) if plan.len() <= capacity && plan.len() <= isize::MAX as usize => {
+            // SAFETY: the caller supplies disjoint writable storage; u8 permits every bit pattern.
+            unsafe { std::ptr::copy_nonoverlapping(plan.as_ptr(), output, plan.len()) };
+            plan.len() as isize
+        }
+        Ok(_) => 0,
+        Err(Inconsistent) => -1,
+    }
+}
+
+/// Plans frame-free exact-argument leaf calls, including preguarded slot getters.
+/// A positive result writes that
+/// many steps; 0 leaves the trace and output unchanged, and -1 rejects inconsistent
+/// descriptors. Allocation failure also leaves the trace unchanged.
+///
+/// # Safety
+///
+/// `uops` and `opcodes` must point to `length` initialized descriptors and one
+/// matching generated opcode map. `steps` must be aligned and writable for
+/// `capacity` steps, and must not overlap either input. Output may be uninitialized.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn _PyJitOpt_PlanLeafCalls(
+    uops: *const LeafUop,
+    length: usize,
+    opcodes: *const LeafOpcodes,
+    steps: *mut LeafStep,
+    capacity: usize,
+) -> isize {
+    // SAFETY: the caller supplies initialized, live input arrays and a matching map.
+    let (uops, opcodes) = unsafe { (slice::from_raw_parts(uops, length), &*opcodes) };
+    match plan_leaf_calls(uops, opcodes) {
+        Ok(Some(plan)) if plan.len() <= capacity && plan.len() <= isize::MAX as usize => {
+            // SAFETY: the caller supplies a separate writable output array.
+            let output = unsafe { slice::from_raw_parts_mut(steps.cast::<MaybeUninit<LeafStep>>(), capacity) };
+            for (slot, step) in output.iter_mut().zip(&plan) {
+                slot.write(*step);
+            }
+            plan.len() as isize
+        }
+        Ok(_) => 0,
+        Err(Inconsistent) => -1,
+    }
+}
 
 pub use unbox::{
     ACTION_COPY, ARITH_ADD, ARITH_MULTIPLY, ARITH_SUBTRACT, ARITH_TRUE_DIVIDE, EFFECT_BARRIER,
