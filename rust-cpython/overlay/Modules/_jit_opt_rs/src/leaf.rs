@@ -81,6 +81,7 @@ pub struct LeafOpcodes {
     pub unary_negative: u16,
     pub unary_negative_float_inplace: u16,
     pub unary_invert: u16,
+    pub virtual_argument_swap: u16,
 }
 
 impl LeafOpcodes {
@@ -242,8 +243,9 @@ impl ScalarKind {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ScalarOwnership {
     Borrowed,
+    BorrowedArgument(u16),
     BorrowedLocal(u16),
-    ArgumentCopy,
+    ArgumentCopy(u16),
     Fresh,
     Shared,
 }
@@ -286,8 +288,8 @@ impl VirtualValue {
                 };
                 *proof = Some(narrowed);
                 Some(Self::Scalar(narrowed, if matches!(self, Self::BorrowedArgument(_)) {
-                    ScalarOwnership::Borrowed
-                } else { ScalarOwnership::ArgumentCopy }))
+                    ScalarOwnership::BorrowedArgument(index)
+                } else { ScalarOwnership::ArgumentCopy(index) }))
             }
             Self::BorrowedConstant => Some(Self::Scalar(kind, ScalarOwnership::Borrowed)),
             Self::OwnedUnknown => Some(Self::Scalar(kind, ScalarOwnership::Shared)),
@@ -374,8 +376,8 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                 }
                 else {
                     values.push(match (borrowed, arguments[usize::from(uop.oparg)]) {
-                        (true, Some(kind)) => VirtualValue::Scalar(kind, ScalarOwnership::Borrowed),
-                        (false, Some(kind)) => VirtualValue::Scalar(kind, ScalarOwnership::ArgumentCopy),
+                        (true, Some(kind)) => VirtualValue::Scalar(kind, ScalarOwnership::BorrowedArgument(uop.oparg)),
+                        (false, Some(kind)) => VirtualValue::Scalar(kind, ScalarOwnership::ArgumentCopy(uop.oparg)),
                         (true, None) => VirtualValue::BorrowedArgument(uop.oparg),
                         (false, None) => VirtualValue::CopiedArgument(uop.oparg),
                     });
@@ -397,20 +399,35 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
             replacement = opcode;
         }
         else if ops.store_fast.contains(opcode) {
-            if u32::from(uop.oparg) < argc { return Ok(None) }
             let Some(value) = values.pop() else { return Err(Inconsistent) };
             let VirtualValue::Scalar(kind, ScalarOwnership::Fresh | ScalarOwnership::Shared) = value else {
                 return Ok(None);
             };
-            if values.iter().any(|value| matches!(value,
-                VirtualValue::Scalar(_, ScalarOwnership::BorrowedLocal(index)) if *index == uop.oparg))
-            {
-                return Ok(None);
+            if u32::from(uop.oparg) < argc {
+                if bound && uop.oparg == 0 { return Ok(None) }
+                let Some(old_kind) = arguments[usize::from(uop.oparg)] else { return Ok(None) };
+                if values.iter().any(|value| matches!(value,
+                    VirtualValue::BorrowedArgument(index) | VirtualValue::CopiedArgument(index) |
+                    VirtualValue::Scalar(_, ScalarOwnership::BorrowedArgument(index) | ScalarOwnership::ArgumentCopy(index))
+                        if *index == uop.oparg))
+                {
+                    return Ok(None);
+                }
+                values.push(VirtualValue::Scalar(old_kind, ScalarOwnership::Shared));
+                arguments[usize::from(uop.oparg)] = Some(kind);
+                replacement = ops.virtual_argument_swap;
             }
-            let local = &mut locals[usize::from(uop.oparg)];
-            values.push(local.map_or(VirtualValue::Null, |old_kind| VirtualValue::Scalar(old_kind, ScalarOwnership::Shared)));
-            *local = Some(kind);
-            replacement = opcode;
+            else {
+                if values.iter().any(|value| matches!(value,
+                    VirtualValue::Scalar(_, ScalarOwnership::BorrowedLocal(index)) if *index == uop.oparg))
+                {
+                    return Ok(None);
+                }
+                let local = &mut locals[usize::from(uop.oparg)];
+                values.push(local.map_or(VirtualValue::Null, |old_kind| VirtualValue::Scalar(old_kind, ScalarOwnership::Shared)));
+                *local = Some(kind);
+                replacement = opcode;
+            }
         }
         else if let Some((kind, depth)) = ops.virtual_guard(opcode) {
             if uop.effectful != 0 { return Ok(None) }
@@ -510,7 +527,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
             let Some(value) = values.pop() else { return Err(Inconsistent) };
             replacement = match (opcode, value) {
                 (op, VirtualValue::BorrowedReceiver | VirtualValue::ManagedReceiver | VirtualValue::Null |
-                    VirtualValue::Scalar(_, ScalarOwnership::Borrowed | ScalarOwnership::BorrowedLocal(_)))
+                    VirtualValue::Scalar(_, ScalarOwnership::Borrowed | ScalarOwnership::BorrowedArgument(_) | ScalarOwnership::BorrowedLocal(_)))
                     if op == ops.pop_borrow || op == ops.pop => ops.pop_borrow,
                 (op, VirtualValue::Scalar(kind, _)) if op == ops.scalar_pop(kind) || op == ops.pop => ops.scalar_pop(kind),
                 (op, VirtualValue::ReallocatedOperand) if op == ops.pop_borrow || op == ops.pop => ops.pop_float,
@@ -766,8 +783,9 @@ fn leaf_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
 /// float bodies use a reserved operand stack and borrowed argument loads, preserving
 /// original arithmetic targets. In-place arithmetic and its NULL cleanup are
 /// normalized together to boxed arithmetic and owning cleanup. Extra locals hold
-/// heap-safe floats or NULL; argument writes and live local-borrow overwrites are
-/// rejected. Slot guards must
+/// heap-safe exact numbers or NULL. Parameter stores require proven numeric old
+/// values and no live argument borrow; local stores reject live local borrows.
+/// Slot guards must
 /// already be discharged by the interpreter optimizer. An unsupported body or
 /// allocation failure leaves the trace unchanged. A globals-version guard is
 /// preserved before the call, checking the callee's dictionary.
@@ -912,6 +930,7 @@ mod tests {
             overflow_tos: 97, overflow_nos: 98, pop_int: 100,
             float_add_int: 101, guard_tos_exact_int: 102,
             unary_negative: 103, unary_negative_float_inplace: 104, unary_invert: 105,
+            virtual_argument_swap: 106,
         }
     }
 
@@ -1068,7 +1087,7 @@ mod tests {
         assert!(output.iter().all(|step| *step == untouched));
         assert_eq!(std::mem::size_of::<LeafUop>(), 16);
         assert_eq!(std::mem::size_of::<LeafStep>(), 16);
-        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 160);
+        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 162);
     }
 
     fn pair() -> Vec<LeafUop> {
@@ -1372,11 +1391,45 @@ mod tests {
     }
 
     #[test]
+    fn numeric_parameter_stores_preserve_aliases_and_reject_live_argument_anchors() {
+        let ops = opcodes();
+        let mut input = virtual_locals();
+        for item in &mut input {
+            if (ops.load_fast.contains(item.opcode) || ops.load_borrow.contains(item.opcode)
+                || ops.store_fast.contains(item.opcode)) && item.oparg == 2 {
+                item.oparg = 0;
+            }
+        }
+        input.insert(17, uop(ops.heap_safe, 0));
+        let plan = plan_leaf_calls(&input, &ops).unwrap().unwrap();
+        assert_eq!(plan[14].opcode, ops.virtual_argument_swap);
+        assert_eq!(plan[15].opcode, ops.pop_float);
+        assert_eq!(plan[27].opcode, ops.virtual_argument_swap);
+        assert_eq!(plan[28].opcode, ops.pop_float);
+        assert_eq!(plan[16].opcode, ops.virtual_argument_copy);
+        assert_eq!(plan[20].opcode, ops.virtual_argument);
+        assert_eq!(plan[4].result, 4);
+        for load in [ops.load_fast.first, ops.load_borrow.first] {
+            for narrowed in [false, true] {
+                let mut anchored = input.clone();
+                anchored.insert(6, uop(load, 0));
+                if narrowed { anchored.insert(7, uop(ops.guard_tos_float, 0)); }
+                assert!(plan_leaf_calls(&anchored, &ops).unwrap().is_none());
+            }
+        }
+        let mut unknown_old = input.clone();
+        unknown_old[14].oparg = 2;
+        unknown_old[2].oparg = 3;
+        assert!(plan_leaf_calls(&unknown_old, &ops).unwrap().is_none());
+        let mut borrowed_new = input;
+        borrowed_new.remove(17);
+        borrowed_new[17].oparg = 0;
+        assert!(plan_leaf_calls(&borrowed_new, &ops).unwrap().is_none());
+    }
+
+    #[test]
     fn local_borrows_and_argument_copies_cannot_outlive_their_anchors() {
         let ops = opcodes();
-        let mut argument_write = virtual_locals();
-        argument_write[14].oparg = 0;
-        assert!(plan_leaf_calls(&argument_write, &ops).unwrap().is_none());
         let mut unassigned = virtual_locals();
         unassigned[16].oparg = 4;
         assert!(plan_leaf_calls(&unassigned, &ops).unwrap().is_none());

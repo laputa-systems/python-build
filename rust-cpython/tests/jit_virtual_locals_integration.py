@@ -267,7 +267,8 @@ def main():
         names = {entry[0] for entry in candidate["traces"][key]}
         assert {"_BEGIN_VIRTUAL_CALL", "_RETURN_VIRTUAL_CALL",
                 "_MATERIALIZE_VIRTUAL_FRAME"} <= names, (key, names)
-    assert "_BEGIN_VIRTUAL_CALL" not in {entry[0] for entry in candidate["traces"]["argument write"]}
+    assert {"_BEGIN_VIRTUAL_CALL", "_SWAP_VIRTUAL_ARGUMENT", "_RETURN_VIRTUAL_CALL"} <= {
+        entry[0] for entry in candidate["traces"]["argument write"]}
     assert all("_BEGIN_VIRTUAL_CALL" not in {entry[0] for entry in entries}
                for entries in noopt["traces"].values())
     print("OK    virtual float locals preserve aliases, NULL slots, errors, refcounts and observers")

@@ -5060,6 +5060,17 @@ dummy_func(
             value = PyStackRef_DUP(held[bound && oparg == 0 ? 1 : 2 + oparg - bound]);
         }
 
+        tier2 op(_SWAP_VIRTUAL_ARGUMENT, (value -- trash)) {
+            assert(frame == (_PyInterpreterFrame *)tstate->datastack_top);
+            _PyStackRef *held = _PyFrame_GetStackPointer(tstate->current_frame);
+            int bound = !PyStackRef_IsNull(held[1]);
+            assert(oparg >= bound && oparg < _PyFrame_GetCode(frame)->co_argcount);
+            _PyStackRef *slot = &held[2 + oparg - bound];
+            trash = *slot;
+            *slot = value;
+            DEAD(value);
+        }
+
         tier2 op(_RETURN_VIRTUAL_CALL, (retval -- res)) {
             assert(frame == (_PyInterpreterFrame *)tstate->datastack_top);
             PyCodeObject *code = _PyFrame_GetCode(frame);
