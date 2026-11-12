@@ -62,9 +62,9 @@ class WorkloadRegistryTests(unittest.TestCase):
                 [w.name for w in select_workloads(suite, "standard", "nbody", None)], ["nbody"])
 
     def test_realworld_suite_covers_required_application_paths(self):
-        from benchmarks.workloads.registry import JIT_KERNELS
+        from benchmarks.workloads.registry import COLD_COMPILE, JIT_KERNELS
 
-        names = {workload.name for workload in WORKLOADS if workload.name not in JIT_KERNELS}
+        names = {workload.name for workload in WORKLOADS if workload.name not in (*JIT_KERNELS, *COLD_COMPILE)}
         self.assertEqual(
             names,
             {
@@ -115,9 +115,11 @@ class WorkloadRegistryTests(unittest.TestCase):
 
     def test_suite_profile_and_category_select_the_expected_work(self):
         full = select_workloads("full", "standard", None, None)
-        from benchmarks.workloads.registry import JIT_KERNELS
+        from benchmarks.workloads.registry import COLD_COMPILE, JIT_KERNELS
 
-        self.assertEqual(full, [w for w in WORKLOADS if w.name not in JIT_KERNELS])
+        self.assertEqual(full, [w for w in WORKLOADS if w.name not in (*JIT_KERNELS, *COLD_COMPILE)])
+        for name in COLD_COMPILE:
+            self.assertEqual([w.name for w in select_workloads("full", "standard", name, None)], [name])
 
         quick = select_workloads("realworld", "quick", None, None)
         self.assertGreater(len(full), len(quick))
