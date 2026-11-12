@@ -972,7 +972,7 @@ dummy_func(
             double divisor = ((PyFloatObject *)right_o)->ob_fval;
             if (divisor == 0.0) {
                 PyErr_SetString(PyExc_ZeroDivisionError,
-                                "float division by zero");
+                                "division by zero");
                 ERROR_NO_POP();
             }
             double dres = ((PyFloatObject *)left_o)->ob_fval / divisor;
