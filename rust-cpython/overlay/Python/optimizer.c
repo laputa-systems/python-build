@@ -2056,6 +2056,10 @@ typedef struct {
     uint16_t pop_borrow;
     uint16_t guard_globals;
     uint16_t leaf_globals;
+    uint16_t build_tuple;
+    uint16_t unpack_two;
+    uint16_t unpack_two_unique;
+    uint16_t pair_call;
 } _PyJitLeafOpcodes;
 
 typedef struct {
@@ -2072,7 +2076,7 @@ typedef struct {
     uint64_t result;
 } _PyJitLeafStep;
 
-static_assert(sizeof(_PyJitLeafOpcodes) == 54, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
+static_assert(sizeof(_PyJitLeafOpcodes) == 62, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
 static_assert(_Alignof(PyObject) >= 4, "leaf result tags use two object-alignment bits");
 static_assert(sizeof(_PyJitLeafUop) == 16, "_PyJitLeafUop matches Rust LeafUop");
 static_assert(offsetof(_PyJitLeafUop, operand) == 8, "LeafUop operand offset matches Rust");
@@ -2115,6 +2119,10 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         .pop_borrow = _POP_TOP_NOP,
         .guard_globals = _GUARD_GLOBALS_VERSION,
         .leaf_globals = _CHECK_LEAF_GLOBALS_VERSION,
+        .build_tuple = _BUILD_TUPLE,
+        .unpack_two = _UNPACK_SEQUENCE_TWO_TUPLE,
+        .unpack_two_unique = _UNPACK_SEQUENCE_UNIQUE_TWO_TUPLE,
+        .pair_call = _CALL_PY_LEAF_PAIR,
     };
     _PyJitLeafUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
     _PyJitLeafStep *steps = PyMem_RawMalloc((size_t)length * sizeof(*steps));
@@ -2142,7 +2150,8 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         for (int i = 0; i < length; i++) {
             const _PyJitLeafStep *step = &steps[i];
             assert(step->source < (uint32_t)length);
-            if (step->opcode == _CALL_PY_LEAF || step->opcode == _CHECK_LEAF_GLOBALS_VERSION) {
+            if (step->opcode == _CALL_PY_LEAF || step->opcode == _CALL_PY_LEAF_PAIR ||
+                step->opcode == _CHECK_LEAF_GLOBALS_VERSION) {
                 _PyUOpInstruction source = buffer[step->source];
                 assert(source.opcode == _CHECK_RECURSION_REMAINING);
                 buffer[i] = source;

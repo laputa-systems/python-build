@@ -772,6 +772,23 @@ shared-code functions, replacement, deletion, clear/update, builtin fallback,
 cached object collection, dictionary callbacks, lazy lookup errors and
 observer frames.
 
+**Immediate tuple results (2026-11-11).** The leaf planner recognizes a
+complete two-argument call that returns both borrowed arguments, once each,
+in either order, followed immediately by a two-tuple unpack. It replaces the
+callee frame, temporary tuple and unpack with `_CALL_PY_LEAF_PAIR`. Escaping
+results, extra operations, bound calls, cells and free variables retain the
+ordinary path. Its private opcode map grows from 54 to 62 bytes; pair steps
+encode forward or reversed argument order.
+
+Both output references become heap-safe before any input is released. A
+callable whose last owned reference would be closed takes the original call
+path: function or code finalizers can observe the concrete return tuple with
+`gc.get_referrers`. All refusals use a side exit before consumption, including
+this lifetime guard. No callback or safepoint remains between the original
+call and consumed unpack; interstitial validity and instruction-pointer
+updates disappear with the tuple. Trace, profile and monitoring observers
+continue to see real callee frames and distinct return tuples.
+
 **Loop globals prologue (2026-11-11).** The Rust planner in
 `Modules/_jit_opt_rs/src/loop_globals.rs` moves one root-frame globals guard
 before `_MAKE_WARM`. It requires a closed loop, an existing globals watcher,
@@ -794,8 +811,8 @@ the old globals-guard count is now zero. Its other original assertions pass;
 the canonical builtins guard remains exactly once and the kernel returns
 `102*n`. This ninth named shape exclusion follows the existing owner ruling.
 
-General virtual frames, remaining lookup caches, non-escaping allocation
-removal and whole-loop peeling remain T3 work.
+General virtual frames, remaining lookup caches, other non-escaping allocation
+shapes and whole-loop peeling remain T3 work.
 
 **Inline frames (dropped 2026-11-10, CORRECT; code parked on branch
 `campaign/t3-inline`, whose paths the citations below refer to).** A trace call site is
@@ -1774,7 +1791,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | Watched loop-global guards now have an entry prologue, composing with frame-free calls/getters and whole-trace cache allocation. Next: non-escaping tuple results, then remaining T3 allocation/loop work. Performance acceptance deferred under OD16 | Loop slice: all 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; 9 named superseded assertions; 37 Rust tests; independent corrected-source/native review approves |
+| J | active | Immediate two-argument tuple returns now avoid callee frames and temporary tuples when the caller immediately unpacks. Next: local-store stencil fusion, then remaining T3 allocation/loop work. Performance acceptance deferred under OD16 | Pair slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 9 shape exclusions; 39 Rust tests; three native pair traces and all prior integrations pass; independent source/native review approves |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | feature complete | C3 integrated with refreshed main dependencies; performance acceptance deferred under OD16. Routing/API owner reviews remain asynchronous; nothing pushed | Integrated normal and verify runs each execute 52,102 tests, with exactly the matched reference's five failing files and 0 compiler mismatches; native 11-case integration passes; C3 corpus and independent reviews remain valid |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -1847,6 +1864,14 @@ the backedge is derived from `_MAKE_WARM` rather than fixed at index 1.
 Existing dictionary watchers and per-iteration validity checks remain.
 Independent review approves the corrected side-exit progress path and both
 entry-failure cases. Performance acceptance remains deferred under OD16.
+
+**Owner queue:** T3 immediate tuple results (async review). Private
+`_PyJitOpt_PlanLeafCalls` opcode-map size changes from 54 to 62 bytes;
+`_CALL_PY_LEAF_PAIR` removes two-argument tuple results only at an immediate
+unpack. Callable-lifetime refusal preserves tuples visible to finalizers;
+trace/profile/monitoring observers retain ordinary frames and tuples.
+Independent source/native review approves. Performance acceptance remains
+deferred under OD16.
 
 **Owner queue:** T1 thread-state (landed, async review). Every overlay build
 now regenerates the interpreter cases from `bytecodes.c` with a 3.11+
@@ -2142,6 +2167,7 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-11 | e891 | J | T3 | fuse global-return getters while preserving a pre-call guard against the callee's dictionary and existing watcher dependencies | `perf-jit-j5` | performance deferred (OD16) | — | CORRECT: 31 workload digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 8 superseded assertions; lazy-import suite passes both modes; 34 Rust tests and three native global-getter traces plus prior integrations; independent source/native review approves, including reentrant lookup during old-value finalization | `rust-cpython/results/perf-bench/20261112T045911Z-perf-jit-j5-vs-perf-jit-j6`, `20261112T050048Z-perf-jit-j5-vs-perf-jit-j6`; `.work/tmp/j6-feature-acceptance.json` |
 | 2026-11-11 | e891 | C/J | integration | combine C3 and four JIT slices with main's dependency update; repair three SSL dependency API mismatches while preserving behavior | `perf-jit-main-ref` (`8083f4f`) | performance deferred (OD16) | — | CORRECT: matched 31 digests; 2,000 clean fuzz programs; targeted JIT suites only 8 prior superseded assertions; normal reference/candidate and candidate verify each run 52,102 tests with the same five known failing files; no compiler mismatch; native compiler and SSL regressions pass; independent adapter review approves | local main `0e72f84`; integration evidence above |
 | 2026-11-11 | e891 | J | T3 | peel one watched globals guard into a side-exit entry prologue; preserve callback validity checks and derive the zero-depth backedge from warm marking | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; 9 named shape exclusions; 37 Rust tests; all native integrations pass; independent review approves progress for foreign and mapping globals, exact effects, invalidation and original builtins assertions | `rust-cpython/results/perf-bench/20261112T065626Z-perf-jit-integrated-vs-perf-jit-loop`, `20261112T065803Z-perf-jit-integrated-vs-perf-jit-loop`; `.work/tmp/loop-feature-acceptance.json` |
+| 2026-11-11 | e891 | J | T3 | remove non-escaping two-argument tuple returns and immediate unpack while retaining finalizer-visible tuple fallback | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 9 shape exclusions; 39 Rust tests; three pair traces plus all native integrations pass; independent source/native review approves | `rust-cpython/results/perf-bench/20261112T074531Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T074700Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/pair-feature-acceptance.json` |
 | 2026-11-10 | 3.15.1 | R1 | R1 | CinderX steady JIT vs off | `cinderx-e48f370d` | — → 0.7960 (held-out 1.0621) | — | MEASURED | `.work/r1` |
 | 2026-11-10 | e891 | J | T1 | thread-state: executor tstate to float/int freelists (`_tlv_get_addr` 4.61% of samples, targeted chains 1.36% → 0%) | `perf-rust-jit` | timing deferred (OD14) | — | CORRECT | `campaign/t1-tstate` |
 | 2026-11-10 | e891 | J | T2 | float unboxing across binary ops and compares (float boxing 8.9-38.6% of samples; float-op chains nbody 27.5% → 26.3%, fft 11.4% → 9.5%) | `perf-rust-jit` | timing deferred (OD14); advisory 0.9962 | — | CORRECT (4 named superseded `test_capi.test_opt` uop assertions, owner ruling) | `aadaf25` |

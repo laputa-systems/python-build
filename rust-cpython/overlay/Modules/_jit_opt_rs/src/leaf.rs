@@ -41,6 +41,10 @@ pub struct LeafOpcodes {
     pub pop_borrow: u16,
     pub guard_globals: u16,
     pub leaf_globals: u16,
+    pub build_tuple: u16,
+    pub unpack_two: u16,
+    pub unpack_two_unique: u16,
+    pub pair_call: u16,
 }
 
 /// `effectful` is 0 or 1. Operand bits are opaque; Rust never dereferences them.
@@ -57,6 +61,7 @@ pub struct LeafUop {
 /// select a constant address (0), argument (1), or argument slot (2). Argument
 /// indices occupy bits 2..18; slot byte offsets occupy bits 18..34.
 /// For a leaf-globals guard, `result` holds the expected dictionary keys version.
+/// For a pair call it holds 0 for argument order or 1 for reversed order.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LeafStep {
@@ -97,6 +102,59 @@ struct LeafBody {
     end: usize,
     result: ResultSource,
     globals_version: Option<u32>,
+}
+
+#[derive(Clone, Copy)]
+enum PairOrder {
+    Forward,
+    Reverse,
+}
+
+enum PairState {
+    Entry,
+    Resumed,
+    First(u16),
+    Arguments(PairOrder),
+    Tuple(PairOrder),
+    Returned(PairOrder),
+}
+
+fn pair_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes) -> Option<(usize, PairOrder)> {
+    if uops[at].oparg != 2 {
+        return None;
+    }
+    let mut state = PairState::Entry;
+    for (index, uop) in uops.iter().enumerate().skip(at + 3) {
+        let opcode = uop.opcode;
+        if (opcode == ops.nop || opcode == ops.set_ip) && uop.effectful == 0 {
+            continue;
+        }
+        state = match state {
+            PairState::Entry if opcode == ops.validity && uop.effectful == 0 => PairState::Entry,
+            PairState::Entry if opcode == ops.resume => PairState::Resumed,
+            PairState::Resumed
+                if ops.load_borrow.contains(opcode) && uop.oparg < 2 && uop.effectful == 0 =>
+            {
+                PairState::First(uop.oparg)
+            }
+            PairState::First(first)
+                if ops.load_borrow.contains(opcode) && uop.oparg == 1 - first && uop.effectful == 0 =>
+            {
+                PairState::Arguments(if first == 0 { PairOrder::Forward } else { PairOrder::Reverse })
+            }
+            PairState::Arguments(order) if opcode == ops.build_tuple && uop.oparg == 2 => PairState::Tuple(order),
+            PairState::Tuple(order) if opcode == ops.heap_safe => PairState::Tuple(order),
+            PairState::Tuple(order) if opcode == ops.return_value => PairState::Returned(order),
+            PairState::Returned(order) if opcode == ops.validity && uop.effectful == 0 => PairState::Returned(order),
+            PairState::Returned(order) if (opcode == ops.unpack_two || opcode == ops.unpack_two_unique)
+                && uop.oparg == 2 =>
+            {
+                return Some((index, order));
+            }
+            _ => return None,
+        };
+    }
+    None
 }
 
 fn header_is_guarded(uops: &[LeafUop], at: usize, ops: &LeafOpcodes) -> bool {
@@ -187,7 +245,8 @@ fn leaf_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
 }
 
 /// Fuses guarded exact-argument calls whose optimized body only returns an argument
-/// or constant, or loads one slot from a borrowed argument. Slot guards must
+/// or constant, loads one slot from a borrowed argument, or returns both arguments
+/// in a tuple that is immediately unpacked. Slot guards must
 /// already be discharged by the interpreter optimizer. An unsupported body or
 /// allocation failure leaves the trace unchanged. A globals-version guard is
 /// preserved before the call, checking the callee's dictionary.
@@ -217,6 +276,19 @@ pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
             || !header_is_guarded(uops, at, ops)
         {
             at += 1;
+            continue;
+        }
+        if let Some((end, order)) = pair_body(uops, at, ops) {
+            steps[at].opcode = ops.nop;
+            steps[at + 2] = LeafStep {
+                opcode: ops.pair_call, oparg: 2, source: (at - 1) as u32,
+                result: match order { PairOrder::Forward => 0, PairOrder::Reverse => 1 },
+            };
+            for step in &mut steps[at + 3..=end] {
+                step.opcode = ops.nop;
+            }
+            changed = true;
+            at = end + 1;
             continue;
         }
         let Some(body) = leaf_body(uops, at, ops)? else {
@@ -258,6 +330,7 @@ mod tests {
             set_ip: 35, load_const: 36, load_const_borrow: 37, heap_safe: 38,
             nop: 39, leaf_call: 40, load_slot: 41, pop_borrow: 42,
             guard_globals: 43, leaf_globals: 44,
+            build_tuple: 45, unpack_two: 46, unpack_two_unique: 47, pair_call: 48,
         }
     }
 
@@ -388,6 +461,58 @@ mod tests {
         assert!(output.iter().all(|step| *step == untouched));
         assert_eq!(std::mem::size_of::<LeafUop>(), 16);
         assert_eq!(std::mem::size_of::<LeafStep>(), 16);
-        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 54);
+        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 62);
+    }
+
+    fn pair() -> Vec<LeafUop> {
+        let ops = opcodes();
+        vec![uop(ops.function_version, 2), uop(ops.recursion, 2),
+             uop(ops.init.first + 2, 2), uop(ops.save_return, 4), uop(ops.push_frame, 2),
+             uop(ops.resume, 0), uop(ops.load_borrow.first, 0), uop(ops.load_borrow.first + 1, 1),
+             LeafUop { effectful: 1, ..uop(ops.build_tuple, 2) },
+             uop(ops.set_ip, 0), uop(ops.heap_safe, 0), uop(ops.return_value, 0),
+             uop(ops.validity, 0), uop(ops.unpack_two_unique, 2)]
+    }
+
+    #[test]
+    fn pair_calls_preserve_order_targets_and_return_offsets() {
+        for unpack in [opcodes().unpack_two, opcodes().unpack_two_unique] {
+            for order in [0, 1] {
+                let mut uops = pair();
+                uops[6].oparg = order;
+                uops[7].oparg = 1 - order;
+                uops[13].opcode = unpack;
+                let steps = plan_leaf_calls(&uops, &opcodes()).unwrap().unwrap();
+                assert_eq!(steps[4], LeafStep { opcode: opcodes().pair_call, oparg: 2,
+                                               source: 1, result: u64::from(order) });
+                assert_eq!(steps[3].opcode, opcodes().save_return);
+                assert!(steps[5..].iter().all(|step| step.opcode == opcodes().nop));
+            }
+        }
+    }
+
+    #[test]
+    fn escaping_observed_partial_and_repeated_pairs_remain_concrete() {
+        for index in [0, 1, 5, 6, 7, 8, 10, 11, 13] {
+            let mut uops = pair();
+            uops[index].opcode = 99;
+            assert!(plan_leaf_calls(&uops, &opcodes()).unwrap().is_none(), "index {index}");
+        }
+        for index in [6, 7, 12] {
+            let mut uops = pair();
+            uops[index].effectful = 1;
+            assert!(plan_leaf_calls(&uops, &opcodes()).unwrap().is_none());
+        }
+        let mut repeated = pair();
+        repeated[7].oparg = 0;
+        assert!(plan_leaf_calls(&repeated, &opcodes()).unwrap().is_none());
+        for end in 0..pair().len() {
+            assert!(plan_leaf_calls(&pair()[..end], &opcodes()).unwrap().is_none());
+        }
+        for index in [6, 12] {
+            let mut observed = pair();
+            observed.insert(index, uop(99, 0));
+            assert!(plan_leaf_calls(&observed, &opcodes()).unwrap().is_none());
+        }
     }
 }

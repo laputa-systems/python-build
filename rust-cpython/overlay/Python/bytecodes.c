@@ -4922,6 +4922,41 @@ dummy_func(
             res = returned;
         }
 
+        tier2 op(_CALL_PY_LEAF_PAIR, (order/1, callable, self_or_null, args[oparg] -- right, left)) {
+            PyFunctionObject *func = (PyFunctionObject *)PyStackRef_AsPyObjectBorrow(callable);
+            assert(PyFunction_Check(func));
+            PyCodeObject *code = (PyCodeObject *)func->func_code;
+            EXIT_IF(oparg != 2 || !PyStackRef_IsNull(self_or_null));
+            EXIT_IF(code->co_argcount != 2 || code->co_kwonlyargcount != 0);
+            EXIT_IF(code->co_ncellvars != 0 || code->co_nfreevars != 0);
+            EXIT_IF(code->co_flags & (CO_GENERATOR | CO_COROUTINE | CO_ASYNC_GENERATOR |
+                                      CO_VARARGS | CO_VARKEYWORDS));
+            EXIT_IF(!current_executor->vm_data.valid || order > 1);
+            uintptr_t iversion = FT_ATOMIC_LOAD_UINTPTR_ACQUIRE(code->_co_instrumentation_version);
+            EXIT_IF(_Py_atomic_load_uintptr_relaxed(&tstate->eval_breaker) != iversion);
+            /* A function or code finalizer could observe the concrete return
+               tuple. Keep that tuple whenever closing the callable can finalize. */
+            EXIT_IF(PyStackRef_RefcountOnObject(callable) && Py_REFCNT(func) <= 1);
+            Py_INCREF(code);
+            _PyStackRef first = PyStackRef_MakeHeapSafe(PyStackRef_DUP(args[order]));
+            _PyStackRef second = PyStackRef_MakeHeapSafe(PyStackRef_DUP(args[1 - order]));
+            _PyStackRef pair_callable = callable;
+            _PyStackRef *pair_args = args;
+            INPUTS_DEAD();
+            SAVE_STACK();
+            for (int i = oparg; --i >= 0; ) {
+                PyStackRef_CLOSE(pair_args[i]);
+            }
+            PyStackRef_CLOSE(pair_callable);
+            Py_DECREF(code);
+            RELOAD_STACK();
+            STAT_INC(CALL, hit);
+            STAT_INC(UNPACK_SEQUENCE, hit);
+            CALL_STAT_INC(inlined_py_calls);
+            left = first;
+            right = second;
+        }
+
         macro(CALL_BOUND_METHOD_EXACT_ARGS) =
             _RECORD_BOUND_METHOD +
             unused/1 + // Skip over the counter
