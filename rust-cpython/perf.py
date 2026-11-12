@@ -2748,7 +2748,7 @@ def main(argv: list[str] | None = None) -> int:
                               help="enable CPython's specialization and tier-2 statistics; "
                                    "requires --jit")
     build_parser.add_argument("--serc", action="store_true",
-                              help="link Serc into libpython and compile source-mode exec "
+                              help="link Serc into libpython and compile source-mode "
                                    "requests with it")
     cargo_parser = commands.add_parser(
         "cargo", help="run the pinned cargo in a perf build's assembled source, after an overlay sync")
@@ -2762,7 +2762,7 @@ def main(argv: list[str] | None = None) -> int:
     test_parser.add_argument("--suite", action="append", default=[], metavar="TEST_NAME",
                              help="complete CPython test module or package; repeatable")
     test_parser.add_argument("--serc-verify", action="store_true",
-                             help="on a --serc build, compile every source-mode exec request "
+                             help="on a --serc build, compile every source-mode request "
                                   "with both Serc and the C compiler from an empty bytecode "
                                   "cache, raising on any difference")
     for command, help_text in (("bench", "paired measurement with a hill-climbing verdict"),

@@ -557,6 +557,11 @@ def main() -> int:
     result["oracle"] = str(args.oracle)
     result["corpus"] = str(corpus)
     result["serc"] = str(binary)
+    result["compiler_build_overrides"] = {
+        name: os.environ[name]
+        for name in ("CARGO_PROFILE_RELEASE_LTO",)
+        if name in os.environ
+    }
     text = json.dumps(result, indent=2)
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
