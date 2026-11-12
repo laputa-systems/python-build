@@ -134,7 +134,10 @@ CLIMB_SUPERSEDED_UOP_ASSERTIONS = frozenset({
     "test.test_capi.test_opt.TestUopsOptimization.test_float_inplace_chain_propagation",
     "test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_inplace_unique_lhs",
     "test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_unique_result_enables_inplace",
+    "test.test_capi.test_opt.TestUopsOptimization.test_func_guards_removed_or_reduced",
+    "test.test_capi.test_opt.TestUopsOptimization.test_func_version_guarded_on_change",
     "test.test_capi.test_opt.TestUopsOptimization.test_int_inplace_chain_propagation",
+    "test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_optimized_immortal",
 })
 CLIMB_FROZEN_PREFIXES = ("benchmarks/",)
 CLIMB_FROZEN_FILES = ("rust-cpython/perf_verdict.py", "rust-cpython/tests/jit_fuzz.py")

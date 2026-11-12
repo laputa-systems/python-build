@@ -4840,6 +4840,52 @@ dummy_func(
             LLTRACE_RESUME_FRAME();
         }
 
+        tier2 op(_CALL_PY_LEAF, (result_low/2, result_high/2, callable, self_or_null, args[oparg] -- res)) {
+            uint64_t result = (uint64_t)result_low | ((uint64_t)result_high << 32);
+            PyFunctionObject *func = (PyFunctionObject *)PyStackRef_AsPyObjectBorrow(callable);
+            assert(PyFunction_Check(func));
+            PyCodeObject *code = (PyCodeObject *)func->func_code;
+            int has_self = !PyStackRef_IsNull(self_or_null);
+            DEOPT_IF(code->co_argcount != oparg + has_self);
+            DEOPT_IF(code->co_kwonlyargcount != 0);
+            DEOPT_IF(code->co_flags & (CO_GENERATOR | CO_COROUTINE | CO_ASYNC_GENERATOR |
+                                       CO_VARARGS | CO_VARKEYWORDS));
+            DEOPT_IF(!current_executor->vm_data.valid);
+            uintptr_t iversion = FT_ATOMIC_LOAD_UINTPTR_ACQUIRE(code->_co_instrumentation_version);
+            DEOPT_IF(_Py_atomic_load_uintptr_relaxed(&tstate->eval_breaker) != iversion);
+            uint64_t argument = result >> 1;
+            DEOPT_IF((result & 1) && argument >= (uint64_t)code->co_argcount);
+
+            Py_INCREF(code);
+            _PyStackRef value;
+            if (result & 1) {
+                _PyStackRef selected = has_self && argument == 0
+                    ? self_or_null : args[argument - has_self];
+                value = PyStackRef_DUP(selected);
+            }
+            else {
+                value = PyStackRef_FromPyObjectNew((PyObject *)(uintptr_t)result);
+            }
+            _PyStackRef returned = PyStackRef_MakeHeapSafe(value);
+            _PyStackRef leaf_callable = callable;
+            _PyStackRef leaf_self = self_or_null;
+            _PyStackRef *leaf_args = args;
+            INPUTS_DEAD();
+            SAVE_STACK();
+            /* Frame clearing releases locals in reverse order, then the function
+               and finally its executable; finalizers observe the caller's stack. */
+            for (int i = oparg; --i >= 0; ) {
+                PyStackRef_CLOSE(leaf_args[i]);
+            }
+            PyStackRef_XCLOSE(leaf_self);
+            PyStackRef_CLOSE(leaf_callable);
+            Py_DECREF(code);
+            RELOAD_STACK();
+            STAT_INC(CALL, hit);
+            CALL_STAT_INC(inlined_py_calls);
+            res = returned;
+        }
+
         macro(CALL_BOUND_METHOD_EXACT_ARGS) =
             _RECORD_BOUND_METHOD +
             unused/1 + // Skip over the counter

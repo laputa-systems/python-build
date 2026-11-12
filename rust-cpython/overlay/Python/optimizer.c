@@ -1971,6 +1971,135 @@ unbox_values(_PyUOpInstruction *buffer, int length,
     return (int)count;
 }
 
+typedef struct {
+    uint16_t first;
+    uint16_t last;
+} _PyJitLeafRange;
+
+typedef struct {
+    _PyJitLeafRange init;
+    _PyJitLeafRange load_fast;
+    _PyJitLeafRange load_borrow;
+    uint16_t save_return;
+    uint16_t push_frame;
+    uint16_t return_value;
+    uint16_t function_version;
+    uint16_t function_version_inline;
+    uint16_t function_args;
+    uint16_t recursion;
+    uint16_t stack_space;
+    uint16_t pep523;
+    uint16_t resume;
+    uint16_t validity;
+    uint16_t set_ip;
+    uint16_t load_const;
+    uint16_t load_const_borrow;
+    uint16_t heap_safe;
+    uint16_t nop;
+    uint16_t leaf_call;
+} _PyJitLeafOpcodes;
+
+typedef struct {
+    uint16_t opcode;
+    uint16_t oparg;
+    uint8_t effectful;
+    uint64_t operand;
+} _PyJitLeafUop;
+
+typedef struct {
+    uint16_t opcode;
+    uint16_t oparg;
+    uint32_t source;
+    uint64_t result;
+} _PyJitLeafStep;
+
+static_assert(sizeof(_PyJitLeafOpcodes) == 46, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
+static_assert(sizeof(_PyJitLeafUop) == 16, "_PyJitLeafUop matches Rust LeafUop");
+static_assert(offsetof(_PyJitLeafUop, operand) == 8, "LeafUop operand offset matches Rust");
+static_assert(sizeof(_PyJitLeafStep) == 16, "_PyJitLeafStep matches Rust LeafStep");
+static_assert(offsetof(_PyJitLeafStep, result) == 8, "LeafStep result offset matches Rust");
+static_assert(_INIT_CALL_PY_EXACT_ARGS_4 - _INIT_CALL_PY_EXACT_ARGS == 5,
+              "exact-call replicas are contiguous");
+static_assert(_LOAD_FAST_7 - _LOAD_FAST == 8 && _LOAD_FAST_BORROW_7 - _LOAD_FAST_BORROW == 8,
+              "fast-local replicas are contiguous");
+
+extern Py_ssize_t _PyJitOpt_PlanLeafCalls(
+    const _PyJitLeafUop *, size_t, const _PyJitLeafOpcodes *, _PyJitLeafStep *, size_t);
+
+static void
+fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
+{
+#if !defined(Py_GIL_DISABLED) && !defined(WITH_DTRACE)
+    static const _PyJitLeafOpcodes opcodes = {
+        .init = {_INIT_CALL_PY_EXACT_ARGS, _INIT_CALL_PY_EXACT_ARGS_4},
+        .load_fast = {_LOAD_FAST, _LOAD_FAST_7},
+        .load_borrow = {_LOAD_FAST_BORROW, _LOAD_FAST_BORROW_7},
+        .save_return = _SAVE_RETURN_OFFSET,
+        .push_frame = _PUSH_FRAME,
+        .return_value = _RETURN_VALUE,
+        .function_version = _CHECK_FUNCTION_VERSION,
+        .function_version_inline = _CHECK_FUNCTION_VERSION_INLINE,
+        .function_args = _CHECK_FUNCTION_EXACT_ARGS,
+        .recursion = _CHECK_RECURSION_REMAINING,
+        .stack_space = _CHECK_STACK_SPACE_OPERAND,
+        .pep523 = _CHECK_PEP_523,
+        .resume = _TIER2_RESUME_CHECK,
+        .validity = _CHECK_VALIDITY,
+        .set_ip = _SET_IP,
+        .load_const = _LOAD_CONST_INLINE,
+        .load_const_borrow = _LOAD_CONST_INLINE_BORROW,
+        .heap_safe = _MAKE_HEAP_SAFE,
+        .nop = _NOP,
+        .leaf_call = _CALL_PY_LEAF,
+    };
+    _PyJitLeafUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
+    _PyJitLeafStep *steps = PyMem_RawMalloc((size_t)length * sizeof(*steps));
+    if (uops == NULL || steps == NULL) {
+        PyMem_RawFree(uops);
+        PyMem_RawFree(steps);
+        return;
+    }
+    for (int i = 0; i < length; i++) {
+        uint16_t opcode = buffer[i].opcode;
+        uint32_t flags = _PyUop_Flags[opcode];
+        uops[i] = (_PyJitLeafUop){
+            .opcode = opcode,
+            .oparg = buffer[i].oparg,
+            .effectful = (flags & (HAS_ESCAPES_FLAG | HAS_ERROR_FLAG | HAS_PERIODIC_FLAG |
+                                   HAS_EVAL_BREAK_FLAG | HAS_SYNC_SP_FLAG)) != 0,
+            .operand = (opcode == _LOAD_CONST_INLINE || opcode == _LOAD_CONST_INLINE_BORROW)
+                       ? buffer[i].operand0 : 0,
+        };
+    }
+    Py_ssize_t count = _PyJitOpt_PlanLeafCalls(uops, (size_t)length, &opcodes,
+                                             steps, (size_t)length);
+    if (count == length) {
+        for (int i = 0; i < length; i++) {
+            const _PyJitLeafStep *step = &steps[i];
+            assert(step->source < (uint32_t)length);
+            if (step->opcode == _CALL_PY_LEAF) {
+                _PyUOpInstruction source = buffer[step->source];
+                assert(source.opcode == _CHECK_RECURSION_REMAINING);
+                buffer[i] = source;
+                buffer[i].opcode = _CALL_PY_LEAF;
+                buffer[i].oparg = step->oparg;
+                buffer[i].operand0 = (uint32_t)step->result;
+                buffer[i].operand1 = (uint32_t)(step->result >> 32);
+            }
+            else if (step->opcode != buffer[i].opcode) {
+                assert(step->opcode == _NOP);
+                buffer[i].opcode = _NOP;
+                buffer[i].oparg = 0;
+                buffer[i].operand0 = 0;
+                buffer[i].operand1 = 0;
+            }
+        }
+    }
+    PyMem_RawFree(uops);
+    PyMem_RawFree(steps);
+#endif
+}
+
 static int
 uop_optimize(
     _PyInterpreterFrame *frame,
@@ -2029,6 +2158,9 @@ uop_optimize(
     _PyJitUopBuffer *code_buffer = &_tstate->jit_tracer_state->code_buffer;
     code_buffer->next = code_buffer->start;
 
+    if (!is_noopt) {
+        fuse_leaf_calls(buffer, length);
+    }
     OPT_HIST(effective_trace_length(buffer, length), optimized_trace_length_hist);
     _PyUOpInstruction *output = &_tstate->jit_tracer_state->uop_array[0];
     _PyUnboxedSlots *unboxed = NULL;

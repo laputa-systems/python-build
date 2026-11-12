@@ -1,7 +1,43 @@
 mod unbox;
+mod leaf;
 
 use std::mem::MaybeUninit;
 use std::slice;
+
+pub use leaf::{LeafOpcodes, LeafStep, LeafUop, OpcodeRange, plan_leaf_calls};
+
+/// Plans frame-free exact-argument leaf calls. A positive result writes that
+/// many steps; 0 leaves the trace and output unchanged, and -1 rejects inconsistent
+/// descriptors. Allocation failure also leaves the trace unchanged.
+///
+/// # Safety
+///
+/// `uops` and `opcodes` must point to `length` initialized descriptors and one
+/// matching generated opcode map. `steps` must be aligned and writable for
+/// `capacity` steps, and must not overlap either input. Output may be uninitialized.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn _PyJitOpt_PlanLeafCalls(
+    uops: *const LeafUop,
+    length: usize,
+    opcodes: *const LeafOpcodes,
+    steps: *mut LeafStep,
+    capacity: usize,
+) -> isize {
+    // SAFETY: the caller supplies initialized, live input arrays and a matching map.
+    let (uops, opcodes) = unsafe { (slice::from_raw_parts(uops, length), &*opcodes) };
+    match plan_leaf_calls(uops, opcodes) {
+        Ok(Some(plan)) if plan.len() <= capacity && plan.len() <= isize::MAX as usize => {
+            // SAFETY: the caller supplies a separate writable output array.
+            let output = unsafe { slice::from_raw_parts_mut(steps.cast::<MaybeUninit<LeafStep>>(), capacity) };
+            for (slot, step) in output.iter_mut().zip(&plan) {
+                slot.write(*step);
+            }
+            plan.len() as isize
+        }
+        Ok(_) => 0,
+        Err(Inconsistent) => -1,
+    }
+}
 
 pub use unbox::{
     ACTION_COPY, ARITH_ADD, ARITH_MULTIPLY, ARITH_SUBTRACT, ARITH_TRUE_DIVIDE, EFFECT_BARRIER,
