@@ -68,6 +68,12 @@ def loop(n, fn, source, active):
 loop = FunctionType(loop.__code__, {'trace': trace, 'WARM': WARM})
 loop.__globals__['loop'] = loop
 
+def fresh(template):
+    namespace = {'trace': trace, 'WARM': WARM}
+    function = FunctionType(template.__code__.replace(), namespace)
+    namespace[template.__name__] = function
+    return function
+
 def encode(value):
     return [type(value).__name__, value.hex() if type(value) is float else str(value)]
 
@@ -77,11 +83,13 @@ traces = []
 active = []
 for fn, warm in ((direct, (1.25, 2.5)), (alias, (1.25, 2.5)),
                  (direct, (100000, 3)), (alias, (100000, 3))):
+    loop = fresh(loop)
     samples = [warm]
     if type(warm[0]) is float:
         samples += [(-0.0, -0.0), (float('nan'), 1.0), (float('inf'), 1.0)]
     else:
-        samples += [(2**29, 3), (2**30, 3), (2**100, 2), (-2**100, 2)]
+        samples += [(2**29, 3), (2**30, 3), (2**100, 2), (-2**100, 2),
+                    (2**30 - 2, 1), (-2**30 + 2, -1), (-2**30 + 1, 0)]
     samples += [(Callback(), 1)]
     for a, b in samples:
         before = [sys.getrefcount(a), sys.getrefcount(b)]
@@ -93,6 +101,7 @@ for fn, warm in ((direct, (1.25, 2.5)), (alias, (1.25, 2.5)),
         if (a, b) == warm:
             traces.append(entries)
 
+loop = fresh(loop)
 for a in (2**70, -2**70, 10**300):
     b = 1.25
     before = [sys.getrefcount(a), sys.getrefcount(b)]
@@ -114,7 +123,7 @@ class Arm:
         allocation_traces.append(frame.f_locals['entries'])
         _testcapi.set_nomemory(0, self.failures)
 
-def allocating(n, fn, source, active):
+def allocating(n, fn, source, active, a, b):
     held = [None] * n
     transient = None
     entries = []
@@ -122,7 +131,7 @@ def allocating(n, fn, source, active):
     for index in range(n):
         was_active = active()
         transient = source.pop()
-        held[index] = fn(100000, 3)
+        held[index] = fn(a, b)
         if index == WARM - 1:
             entries = trace(allocating)
     return held, entries, was_active
@@ -130,22 +139,27 @@ def allocating(n, fn, source, active):
 allocating = FunctionType(allocating.__code__, {'trace': trace, 'WARM': WARM})
 allocating.__globals__['allocating'] = allocating
 allocation = {}
-for failures in (1, 16):
-    try:
-        allocating(WARM + 18, argument, [None, Arm(failures)] + [None] * (WARM + 16), sys._jit.is_active)
-    except MemoryError as error:
-        _testcapi.remove_mem_hooks()
-        state = None
-        tb = error.__traceback__
-        while tb:
-            if tb.tb_frame.f_code is argument.__code__:
-                inst = next(i for i in dis.get_instructions(argument) if i.offset == tb.tb_lasti)
-                state = [inst.opname, inst.positions.col_offset, inst.positions.end_col_offset,
-                         {k: encode(v) for k, v in tb.tb_frame.f_locals.items()}]
-            tb = tb.tb_next
-        allocation[failures] = state
-    else:
-        raise AssertionError('allocation did not fail')
+for label, fn, a, b in (('int', argument, 100000, 3), ('float', alias, 1.25, 2.5)):
+    allocation[label] = {}
+    for failures in (1, 16):
+        allocating = fresh(allocating)
+        try:
+            allocating(WARM + 18, fn, [None, Arm(failures)] + [None] * (WARM + 16),
+                       sys._jit.is_active, a, b)
+        except MemoryError as error:
+            _testcapi.remove_mem_hooks()
+            state = None
+            tb = error.__traceback__
+            while tb:
+                if tb.tb_frame.f_code is fn.__code__:
+                    inst = next(i for i in dis.get_instructions(fn) if i.offset == tb.tb_lasti)
+                    state = [inst.opname, inst.positions.col_offset, inst.positions.end_col_offset,
+                             {k: encode(v) for k, v in tb.tb_frame.f_locals.items()}]
+                tb = tb.tb_next
+            allocation[label][failures] = state
+        else:
+            _testcapi.remove_mem_hooks()
+            raise AssertionError('allocation did not fail')
 print(json.dumps({'results': results, 'traces': traces, 'active': active,
                   'events': events, 'allocation': allocation, 'allocation_active': allocation_active,
                   'allocation_traces': allocation_traces}))
@@ -167,19 +181,28 @@ def main():
     expected = [['float', (-3.75).hex()], ['float', (0.0).hex()], ['float', 'nan'],
                 ['float', '-inf'], ['int', '47']]
     integers = [['int', str(value)] for value in (-100003, -(2**29 + 3),
-                -(2**30 + 3), -(2**100 + 2), 2**100 - 2, 47)]
+                -(2**30 + 3), -(2**100 + 2), 2**100 - 2,
+                -(2**30 - 1), 2**30 - 1, 2**30 - 1, 47)]
     expected = expected * 2 + integers * 2 + [['int', str(value)] for value in (-2**70, 2**70, -(10**300))]
     assert [row[0] for row in candidate['results']] == expected, candidate['results']
     assert all(row[1:] == [7016, 0, [0, 0]] for row in candidate['results']), candidate['results']
     assert candidate['events'] == reference['events'] == noopt['events'] == ['add', 'negative'] * 4
-    assert all(candidate['active']) and candidate['allocation_active'] == [True, True]
+    assert all(candidate['active']) and candidate['allocation_active'] == [True] * 4
     for result in (candidate, reference, noopt):
-        state = result['allocation']['1']
-        assert state is not None and state[:3] == ['UNARY_NEGATIVE', 11, 13], state
-        assert state[3] == {'a': ['int', '100000'], 'b': ['int', '3'],
-                            'first': ['int', '100003']}, state
-        if result['allocation']['16'] is not None:
-            assert result['allocation']['16'] == state
+        integer = result['allocation']['int']['1']
+        assert integer is not None and integer[:3] == ['UNARY_NEGATIVE', 11, 13], integer
+        assert integer[3] == {'a': ['int', '100000'], 'b': ['int', '3'],
+                              'first': ['int', '100003']}, integer
+        floating = result['allocation']['float']['1']
+        assert floating is not None and floating[:3] == ['UNARY_NEGATIVE', 11, 17], floating
+        assert floating[3] == {'a': ['float', (1.25).hex()], 'b': ['float', (2.5).hex()],
+                               'first': ['float', (3.75).hex()], 'other': ['float', (3.75).hex()]}, floating
+        for label, state in (('int', integer), ('float', floating)):
+            if result['allocation'][label]['16'] is not None:
+                assert result['allocation'][label]['16'] == state
+    assert '_UNARY_NEGATIVE_FLOAT_INPLACE' in [entry[0] for entry in candidate['traces'][0]]
+    assert all('_UNARY_NEGATIVE' in [entry[0] for entry in entries]
+               for entries in candidate['traces'][1:] + candidate['allocation_traces'])
     for entries in candidate['traces'] + candidate['allocation_traces']:
         names = [entry[0] for entry in entries]
         begin, end = names.index('_BEGIN_VIRTUAL_CALL'), names.index('_RETURN_VIRTUAL_CALL')

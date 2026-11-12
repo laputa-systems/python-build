@@ -1111,6 +1111,24 @@ source/generated/native review approves under OD17. A final strengthened
 one-shot OOM assertion requires the original arithmetic traceback PC; sustained
 exhaustion may prevent traceback allocation. Performance acceptance remains deferred.
 
+**Unary scalar virtual calls (2026-11-12).** The Rust virtual-call proof
+accepts existing `_UNARY_NEGATIVE` only for proven exact numeric operands.
+Compact negation retains compact signed magnitude; other integer results stay
+exact integers. Generic negation retains the input reference and its original
+callee error target. Existing `_UNARY_NEGATIVE_FLOAT_INPLACE` requires a fresh
+float and retains its infallible transfer plus NULL cleanup. Unknown or
+callback-capable operands keep concrete frames. No runtime opcode is added;
+the private opcode map grows from 154 to 158 bytes.
+
+`jit_virtual_unary_integration.py` checks JIT-on/off and disabled-optimizer
+parity, negative zero, NaN, infinity, compact extrema, large exact integers,
+shared locals, reference counts, callbacks and single source consumption.
+Separate caller code objects and stable globals prove both unary variants
+across eleven traces and 35 active samples. One-shot integer and float OOM
+must retain the original unary PC and assigned locals; sustained exhaustion
+may prevent traceback allocation. Independent source/generated/native review
+approves. Performance acceptance remains deferred under OD16.
+
 **Loop globals prologue (2026-11-11).** The Rust planner in
 `Modules/_jit_opt_rs/src/loop_globals.rs` moves one root-frame globals guard
 before `_MAKE_WARM`. It requires a closed loop, an existing globals watcher,
@@ -2558,19 +2576,20 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 **Resumed 2026-11-12.** J feature completion continues under OD16; performance gates remain deferred.
 Closeout cancellation reports inactive. Main and the retained candidate are clean; protected worktrees remain registered.
-Integration: `main`, including accepted mixed float/int virtual calls. Fresh incumbent `perf-jit-refresh` is a clean JIT/Serc build from `cfc8221` (main after `bccb4436` and resumption docs), with all 58 release Rust extensions verified. Its integer and SSL dependency regressions pass. Old lock/digest evidence remains historical. This workflow does not push.
+Integration: `main`, including accepted mixed float/int and unary scalar virtual calls. Fresh incumbent `perf-jit-refresh` is a clean JIT/Serc build from `cfc8221` (main after `bccb4436` and resumption docs), with all 58 release Rust extensions verified. Its integer and SSL dependency regressions pass. Old lock/digest evidence remains historical. This workflow does not push.
 
 The repository moved from `~/d/python-build` to `/Users/josh/repos/laputa-systems/python-build`, including `.work/`, caches, Cargo homes, logs and overlay targets. Worktrees are re-registered; campaign branches and tags remain. Main now includes the shared build-repository contract, buildlib migration, opt-in cold-compile workloads and dependency refresh. Lane TLS forks are `laputa/0.23.46` (`9105f44f`) and `laputa/0.103.17` (`2978880e`); overlay Cargo.lock digest is `27c9e6ba…`. Distrusted certificates report verify code 28. The owner reports locked fetch, debug build, `test_httplib` and `test_urllib2_localnet` passing after refresh. Epoch e891 retains known `test_ssl` failures because RTLS lacks `HAS_ECH`.
 
 | Lane | State | Resume / last evidence |
 | --- | --- | --- |
-| J | active: mixed float/int slice accepted | Existing `_BINARY_OP_ADD_FLOAT_INT` virtualized with compact-to-exact integer refinement and unchanged ownership/error PCs. Clean build, 63 Rust tests, 20 native integrations, 2,000 fuzz programs (1,949 JIT-active, 0 differences), 31 equal digests against refreshed main. Same 16 reviewed shape exclusions, no unexplained suite failures. Independent source/generated/native review approves under OD17; strengthened one-shot OOM regression passes. Evidence: `.work/wt/jit-float-int/.work/tmp/float-int-feature-acceptance.json`; root `.work/tmp/jit-float-int-independent-review.json`. |
+| J | active: scalar negation accepted | Exact numeric `_UNARY_NEGATIVE` and fresh-float `_UNARY_NEGATIVE_FLOAT_INPLACE` remain virtual with original ownership and error PCs. Clean JIT/Serc build verifies 58 Rust extensions; 64 Rust tests, 21 native integrations, 35 active samples, same 16 reviewed shape exclusions, 2,000 fuzz programs (1,949 JIT-active, 0 differences), 31 equal digests against accepted mixed-add reference. Independent source/generated/native review approves. Evidence: `.work/wt/jit-unary/.work/tmp/unary-feature-acceptance.json`; root `.work/tmp/jit-unary-independent-review.json`. |
 | C | feature complete | C3: integrated normal/verify each run 52,102 tests with the same five reference failures and 0 compiler mismatches; native 11 passes. C2/C3 performance acceptance remains deferred. |
 | R1 / Close | done / deferred | R1 catalog below; Close still needs deferred gates and the owner-approved macOS-only scope. No M4 or overall completion claim. |
 
-Completed slice: `_BINARY_OP_ADD_FLOAT_INT` virtualization passes correctness, corpus parity and independent review. Continue the remaining T3/T4 feature backlog under OD16. Carbon stays disabled under OD17; its availability no longer blocks reviews. Performance thresholds remain unchanged and all performance acceptance stays deferred.
+Completed slice: proven scalar negation. Next slice: virtualize existing `_UNARY_INVERT` for proven exact integers. Its result must be `ExactInt`, because complementing a compact integer can grow beyond compact range. Preserve ownership, original OOM PC and callback refusal; test compact extrema, large integers and a following compact arithmetic guard. Carbon stays disabled under OD17. Performance acceptance remains deferred under OD16; thresholds remain unchanged.
 Parked compiler work: `campaign/c0` (pre-existing report committed as `e2b4fde`), `campaign/c2-layout`, `campaign/c2-memgate`; historical/unreviewed alternatives, not required for closed C3. Review against main before any reuse or integration.
 Parked J/reference work: `campaign/t2-store`, `campaign/t3-pending` (array-store experiment), `campaign/t3-inline` (dropped linked-frame experiment), `campaign/r1` (older CinderX study), `campaign/jit-main-ref` (matched C3 reference). Reopen only for an explicit feature/reference review.
+Retained `.work/wt/jit-unary` holds accepted negation sources, stage and evidence; `.work/wt/jit-unary-review` holds the independently reviewed source snapshot. The final regression isolates caller code objects per callee/type so it cannot mistake an older cached executor for the tested path.
 Retained `.work/wt/jit-float-int` holds the accepted mixed-add sources, fresh stage and evidence. Its setup required preserving the bootstrap-created local objects directory at `.work/tmp/jit-float-int-bootstrap-objects` before linking the primary cache. No harness change was made.
 Protected `.work/wt/` trees: `c2`, `c3`, `j3`, `jit-loop`, `r0` retain compiler/epoch/per-step gate stages; `jit-integrate` retains frozen `4b66ce3` oracle; `jit-main-ref` retains matched C3/pins; `jit-pair` retains the pre-refresh candidate/evidence; `c0`, `r1`, `t2-unbox` retain parked report/source and their evidence.
 Cleanup complete: retired `.work/wt/r1b` and `.work/wt/t3-measure`; verified archives and report at `.work/campaign-archive/winddown-20261112/cleanup-report.md`. Protected stage identities and interpreter imports pass; root scratch remains. `campaign/r1b` is retained after the helper’s upstream branch-deletion refusal; no force used.
@@ -2721,3 +2740,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 
 | 2026-11-12 | e891 | J | T3 | virtualize existing float-plus-exact-int addition; retain compact-int refinement, ownership and conversion/OOM PCs | clean `perf-jit-refresh` from main `cfc8221` | performance deferred (OD16) | — | CORRECT: 63 Rust tests, 20 native integrations, same 16 reviewed shape exclusions, 2,000 fuzz programs (1,949 JIT-active, 0 differences), 31 equal digests. Independent source/generated/native review approves under OD17; post-rebase stage identity and focused regression pass, including strengthened one-shot OOM PC assertion | `.work/wt/jit-float-int/.work/tmp/float-int-feature-acceptance.json`; corpus runs `20261112T211605Z-perf-jit-refresh-vs-perf-jit-float-int`, `20261112T211740Z-perf-jit-refresh-vs-perf-jit-float-int` in that worktree; root `.work/tmp/jit-float-int-{rust-tests,native,rebase-check}.log` and `jit-float-int-independent-review.json` |
 | 2026-11-12 | e891 | J | routing | OD17 temporarily disables unavailable Carbon and permits independent worker reviews through the bridge | existing correctness evidence | performance deferred (OD16) | — | Independent Codex worker reviewed the diff, owning source, generated metadata and native regression and approved integration; no review or correctness gate waived | owner instruction; `.work/tmp/jit-float-int-independent-review.json` |
+| 2026-11-12 | e891 | J | T3 | virtualize proven exact numeric negation and retain fresh-float in-place transfer with NULL cleanup | accepted `perf-jit-float-int` at main `1622358` | performance deferred (OD16) | — | CORRECT: clean JIT/Serc build verifies 58 Rust extensions; 64 Rust tests; 21 native integrations, 35 active samples and 11 unary traces; same 16 reviewed shape exclusions; 2,000 fuzz programs (1,949 JIT-active, 0 differences); 31 equal digests; independent source/generated/native review approves, including explicit variants and integer/float OOM PCs | `.work/wt/jit-unary/.work/tmp/unary-feature-acceptance.json`; corpus runs `20261112T215124Z-perf-jit-float-int-vs-perf-jit-unary`, `20261112T215357Z-perf-jit-float-int-vs-perf-jit-unary`; root `.work/tmp/jit-unary-rust-tests.log`, `jit-unary-native.log`, `jit-unary-independent-review.json` |
