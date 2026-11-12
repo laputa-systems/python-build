@@ -85,7 +85,7 @@ jobs:
         run: |
           set -eu
           exclude="$(git rev-parse --git-path info/exclude)"
-          if ! rg --quiet --fixed-strings --line-regexp ".work/" "$exclude"; then
+          if ! grep --quiet --fixed-strings --line-regexp ".work/" "$exclude"; then
             printf '\n.work/\n' >> "$exclude"
           fi
           mkdir -p .work/tmp
@@ -228,7 +228,7 @@ jobs:
         run: |
           set -eu
           exclude="$(git rev-parse --git-path info/exclude)"
-          if ! rg --quiet --fixed-strings --line-regexp ".work/" "$exclude"; then
+          if ! grep --quiet --fixed-strings --line-regexp ".work/" "$exclude"; then
             printf '\n.work/\n' >> "$exclude"
           fi
           mkdir -p .work/tmp
