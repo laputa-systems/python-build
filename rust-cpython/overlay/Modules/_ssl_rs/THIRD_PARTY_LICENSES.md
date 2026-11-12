@@ -1,8 +1,8 @@
-The `_ssl_rs` TLS engine builds on the pinned `rustls 0.23.45` and
-`rustls-webpki 0.103.15` forks at
-<https://github.com/laputa-systems/rustls> (rev `4610aea3ac06e966e2b05315a845c2fa51e69e2d`) and
-<https://github.com/laputa-systems/webpki> (branch `laputa/0.103.15`, commit
-`92337a51e6c87bc6dff66092b42070cbfb2a006f`). The forks carry the maintained
+The `_ssl_rs` TLS engine builds on the pinned `rustls 0.23.46` and
+`rustls-webpki 0.103.17` forks at
+<https://github.com/laputa-systems/rustls> (rev `9105f44f3528d3adc27bde1de95b24fa56bbe9a4`) and
+<https://github.com/laputa-systems/webpki> (branch `laputa/0.103.17`, commit
+`2978880e4d9c4f12ad5583fb92ac964831a73eef`). The forks carry the maintained
 session-API and certificate-policy patches. The workspace resolves every
 `rustls` and `rustls-webpki` requirement to these commits (see the workspace
 `[patch.crates-io]`), so the engine, its Graviola provider, and its verifier
@@ -14,8 +14,8 @@ Direct TLS dependencies (pinned in the overlay `Cargo.lock`):
 
 | Package | Version | License expression |
 | --- | --- | --- |
-| `rustls` (laputa-systems fork, locally patched session API) | 0.23.45 | Apache-2.0 OR ISC OR MIT |
-| `rustls-webpki` (laputa-systems fork, locally patched policy) | 0.103.15 | ISC |
+| `rustls` (laputa-systems fork, locally patched session API) | 0.23.46 | Apache-2.0 OR ISC OR MIT |
+| `rustls-webpki` (laputa-systems fork, locally patched policy) | 0.103.17 | ISC |
 | `rustls-graviola` | 0.4.0 | Apache-2.0 OR ISC OR MIT-0 |
 | `graviola` (via `rustls-graviola`) | 0.4.5 | Apache-2.0 OR ISC OR MIT-0 |
 | `rustls-pki-types` | 1.15.1 | MIT OR Apache-2.0 |

@@ -33,5 +33,5 @@ lto = "thin"
 # these trees so the engine, its provider, and its verifier share one copy.
 [patch.crates-io]
 ruff_python_parser = { git = "https://github.com/astral-sh/ruff", rev = "9d0f58b1d2fb1cf1062d3ff99b18ebf293563f6f" }
-rustls = { git = "https://github.com/laputa-systems/rustls", rev = "4610aea3ac06e966e2b05315a845c2fa51e69e2d" }
-rustls-webpki = { git = "https://github.com/laputa-systems/webpki", branch = "laputa/0.103.15" }
+rustls = { git = "https://github.com/laputa-systems/rustls", rev = "9105f44f3528d3adc27bde1de95b24fa56bbe9a4" }
+rustls-webpki = { git = "https://github.com/laputa-systems/webpki", branch = "laputa/0.103.17" }

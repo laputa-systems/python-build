@@ -2538,8 +2538,8 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.45"
-source = "git+https://github.com/laputa-systems/rustls?rev=4610aea3ac06e966e2b05315a845c2fa51e69e2d#4610aea3ac06e966e2b05315a845c2fa51e69e2d"
+version = "0.23.46"
+source = "git+https://github.com/laputa-systems/rustls?rev=9105f44f3528d3adc27bde1de95b24fa56bbe9a4#9105f44f3528d3adc27bde1de95b24fa56bbe9a4"
 dependencies = [
  "once_cell",
  "rustls-pki-types",
@@ -2578,8 +2578,8 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.15"
-source = "git+https://github.com/laputa-systems/webpki?branch=laputa%2F0.103.15#92337a51e6c87bc6dff66092b42070cbfb2a006f"
+version = "0.103.17"
+source = "git+https://github.com/laputa-systems/webpki?branch=laputa%2F0.103.17#2978880e4d9c4f12ad5583fb92ac964831a73eef"
 dependencies = [
  "ring",
  "rustls-pki-types",

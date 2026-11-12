@@ -6,7 +6,7 @@
     "commit": "e891a9117985888df3e5d48145cf07ddda098335",
     "version": "3.16.0a1+dev",
     "license": "PSF-2.0",
-    "cargo_lock_sha256": "bea6331da746e3a54a9d9184b1591392faffda038ab221b5638c5b8af4e4f846"
+    "cargo_lock_sha256": "27c9e6ba9417daab90715b72d428c0b65e27e4faf4a83402c3af533b8196f80e"
   },
   "inputs": [
     {
