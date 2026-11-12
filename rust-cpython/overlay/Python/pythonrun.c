@@ -73,10 +73,11 @@ enum {
     _PySerc_CPYTHON_GRAMMAR = 3,
 };
 
-extern int _PySerc_CompileModule(const char *source, size_t source_size,
-                                 int source_is_text, const char *filename,
-                                 size_t filename_size, int optimization_level,
-                                 int int_max_str_digits, _PySercBuffer *output);
+extern int _PySerc_CompileSource(const char *source, size_t source_size,
+                                int source_is_text, const char *filename,
+                                size_t filename_size, int start,
+                                int optimization_level, int int_max_str_digits,
+                                _PySercBuffer *output);
 extern int _PySerc_DecodesAsUtf8(const char *source, size_t source_size);
 extern void _PySerc_ReleaseBuffer(_PySercBuffer *buffer);
 extern PyObject *_PyMarshal_ReadObjectFromStringWithoutAudit(const char *data,
@@ -87,12 +88,12 @@ extern PyObject *_PyMarshal_WriteObjectToStringWithoutAudit(PyObject *value,
 static int serc_routes(int start, const char *str, PyObject *filename,
                        PyCompilerFlags *flags);
 static PyObject *serc_compile(const char *str, PyObject *filename,
-                              PyCompilerFlags *flags, int optimize,
+                              int start, PyCompilerFlags *flags, int optimize,
                               PyObject *module);
 static PyObject *c_compile_string(const char *str, PyObject *filename,
                                   int start, PyCompilerFlags *flags,
                                   int optimize, PyObject *module);
-static PyObject *run_mod_or_source(mod_ty mod, const char *source,
+static PyObject *run_mod_or_source(mod_ty mod, const char *source, int start,
                                    PyObject *filename, PyObject *globals,
                                    PyObject *locals, PyCompilerFlags *flags,
                                    PyArena *arena, PyObject *interactive_src,
@@ -1322,7 +1323,7 @@ _PyRun_String(const char *str, PyObject* name, int start,
     }
 #ifdef Py_SERC
     if (serc_routes(start, str, name, flags)) {
-        ret = run_mod_or_source(NULL, str, name, globals, locals, flags, arena,
+        ret = run_mod_or_source(NULL, str, start, name, globals, locals, flags, arena,
                                 source, generate_new_source);
         goto done;
     }
@@ -1482,12 +1483,12 @@ run_mod(mod_ty mod, PyObject *filename, PyObject *globals, PyObject *locals,
             int generate_new_source)
 #ifdef Py_SERC
 {
-    return run_mod_or_source(mod, NULL, filename, globals, locals, flags,
+    return run_mod_or_source(mod, NULL, Py_file_input, filename, globals, locals, flags,
                              arena, interactive_src, generate_new_source);
 }
 
 static PyObject *
-run_mod_or_source(mod_ty mod, const char *source, PyObject *filename,
+run_mod_or_source(mod_ty mod, const char *source, int start, PyObject *filename,
                   PyObject *globals, PyObject *locals, PyCompilerFlags *flags,
                   PyArena *arena, PyObject *interactive_src,
                   int generate_new_source)
@@ -1517,7 +1518,7 @@ run_mod_or_source(mod_ty mod, const char *source, PyObject *filename,
 
 #ifdef Py_SERC
     PyCodeObject *co = source != NULL
-        ? (PyCodeObject *)serc_compile(source, interactive_filename, flags, -1,
+        ? (PyCodeObject *)serc_compile(source, interactive_filename, start, flags, -1,
                                        module)
         : _PyAST_Compile(mod, interactive_filename, flags, -1, arena, module);
 #else
@@ -1636,7 +1637,7 @@ _Py_CompileString(const char *str, PyObject *filename, int start,
     }
 #ifdef Py_SERC
     if (serc_routes(start, str, filename, flags)) {
-        return serc_compile(str, filename, flags, optimize, module);
+        return serc_compile(str, filename, start, flags, optimize, module);
     }
     return c_compile_string(str, filename, start, flags, optimize, module);
 }
@@ -1694,10 +1695,11 @@ done:
    to the C compiler. */
 #define SERC_C_STACK_MARGINS ((int)(((size_t)2 << 20) / _PyOS_STACK_MARGIN_BYTES))
 
-/* Serc compiles source-mode "exec" requests whose flags carry nothing beyond
-   the source-form bits, for an exact str filename, from text or from bytes that
-   CPython itself would decode as UTF-8, on a thread with enough C stack for the
-   C compiler. Every other request, and every FILE * or AST input, is compiled
+/* Serc compiles source-mode "exec", "eval" and "single" requests whose flags
+   carry nothing beyond the source-form bits, for an exact str filename, from
+   text or from bytes that CPython itself would decode as UTF-8, on a thread
+   with enough C stack for the C compiler. Every other request, and every
+   FILE * or AST input, is compiled
    by the C compiler, as is a source that only CPython's parser or compiler
    handles (_PySerc_CPYTHON_GRAMMAR). */
 static int
@@ -1705,7 +1707,8 @@ serc_routes(int start, const char *str, PyObject *filename,
             PyCompilerFlags *flags)
 {
     int cf_flags = flags == NULL ? 0 : flags->cf_flags;
-    if (start != Py_file_input || !PyUnicode_CheckExact(filename)
+    if ((start != Py_file_input && start != Py_eval_input && start != Py_single_input)
+        || !PyUnicode_CheckExact(filename)
         || (cf_flags & ~(PyCF_SOURCE_IS_UTF8 | PyCF_IGNORE_COOKIE
                          | PyCF_MASK_OBSOLETE))
         || _Py_ReachedRecursionLimitWithMargin(_PyThreadState_GET(),
@@ -1762,7 +1765,7 @@ serc_check_against(PyObject *reference, PyObject *code, PyObject *filename)
 }
 
 static PyObject *
-serc_compile(const char *str, PyObject *filename, PyCompilerFlags *flags,
+serc_compile(const char *str, PyObject *filename, int start, PyCompilerFlags *flags,
              int optimize, PyObject *module)
 {
     Py_ssize_t filename_size;
@@ -1785,9 +1788,9 @@ serc_compile(const char *str, PyObject *filename, PyCompilerFlags *flags,
     int level = optimize == -1 ? _Py_GetConfig()->optimization_level
                                : optimize;
     _PySercBuffer output = {NULL, 0};
-    int status = _PySerc_CompileModule(
+    int status = _PySerc_CompileSource(
         str, strlen(str), flags != NULL && (flags->cf_flags & PyCF_IGNORE_COOKIE),
-        filename_utf8, (size_t)filename_size,
+        filename_utf8, (size_t)filename_size, start,
         level == 0 ? 0 : level >= 2 ? 2 : 1,
         _PyInterpreterState_GET()->long_state.max_str_digits, &output);
     Py_XDECREF(filename_bytes);
@@ -1795,13 +1798,13 @@ serc_compile(const char *str, PyObject *filename, PyCompilerFlags *flags,
     PyObject *result = NULL;
     PyObject *reference = NULL;
     if (status == _PySerc_CPYTHON_GRAMMAR) {
-        result = c_compile_string(str, filename, Py_file_input, flags,
+        result = c_compile_string(str, filename, start, flags,
                                   optimize, module);
         goto done;
     }
     int verify = serc_verify_requested();
     if (status != _PySerc_COMPILED || verify) {
-        reference = c_compile_string(str, filename, Py_file_input, flags,
+        reference = c_compile_string(str, filename, start, flags,
                                      optimize, module);
         if (reference == NULL) {
             if (verify && status == _PySerc_COMPILED) {

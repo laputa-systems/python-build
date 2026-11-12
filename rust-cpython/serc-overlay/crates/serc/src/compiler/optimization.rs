@@ -8,20 +8,19 @@ use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt, Suite};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::FxHashMap;
 
-use crate::{OptimizationLevel, PythonVersion};
+use crate::{CompileMode, OptimizationLevel, PythonVersion};
 
 use super::scope::future_feature_flags;
 use crate::target::code_flags::CO_FUTURE_ANNOTATIONS;
 
 /// Transform an owned tree after preserving its unoptimized binding facts.
 ///
-/// `suppress_module_docstring` keeps an eval expression or an interactive top-level string
-/// from being consumed as a module docstring; function and class docstrings still strip.
+/// Only exec input can have a module docstring; function and class docstrings still strip.
 pub(crate) fn prepare(
     body: Suite,
     level: OptimizationLevel,
     python_version: PythonVersion,
-    suppress_module_docstring: bool,
+    mode: CompileMode,
 ) -> OptimizedSuite {
     let mut optimized = OptimizedSuite {
         body,
@@ -33,7 +32,7 @@ pub(crate) fn prepare(
         python_version,
         locations: RefCell::default(),
     };
-    optimizer.scope_body(&mut optimized.body, !suppress_module_docstring);
+    optimizer.scope_body(&mut optimized.body, mode == CompileMode::Exec);
     optimizer.visit_body(&mut optimized.body);
     optimized.locations = optimizer.locations.into_inner();
     optimized
@@ -58,7 +57,7 @@ pub(crate) fn cloned_body_for_test(body: &Suite) -> Option<Suite> {
 pub(crate) fn requires_optimization(
     body: &Suite,
     level: OptimizationLevel,
-    suppress_module_docstring: bool,
+    mode: CompileMode,
 ) -> bool {
     struct Changes {
         strip_docstrings: bool,
@@ -124,7 +123,7 @@ pub(crate) fn requires_optimization(
         strip_docstrings: level == OptimizationLevel::Two,
         found: false,
     };
-    changes.scope_body(body, !suppress_module_docstring);
+    changes.scope_body(body, mode == CompileMode::Exec);
     changes.visit_body(body);
     changes.found
 }
@@ -435,7 +434,7 @@ mod tests {
                     .unwrap()
                     .into_suite();
                 let mut optimized =
-                    prepare(body, OptimizationLevel::Two, python_version, false);
+                    prepare(body, OptimizationLevel::Two, python_version, CompileMode::Exec);
                 let Stmt::Expr(statement) = &mut optimized.body[0] else {
                     panic!("expected an expression");
                 };
@@ -485,7 +484,7 @@ mod tests {
                 (OptimizationLevel::Two, two),
             ] {
                 assert_eq!(
-                    requires_optimization(parsed.suite(), level, false),
+                    requires_optimization(parsed.suite(), level, CompileMode::Exec),
                     expected,
                     "{source:?}, {level:?}"
                 );

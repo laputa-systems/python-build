@@ -93,9 +93,11 @@ Each lane works in its own worktree `.work/wt/<item>` on branch
   builds and tests share the host and gives a measurement exclusive use across
   all worktrees. Work outside `perf.py` (CinderX and Serc test builds) never
   runs while `perf.py status` shows a measurement holding the lease.
-- Until **Close**, timing gates are waived (OD14): no step waits for a quiet
-  host or a `perf-gate-ready` window, and no step lands or is rejected on a
-  timing result. The rules below apply to the timing gates **Close** runs.
+- During feature completion, performance gates are deferred (OD16): no step
+  waits for a quiet host or a `perf-gate-ready` window. Correctness, parity
+  and independent review still gate feature completion. Performance acceptance
+  stays open until the unchanged gates can run; a waiver is never a pass.
+  The rules below apply when **Close** resumes performance measurements.
 - Gate evidence counts only when `perf-gate-ready` exits 0 immediately before
   and `perf-gate-ready -1` exits 0 immediately after. If the gate refuses
   three times at least 20 minutes apart, record "perf gate deferred: host
@@ -1519,8 +1521,9 @@ scope.
 A track C change lands only when, on `perf-serc-<item>`: the C1 corpus has zero
 mismatches; `perf.py test --all` fails exactly `perf-rust`'s set; from C2 on,
 the full-suite verify run reports no difference; and an independent reviewer
-approves any change to FFI, ownership, or the compile hook. Under OD14 the C2
-and C3 exits are met without their timing gates, which run at **Close**.
+approves any change to FFI, ownership, or the compile hook. Under OD16 the C2
+and C3 feature-completion exits do not wait for performance gates. Their
+performance acceptance remains deferred to **Close**.
 
 ## Close
 
@@ -1574,6 +1577,12 @@ A/A spread, and `S0`. Scores compare only within an epoch.
   baseline is a recorded known cost, as OD4 makes it for the JIT; a
   memory-only comparison of that pair gates physical footprint within +8%
   (`memory-only-serc-cost`).
+- **OD16 (2026-11-11):** the host will remain busy. Finish feature completion
+  with performance gates deferred, including gates otherwise due at **Close**.
+  Keep correctness, corpus parity and independent review required. Preserve
+  every performance threshold and report performance acceptance as deferred
+  until measurements can resume; do not claim M4 or campaign completion from
+  this waiver.
 - **Parked:** a method-based frontend (withdrawn PEP 836 prototype, observed
   head `04a79098`) opens only by owner decision.
 
@@ -1638,7 +1647,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 | --- | --- | --- | --- |
 | J | active | T3 inline-frame elision implemented and CORRECT; measured no bucket-(a) fall, dropped under P1. Next: virtual-frame inlining or T3 attribute/global caches | Inline frames: incumbent-named bucket (a) richards 24.0% → 17.2%, raytrace 11.6% → 9.6%, but including the new `_INLINE_*` call/frame uops 23.9% → 24.6% and 11.5% → 11.7%; CORRECT (5 incumbent superseded assertions; new `jit_inline_integration`), advisory 1.0123 |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
-| C | active | C2 closed on `campaign/c2`; next: C3 `eval` and `single`. Routing/API owner reviews remain asynchronous; branch unpushed | At `8930b8a`, both full suites fail exactly the baseline five files; verify has no compiler difference; census 10,005 cases, 9,159 exact, 813 explicit routes, 33 oracle syntax refusals, 0 mismatches; independent close-out review finds no new defect |
+| C | active | C3 `eval` and `single` on `campaign/c3`; performance gates deferred under OD16. C2 routing/API owner reviews remain asynchronous; nothing pushed | C2 closed at `e20090f`; both full suites on `8930b8a` match the baseline five-file failure set; verify and census report 0 mismatches; independent review finds no new defect |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
 
 **Owner queue:** R1 reference report (informational, no target change
@@ -1764,6 +1773,17 @@ opcodes `BINARY_OP_SUBSCR_ARRAY_D`/`_I`; new uops
   The close-out review of those fixes and their FFI/compile-hook assumptions
   finds no new defect; the empirical stack-cutoff validation limit is recorded
   in C2. Owner acceptance of the routing/API changes remains pending.
+
+**Owner queue (C3, on `campaign/c3`):** `serc::CompileMode` and
+`CompileOptions.mode` select `exec`, `eval` or `single`; the default stays
+`exec`, and non-exec modes currently require the 3.16 target.
+`ParseCompileModeError` reports invalid mode spellings. The private C ABI
+`_PySerc_CompileSource` replaces `_PySerc_CompileModule` and receives the
+CPython parser start symbol. Source-mode routing now admits all three modes;
+AST, `FILE *`, flags, decoding, stack and finally-exit boundaries stay as in
+C2. The CLI adds `--mode` and separate non-exec cache names. The hook/FFI
+review approves the glue, conditional on the matching compiler API and CLI;
+integrated acceptance is still running.
 
 **Epoch e891** (`main` `e891a911`, pinned 2026-11-10) opened at R0 on macOS
 arm64:

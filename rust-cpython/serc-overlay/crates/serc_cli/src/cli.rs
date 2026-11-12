@@ -14,7 +14,7 @@ use clap::{Parser, Subcommand, ValueEnum, ValueHint};
 use rayon::prelude::*;
 use serc::{
     CompileError, CompileMode, CompileOptions, NativeBuildProfile, OptimizationLevel,
-    ParseCompileModeError, PythonVersion, compile_bytes_with_path_and_options,
+    PythonVersion, compile_bytes_with_path_and_options,
 };
 use walkdir::WalkDir;
 
@@ -89,7 +89,7 @@ struct CompileCommand {
     python_version: PythonVersion,
 
     /// CPython source mode: exec, eval, or single.
-    #[arg(long, default_value_t = CompileMode::Exec, value_parser = parse_compile_mode)]
+    #[arg(long, default_value_t = CompileMode::Exec)]
     mode: CompileMode,
 
     /// Floating-point instruction ordering for a named CPython native build.
@@ -183,7 +183,7 @@ fn compile_command(command: CompileCommand) -> Result<ExitCode, String> {
 
     let compilation = Compilation {
         options,
-        cache_suffix: cache_suffix_for_mode(
+        cache_suffix: cache_suffix(
             command.python_version,
             cache_optimization,
             command.mode,
@@ -756,7 +756,7 @@ fn compile_path_with_metadata(
 ) -> Result<bool, String> {
     let compilation = Compilation {
         options: options.clone(),
-        cache_suffix: cache_suffix_for_mode(
+        cache_suffix: cache_suffix(
             options.python_version,
             cache_optimization,
             options.mode,
@@ -887,17 +887,8 @@ fn cache_path(path: &Path, suffix: &str) -> Result<PathBuf, String> {
     Ok(parent.join("__pycache__").join(filename))
 }
 
-fn parse_compile_mode(value: &str) -> Result<CompileMode, ParseCompileModeError> {
-    value.parse()
-}
-
-#[cfg(test)]
-fn cache_suffix(python_version: PythonVersion, optimization: usize) -> String {
-    cache_suffix_for_mode(python_version, optimization, CompileMode::Exec)
-}
-
 /// Name eval and single caches so they never collide with an importable exec cache.
-fn cache_suffix_for_mode(
+fn cache_suffix(
     python_version: PythonVersion,
     optimization: usize,
     mode: CompileMode,
@@ -929,8 +920,7 @@ fn write_error(message: &str) {
 #[cfg(test)]
 mod tests {
     use super::{
-        CompilationGroup, InvalidationMode, PreparedInput, cache_path, cache_suffix,
-        cache_suffix_for_mode, cache_tag, compilation_groups, compile_path_with_metadata, discover,
+        CompilationGroup, InvalidationMode, PreparedInput, cache_path, cache_suffix, cache_tag, compilation_groups, compile_path_with_metadata, discover,
         encode_mtime, has_python_suffix, prioritize_compilation_groups, read_file_list,
     };
     use super::{default_jobs, jobs_for_inputs};
@@ -1082,7 +1072,7 @@ mod tests {
         assert_eq!(
             cache_path(
                 Path::new("package/module.py"),
-                &cache_suffix(PythonVersion::Py314, 0)
+                &cache_suffix(PythonVersion::Py314, 0, CompileMode::Exec)
             )
             .unwrap(),
             PathBuf::from("package/__pycache__/module.cpython-314.pyc")
@@ -1090,7 +1080,7 @@ mod tests {
         assert_eq!(
             cache_path(
                 Path::new("package/.py"),
-                &cache_suffix(PythonVersion::Py314, 0)
+                &cache_suffix(PythonVersion::Py314, 0, CompileMode::Exec)
             )
             .unwrap(),
             PathBuf::from("package/__pycache__/py.cpython-314.pyc")
@@ -1098,7 +1088,7 @@ mod tests {
         assert_eq!(
             cache_path(
                 Path::new("package/module.py"),
-                &cache_suffix(PythonVersion::Py315, 0)
+                &cache_suffix(PythonVersion::Py315, 0, CompileMode::Exec)
             )
             .unwrap(),
             PathBuf::from("package/__pycache__/module.cpython-315.pyc")
@@ -1106,7 +1096,7 @@ mod tests {
         assert_eq!(
             cache_path(
                 Path::new("package/module"),
-                &cache_suffix(PythonVersion::Py315, 0)
+                &cache_suffix(PythonVersion::Py315, 0, CompileMode::Exec)
             )
             .unwrap(),
             PathBuf::from("package/__pycache__/modulecpython-315.pyc")
@@ -1116,11 +1106,11 @@ mod tests {
             (PythonVersion::Py313, "cpython-313"),
         ] {
             assert_eq!(
-                cache_path(Path::new("package/module.py"), &cache_suffix(version, 0)).unwrap(),
+                cache_path(Path::new("package/module.py"), &cache_suffix(version, 0, CompileMode::Exec)).unwrap(),
                 PathBuf::from(format!("package/__pycache__/module.{tag}.pyc")),
             );
             assert_eq!(
-                cache_path(Path::new("package/module"), &cache_suffix(version, 0)).unwrap(),
+                cache_path(Path::new("package/module"), &cache_suffix(version, 0, CompileMode::Exec)).unwrap(),
                 PathBuf::from(format!("package/__pycache__/module{tag}.pyc")),
             );
         }
@@ -1141,7 +1131,7 @@ mod tests {
             assert_eq!(
                 cache_path(
                     Path::new(OsStr::from_bytes(name)),
-                    &cache_suffix(PythonVersion::Py314, 0)
+                    &cache_suffix(PythonVersion::Py314, 0, CompileMode::Exec)
                 )
                 .unwrap(),
                 Path::new("__pycache__").join(OsStr::from_bytes(expected))
@@ -1207,7 +1197,7 @@ mod tests {
             .unwrap()
             .to_timestamp_pyc(1_700_000_000, u32::try_from(replacement.len()).unwrap());
         assert_eq!(
-            fs_err::read(cache_path(&source_path, &cache_suffix(PythonVersion::Py314, 0)).unwrap())
+            fs_err::read(cache_path(&source_path, &cache_suffix(PythonVersion::Py314, 0, CompileMode::Exec)).unwrap())
                 .unwrap(),
             expected
         );
@@ -1252,7 +1242,7 @@ mod tests {
         let source = directory.path().join("missing.py");
         let compilation = super::Compilation {
             options: CompileOptions::default(),
-            cache_suffix: cache_suffix(PythonVersion::Py314, 0),
+            cache_suffix: cache_suffix(PythonVersion::Py314, 0, CompileMode::Exec),
             invalidation_mode: InvalidationMode::Timestamp,
             check: false,
             force: false,
@@ -1276,7 +1266,7 @@ mod tests {
         fs_err::write(&source, "pass\n").unwrap();
         let compilation = super::Compilation {
             options: CompileOptions::default(),
-            cache_suffix: cache_suffix(PythonVersion::Py314, 0),
+            cache_suffix: cache_suffix(PythonVersion::Py314, 0, CompileMode::Exec),
             invalidation_mode: InvalidationMode::CheckedHash,
             check: false,
             force: false,
@@ -1336,7 +1326,7 @@ mod tests {
                     .to_timestamp_pyc(1_700_000_000, u32::try_from(original.len()).unwrap());
             assert_eq!(
                 fs_err::read(
-                    cache_path(&source_path, &cache_suffix(PythonVersion::Py314, 0)).unwrap()
+                    cache_path(&source_path, &cache_suffix(PythonVersion::Py314, 0, CompileMode::Exec)).unwrap()
                 )
                 .unwrap(),
                 expected
@@ -1443,12 +1433,12 @@ mod tests {
 
     #[test]
     fn mode_cache_suffixes_keep_exec_names_and_separate_nonexec_modes() {
-        assert_eq!(cache_suffix_for_mode(PythonVersion::Py316, 0, CompileMode::Exec), "cpython-316.pyc");
-        assert_eq!(cache_suffix_for_mode(PythonVersion::Py316, 1, CompileMode::Exec), "cpython-316.opt-1.pyc");
-        assert_eq!(cache_suffix_for_mode(PythonVersion::Py316, 0, CompileMode::Eval), "cpython-316.eval.pyc");
-        assert_eq!(cache_suffix_for_mode(PythonVersion::Py316, 1, CompileMode::Eval), "cpython-316.eval.opt-1.pyc");
-        assert_eq!(cache_suffix_for_mode(PythonVersion::Py316, 0, CompileMode::Single), "cpython-316.single.pyc");
-        assert_eq!(cache_suffix_for_mode(PythonVersion::Py316, 2, CompileMode::Single), "cpython-316.single.opt-2.pyc");
+        assert_eq!(cache_suffix(PythonVersion::Py316, 0, CompileMode::Exec), "cpython-316.pyc");
+        assert_eq!(cache_suffix(PythonVersion::Py316, 1, CompileMode::Exec), "cpython-316.opt-1.pyc");
+        assert_eq!(cache_suffix(PythonVersion::Py316, 0, CompileMode::Eval), "cpython-316.eval.pyc");
+        assert_eq!(cache_suffix(PythonVersion::Py316, 1, CompileMode::Eval), "cpython-316.eval.opt-1.pyc");
+        assert_eq!(cache_suffix(PythonVersion::Py316, 0, CompileMode::Single), "cpython-316.single.pyc");
+        assert_eq!(cache_suffix(PythonVersion::Py316, 2, CompileMode::Single), "cpython-316.single.opt-2.pyc");
     }
 
     #[test]

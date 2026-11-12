@@ -737,7 +737,7 @@ impl<'source> Compiler<'source> {
             // CPython appends the expression's RETURN_VALUE without a location.
             self.assembler.set_location(SourceLocation::NONE);
             self.emit(RETURN_VALUE, 0, -1)?;
-            return self.finish_expression();
+            return self.finish_inner(false);
         }
         // Match the deferred annotation function's visitation order, including suites
         // omitted during lowering. Repeated cleanup visits require occurrence IDs,
@@ -1287,21 +1287,8 @@ impl<'source> Compiler<'source> {
     }
 
     pub(super) fn finish_inner(
-        self: Box<Self>,
-        add_implicit_return: bool,
-    ) -> Result<Box<CodeObject>, CompileError> {
-        self.finish_with_options(add_implicit_return, true)
-    }
-
-    /// Finish expression mode without the implicit None return or its placeholder constant.
-    pub(super) fn finish_expression(self: Box<Self>) -> Result<Box<CodeObject>, CompileError> {
-        self.finish_with_options(false, false)
-    }
-
-    fn finish_with_options(
         mut self: Box<Self>,
         add_implicit_return: bool,
-        ensure_constant: bool,
     ) -> Result<Box<CodeObject>, CompileError> {
         for (instruction, constant) in
             std::mem::take(&mut self.output.deferred_constants_before_return)
@@ -1323,7 +1310,7 @@ impl<'source> Compiler<'source> {
             // exits for conditional predecessors before propagating locations.
             self.assembler.allow_last_no_location_block_inlining();
         }
-        if ensure_constant
+        if self.unit.mode != CompileMode::Eval
             && self.output.constants.is_empty()
             && !(self.unit.name == "<lambda>" && self.unit.flags & CO_GENERATOR != 0)
         {

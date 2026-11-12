@@ -94,7 +94,7 @@ pub const CPYTHON_TARGET: CpythonTarget = CpythonTarget {
     commit: target::TARGET_COMMIT,
 };
 
-/// A compiled module code object and its selected CPython target.
+/// A compiled top-level code object and its selected CPython target.
 #[derive(Clone, Debug)]
 pub struct CompiledModule {
     code: Box<CodeObject>,
@@ -351,7 +351,7 @@ pub fn compile_with_intern_state(
     )
 }
 
-/// Compile a Python module using the selected target, optimization level, and initial intern state.
+/// Compile Python source using the selected mode, target, optimization level, and intern state.
 pub fn compile_with_options(
     source: &str,
     filename: &str,
@@ -774,7 +774,6 @@ impl ParsedModule {
         }
     }
 
-    /// Wrap an expression-mode parse result in the statement suite the compiler visits.
     fn from_suite(
         suite: ruff_python_ast::Suite,
         tokens: ruff_python_ast::token::Tokens,
@@ -1360,11 +1359,10 @@ fn compile_normalized(
         return Err(CompileError::RequiresCpythonCompiler(reason));
     }
     let mut owned_tokens = None;
-    let suppress_module_docstring = options.mode != CompileMode::Exec;
     let (optimized_body, original_scopes) = if compiler::optimization::requires_optimization(
         parsed.suite(),
         options.optimization_level,
-        suppress_module_docstring,
+        options.mode,
     ) {
         let scopes =
             compiler::OriginalScopes::analyze(source, parsed.suite(), options.python_version);
@@ -1381,7 +1379,7 @@ fn compile_normalized(
                 body,
                 options.optimization_level,
                 options.python_version,
-                suppress_module_docstring,
+                options.mode,
             )),
             Some(scopes),
         )

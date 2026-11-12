@@ -636,7 +636,7 @@ mod tests {
     }
 
     #[test]
-    fn nonexpression_modes_require_python_316() {
+    fn nonexec_modes_require_python_316() {
         use super::CompileMode;
         use crate::CompileError;
 

@@ -6,10 +6,11 @@ use serc::{
     compile_with_python_filename_and_integer_limits, compile_with_options,
 };
 
+#[derive(serde::Deserialize)]
 struct Case {
-    mode: &'static str,
-    name: &'static str,
-    source: &'static str,
+    mode: String,
+    name: String,
+    source: String,
 }
 
 const ORACLE_COMPILE: &str = "import marshal, sys; src, mode, opt = sys.argv[1], sys.argv[2], int(sys.argv[3]); code = compile(src, '<s>', mode, dont_inherit=True, optimize=opt); sys.stdout.buffer.write(marshal.dumps(code))";
@@ -46,92 +47,12 @@ sys.stdout.write(outcome + '\n')
 sys.stdout.write('\n'.join(seen))
 "#;
 
-const CASES: &[Case] = &[
-    Case { mode: "eval", name: "constant", source: "42" },
-    Case { mode: "eval", name: "string", source: "'a string'" },
-    Case { mode: "eval", name: "bytes", source: "b'x'" },
-    Case { mode: "eval", name: "name", source: "value" },
-    Case { mode: "eval", name: "tuple", source: "1, 2, value" },
-    Case { mode: "eval", name: "unpacking", source: "(*values, 4)" },
-    Case { mode: "eval", name: "arithmetic", source: "value * 2 + 3" },
-    Case { mode: "eval", name: "conditional", source: "value if value > 0 else -value" },
-    Case { mode: "eval", name: "boolean", source: "value and False or 7" },
-    Case { mode: "eval", name: "comparison", source: "0 < value < 10" },
-    Case { mode: "eval", name: "lambda", source: "(lambda x=2: x + value)()" },
-    Case { mode: "eval", name: "list_comprehension", source: "[x * 2 for x in values if x]" },
-    Case { mode: "eval", name: "nested_comprehension", source: "[[x + y for y in values] for x in values]" },
-    Case { mode: "eval", name: "dict_comprehension", source: "{x: x + 1 for x in values}" },
-    Case { mode: "eval", name: "set_comprehension", source: "{x for x in values}" },
-    Case { mode: "eval", name: "generator", source: "sum(x for x in values)" },
-    Case { mode: "eval", name: "walrus", source: "(result := value + 1)" },
-    Case { mode: "eval", name: "f_string", source: "f'{value:04d}'" },
-    Case { mode: "eval", name: "t_string", source: "t'value={value}'" },
-    Case { mode: "eval", name: "debug", source: "__debug__" },
-    Case { mode: "eval", name: "multiline", source: "(\n    value +\n    2\n)\n" },
-    Case { mode: "eval", name: "leading_blank", source: "\n\nvalue\n" },
-    Case { mode: "eval", name: "leading_space", source: "  value" },
-    Case { mode: "eval", name: "trailing_comment", source: "value # comment\n" },
-    Case { mode: "eval", name: "utf8_cookie", source: "# coding: utf-8\n'café'\n" },
-    Case { mode: "eval", name: "empty", source: "" },
-    Case { mode: "eval", name: "comment_only", source: "# comment\n" },
-    Case { mode: "eval", name: "assignment", source: "value = 1" },
-    Case { mode: "eval", name: "multiple_expressions", source: "1; 2" },
-    Case { mode: "eval", name: "yield", source: "(yield 1)" },
-    Case { mode: "eval", name: "await", source: "await value" },
-    Case { mode: "eval", name: "unparenthesized_walrus", source: "result := 1" },
-    Case { mode: "single", name: "constant", source: "42\n" },
-    Case { mode: "single", name: "string", source: "'a string'\n" },
-    Case { mode: "single", name: "none", source: "None\n" },
-    Case { mode: "single", name: "assignment", source: "result = value + 1\n" },
-    Case { mode: "single", name: "semicolon", source: "result = 1; result + 2\n" },
-    Case { mode: "single", name: "multiple_displays", source: "1; 2; None\n" },
-    Case { mode: "single", name: "tuple", source: "1, 2, value\n" },
-    Case { mode: "single", name: "list_comprehension", source: "[x * 2 for x in values]\n" },
-    Case { mode: "single", name: "lambda", source: "(lambda x: x + 1)(value)\n" },
-    Case { mode: "single", name: "walrus", source: "(result := value + 1)\n" },
-    Case { mode: "single", name: "if", source: "if value:\n    value\n    value + 1\n" },
-    Case { mode: "single", name: "folded_if", source: "if True:\n    42\n" },
-    Case { mode: "single", name: "compound_string", source: "if True:\n    'a string'\n" },
-    Case { mode: "single", name: "compound_no_newline", source: "if True:\n    42" },
-    Case { mode: "single", name: "inline_compound", source: "if True: value\n" },
-    Case { mode: "single", name: "inline_compound_no_newline", source: "if True: value" },
-    Case { mode: "single", name: "for", source: "for x in values:\n    x\n" },
-    Case { mode: "single", name: "while", source: "while value < 5:\n    value\n    value += 1\n" },
-    Case { mode: "single", name: "with", source: "with manager:\n    value\n" },
-    Case { mode: "single", name: "try", source: "try:\n    value\nfinally:\n    value + 1\n" },
-    Case { mode: "single", name: "match", source: "match value:\n    case 3:\n        'three'\n    case _:\n        'other'\n" },
-    Case { mode: "single", name: "function", source: "def f():\n    'doc'\n    42\n    return value\n" },
-    Case { mode: "single", name: "class", source: "class C:\n    'doc'\n    42\n    result = value\n" },
-    Case { mode: "single", name: "annotation", source: "result: int = value\n" },
-    Case { mode: "single", name: "assert", source: "assert value == 3\n" },
-    Case { mode: "single", name: "debug", source: "__debug__\n" },
-    Case { mode: "single", name: "future", source: "from __future__ import annotations\n" },
-    Case { mode: "single", name: "no_newline", source: "value" },
-    Case { mode: "single", name: "leading_blank", source: "\n\nvalue\n" },
-    Case { mode: "single", name: "leading_space", source: "  value\n" },
-    Case { mode: "single", name: "blank", source: "\n" },
-    Case { mode: "single", name: "empty", source: "" },
-    Case { mode: "single", name: "comment_only", source: "# comment\n" },
-    Case { mode: "single", name: "multiline_statements", source: "result = 1\nresult = 2\n" },
-    Case { mode: "single", name: "multiple_compounds", source: "if True:\n    pass\nif True:\n    pass\n" },
-    Case { mode: "single", name: "incomplete_compound", source: "if value:\n" },
-];
-
-const EXEC_CASES: &[Case] = &[
-    Case { mode: "exec", name: "assignment", source: "answer = 42\n" },
-    Case { mode: "exec", name: "docstring", source: "\"doc\"\nvalue = 1\n" },
-    Case { mode: "exec", name: "function", source: "def f(a=1):\n    'doc'\n    return a\n" },
-    Case { mode: "exec", name: "condition", source: "if value:\n    result = value\nelse:\n    result = 0\n" },
-    Case { mode: "exec", name: "comprehension", source: "result = [x * 2 for x in values if x]\n" },
-];
+fn cases() -> Vec<Case> {
+    serde_json::from_str(include_str!("fixtures/source_modes.json")).unwrap()
+}
 
 fn compile_mode(mode: &str) -> CompileMode {
-    match mode {
-        "exec" => CompileMode::Exec,
-        "eval" => CompileMode::Eval,
-        "single" => CompileMode::Single,
-        other => panic!("unknown mode {other}"),
-    }
+    mode.parse().expect("fixture selects a supported source mode")
 }
 
 fn optimization(level: u32) -> OptimizationLevel {
@@ -173,8 +94,8 @@ fn execute(marshal: &[u8], mode: &str) -> String {
 }
 
 fn assert_case(case: &Case, level: u32) {
-    let expected = oracle_compile(case.source, case.mode, level);
-    let compiled = compile_with_options(case.source, "<s>", &compile_options(case.mode, level));
+    let expected = oracle_compile(&case.source, &case.mode, level);
+    let compiled = compile_with_options(&case.source, "<s>", &compile_options(&case.mode, level));
     let Some(expected) = expected else {
         assert!(
             compiled.is_err(),
@@ -202,8 +123,8 @@ fn assert_case(case: &Case, level: u32) {
         case.source.escape_debug()
     );
     assert_eq!(
-        execute(&actual, case.mode),
-        execute(&expected, case.mode),
+        execute(&actual, &case.mode),
+        execute(&expected, &case.mode),
         "{} {} opt={level}: execution differs for {}",
         case.mode,
         case.name,
@@ -213,8 +134,9 @@ fn assert_case(case: &Case, level: u32) {
 
 #[test]
 fn eval_and_single_match_cpython_316_marshal_and_behavior() {
+    let cases = cases();
     for level in 0..=2 {
-        for case in CASES {
+        for case in cases.iter().filter(|case| case.mode != "exec") {
             assert_case(case, level);
         }
     }
@@ -250,10 +172,11 @@ fn ffi_entrypoints_honor_nonexec_modes() {
 
 #[test]
 fn exec_compilation_is_unchanged() {
+    let cases = cases();
     for level in 0..=2 {
-        for case in EXEC_CASES {
-            let expected = oracle_compile(case.source, case.mode, level).unwrap();
-            let compiled = compile_with_options(case.source, "<s>", &compile_options(case.mode, level))
+        for case in cases.iter().filter(|case| case.mode == "exec") {
+            let expected = oracle_compile(&case.source, &case.mode, level).unwrap();
+            let compiled = compile_with_options(&case.source, "<s>", &compile_options(&case.mode, level))
                 .unwrap();
             assert_eq!(
                 compiled.marshal(),

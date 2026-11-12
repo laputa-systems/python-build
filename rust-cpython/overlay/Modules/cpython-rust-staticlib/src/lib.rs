@@ -12,6 +12,6 @@ pub use _posixpath_rs::PyInit__posixpath_rs;
 pub use _random_rs::PyInit__random_rs;
 pub use _tempfile_rs::PyInit__tempfile_rs;
 #[cfg(feature = "serc")]
-pub use serc_lane::{_PySerc_CompileModule, _PySerc_DecodesAsUtf8, _PySerc_ReleaseBuffer};
+pub use serc_lane::{_PySerc_CompileSource, _PySerc_DecodesAsUtf8, _PySerc_ReleaseBuffer};
 
 mod io;

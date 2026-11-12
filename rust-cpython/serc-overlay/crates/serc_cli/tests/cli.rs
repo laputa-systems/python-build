@@ -2660,7 +2660,6 @@ fn compile_modes_name_nonexec_caches_and_match_library_bytes() {
         .join("__pycache__/module.cpython-316.single.opt-1.pyc");
     let single_bytes = fs_err::read(&single_cache).unwrap();
 
-    let filename = source_path.to_string_lossy();
     for (mode, optimization, bytes) in [
         (
             serc::CompileMode::Exec,
@@ -2678,9 +2677,9 @@ fn compile_modes_name_nonexec_caches_and_match_library_bytes() {
             single_bytes.as_slice(),
         ),
     ] {
-        let module = serc::compile_with_options(
-            source,
-            &filename,
+        let module = serc::compile_bytes_with_path_and_options(
+            source.as_bytes(),
+            &source_path,
             &serc::CompileOptions {
                 python_version: serc::PythonVersion::Py316,
                 mode,

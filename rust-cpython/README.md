@@ -48,8 +48,16 @@ cc-rs prefers them over `CC`; `psm` compiles its assembly through that clang.
 (`work/source/serc` after a build) on `nightly-2026-09-15`.
 `python3 tests/serc_parity.py` builds Serc's CLI from the same archive and
 overlay under `work/serc-census/` and compares its 3.16 bytecode with
-`stage-perf-upstream` over the stdlib, the Django closure and the tooling
-fixture; `--oracle` names another 3.16 interpreter.
+`stage-perf-upstream` over the stdlib, the Django closure, the tooling fixture
+and the source-mode fixtures. The census compares `exec`, `eval` and `single`
+at all three optimization levels; `--mode` selects one or more modes, and
+`--oracle` names another 3.16 interpreter. Explicit CPython routes are counted
+separately from exact matches. Unexpected refusals, compiler crashes and
+sources Serc accepts but the oracle rejects fail the census.
+Every valid source-mode fixture must compile directly through Serc.
+The CLI's `--mode eval` and `--mode single` use mode-specific cache names
+(`cpython-316.eval.pyc`, `cpython-316.single.pyc`, and their `.opt-N`
+variants), so they neither reuse nor overwrite importable `exec` caches.
 
 The lane uses a shared `cpython-binding` layer and `cpython-deflate` engine,
 a static Rust carrier for built-in modules, a shared `_ssl_rs` extension, and
@@ -191,8 +199,9 @@ carrier's `serc` feature, which links the `serc-lane` crate and Serc into
 `overlay/Python/pythonrun.c` sends a compile request to Serc when all of these
 hold, and every other request to the C compiler:
 
-- the mode is `exec` (`Py_file_input`): `compile(..., "exec")`, `exec()` of a
-  string or bytes, imports, `-c`, and `PyRun_String*`;
+- the mode is `exec`, `eval` or `single` (`Py_file_input`, `Py_eval_input` or
+  `Py_single_input`): source `compile()`, `exec()`, `eval()`, imports, `-c`,
+  and `PyRun_String*`;
 - the input is a source string or bytes, not an AST object or a `FILE *`
   (`PyRun_File*`, the main script);
 - the effective compiler flags carry only the source-form bits
@@ -226,6 +235,13 @@ object or a 1-character Latin-1 string, but CPython gives each code object its
 own 1-byte `co_localspluskinds` and `co_linetable` and can produce
 non-interned 1-character constants, so `marshal.dumps(compile(...))` matches
 the C compiler's bytes.
+
+`eval` returns its expression's value. `single` sends top-level expression
+statements, including those in compound statements, to `sys.displayhook`;
+expressions inside nested functions and classes keep their ordinary behavior.
+`single` string literals are expressions, not module docstrings, at every
+optimization level. AST objects, `FILE *` inputs and flagged requests continue
+through CPython's existing compiler path.
 
 The C compiler stays the diagnostic authority. When Serc refuses a source, the
 hook compiles it with the C compiler only to raise CPython's exception; if the

@@ -1,4 +1,4 @@
-"""Source-mode exec compilation on the `--serc` interpreter named by SERC_PYTHON.
+"""Source compilation on the `--serc` interpreter named by SERC_PYTHON.
 
 The C compiler converts a decimal literal of over 6,000 digits through the replaceable
 `_pylong.int_from_string`, while Serc converts it natively, so replacing that function shows
@@ -10,6 +10,7 @@ import os
 import subprocess
 import textwrap
 import unittest
+from pathlib import Path
 
 SERC_PYTHON = os.environ.get("SERC_PYTHON")
 
@@ -84,9 +85,16 @@ print(json.dumps({
     "PyRun_StringFlags exec": run_string(source.encode(), 257),
     "PyRun_StringFlags single": run_string(source.encode(), 256),
     "compile single": run(compile(source, "probe", "single")),
+    "compile bytes single": run(compile(source.encode(), "probe", "single")),
     "eval": compiler(eval(literal)),
+    "eval bytes": compiler(eval(literal.encode())),
     "compile eval": compiler(eval(compile(literal, "probe", "eval"))),
+    "compile bytes eval": compiler(eval(compile(literal.encode(), "probe", "eval"))),
+    "PyRun_StringFlags eval": compiler(_testcapi.run_stringflags(literal.encode(), 258,
+                                                                globals(), globals())),
     "compile ast": run(compile(ast.parse(source), "probe", "exec")),
+    "compile ast single": run(compile(ast.parse(source, mode="single"), "probe", "single")),
+    "compile ast eval": compiler(eval(compile(ast.parse(literal, mode="eval"), "probe", "eval"))),
     "top-level await flag": run(compile(source, "probe", "exec", flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT)),
     "future flag": run(compile(source, "probe", "exec", flags=__future__.annotations.compiler_flag)),
     "inherited future": compiler(inherited["x"]),
@@ -101,6 +109,8 @@ print(json.dumps({
 SERC_REQUESTS = {
     "compile str exec", "compile bytes exec", "compile bytes exec utf-8 cookie", "exec str",
     "exec bytes", "import", "dont_inherit under a future", "PyRun_StringFlags exec",
+    "PyRun_StringFlags single", "compile single", "compile bytes single", "eval", "eval bytes", "compile eval",
+    "compile bytes eval", "PyRun_StringFlags eval",
 }
 
 DIAGNOSTIC_PROBE = r'''
@@ -110,11 +120,11 @@ C_COMPILER = __future__.generator_stop.compiler_flag
 sources = json.loads(sys.argv[1])
 
 
-def outcome(source, flags, action):
+def outcome(source, mode, flags, action):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter(action)
         try:
-            compile(source, "<probe>", "exec", flags=flags)
+            compile(source, "<probe>", mode, flags=flags)
             raised = None
         except Exception as error:
             raised = [type(error).__name__, repr(error.args)]
@@ -124,9 +134,11 @@ def outcome(source, flags, action):
 
 results = []
 for text in sources:
-    for source in (text, text.encode()):
-        for action in ("always", "error"):
-            results.append([text, action, outcome(source, 0, action), outcome(source, C_COMPILER, action)])
+    for mode in ("exec", "eval", "single"):
+        for source in (text, text.encode()):
+            for action in ("always", "error"):
+                results.append([text, mode, action, outcome(source, mode, 0, action),
+                                outcome(source, mode, C_COMPILER, action)])
 print(json.dumps(results))
 '''
 
@@ -167,7 +179,8 @@ REFUSAL_PROBE = r'''
 import json, _testcapi
 
 outcomes = {}
-for name, source, start in (("exec", b"x = 1\n", 257), ("eval", b"1", 258)):
+for name, source, start in (("exec", b"x = 1\n", 257), ("eval", b"1", 258),
+                            ("single", b"x = 1\n", 256)):
     try:
         outcomes[name] = type(_testcapi.run_compilestringobject(source, "a\0b", start)).__name__
     except SystemError as error:
@@ -181,15 +194,19 @@ import _pylong, json, sys
 sys.set_int_max_str_digits(0)
 literal = "1" * 7000
 outcomes = {}
-for name, source in (("plain", "x = 1\n"), ("large literal", f"x = {literal}\n")):
-    compile(source, "probe", "exec")
-    outcomes[name] = "same"
+for mode in ("exec", "eval", "single"):
+    for name, value in (("plain", "1"), ("large literal", literal)):
+        source = f"x = {value}\n" if mode == "exec" else value
+        compile(source, "probe", mode)
+        outcomes[f"{mode} {name}"] = "same"
 _pylong.int_from_string = lambda text: -1
-try:
-    compile(f"x = {literal}\n", "probe", "exec")
-    outcomes["replaced _pylong"] = "same"
-except SystemError as error:
-    outcomes["replaced _pylong"] = str(error)
+for mode in ("exec", "eval", "single"):
+    source = f"x = {literal}\n" if mode == "exec" else literal
+    try:
+        compile(source, "probe", mode)
+        outcomes[f"{mode} replaced _pylong"] = "same"
+    except SystemError as error:
+        outcomes[f"{mode} replaced _pylong"] = str(error)
 print(json.dumps(outcomes))
 '''
 
@@ -267,6 +284,44 @@ outcomes["finally return"] = list(namespace["result"])
 print(json.dumps(outcomes))
 '''
 
+MODE_PROBE = r'''
+import __future__, contextlib, json, sys, warnings
+
+cases = json.loads(sys.argv[1])
+outcomes = []
+
+def outcome(case, level, flags):
+    namespace = {"value": 3, "values": (0, 1, 2), "manager": contextlib.nullcontext()}
+    displayed = []
+    original = sys.displayhook
+    sys.displayhook = lambda value: displayed.append(repr(value))
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            code = compile(case["source"], "<mode-probe>", case["mode"], flags=flags,
+                           dont_inherit=True, optimize=level)
+            value = eval(code, namespace)
+        result = {"value": repr(value), "displayed": displayed,
+                  "has_result": "result" in namespace,
+                  "result": repr(namespace.get("result")), "final_value": namespace["value"]}
+        if "f" in namespace:
+            result["function"] = [namespace["f"].__doc__, namespace["f"]()]
+        if "C" in namespace:
+            result["class"] = [namespace["C"].__doc__, namespace["C"].result]
+        return result
+    except Exception as error:
+        return {"error": type(error).__name__, "args": repr(error.args)}
+    finally:
+        sys.displayhook = original
+
+for case in cases:
+    for level in (0, 1, 2):
+        candidate = outcome(case, level, 0)
+        reference = outcome(case, level, __future__.generator_stop.compiler_flag)
+        outcomes.append([case["name"], case["mode"], level, candidate, reference])
+print(json.dumps(outcomes))
+'''
+
 
 @unittest.skipUnless(SERC_PYTHON, "set SERC_PYTHON to the interpreter of a --serc build")
 class SercCompileTests(unittest.TestCase):
@@ -281,7 +336,7 @@ class SercCompileTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         return json.loads(completed.stdout.splitlines()[-1])
 
-    def test_only_source_exec_requests_reach_serc(self):
+    def test_source_requests_in_all_three_modes_reach_serc(self):
         compilers = self.run_probe(ROUTING_PROBE)
         self.assertEqual(
             compilers,
@@ -289,24 +344,25 @@ class SercCompileTests(unittest.TestCase):
         )
 
     def test_invalid_source_raises_the_c_compiler_exception(self):
-        for text, action, serc, reference in self.run_probe(DIAGNOSTIC_PROBE, json.dumps(INVALID_SOURCES)):
-            with self.subTest(source=text, action=action):
+        for text, mode, action, serc, reference in self.run_probe(DIAGNOSTIC_PROBE, json.dumps(INVALID_SOURCES)):
+            with self.subTest(source=text, mode=mode, action=action):
                 self.assertIsNotNone(serc["raised"])
                 self.assertEqual(serc, reference)
 
     def test_warnings_match_the_c_compiler_and_become_errors_under_an_error_filter(self):
-        for text, action, serc, reference in self.run_probe(DIAGNOSTIC_PROBE, json.dumps(WARNING_SOURCES)):
-            with self.subTest(source=text, action=action):
+        for text, mode, action, serc, reference in self.run_probe(DIAGNOSTIC_PROBE, json.dumps(WARNING_SOURCES)):
+            with self.subTest(source=text, mode=mode, action=action):
                 self.assertEqual(serc, reference)
-                if action == "always":
+                if action == "always" and reference["raised"] is None:
                     self.assertTrue(serc["warnings"])
-                else:
+                elif action == "error":
                     self.assertEqual(serc["raised"][0], "SyntaxError")
 
     def test_a_serc_refusal_raises_instead_of_compiling_with_the_c_compiler(self):
         outcomes = self.run_probe(REFUSAL_PROBE)
-        self.assertEqual(outcomes["eval"], "code")
-        self.assertRegex(outcomes["exec"], r"^SystemError: Serc cannot compile 'a\\x00b': ")
+        for mode, outcome in outcomes.items():
+            with self.subTest(mode=mode):
+                self.assertRegex(outcome, r"^SystemError: Serc cannot compile 'a\\x00b': ")
 
     def test_c_api_callers_get_future_flags_and_non_utf8_text_compiles_as_c_does(self):
         outcomes = self.run_probe(C_API_PROBE)
@@ -321,12 +377,23 @@ class SercCompileTests(unittest.TestCase):
         self.assertEqual(outcomes["small stack"], "MemoryError")
         self.assertEqual(outcomes["finally return"], [1, "None"])
 
+    def test_eval_results_and_single_displayhook_match_the_c_compiler(self):
+        fixtures = Path(__file__).parents[1] / "serc-overlay" / "crates" / "serc" / "tests" / "fixtures"
+        cases = json.loads((fixtures / "source_modes.json").read_text())
+        for name, mode, level, candidate, reference in self.run_probe(
+            MODE_PROBE, json.dumps(cases), verify=True
+        ):
+            with self.subTest(name=name, mode=mode, optimize=level):
+                self.assertEqual(candidate, reference)
+
     def test_verify_mode_raises_when_serc_and_the_c_compiler_differ(self):
         outcomes = self.run_probe(VERIFY_PROBE, verify=True)
-        self.assertEqual(outcomes["plain"], "same")
-        self.assertEqual(outcomes["large literal"], "same")
-        self.assertRegex(outcomes["replaced _pylong"],
-                         r"^PYTHONSERCVERIFY: Serc and the C compiler compiled 'probe' differently")
+        for mode in ("exec", "eval", "single"):
+            with self.subTest(mode=mode):
+                self.assertEqual(outcomes[f"{mode} plain"], "same")
+                self.assertEqual(outcomes[f"{mode} large literal"], "same")
+                self.assertRegex(outcomes[f"{mode} replaced _pylong"],
+                                 r"^PYTHONSERCVERIFY: Serc and the C compiler compiled 'probe' differently")
 
 
 if __name__ == "__main__":
