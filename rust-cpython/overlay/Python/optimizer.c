@@ -1611,7 +1611,9 @@ sanity_check(_PyExecutorObject *executor)
             base_opcode == _DYNAMIC_EXIT ||
             base_opcode == _SPILL_OR_RELOAD ||
             base_opcode == _BOX_UNBOXED_SLOTS ||
-            base_opcode == _CLEAR_UNBOXED_SLOTS);
+            base_opcode == _CLEAR_UNBOXED_SLOTS ||
+            base_opcode == _MATERIALIZE_FLOAT_LEAF_ERROR ||
+            base_opcode == _MATERIALIZE_VIRTUAL_FLOAT_ERROR);
     }
 }
 
