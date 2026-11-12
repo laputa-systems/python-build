@@ -1162,8 +1162,8 @@ each failed exactly `perf-rust`'s set, the e891 five (52,102 tests, 2,877
 skipped), plus one host-load flake in
 `test_concurrent_futures.test_process_pool` (2 of 5 isolated runs fail on
 `perf-rust` itself). `serc_parity.py --oracle perf-rust` reported 10,005
-cases, 0 mismatches. The memory bar is met under OD15. Both full-suite runs
-and the census must be repeated on `b4c2a8a` before C closes.
+cases, 0 mismatches. The memory bar is met under OD15. The close-out below
+repeats both full-suite runs and the census after the fixes.
 
 **Independent re-review (2026-11-11) and fixes.** The adversarial review of
 `d02ebce`..`b1ffca1` found nine defects; `852831a`, `b327c5c` and `b4c2a8a`
@@ -1197,6 +1197,34 @@ control-flow corpora, 164 in the comparison grid (down from 288), plus
 at a function's end, and a chained-comparison break in a `while` inside
 `finally`. These are verify-mode-only (line tables, exception tables, jump
 shapes).
+
+**Close-out verification at `8930b8a` (2026-11-11, macOS arm64).** An
+incremental `perf.py build --name perf-rust-serc-v3 --serc --incremental`
+records the clean committed overlay and verifies 58 release Rust extensions.
+`perf.py test --name perf-rust-serc-v3 --all` and the same command with
+`--serc-verify` each report 457 test files OK and exactly the five failing
+files in the existing `perf-rust` baseline: `test_asyncio.test_sendfile`,
+`test_asyncio.test_sslproto`, `test_multiprocessing_forkserver.test_misc`,
+`test_ssl` and `test_support`. Each runs 52,102 tests with 2,878 skipped.
+The process-pool flake does not recur. The verify run uses a fresh bytecode
+cache and reports no compiler difference. Logs are
+`rust-cpython/logs/perf-rust-serc-v3-all.log` and
+`rust-cpython/logs/perf-rust-serc-v3-all-serc-verify.log` in the C2 worktree.
+
+`serc_parity.py --oracle rust-cpython/stage-perf-rust/bin/python3.16`
+reports 10,005 cases: 9,159 exact matches, 813 Serc refusals under the
+finally-exit routing rule, and 33 oracle syntax refusals across 11 files.
+There are zero mismatches, panics or other Serc errors. The census exits 0;
+its result is `.work/tmp/c2-close-parity.json` in the C2 worktree.
+Timing gates remain deferred to **Close** under OD14.
+
+The independent close-out review of `b1ffca1..8930b8a` finds no new defect
+in the fixes or the compile-hook assumptions they use. The 2 MiB stack
+cutoff relies on the empirical headroom analysis. The regression test covers
+a 64 KiB thread, not the cutoff boundary or continued Serc use above it.
+C2 closes on `campaign/c2`; C3 is next. The two routing rules and the public
+`CompileError` variant remain in the asynchronous owner queue. Nothing is
+pushed.
 
 **Parity.** The eight Serc 3.16 defect classes the first full-suite runs found
 are fixed in `serc-overlay`, each pinned by a Serc test against
@@ -1610,7 +1638,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 | --- | --- | --- | --- |
 | J | active | T3 inline-frame elision implemented and CORRECT; measured no bucket-(a) fall, dropped under P1. Next: virtual-frame inlining or T3 attribute/global caches | Inline frames: incumbent-named bucket (a) richards 24.0% → 17.2%, raytrace 11.6% → 9.6%, but including the new `_INLINE_*` call/frame uops 23.9% → 24.6% and 11.5% → 11.7%; CORRECT (5 incumbent superseded assertions; new `jit_inline_integration`), advisory 1.0123 |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
-| C | active | C2 in-process `exec`: re-review's nine defects fixed (`852831a`..`b4c2a8a`). Next: rerun `--all`, `--all --serc-verify` and the parity census on `b4c2a8a`, then close C2 or triage the pre-existing verify-only layout classes | `cargo test -p serc --lib` 1,257 pass; `test_serc_compile.py` 7 pass; compiler suites pass under verify; 0 behaviour differences in 10,533 review-corpus programs |
+| C | active | C2 closed on `campaign/c2`; next: C3 `eval` and `single`. Routing/API owner reviews remain asynchronous; branch unpushed | At `8930b8a`, both full suites fail exactly the baseline five files; verify has no compiler difference; census 10,005 cases, 9,159 exact, 813 explicit routes, 33 oracle syntax refusals, 0 mismatches; independent close-out review finds no new defect |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
 
 **Owner queue:** R1 reference report (informational, no target change
@@ -1732,7 +1760,10 @@ opcodes `BINARY_OP_SUBSCR_ARRAY_D`/`_I`; new uops
   gates within +8% (`memory-only-serc-cost`, `dabf1bf`). The C2 memory-only
   bench is WITHIN-BUDGET at `52091c9` (footprint 0.979-1.058, peak RSS
   1.164-1.345 recorded); no loading-model change was made (see C2).
-- C acceptance's independent review of the FFI and compile hook has not run.
+- Independent re-review found nine defects, fixed in `852831a`..`b4c2a8a`.
+  The close-out review of those fixes and their FFI/compile-hook assumptions
+  finds no new defect; the empirical stack-cutoff validation limit is recorded
+  in C2. Owner acceptance of the routing/API changes remains pending.
 
 **Epoch e891** (`main` `e891a911`, pinned 2026-11-10) opened at R0 on macOS
 arm64:
@@ -1878,6 +1909,7 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-11-02 | a1 | J | M0 | instrument | `perf-rust-jit` | — → 0.7474 | A/A max 0.19% | MEASURED | `rust-cpython/results/perf-bench/20261102T174650Z-perf-climb-ref-vs-perf-rust-jit` |
 | 2026-11-10 | e891 | J | M0 | instrument | `perf-rust-jit` | — → 0.7748 | A/A max 1.19% | MEASURED | `rust-cpython/results/perf-bench/20261110T041724Z-perf-climb-ref-vs-perf-rust-jit` |
+| 2026-11-11 | e891 | C | C2 | in-process source-mode `exec`, nine re-review defects fixed; finally-exit and small-stack routing | `perf-rust` | timing deferred (OD14); prior memory bar met (OD15) | — | CORRECT on `campaign/c2`: both full suites match baseline five-file failure set; no verify difference; census 0 mismatches; independent close-out review finds no new defect | `8930b8a`; C2 worktree `rust-cpython/logs/perf-rust-serc-v3-all{,-serc-verify}.log`, `.work/tmp/c2-close-parity.json` |
 | 2026-11-10 | 3.15.1 | R1 | R1 | CinderX steady JIT vs off | `cinderx-e48f370d` | — → 0.7960 (held-out 1.0621) | — | MEASURED | `.work/r1` |
 | 2026-11-10 | e891 | J | T1 | thread-state: executor tstate to float/int freelists (`_tlv_get_addr` 4.61% of samples, targeted chains 1.36% → 0%) | `perf-rust-jit` | timing deferred (OD14) | — | CORRECT | `campaign/t1-tstate` |
 | 2026-11-10 | e891 | J | T2 | float unboxing across binary ops and compares (float boxing 8.9-38.6% of samples; float-op chains nbody 27.5% → 26.3%, fft 11.4% → 9.5%) | `perf-rust-jit` | timing deferred (OD14); advisory 0.9962 | — | CORRECT (4 named superseded `test_capi.test_opt` uop assertions, owner ruling) | `aadaf25` |
