@@ -2028,11 +2028,6 @@ unbox_values(_PyUOpInstruction *buffer, int length,
 {
     *unboxed = NULL;
     *original = NULL;
-    for (int i = 0; i < length; i++) {
-        if (buffer[i].opcode == _BEGIN_VIRTUAL_FLOAT_CALL) {
-            return length;
-        }
-    }
     size_t capacity = UOP_MAX_TRACE_LENGTH - 1;
     _PyJitOptUop *uops = PyMem_RawMalloc(length * sizeof(_PyJitOptUop));
     _PyJitOptStep *steps = PyMem_RawMalloc(capacity * sizeof(_PyJitOptStep));
@@ -2042,9 +2037,31 @@ unbox_values(_PyUOpInstruction *buffer, int length,
         PyErr_NoMemory();
         return -1;
     }
+    bool virtual_call = false;
     for (int i = 0; i < length; i++) {
-        uops[i] = describe_uop(buffer[i].opcode);
+        int opcode = buffer[i].opcode;
+        if (opcode == _BEGIN_VIRTUAL_FLOAT_CALL) {
+            assert(!virtual_call);
+            virtual_call = true;
+        }
+        if (virtual_call) {
+            uops[i] = (_PyJitOptUop){
+                .kind = JIT_OPT_KIND_OTHER,
+                .inputs = -1,
+                .popped = -1,
+                .pushed = -1,
+                .effects = JIT_OPT_EFFECT_BARRIER,
+            };
+        }
+        else {
+            uops[i] = describe_uop(opcode);
+        }
+        if (opcode == _RETURN_VIRTUAL_FLOAT_CALL) {
+            assert(virtual_call);
+            virtual_call = false;
+        }
     }
+    assert(!virtual_call);
     _PyJitOptUop synthetic[JIT_OPT_SYNTHETIC_ACTIONS];
     for (int i = 0; i < JIT_OPT_SYNTHETIC_ACTIONS; i++) {
         synthetic[i] = describe_uop(unboxed_action_uops[i]);

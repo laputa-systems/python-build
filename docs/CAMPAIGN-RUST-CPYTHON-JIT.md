@@ -1224,6 +1224,24 @@ against a matched reference. These counts establish the rewrite mechanism;
 runtime and resource acceptance remain deferred under OD16. Stencil glue
 outside these explicit transitions remains separate T4 work.
 
+**Unboxing around virtual calls (2026-11-12).** A virtual call no longer
+forces its entire trace to stay boxed. C describes every instruction from
+virtual begin through return as an opaque, variable-shape barrier to the
+existing Rust unboxing planner. This includes both boundaries. Independent
+numeric chains before and after use the original descriptors; the virtual
+region keeps zero unboxed exit/error masks and is copied unchanged.
+
+The existing dataflow proof blocks raw values crossing an opaque boundary,
+and verification rejects any live unboxed slot there. A live caller prefix
+is boxed before entering the virtual frame. The original boxed recipe and
+its capacity bound remain the rollback path. No private ABI or generated
+opcode contract changes. The Rust regression covers independent float and
+integer chains around the boundary; the native regression requires outer
+unboxed arithmetic, prefix boxing, an entirely boxed virtual body and eleven
+active samples across success, errors with assigned locals and complex power
+resumption. All prior integrations pass. Independent source/native review
+approves; performance acceptance remains deferred under OD16.
+
 **Local-store stencil fusion (2026-11-12).** The Rust planner in
 `Modules/_jit_opt_rs/src/store.rs` replaces a local swap followed only by
 NOPs and a generic pop with `_STORE_FAST_FUSED`. It keeps typed pops,
@@ -2062,7 +2080,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | Bound float methods now virtualize guarded receiver attributes, with original-PC materialization on storage/type failures. Traces remain boxed. Next: restore unboxing outside virtual regions, then broader scalar/call/lookup/allocation/loop shapes. Performance acceptance deferred under OD16 | Bound-method slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 57 Rust tests; 20 new active-JIT cases plus prior integrations and assertion-enabled tail validation; independent source/generated/native review approves |
+| J | active | Bound float methods and original-PC materialization are integrated; unboxing now remains available outside boxed virtual-call regions. Next: broader scalar types, constants and call/lookup/allocation/loop shapes. Performance acceptance deferred under OD16 | Regional-unboxing slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 58 Rust tests; 11 new active-JIT prefix/error/exit cases plus prior integrations and assertion-enabled tail validation; independent source/native review approves |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | feature complete | C3 integrated with refreshed main dependencies; performance acceptance deferred under OD16. Routing/API owner reviews remain asynchronous; nothing pushed | Integrated normal and verify runs each execute 52,102 tests, with exactly the matched reference's five failing files and 0 compiler mismatches; native 11-case integration passes; C3 corpus and independent reviews remain valid |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -2102,7 +2120,7 @@ requested): CinderX 3.15 steady JIT uplift `S = 0.7960`, held-out 1.0621, beside
 M2 ≤ 0.48, M3 ≤ 0.38, M4 ≤ 0.25. T2 does not wait for an answer.
 
 J continuation builds use `.work/wt/jit-pair`; its `perf-jit-pair` stage
-was rebuilt incrementally for the store, list, float-call, loop-type, inline-instance-getter, virtual-float, virtual-local, virtual-exit and bound-method slices after
+was rebuilt incrementally for the store, list, float-call, loop-type, inline-instance-getter, virtual-float, virtual-local, virtual-exit, bound-method and regional-unboxing slices after
 the tuple slice. Earlier reports and suite logs were archived under
 `.work/tmp/tuple-tested-report.json`, `tuple-accepted/`,
 `glue-tested-report.json`, `glue-accepted/`, `list-tested-report.json`
@@ -2112,7 +2130,8 @@ and `list-accepted/`, plus `arith-tested-report.json` and
 `managed-getter-accepted/`, then `virtual-tested-report.json` and
 `virtual-accepted/`, then `virtual-locals-tested-report.json` and
 `virtual-locals-accepted/`, then `virtual-exits-tested-report.json` and
-`virtual-exits-accepted/`, before reuse. Each ledger row
+`virtual-exits-accepted/`, then `bound-floats-tested-report.json` and
+`bound-floats-accepted/`, before reuse. Each ledger row
 has distinct digest-result directories and source identities. The committed
 `4b66ce3` reference in `.work/wt/jit-integrate` remains unchanged.
 
@@ -2555,3 +2574,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-12 | e891 | J | correctness | recognize private error materializers in the debug executor-tail validator | unchanged validator before fix | no timing | — | CORRECT: actual assertion-enabled C checker rejects both omitted materializer classes before the fix and accepts both afterward; an ordinary load remains rejected; independent source/native checker review approves | `rust-cpython/tests/jit_tail_validation.py`; `.work/tmp/tail-validation-before.log`, `.work/tmp/tail-validation.log`; checked alongside pending terminal-stub rename; no full `Py_DEBUG` interpreter build claimed |
 | 2026-11-12 | e891 | J | T3 | materialize virtual calls on power side exits, preserving cached operands and original callee resumption PC | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 56 Rust tests; 29 active-JIT complex/error/progress cases and prior integrations; assertion-enabled tail checker; independent source/generated/native review approves | `rust-cpython/results/perf-bench/20261112T122325Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T122452Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/virtual-exits-feature-acceptance.json`; incremental stage based on `2720c27` with this slice; debug tail policy checked directly |
 | 2026-11-12 | e891 | J | T3 | virtualize bound float methods with guarded receiver attributes and original-PC storage/type materialization | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 57 Rust tests; 20 active-JIT method/mutation/error/finalizer cases and prior integrations; independent source/generated/native review approves | `rust-cpython/results/perf-bench/20261112T131439Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T131913Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/bound-floats-feature-acceptance.json`, `.work/tmp/bound-floats-native.log`; incremental stage based on `e8cf127` with this slice |
+| 2026-11-12 | e891 | J | T4 | preserve independent outer unboxing around opaque boxed virtual-call regions and box live caller prefixes before entry | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 12 reviewed shape exclusions; 58 Rust tests; 11 active-JIT prefix/error/complex-exit cases and prior integrations; independent source/native review approves | `rust-cpython/results/perf-bench/20261112T132914Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T133046Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/regional-feature-acceptance.json`; incremental stage based on `df56e47` with this slice |

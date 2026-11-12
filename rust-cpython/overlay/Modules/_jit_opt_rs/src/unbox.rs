@@ -1163,6 +1163,27 @@ mod tests {
     }
 
     #[test]
+    fn opaque_regions_keep_live_prefixes_boxed_and_independent_chains_unboxed() {
+        let mut trace = sum_of_products();
+        trace.pop();
+        let begin = trace.len();
+        trace.extend([uop(KIND_OTHER, 0, (-1, -1, -1), 0, EFFECT_BARRIER); 5]);
+        let after = trace.len();
+        trace.extend(int_sum_of_products());
+        let plan = rewrite(&trace);
+        assert!(plan.iter().any(|step| usize::from(step.source) < begin
+            && step.action == Action::Arith(Domain::Float, ArithOp::Add).code()));
+        assert!(plan.iter().any(|step| usize::from(step.source) < begin
+            && step.action == Action::Box(Domain::Float).code()));
+        assert!(plan.iter().any(|step| usize::from(step.source) >= after
+            && step.action == Action::Arith(Domain::Int, ArithOp::Multiply).code()));
+        let opaque: Vec<_> = plan.iter().filter(|step| (begin..after).contains(&usize::from(step.source))).collect();
+        assert_eq!(opaque.len(), 5);
+        assert!(opaque.iter().all(|step| step.action == ACTION_COPY
+            && (step.exit_floats | step.exit_ints | step.error_unboxed) == 0));
+    }
+
+    #[test]
     fn contradictory_descriptors_are_rejected() {
         let mut trace = sum_of_products();
         trace[2] = uop(KIND_FLOAT_ARITH, ARITH_MULTIPLY, (2, 2, 1), 0b11, 0);
