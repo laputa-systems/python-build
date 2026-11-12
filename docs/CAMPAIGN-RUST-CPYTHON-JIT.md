@@ -1224,9 +1224,10 @@ The independent close-out review of `b1ffca1..8930b8a` finds no new defect
 in the fixes or the compile-hook assumptions they use. The 2 MiB stack
 cutoff relies on the empirical headroom analysis. The regression test covers
 a 64 KiB thread, not the cutoff boundary or continued Serc use above it.
-C2 closes on `campaign/c2`; C3 is next. The two routing rules and the public
-`CompileError` variant remain in the asynchronous owner queue. Nothing is
-pushed.
+C2 closes on `campaign/c2`, and C3 feature acceptance closes on `campaign/c3`
+(see C3's exit evidence). Continue J's T3/T4 feature backlog under OD16.
+The routing rules, compiler API and private hook changes remain in the
+asynchronous owner queue. Nothing is pushed.
 
 **Parity.** The eight Serc 3.16 defect classes the first full-suite runs found
 are fixed in `serc-overlay`, each pinned by a Serc test against
@@ -1516,6 +1517,26 @@ scope.
 
 **Exit:** done-criterion 4 and a C3 ledger row.
 
+**Exit evidence (2026-11-11).** Feature correctness is complete on
+`campaign/c3` at `fb131e1`; performance acceptance stays deferred under OD16.
+Both full default-resource suites on `perf-serc-c3`, normal and
+`--serc-verify`, run 52,102 tests and match the non-Serc baseline's five-file
+failure set: `test_asyncio.test_sendfile`, `test_asyncio.test_sslproto`,
+`test_multiprocessing_forkserver.test_misc`, `test_ssl` and `test_support`.
+There is no compiler verification difference. The expanded 12-suite focus,
+including interactive compilation, Unicode lookup, unpacking and audit
+behavior, passes with verification enabled, as do all 11 native integration
+tests. The Serc census compares 30,318 cases across `exec`, `eval` and
+`single`: 9,678 exact matches, 813 intentional finally routes, and 19,827
+cases refused by the oracle, with no mismatch or uncovered mode. All 101
+named source-mode fixtures compile directly through Serc at optimization
+levels 0, 1 and 2. The 1,260 library tests, 24 CLI unit tests and mode/cache
+integration pass. Independent reviews approve the glue, audit semantics and
+parity corrections; the final review also checks 48 small differential
+probes against CPython's exact marshal bytes. Native logs are in the C3
+worktree's `rust-cpython/logs/perf-serc-c3-{all,all-serc-verify}.log`; the census
+is `.work/tmp/c3-census-final.json` (release ThinLTO override recorded).
+
 ### C acceptance
 
 A track C change lands only when, on `perf-serc-<item>`: the C1 corpus has zero
@@ -1527,7 +1548,8 @@ performance acceptance remains deferred to **Close**.
 
 ## Close
 
-Close first runs every timing gate OD14 deferred, on a quiet host: the
+When performance acceptance resumes, Close first runs every deferred timing
+gate on a quiet host: the
 **Milestone gate** for the stacked J incumbent and the C2 and C3 cold-import
 gates. A J regression found here is bisected
 over the landed J steps and the offending steps reverted or fixed. Then, when
@@ -1647,7 +1669,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 | --- | --- | --- | --- |
 | J | active | T3 inline-frame elision implemented and CORRECT; measured no bucket-(a) fall, dropped under P1. Next: virtual-frame inlining or T3 attribute/global caches | Inline frames: incumbent-named bucket (a) richards 24.0% → 17.2%, raytrace 11.6% → 9.6%, but including the new `_INLINE_*` call/frame uops 23.9% → 24.6% and 11.5% → 11.7%; CORRECT (5 incumbent superseded assertions; new `jit_inline_integration`), advisory 1.0123 |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
-| C | active | C3 `eval` and `single` on `campaign/c3`; performance gates deferred under OD16. C2 routing/API owner reviews remain asynchronous; nothing pushed | C2 closed at `e20090f`; both full suites on `8930b8a` match the baseline five-file failure set; verify and census report 0 mismatches; independent review finds no new defect |
+| C | feature complete | C3 closed on `campaign/c3`; performance acceptance deferred under OD16. Routing/API owner reviews remain asynchronous; nothing pushed | `fb131e1`: both full suites match the baseline five-file failure set; verify and 30,318-case census report 0 mismatches; 101 mode fixtures and independent reviews pass |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
 
 **Owner queue:** R1 reference report (informational, no target change
@@ -1782,8 +1804,8 @@ opcodes `BINARY_OP_SUBSCR_ARRAY_D`/`_I`; new uops
 CPython parser start symbol. Source-mode routing now admits all three modes;
 AST, `FILE *`, flags, decoding, stack and finally-exit boundaries stay as in
 C2. The CLI adds `--mode` and separate non-exec cache names. The hook/FFI
-review approves the glue, and the matching compiler API and CLI pass their
-component checks. Integrated acceptance is still running. Source entry points emit one `compile`
+reviews approve the glue, compiler API and CLI; the full suites match the
+baseline failure set with no verification difference. Source entry points emit one `compile`
 audit event before choosing a compiler, including verification and diagnostic
 paths. The new Py_SERC-only private parser helper
 `_PyParser_ASTFromStringWithoutAudit` requires that event to have been emitted
@@ -1793,8 +1815,8 @@ invoke Python comparisons, preserving warning context and reference lifetime.
 Sources containing `\N{` also use C so the interpreter owns Unicode-name
 lookup and its import failures; this conservative test includes raw strings
 and comments containing that spelling. Independent review approves these
-rules and the source-mode parity fixes; final full-suite acceptance remains
-in progress.
+rules and the source-mode parity fixes. C3's feature acceptance is complete;
+performance acceptance remains deferred.
 
 **Epoch e891** (`main` `e891a911`, pinned 2026-11-10) opened at R0 on macOS
 arm64:
@@ -1941,6 +1963,7 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-02 | a1 | J | M0 | instrument | `perf-rust-jit` | — → 0.7474 | A/A max 0.19% | MEASURED | `rust-cpython/results/perf-bench/20261102T174650Z-perf-climb-ref-vs-perf-rust-jit` |
 | 2026-11-10 | e891 | J | M0 | instrument | `perf-rust-jit` | — → 0.7748 | A/A max 1.19% | MEASURED | `rust-cpython/results/perf-bench/20261110T041724Z-perf-climb-ref-vs-perf-rust-jit` |
 | 2026-11-11 | e891 | C | C2 | in-process source-mode `exec`, nine re-review defects fixed; finally-exit and small-stack routing | `perf-rust` | timing deferred (OD14); prior memory bar met (OD15) | — | CORRECT on `campaign/c2`: both full suites match baseline five-file failure set; no verify difference; census 0 mismatches; independent close-out review finds no new defect | `8930b8a`; C2 worktree `rust-cpython/logs/perf-rust-serc-v3-all{,-serc-verify}.log`, `.work/tmp/c2-close-parity.json` |
+| 2026-11-11 | e891 | C | C3 | source-mode `eval` and `single`, exact mode-aware CLI/census, compile audits and interactive parity | `perf-rust` | performance deferred (OD16) | — | CORRECT on `campaign/c3`: both full suites match baseline five-file failures; no verify difference; 30,318 census cases with 0 mismatches; independent reviews approve | `fb131e1`; C3 exit evidence above |
 | 2026-11-10 | 3.15.1 | R1 | R1 | CinderX steady JIT vs off | `cinderx-e48f370d` | — → 0.7960 (held-out 1.0621) | — | MEASURED | `.work/r1` |
 | 2026-11-10 | e891 | J | T1 | thread-state: executor tstate to float/int freelists (`_tlv_get_addr` 4.61% of samples, targeted chains 1.36% → 0%) | `perf-rust-jit` | timing deferred (OD14) | — | CORRECT | `campaign/t1-tstate` |
 | 2026-11-10 | e891 | J | T2 | float unboxing across binary ops and compares (float boxing 8.9-38.6% of samples; float-op chains nbody 27.5% → 26.3%, fft 11.4% → 9.5%) | `perf-rust-jit` | timing deferred (OD14); advisory 0.9962 | — | CORRECT (4 named superseded `test_capi.test_opt` uop assertions, owner ruling) | `aadaf25` |
