@@ -715,7 +715,7 @@ allocations. Lengthen traces with loop peeling and invariant-guard hoisting.
 
 **Frame-free leaf calls (2026-11-11).** The Rust planner
 `Modules/_jit_opt_rs/src/leaf.rs` fuses a complete, guarded exact-argument
-call whose optimized body returns an argument or constant. The new
+call whose optimized body returns an argument, constant or preguarded slot. The new
 `_CALL_PY_LEAF` consumes the caller's arguments and produces the result
 without constructing a callee frame. Existing function-version, recursion,
 stack-space and PEP 523 checks remain before the call. The fused instruction
@@ -728,8 +728,8 @@ exit remains inside the removed body. Other callees keep ordinary frames.
 
 The private `_PyJitOpt_PlanLeafCalls` ABI takes opcode identities from C's
 generated table and returns transactional rewrite steps. Its two 32-bit
-instruction caches hold either a tagged argument index or an opaque constant
-address; Rust never dereferences Python objects. Unsupported bodies and
+instruction caches hold a constant address or a tagged argument index with an
+optional slot byte offset; Rust never dereferences Python objects. Unsupported bodies and
 allocation failure preserve the original trace. The pass is disabled for
 free-threaded and DTrace builds. Future bucket-(a) profiles must count
 `_CALL_PY_LEAF` as call work, alongside retained guards.
@@ -744,7 +744,21 @@ upstream instruction-shape assertions are named in
 `test_func_version_guarded_on_change` require `_PUSH_FRAME`, and
 `test_make_heap_safe_optimized_immortal` requires `_RETURN_VALUE`. Their
 replacement behavior and guards are covered by the integration test under
-the existing owner ruling. General virtual frames, lookup caches, loop
+the existing owner ruling.
+
+Slot getters are eligible only when the optimized body loads a borrowed
+argument, reads its slot and discards the borrowed owner before returning.
+Any surviving type guard rejects fusion: the existing optimizer must already
+have proved the owner layout before the call. The fused instruction reads the
+slot before consuming arguments and deopts at the original call if it is
+missing. Tier 1 then constructs the getter frame and raises the original
+exception. The slot result acquires its own reference before the receiver can
+be finalized. `jit_slot_leaf_integration.py` checks five getter traces,
+including an argument getter, inherited and unrelated owner layouts, descriptor invalidation,
+tracing/monitoring, and a finalizer that deletes the slot while the caller is
+running in the JIT. The latter must retain the getter's traceback frame.
+
+General virtual frames, remaining lookup caches, loop
 peeling and invariant-guard hoisting remain T3 work.
 
 **Inline frames (dropped 2026-11-10, CORRECT; code parked on branch
@@ -1724,7 +1738,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | T3 frame-free leaf calls and T4 whole-trace cache allocation accepted on `campaign/j3`; next: T3 lookup/allocation work, then remaining loop and stencil-glue work. Performance acceptance deferred under OD16 | J4 against J3: all 31 workload digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; suites have only 8 prior superseded uop assertions; independent source/native review approves |
+| J | active | T3 frame-free argument/constant/slot getters and T4 whole-trace cache allocation accepted on `campaign/j3`; next: remaining T3 lookup/allocation and loop work. Performance acceptance deferred under OD16 | J5 against J4: all 31 workload digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 8 prior superseded suite assertions; descriptor suite passes both modes; independent source/native review approves |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | feature complete | C3 closed on `campaign/c3`; performance acceptance deferred under OD16. Routing/API owner reviews remain asynchronous; nothing pushed | `fb131e1`: both full suites match the baseline five-file failure set; verify and 30,318-case census report 0 mismatches; 101 mode fixtures and independent reviews pass |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -1736,7 +1750,11 @@ M2 ≤ 0.48, M3 ≤ 0.38, M4 ≤ 0.25. T2 does not wait for an answer.
 **Owner queue:** T3 leaf calls (on `campaign/j3`, async review). New private
 `_PyJitOpt_PlanLeafCalls` ABI and `_CALL_PY_LEAF` tagged result caches;
 ownership, pre-call deopts and frame elision independently reviewed. Seven
-native leaf cases and the ten unboxing kernels pass together. The three
+native leaf cases, five slot-getter traces and the ten unboxing kernels pass
+together. The result tags now distinguish aligned constant addresses,
+argument indices and slot offsets; the slot load requires the existing
+optimizer's discharged layout proof and retries missing slots before the call.
+The three
 new named upstream uop-shape exclusions follow the existing owner ruling;
 an independent run bypassed only those obsolete assertions and passed every
 remaining original assertion. Performance acceptance is deferred under OD16.
@@ -2039,6 +2057,7 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-11 | e891 | C | C3 | source-mode `eval` and `single`, exact mode-aware CLI/census, compile audits and interactive parity | `perf-rust` | performance deferred (OD16) | — | CORRECT on `campaign/c3`: both full suites match baseline five-file failures; no verify difference; 30,318 census cases with 0 mismatches; independent reviews approve | `fb131e1`; C3 exit evidence above |
 | 2026-11-11 | e891 | J | T3 | fuse complete exact-argument calls returning an argument or constant without a physical callee frame | clean `perf-jit-c3-ref` on `d52991a` | performance deferred (OD16) | — | CORRECT: 31 workload digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; targeted suites plus `test_capi.test_eval` differ only by 8 named superseded uop assertions; 30 Rust tests, 7 leaf traces, 10 unboxed kernels; independent review approves | `rust-cpython/results/perf-bench/20261112T041852Z-perf-jit-c3-ref-vs-perf-jit-j3`, `20261112T042029Z-perf-jit-c3-ref-vs-perf-jit-j3`; `.work/tmp/j3-feature-acceptance.json` |
 | 2026-11-11 | e891 | J | T4 | whole-trace Rust cache-depth planning minimizes explicit spill/reload stencils, then stack-reference transfers; preserves greedy endpoint and forbids speculative prefetch | `perf-jit-j3` | performance deferred (OD16) | call fixture 13 → 7 stencils, float fixture 3 → 2; instruction counts only | CORRECT: 31 workload digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 8 superseded suite assertions; 32 Rust tests including 15,625 exhaustive traces; native cache, leaf and unboxing checks pass; independent source/native review approves, including disabled optimization | `rust-cpython/results/perf-bench/20261112T043205Z-perf-jit-j3-vs-perf-jit-j4`, `20261112T043347Z-perf-jit-j3-vs-perf-jit-j4`; `.work/tmp/j4-feature-acceptance.json` |
+| 2026-11-11 | e891 | J | T3 | extend frame-free calls to preguarded borrowed-argument slot getters; missing slots retry the original call before consuming inputs | `perf-jit-j4` | performance deferred (OD16) | — | CORRECT: 31 workload digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 8 superseded assertions; descriptor suite passes JIT on/off; 33 Rust tests, 5 getter traces plus prior integration checks; independent source/native review approves, including an unrelated owner with a different slot layout | `rust-cpython/results/perf-bench/20261112T044643Z-perf-jit-j4-vs-perf-jit-j5`, `20261112T044811Z-perf-jit-j4-vs-perf-jit-j5`; `.work/tmp/j5-feature-acceptance.json`, `.work/tmp/j5-descr-{on,off}.log` |
 | 2026-11-10 | 3.15.1 | R1 | R1 | CinderX steady JIT vs off | `cinderx-e48f370d` | — → 0.7960 (held-out 1.0621) | — | MEASURED | `.work/r1` |
 | 2026-11-10 | e891 | J | T1 | thread-state: executor tstate to float/int freelists (`_tlv_get_addr` 4.61% of samples, targeted chains 1.36% → 0%) | `perf-rust-jit` | timing deferred (OD14) | — | CORRECT | `campaign/t1-tstate` |
 | 2026-11-10 | e891 | J | T2 | float unboxing across binary ops and compares (float boxing 8.9-38.6% of samples; float-op chains nbody 27.5% → 26.3%, fft 11.4% → 9.5%) | `perf-rust-jit` | timing deferred (OD14); advisory 0.9962 | — | CORRECT (4 named superseded `test_capi.test_opt` uop assertions, owner ruling) | `aadaf25` |

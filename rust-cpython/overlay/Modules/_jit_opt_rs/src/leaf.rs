@@ -37,6 +37,8 @@ pub struct LeafOpcodes {
     pub heap_safe: u16,
     pub nop: u16,
     pub leaf_call: u16,
+    pub load_slot: u16,
+    pub pop_borrow: u16,
 }
 
 /// `effectful` is 0 or 1. Operand bits are opaque; Rust never dereferences them.
@@ -49,8 +51,9 @@ pub struct LeafUop {
     pub operand: u64,
 }
 
-/// A replacement copies target metadata from `source`. For a leaf call, an odd
-/// `result` selects argument `result >> 1`; an even result is a non-null object address.
+/// A replacement copies target metadata from `source`. The low two result bits
+/// select a constant address (0), argument (1), or argument slot (2). Argument
+/// indices occupy bits 2..18; slot byte offsets occupy bits 18..34.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LeafStep {
@@ -64,21 +67,27 @@ pub struct LeafStep {
 enum ResultSource {
     Argument(u16),
     Constant(u64),
+    Slot { argument: u16, offset: u16 },
 }
 
 impl ResultSource {
     fn encode(self) -> Result<u64, Inconsistent> {
         match self {
-            Self::Argument(index) => Ok((u64::from(index) << 1) | 1),
-            Self::Constant(address) if address != 0 && address & 1 == 0 => Ok(address),
+            Self::Argument(index) => Ok((u64::from(index) << 2) | 1),
+            Self::Constant(address) if address != 0 && address & 3 == 0 => Ok(address),
             Self::Constant(_) => Err(Inconsistent),
+            Self::Slot { argument, offset } if offset != 0 && offset & 7 == 0 => {
+                Ok((u64::from(offset) << 18) | (u64::from(argument) << 2) | 2)
+            }
+            Self::Slot { .. } => Err(Inconsistent),
         }
     }
 }
 
 enum BodyState {
     Entry { resumed: bool },
-    Value(ResultSource),
+    Value { result: ResultSource, borrowed: bool },
+    SlotOwner(ResultSource),
 }
 
 fn header_is_guarded(uops: &[LeafUop], at: usize, ops: &LeafOpcodes) -> bool {
@@ -126,7 +135,8 @@ fn leaf_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
                 if (ops.load_fast.contains(opcode) || ops.load_borrow.contains(opcode))
                     && uop.oparg <= argc && uop.effectful == 0 =>
             {
-                BodyState::Value(ResultSource::Argument(uop.oparg))
+                BodyState::Value { result: ResultSource::Argument(uop.oparg),
+                                   borrowed: ops.load_borrow.contains(opcode) }
             }
             BodyState::Entry { resumed: true }
                 if (opcode == ops.load_const || opcode == ops.load_const_borrow)
@@ -134,10 +144,23 @@ fn leaf_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
             {
                 let result = ResultSource::Constant(uop.operand);
                 result.encode()?;
-                BodyState::Value(result)
+                BodyState::Value { result, borrowed: opcode == ops.load_const_borrow }
             }
-            BodyState::Value(result) if opcode == ops.heap_safe => BodyState::Value(result),
-            BodyState::Value(result) if opcode == ops.return_value => {
+            BodyState::Value { result: ResultSource::Argument(argument), borrowed: true }
+                if opcode == ops.load_slot && uop.effectful == 0 =>
+            {
+                let offset = u16::try_from(uop.operand).map_err(|_| Inconsistent)?;
+                let result = ResultSource::Slot { argument, offset };
+                result.encode()?;
+                BodyState::SlotOwner(result)
+            }
+            BodyState::SlotOwner(result) if opcode == ops.pop_borrow && uop.effectful == 0 => {
+                BodyState::Value { result, borrowed: false }
+            }
+            BodyState::Value { result, .. } if opcode == ops.heap_safe => {
+                BodyState::Value { result, borrowed: false }
+            }
+            BodyState::Value { result, .. } if opcode == ops.return_value => {
                 return Ok(Some((index, result)));
             }
             _ => return Ok(None),
@@ -147,7 +170,9 @@ fn leaf_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
 }
 
 /// Fuses guarded exact-argument calls whose optimized body only returns an argument
-/// or constant. An unsupported body or allocation failure leaves the trace unchanged.
+/// or constant, or loads one slot from a borrowed argument. Slot guards must
+/// already be discharged by the interpreter optimizer. An unsupported body or
+/// allocation failure leaves the trace unchanged.
 pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
     -> Result<Option<Vec<LeafStep>>, Inconsistent>
 {
@@ -207,7 +232,7 @@ mod tests {
             function_version: 27, function_version_inline: 28, function_args: 29,
             recursion: 30, stack_space: 31, pep523: 32, resume: 33, validity: 34,
             set_ip: 35, load_const: 36, load_const_borrow: 37, heap_safe: 38,
-            nop: 39, leaf_call: 40,
+            nop: 39, leaf_call: 40, load_slot: 41, pop_borrow: 42,
         }
     }
 
@@ -243,7 +268,7 @@ mod tests {
                             effectful: 0, operand: 0x1230 };
         assert_eq!(plan_leaf_calls(&uops, &opcodes()).unwrap().unwrap()[4].result, 0x1230);
         uops[6] = uop(opcodes().load_fast.first, 1);
-        assert_eq!(plan_leaf_calls(&uops, &opcodes()).unwrap().unwrap()[4].result, 3);
+        assert_eq!(plan_leaf_calls(&uops, &opcodes()).unwrap().unwrap()[4].result, 5);
         uops[6].oparg = 2;
         assert!(plan_leaf_calls(&uops, &opcodes()).unwrap().is_none());
     }
@@ -278,6 +303,28 @@ mod tests {
     }
 
     #[test]
+    fn slot_results_require_a_borrowed_owner_and_complete_cleanup() {
+        let mut uops = identity();
+        uops.insert(7, LeafUop { opcode: opcodes().load_slot, oparg: 0,
+                                effectful: 0, operand: 16 });
+        uops.insert(8, uop(opcodes().pop_borrow, 0));
+        assert_eq!(plan_leaf_calls(&uops, &opcodes()).unwrap().unwrap()[4].result,
+                   (16 << 18) | 2);
+        for replacement in [uop(opcodes().nop, 0), uop(99, 0)] {
+            let mut incomplete = uops.clone();
+            incomplete[8] = replacement;
+            assert!(plan_leaf_calls(&incomplete, &opcodes()).unwrap().is_none());
+        }
+        let mut owned = uops.clone();
+        owned[6].opcode = opcodes().load_fast.first;
+        assert!(plan_leaf_calls(&owned, &opcodes()).unwrap().is_none());
+        for offset in [0, 3, 1 << 16] {
+            uops[7].operand = offset;
+            assert!(matches!(plan_leaf_calls(&uops, &opcodes()), Err(Inconsistent)));
+        }
+    }
+
+    #[test]
     fn ffi_rejects_without_partially_writing_a_plan() {
         let mut uops = identity();
         let mut bad = identity();
@@ -299,6 +346,6 @@ mod tests {
         assert!(output.iter().all(|step| *step == untouched));
         assert_eq!(std::mem::size_of::<LeafUop>(), 16);
         assert_eq!(std::mem::size_of::<LeafStep>(), 16);
-        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 46);
+        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 50);
     }
 }

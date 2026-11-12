@@ -2043,6 +2043,8 @@ typedef struct {
     uint16_t heap_safe;
     uint16_t nop;
     uint16_t leaf_call;
+    uint16_t load_slot;
+    uint16_t pop_borrow;
 } _PyJitLeafOpcodes;
 
 typedef struct {
@@ -2059,7 +2061,8 @@ typedef struct {
     uint64_t result;
 } _PyJitLeafStep;
 
-static_assert(sizeof(_PyJitLeafOpcodes) == 46, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
+static_assert(sizeof(_PyJitLeafOpcodes) == 50, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
+static_assert(_Alignof(PyObject) >= 4, "leaf result tags use two object-alignment bits");
 static_assert(sizeof(_PyJitLeafUop) == 16, "_PyJitLeafUop matches Rust LeafUop");
 static_assert(offsetof(_PyJitLeafUop, operand) == 8, "LeafUop operand offset matches Rust");
 static_assert(sizeof(_PyJitLeafStep) == 16, "_PyJitLeafStep matches Rust LeafStep");
@@ -2097,6 +2100,8 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         .heap_safe = _MAKE_HEAP_SAFE,
         .nop = _NOP,
         .leaf_call = _CALL_PY_LEAF,
+        .load_slot = _LOAD_ATTR_SLOT,
+        .pop_borrow = _POP_TOP_NOP,
     };
     _PyJitLeafUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
     _PyJitLeafStep *steps = PyMem_RawMalloc((size_t)length * sizeof(*steps));
@@ -2113,7 +2118,8 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
             .oparg = buffer[i].oparg,
             .effectful = (flags & (HAS_ESCAPES_FLAG | HAS_ERROR_FLAG | HAS_PERIODIC_FLAG |
                                    HAS_EVAL_BREAK_FLAG | HAS_SYNC_SP_FLAG)) != 0,
-            .operand = (opcode == _LOAD_CONST_INLINE || opcode == _LOAD_CONST_INLINE_BORROW)
+            .operand = (opcode == _LOAD_CONST_INLINE || opcode == _LOAD_CONST_INLINE_BORROW ||
+                        opcode == _LOAD_ATTR_SLOT)
                        ? buffer[i].operand0 : 0,
         };
     }

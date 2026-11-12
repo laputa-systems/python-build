@@ -37,7 +37,8 @@ pub unsafe extern "C" fn _PyJitOpt_PlanCache(
     }
 }
 
-/// Plans frame-free exact-argument leaf calls. A positive result writes that
+/// Plans frame-free exact-argument leaf calls, including preguarded slot getters.
+/// A positive result writes that
 /// many steps; 0 leaves the trace and output unchanged, and -1 rejects inconsistent
 /// descriptors. Allocation failure also leaves the trace unchanged.
 ///
