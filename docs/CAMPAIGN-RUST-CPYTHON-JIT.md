@@ -804,6 +804,36 @@ explicit container type and fresh escaping identities, forward/reverse and
 aliased results, reference counts, sole-callable finalizers, observers, code
 rebinding and cell fallback. Independent source and native review approves.
 
+**Float-call error materialization (2026-11-12).** The Rust leaf planner
+recognizes two borrowed argument loads, optional exact-float guards, one
+addition/subtraction/multiplication/division, complete borrowed-operand
+cleanup and return. It records operation identity, argument order and the
+callee arithmetic offset; the private opcode map grows from 66 to 80 bytes.
+`_CALL_PY_FLOAT_LEAF` checks exact types, call shape, executor and
+instrumentation before consumption. Successful arithmetic uses the existing
+float allocation helper and frame-free return cleanup. Existing function,
+recursion, stack-space and PEP 523 guards and return offset remain.
+
+On error the instruction leaves all four CALL inputs and the pending
+exception untouched. `prepare_for_execution` selects a dedicated
+`_MATERIALIZE_FLOAT_LEAF_ERROR` stub carrying the callee offset and operand
+order. The stub transfers callable/argument references into the already
+space-checked datastack frame, restores both borrowed arithmetic operands,
+publishes the consumed caller stack, links the child and enters tier 1's
+normal error handler. No allocation, retry, exception clearing or caller
+unboxed cleanup occurs in the stub. Its zero-output cache variant preserves
+the reconstructed child stack during the terminal transfer. Success keeps
+callee frames virtual; additional operations, locals requiring reconstruction,
+cells, free variables and resumable callees retain their ordinary calls.
+
+The native regression forces division and result-allocation failures while
+the caller is executing JIT code, checks exact traceback positions, callee
+argument identities, outer exception context and sole-callable lifetime,
+and retains return outputs to drain the float freelist before a one-shot
+allocator failure. It also checks all four operations in both argument
+orders, special float values, success finalizers, subclass fallback,
+invalidation and observer frames.
+
 **Loop globals prologue (2026-11-11).** The Rust planner in
 `Modules/_jit_opt_rs/src/loop_globals.rs` moves one root-frame globals guard
 before `_MAKE_WARM`. It requires a closed loop, an existing globals watcher,
@@ -1830,7 +1860,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | Immediate tuple/list results avoid callee frames and temporary containers; local stores fuse their decref stencil boundary. Next: lazy frame materialization for guarded arithmetic calls, then remaining T3 frame/loop work. Performance acceptance deferred under OD16 | List slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 11 shape exclusions; 44 Rust tests; six tuple/list native traces plus prior integrations pass; independent source/native review approves |
+| J | active | Guarded two-argument float arithmetic calls now materialize callee frames only on error, composing with container/selector calls, store fusion and loop-global prologues. Next: pure-loop local invariants and remaining T3 loop work. Performance acceptance deferred under OD16 | Arithmetic slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 11 shape exclusions; 46 Rust tests; eight arithmetic/order kernels, four active-JIT faults and two success callbacks; all prior integrations pass; independent source/native review approves |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | feature complete | C3 integrated with refreshed main dependencies; performance acceptance deferred under OD16. Routing/API owner reviews remain asynchronous; nothing pushed | Integrated normal and verify runs each execute 52,102 tests, with exactly the matched reference's five failing files and 0 compiler mismatches; native 11-case integration passes; C3 corpus and independent reviews remain valid |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
@@ -1870,10 +1900,11 @@ requested): CinderX 3.15 steady JIT uplift `S = 0.7960`, held-out 1.0621, beside
 M2 ≤ 0.48, M3 ≤ 0.38, M4 ≤ 0.25. T2 does not wait for an answer.
 
 J continuation builds use `.work/wt/jit-pair`; its `perf-jit-pair` stage
-was rebuilt incrementally for the store and list slices after the tuple
-slice. The tuple/store reports and suite logs were archived under
+was rebuilt incrementally for the store, list and float-call slices after
+the tuple slice. Earlier reports and suite logs were archived under
 `.work/tmp/tuple-tested-report.json`, `tuple-accepted/`,
-`glue-tested-report.json` and `glue-accepted/` before reuse. Each ledger row
+`glue-tested-report.json`, `glue-accepted/`, `list-tested-report.json`
+and `list-accepted/` before reuse. Each ledger row
 has distinct digest-result directories and source identities. The committed
 `4b66ce3` reference in `.work/wt/jit-integrate` remains unchanged.
 
@@ -1926,6 +1957,16 @@ unpack identities. Container-kind matching and complete validity-check
 consumption preserve deopt stack shape. The same pre-consumption side exits
 and finalizer-visible container fallback apply to both types. Six actual
 native traces and independent review approve; performance remains deferred.
+
+**Owner queue:** T3 float-call materialization (async review). The private
+leaf opcode map grows from 66 to 80 bytes. New `_CALL_PY_FLOAT_LEAF` and
+`_MATERIALIZE_FLOAT_LEAF_ERROR` instructions retain a separate callee error
+PC and borrowed-operand recipe while call exits still target the caller.
+The error stub consumes untouched CALL inputs, moves their references into
+an already-space-checked frame and propagates the original pending exception.
+It allocates nothing and never retries. Native allocation failure, reverse
+division, sole-callable traceback lifetime and successful finalizers all prove
+active-JIT execution; independent review approves. Performance is deferred.
 
 **Owner queue:** T4 local-store fusion (async review). New private
 `_PyJitOpt_PlanStores` ABI and `_STORE_FAST_FUSED` uop. Generated escape/local
@@ -2232,6 +2273,7 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-11 | e891 | J | T3 | remove non-escaping two-argument tuple returns and immediate unpack while retaining finalizer-visible tuple fallback | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 9 shape exclusions; 39 Rust tests; three pair traces plus all native integrations pass; independent source/native review approves | `rust-cpython/results/perf-bench/20261112T074531Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T074700Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/pair-feature-acceptance.json` |
 | 2026-11-12 | e891 | J | T4 | fuse adjacent local swap and generic decref into one stencil while preserving callback-visible state | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; 11 named shape exclusions; 42 Rust tests; four native store traces and all prior integrations pass; independent source/native/policy review approves | `rust-cpython/results/perf-bench/20261112T075752Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T075931Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/glue-feature-acceptance.json` |
 | 2026-11-12 | e891 | J | T3 | remove immediately unpacked two-argument list returns, retaining container-kind matching and finalizer-visible fallback | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 11 shape exclusions; 44 Rust tests; six tuple/list traces and all prior native integrations pass; independent source/native review approves | `rust-cpython/results/perf-bench/20261112T081044Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T081214Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/list-feature-acceptance.json` |
+| 2026-11-12 | e891 | J | T3 | fuse exact-float arithmetic calls; materialize original callee locals, operands and PC only on error | committed `perf-jit-integrated` (`4b66ce3`) | performance deferred (OD16) | — | CORRECT: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; same 11 shape exclusions; 46 Rust tests; eight operation/order kernels, four active-JIT faults and two success callbacks; prior integrations pass; independent source/native review approves | `rust-cpython/results/perf-bench/20261112T084734Z-perf-jit-integrated-vs-perf-jit-pair`, `20261112T084903Z-perf-jit-integrated-vs-perf-jit-pair`; `.work/tmp/arith-feature-acceptance.json` |
 | 2026-11-10 | 3.15.1 | R1 | R1 | CinderX steady JIT vs off | `cinderx-e48f370d` | — → 0.7960 (held-out 1.0621) | — | MEASURED | `.work/r1` |
 | 2026-11-10 | e891 | J | T1 | thread-state: executor tstate to float/int freelists (`_tlv_get_addr` 4.61% of samples, targeted chains 1.36% → 0%) | `perf-rust-jit` | timing deferred (OD14) | — | CORRECT | `campaign/t1-tstate` |
 | 2026-11-10 | e891 | J | T2 | float unboxing across binary ops and compares (float boxing 8.9-38.6% of samples; float-op chains nbody 27.5% → 26.3%, fft 11.4% → 9.5%) | `perf-rust-jit` | timing deferred (OD14); advisory 0.9962 | — | CORRECT (4 named superseded `test_capi.test_opt` uop assertions, owner ruling) | `aadaf25` |

@@ -47,6 +47,13 @@ pub struct LeafOpcodes {
     pub pair_call: u16,
     pub build_list: u16,
     pub unpack_list: u16,
+    pub guard_tos_float: u16,
+    pub guard_nos_float: u16,
+    pub float_add: u16,
+    pub float_subtract: u16,
+    pub float_multiply: u16,
+    pub float_divide: u16,
+    pub float_call: u16,
 }
 
 /// `effectful` is 0 or 1. Operand bits are opaque; Rust never dereferences them.
@@ -64,6 +71,8 @@ pub struct LeafUop {
 /// indices occupy bits 2..18; slot byte offsets occupy bits 18..34.
 /// For a leaf-globals guard, `result` holds the expected dictionary keys version.
 /// For a pair call it holds 0 for argument order or 1 for reversed order.
+/// For a float call, bits 0..16 hold the operation identity, bit 16 reverses
+/// arguments, and bits 32..64 hold the callee's arithmetic error offset.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LeafStep {
@@ -107,9 +116,83 @@ struct LeafBody {
 }
 
 #[derive(Clone, Copy)]
-enum PairOrder {
+enum ArgumentOrder {
     Forward,
     Reverse,
+}
+
+#[derive(Clone, Copy)]
+struct FloatResult {
+    operation: u16,
+    order: ArgumentOrder,
+    error_offset: u32,
+}
+
+impl FloatResult {
+    fn encode(self) -> u64 {
+        let reversed = match self.order { ArgumentOrder::Forward => 0, ArgumentOrder::Reverse => 1 };
+        u64::from(self.operation) | (reversed << 16) | (u64::from(self.error_offset) << 32)
+    }
+}
+
+enum FloatState {
+    Entry,
+    Resumed,
+    First(u16),
+    Arguments(ArgumentOrder),
+    Both(FloatResult),
+    Left(FloatResult),
+    Result(FloatResult),
+}
+
+fn float_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
+    -> Result<Option<(usize, FloatResult)>, Inconsistent>
+{
+    if uops[at].oparg != 2 {
+        return Ok(None);
+    }
+    let mut state = FloatState::Entry;
+    for (index, uop) in uops.iter().enumerate().skip(at + 3) {
+        let opcode = uop.opcode;
+        if (opcode == ops.nop || opcode == ops.set_ip) && uop.effectful == 0 {
+            continue;
+        }
+        state = match state {
+            FloatState::Entry if opcode == ops.validity && uop.effectful == 0 => FloatState::Entry,
+            FloatState::Entry if opcode == ops.resume => FloatState::Resumed,
+            FloatState::Resumed
+                if ops.load_borrow.contains(opcode) && uop.oparg < 2 && uop.effectful == 0 =>
+            {
+                FloatState::First(uop.oparg)
+            }
+            FloatState::First(first)
+                if ops.load_borrow.contains(opcode) && uop.oparg == 1 - first && uop.effectful == 0 =>
+            {
+                FloatState::Arguments(if first == 0 { ArgumentOrder::Forward } else { ArgumentOrder::Reverse })
+            }
+            FloatState::Arguments(order)
+                if (opcode == ops.guard_tos_float || opcode == ops.guard_nos_float) && uop.effectful == 0 =>
+            {
+                FloatState::Arguments(order)
+            }
+            FloatState::Arguments(order)
+                if [ops.float_add, ops.float_subtract, ops.float_multiply, ops.float_divide].contains(&opcode) =>
+            {
+                let error_offset = u32::try_from(uop.operand).map_err(|_| Inconsistent)?;
+                if error_offset == 0 {
+                    return Err(Inconsistent);
+                }
+                FloatState::Both(FloatResult { operation: opcode, order, error_offset })
+            }
+            FloatState::Both(result) if opcode == ops.pop_borrow && uop.effectful == 0 => FloatState::Left(result),
+            FloatState::Left(result) if opcode == ops.pop_borrow && uop.effectful == 0 => FloatState::Result(result),
+            FloatState::Result(result) if opcode == ops.validity && uop.effectful == 0 => FloatState::Result(result),
+            FloatState::Result(result) if opcode == ops.heap_safe => FloatState::Result(result),
+            FloatState::Result(result) if opcode == ops.return_value => return Ok(Some((index, result))),
+            _ => return Ok(None),
+        };
+    }
+    Ok(None)
 }
 
 #[derive(Clone, Copy)]
@@ -131,12 +214,12 @@ enum PairState {
     Entry,
     Resumed,
     First(u16),
-    Arguments(PairOrder),
-    Built(PairOrder, PairContainer),
-    Returned(PairOrder, PairContainer),
+    Arguments(ArgumentOrder),
+    Built(ArgumentOrder, PairContainer),
+    Returned(ArgumentOrder, PairContainer),
 }
 
-fn pair_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes) -> Option<(usize, PairOrder)> {
+fn pair_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes) -> Option<(usize, ArgumentOrder)> {
     if uops[at].oparg != 2 {
         return None;
     }
@@ -157,7 +240,7 @@ fn pair_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes) -> Option<(usize, P
             PairState::First(first)
                 if ops.load_borrow.contains(opcode) && uop.oparg == 1 - first && uop.effectful == 0 =>
             {
-                PairState::Arguments(if first == 0 { PairOrder::Forward } else { PairOrder::Reverse })
+                PairState::Arguments(if first == 0 { ArgumentOrder::Forward } else { ArgumentOrder::Reverse })
             }
             PairState::Arguments(order) if opcode == ops.build_tuple && uop.oparg == 2 => {
                 PairState::Built(order, PairContainer::Tuple)
@@ -272,7 +355,8 @@ fn leaf_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
 
 /// Fuses guarded exact-argument calls whose optimized body only returns an argument
 /// or constant, loads one slot from a borrowed argument, or returns both arguments
-/// in a tuple or list that is immediately unpacked. Slot guards must
+/// in a tuple or list that is immediately unpacked, or computes one exact-float
+/// operation with an error-only frame reconstruction recipe. Slot guards must
 /// already be discharged by the interpreter optimizer. An unsupported body or
 /// allocation failure leaves the trace unchanged. A globals-version guard is
 /// preserved before the call, checking the callee's dictionary.
@@ -308,7 +392,20 @@ pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
             steps[at].opcode = ops.nop;
             steps[at + 2] = LeafStep {
                 opcode: ops.pair_call, oparg: 2, source: (at - 1) as u32,
-                result: match order { PairOrder::Forward => 0, PairOrder::Reverse => 1 },
+                result: match order { ArgumentOrder::Forward => 0, ArgumentOrder::Reverse => 1 },
+            };
+            for step in &mut steps[at + 3..=end] {
+                step.opcode = ops.nop;
+            }
+            changed = true;
+            at = end + 1;
+            continue;
+        }
+        if let Some((end, result)) = float_body(uops, at, ops)? {
+            steps[at].opcode = ops.nop;
+            steps[at + 2] = LeafStep {
+                opcode: ops.float_call, oparg: 2, source: (at - 1) as u32,
+                result: result.encode(),
             };
             for step in &mut steps[at + 3..=end] {
                 step.opcode = ops.nop;
@@ -358,6 +455,8 @@ mod tests {
             guard_globals: 43, leaf_globals: 44,
             build_tuple: 45, unpack_two: 46, unpack_two_unique: 47, pair_call: 48,
             build_list: 49, unpack_list: 50,
+            guard_tos_float: 51, guard_nos_float: 52, float_add: 53,
+            float_subtract: 54, float_multiply: 55, float_divide: 56, float_call: 57,
         }
     }
 
@@ -488,7 +587,7 @@ mod tests {
         assert!(output.iter().all(|step| *step == untouched));
         assert_eq!(std::mem::size_of::<LeafUop>(), 16);
         assert_eq!(std::mem::size_of::<LeafStep>(), 16);
-        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 66);
+        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 80);
     }
 
     fn pair() -> Vec<LeafUop> {
@@ -576,6 +675,64 @@ mod tests {
             let mut observed = pair();
             observed.insert(index, uop(99, 0));
             assert!(plan_leaf_calls(&observed, &opcodes()).unwrap().is_none());
+        }
+    }
+
+    fn float_call() -> Vec<LeafUop> {
+        let ops = opcodes();
+        vec![uop(ops.function_version, 2), uop(ops.recursion, 2),
+             uop(ops.init.first + 2, 2), uop(ops.save_return, 4), uop(ops.push_frame, 2),
+             uop(ops.resume, 0), uop(ops.load_borrow.first, 0), uop(ops.load_borrow.first + 1, 1),
+             uop(ops.guard_tos_float, 0), uop(ops.guard_nos_float, 0),
+             LeafUop { opcode: ops.float_add, oparg: 0, effectful: 1, operand: 3 },
+             uop(ops.pop_borrow, 0), uop(ops.pop_borrow, 0), uop(ops.validity, 0),
+             uop(ops.set_ip, 0), uop(ops.heap_safe, 0), uop(ops.return_value, 0)]
+    }
+
+    #[test]
+    fn floats_keep_distinct_call_exit_and_callee_error_recipes() {
+        let ops = opcodes();
+        for operation in [ops.float_add, ops.float_subtract, ops.float_multiply, ops.float_divide] {
+            for order in [0, 1] {
+                let mut uops = float_call();
+                uops[6].oparg = order;
+                uops[7].oparg = 1 - order;
+                uops[10].opcode = operation;
+                let steps = plan_leaf_calls(&uops, &ops).unwrap().unwrap();
+                assert_eq!(steps[4], LeafStep { opcode: ops.float_call, oparg: 2, source: 1,
+                    result: u64::from(operation) | (u64::from(order) << 16) | (3 << 32) });
+                assert_eq!(steps[3].opcode, ops.save_return);
+                assert!(steps[5..].iter().all(|step| step.opcode == ops.nop));
+            }
+        }
+    }
+
+    #[test]
+    fn float_callbacks_partial_cleanup_and_extra_state_keep_real_frames() {
+        let ops = opcodes();
+        for index in [0, 1, 5, 6, 7, 10, 11, 12, 16] {
+            let mut uops = float_call();
+            uops[index].opcode = 99;
+            assert!(plan_leaf_calls(&uops, &ops).unwrap().is_none(), "index {index}");
+        }
+        for index in [6, 7, 8, 9, 11, 12, 13] {
+            let mut uops = float_call();
+            uops[index].effectful = 1;
+            assert!(plan_leaf_calls(&uops, &ops).unwrap().is_none());
+        }
+        let mut observed = float_call();
+        observed.insert(13, uop(99, 0));
+        assert!(plan_leaf_calls(&observed, &ops).unwrap().is_none());
+        let mut repeated = float_call();
+        repeated[7].oparg = 0;
+        assert!(plan_leaf_calls(&repeated, &ops).unwrap().is_none());
+        for end in 0..float_call().len() {
+            assert!(plan_leaf_calls(&float_call()[..end], &ops).unwrap().is_none());
+        }
+        for offset in [0, 1 << 32] {
+            let mut malformed = float_call();
+            malformed[10].operand = offset;
+            assert!(matches!(plan_leaf_calls(&malformed, &ops), Err(Inconsistent)));
         }
     }
 }

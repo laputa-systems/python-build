@@ -4930,6 +4930,89 @@ dummy_func(
             res = returned;
         }
 
+        tier2 op(_CALL_PY_FLOAT_LEAF, (operation/2, error_offset/2, callable, self_or_null, args[oparg] -- res)) {
+            PyFunctionObject *func = (PyFunctionObject *)PyStackRef_AsPyObjectBorrow(callable);
+            assert(PyFunction_Check(func));
+            PyCodeObject *code = (PyCodeObject *)func->func_code;
+            EXIT_IF(oparg != 2 || !PyStackRef_IsNull(self_or_null));
+            EXIT_IF(code->co_argcount != 2 || code->co_kwonlyargcount != 0);
+            EXIT_IF(code->co_ncellvars != 0 || code->co_nfreevars != 0);
+            EXIT_IF(code->co_flags & (CO_GENERATOR | CO_COROUTINE | CO_ASYNC_GENERATOR |
+                                      CO_VARARGS | CO_VARKEYWORDS));
+            EXIT_IF(!current_executor->vm_data.valid || (operation >> 17) != 0);
+            EXIT_IF(error_offset == 0 || error_offset >= (uint64_t)Py_SIZE(code));
+            uint16_t arithmetic = operation & UINT16_MAX;
+            EXIT_IF(arithmetic != _BINARY_OP_ADD_FLOAT && arithmetic != _BINARY_OP_SUBTRACT_FLOAT &&
+                    arithmetic != _BINARY_OP_MULTIPLY_FLOAT && arithmetic != _BINARY_OP_TRUEDIV_FLOAT);
+            uintptr_t iversion = FT_ATOMIC_LOAD_UINTPTR_ACQUIRE(code->_co_instrumentation_version);
+            EXIT_IF(_Py_atomic_load_uintptr_relaxed(&tstate->eval_breaker) != iversion);
+            PyObject *first = PyStackRef_AsPyObjectBorrow(args[0]);
+            PyObject *second = PyStackRef_AsPyObjectBorrow(args[1]);
+            EXIT_IF(!PyFloat_CheckExact(first) || !PyFloat_CheckExact(second));
+            unsigned int order = (operation >> 16) & 1;
+            double left = ((PyFloatObject *)(order ? second : first))->ob_fval;
+            double right = ((PyFloatObject *)(order ? first : second))->ob_fval;
+            double value;
+            STAT_INC(CALL, hit);
+            STAT_INC(BINARY_OP, hit);
+            CALL_STAT_INC(inlined_py_calls);
+            if (arithmetic == _BINARY_OP_ADD_FLOAT) {
+                value = left + right;
+            }
+            else if (arithmetic == _BINARY_OP_SUBTRACT_FLOAT) {
+                value = left - right;
+            }
+            else if (arithmetic == _BINARY_OP_MULTIPLY_FLOAT) {
+                value = left * right;
+            }
+            else {
+                if (right == 0.0) {
+                    PyErr_SetString(PyExc_ZeroDivisionError, "division by zero");
+                    ERROR_NO_POP();
+                }
+                value = left / right;
+            }
+            PyObject *result = _PyFloat_FromDoubleTstate(tstate, value);
+            if (result == NULL) {
+                ERROR_NO_POP();
+            }
+            Py_INCREF(code);
+            _PyStackRef returned = PyStackRef_FromPyObjectSteal(result);
+            _PyStackRef leaf_callable = callable;
+            _PyStackRef *leaf_args = args;
+            INPUTS_DEAD();
+            SAVE_STACK();
+            for (int i = oparg; --i >= 0; ) {
+                PyStackRef_CLOSE(leaf_args[i]);
+            }
+            PyStackRef_CLOSE(leaf_callable);
+            Py_DECREF(code);
+            RELOAD_STACK();
+            res = returned;
+        }
+
+        tier2 op(_MATERIALIZE_FLOAT_LEAF_ERROR, (error_offset/2, order/1, callable, self_or_null, args[oparg] --)) {
+            assert(oparg == 2 && PyStackRef_IsNull(self_or_null) && order <= 1);
+            assert(_PyErr_Occurred(tstate));
+            _PyInterpreterFrame *child = _PyFrame_PushUnchecked(tstate, callable, 2, frame);
+            child->localsplus[0] = args[0];
+            child->localsplus[1] = args[1];
+            /* The arithmetic failed with both borrowed operands still live.
+               Restore that stack before the normal exception unwinder runs. */
+            child->stackpointer[0] = PyStackRef_Borrow(child->localsplus[order]);
+            child->stackpointer[1] = PyStackRef_Borrow(child->localsplus[1 - order]);
+            child->stackpointer += 2;
+            INPUTS_DEAD();
+            SAVE_STACK();
+            frame = tstate->current_frame = child;
+            tstate->py_recursion_remaining--;
+            RELOAD_STACK();
+            frame->instr_ptr = _PyFrame_GetBytecode(frame) + error_offset;
+            SYNC_SP();
+            GOTO_TIER_ONE(NULL);
+            Py_UNREACHABLE();
+        }
+
         tier2 op(_CALL_PY_LEAF_PAIR, (order/1, callable, self_or_null, args[oparg] -- right, left)) {
             PyFunctionObject *func = (PyFunctionObject *)PyStackRef_AsPyObjectBorrow(callable);
             assert(PyFunction_Check(func));

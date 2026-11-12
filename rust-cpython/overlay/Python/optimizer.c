@@ -1461,7 +1461,20 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
             int popped = (_PyUop_Flags[base_opcode] & HAS_ERROR_NO_POP_FLAG) ?
                 0 : _PyUop_num_popped(base_opcode, inst->oparg);
             uint32_t error_unboxed = unboxed == NULL ? 0 : unboxed[i].error;
-            if (error_unboxed != 0) {
+            if (base_opcode == _CALL_PY_FLOAT_LEAF) {
+                assert(error_unboxed == 0);
+                current_error = next_spare;
+                int opcode = _PyUop_Caching[_MATERIALIZE_FLOAT_LEAF_ERROR].entries[0].opcode;
+                assert(opcode > 0);
+                make_exit(&buffer[next_spare], opcode, 0, false);
+                buffer[next_spare].oparg = 2;
+                buffer[next_spare].operand0 = (uint32_t)inst->operand1;
+                buffer[next_spare].operand1 = (inst->operand0 >> 16) & 1;
+                next_spare++;
+                current_error_target = -1;
+                current_popped = -1;
+            }
+            else if (error_unboxed != 0) {
                 current_error = next_spare;
                 make_stack_fixup(&buffer[next_spare], _CLEAR_UNBOXED_SLOTS_r00, error_unboxed);
                 next_spare++;
@@ -2062,6 +2075,13 @@ typedef struct {
     uint16_t pair_call;
     uint16_t build_list;
     uint16_t unpack_list;
+    uint16_t guard_tos_float;
+    uint16_t guard_nos_float;
+    uint16_t float_add;
+    uint16_t float_subtract;
+    uint16_t float_multiply;
+    uint16_t float_divide;
+    uint16_t float_call;
 } _PyJitLeafOpcodes;
 
 typedef struct {
@@ -2078,7 +2098,7 @@ typedef struct {
     uint64_t result;
 } _PyJitLeafStep;
 
-static_assert(sizeof(_PyJitLeafOpcodes) == 66, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
+static_assert(sizeof(_PyJitLeafOpcodes) == 80, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
 static_assert(_Alignof(PyObject) >= 4, "leaf result tags use two object-alignment bits");
 static_assert(sizeof(_PyJitLeafUop) == 16, "_PyJitLeafUop matches Rust LeafUop");
 static_assert(offsetof(_PyJitLeafUop, operand) == 8, "LeafUop operand offset matches Rust");
@@ -2127,6 +2147,13 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         .pair_call = _CALL_PY_LEAF_PAIR,
         .build_list = _BUILD_LIST,
         .unpack_list = _UNPACK_SEQUENCE_LIST,
+        .guard_tos_float = _GUARD_TOS_FLOAT,
+        .guard_nos_float = _GUARD_NOS_FLOAT,
+        .float_add = _BINARY_OP_ADD_FLOAT,
+        .float_subtract = _BINARY_OP_SUBTRACT_FLOAT,
+        .float_multiply = _BINARY_OP_MULTIPLY_FLOAT,
+        .float_divide = _BINARY_OP_TRUEDIV_FLOAT,
+        .float_call = _CALL_PY_FLOAT_LEAF,
     };
     _PyJitLeafUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
     _PyJitLeafStep *steps = PyMem_RawMalloc((size_t)length * sizeof(*steps));
@@ -2145,7 +2172,10 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
                                    HAS_EVAL_BREAK_FLAG | HAS_SYNC_SP_FLAG)) != 0,
             .operand = (opcode == _LOAD_CONST_INLINE || opcode == _LOAD_CONST_INLINE_BORROW ||
                         opcode == _LOAD_ATTR_SLOT || opcode == _GUARD_GLOBALS_VERSION)
-                       ? buffer[i].operand0 : 0,
+                       ? buffer[i].operand0 :
+                       (opcode == _BINARY_OP_ADD_FLOAT || opcode == _BINARY_OP_SUBTRACT_FLOAT ||
+                        opcode == _BINARY_OP_MULTIPLY_FLOAT || opcode == _BINARY_OP_TRUEDIV_FLOAT)
+                       ? uop_get_target(&buffer[i]) : 0,
         };
     }
     Py_ssize_t count = _PyJitOpt_PlanLeafCalls(uops, (size_t)length, &opcodes,
@@ -2155,7 +2185,7 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
             const _PyJitLeafStep *step = &steps[i];
             assert(step->source < (uint32_t)length);
             if (step->opcode == _CALL_PY_LEAF || step->opcode == _CALL_PY_LEAF_PAIR ||
-                step->opcode == _CHECK_LEAF_GLOBALS_VERSION) {
+                step->opcode == _CALL_PY_FLOAT_LEAF || step->opcode == _CHECK_LEAF_GLOBALS_VERSION) {
                 _PyUOpInstruction source = buffer[step->source];
                 assert(source.opcode == _CHECK_RECURSION_REMAINING);
                 buffer[i] = source;
