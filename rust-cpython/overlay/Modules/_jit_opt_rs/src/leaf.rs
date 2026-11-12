@@ -62,6 +62,9 @@ pub struct LeafOpcodes {
     pub virtual_return: u16,
     pub float_inplace_left: [u16; 4],
     pub float_inplace_right: [u16; 4],
+    pub store_fast: OpcodeRange,
+    pub pop: u16,
+    pub virtual_argument_copy: u16,
 }
 
 /// `effectful` is 0 or 1. Operand bits are opaque; Rust never dereferences them.
@@ -82,6 +85,7 @@ pub struct LeafUop {
 /// For a pair call it holds 0 for argument order or 1 for reversed order.
 /// For a float call, bits 0..16 hold the operation identity, bit 16 reverses
 /// arguments, and bits 32..64 hold the callee's arithmetic error offset.
+/// For a virtual-call begin, `result` is the minimum locals-plus extent.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LeafStep {
@@ -162,9 +166,18 @@ enum FloatState {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum VirtualValue {
     BorrowedFloat,
+    BorrowedLocal(u16),
+    ArgumentCopy,
     UniqueFloat,
     SharedFloat,
     ReallocatedOperand,
+    Null,
+}
+
+impl VirtualValue {
+    fn is_float(self) -> bool {
+        !matches!(self, Self::Null | Self::ReallocatedOperand)
+    }
 }
 
 struct VirtualChange {
@@ -176,19 +189,27 @@ struct VirtualChange {
 struct VirtualBody {
     end: usize,
     changes: Vec<VirtualChange>,
+    local_count: u32,
 }
 
 fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
     -> Result<Option<VirtualBody>, Inconsistent>
 {
     let argc = uops[at].oparg;
+    let local_count = uops.iter().skip(at + 3).take_while(|uop| uop.opcode != ops.return_value)
+        .filter(|uop| ops.load_fast.contains(uop.opcode) || ops.load_borrow.contains(uop.opcode)
+            || ops.store_fast.contains(uop.opcode))
+        .map(|uop| usize::from(uop.oparg) + 1).max().unwrap_or(0).max(usize::from(argc));
     let mut values = Vec::new();
     let mut changes = Vec::new();
+    let mut locals = Vec::new();
     if values.try_reserve_exact(uops.len()).is_err()
         || changes.try_reserve_exact(uops.len()).is_err()
+        || locals.try_reserve_exact(local_count).is_err()
     {
         return Ok(None);
     }
+    locals.resize(local_count, false);
     let mut resumed = false;
     let mut operations = 0;
     for (index, uop) in uops.iter().enumerate().skip(at + 3) {
@@ -202,14 +223,35 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
             replacement = ops.nop;
         }
         else if !resumed { return Ok(None) }
-        else if ops.load_borrow.contains(opcode) && uop.oparg < argc && uop.effectful == 0 {
-            values.push(VirtualValue::BorrowedFloat);
-            replacement = ops.virtual_argument;
+        else if (ops.load_borrow.contains(opcode) || ops.load_fast.contains(opcode)) && uop.effectful == 0 {
+            let borrowed = ops.load_borrow.contains(opcode);
+            if uop.oparg < argc {
+                values.push(if borrowed { VirtualValue::BorrowedFloat } else { VirtualValue::ArgumentCopy });
+                replacement = if borrowed { ops.virtual_argument } else { ops.virtual_argument_copy };
+            }
+            else {
+                if !locals[usize::from(uop.oparg)] { return Ok(None) }
+                values.push(if borrowed { VirtualValue::BorrowedLocal(uop.oparg) } else { VirtualValue::SharedFloat });
+                replacement = opcode;
+            }
+        }
+        else if ops.store_fast.contains(opcode) {
+            if uop.oparg < argc { return Ok(None) }
+            let Some(value) = values.pop() else { return Err(Inconsistent) };
+            if !matches!(value, VirtualValue::UniqueFloat | VirtualValue::SharedFloat)
+                || values.iter().any(|value| *value == VirtualValue::BorrowedLocal(uop.oparg))
+            {
+                return Ok(None);
+            }
+            let local = &mut locals[usize::from(uop.oparg)];
+            values.push(if *local { VirtualValue::SharedFloat } else { VirtualValue::Null });
+            *local = true;
+            replacement = opcode;
         }
         else if [ops.guard_tos_float, ops.guard_nos_float].contains(&opcode) && uop.effectful == 0 {
             let depth = if opcode == ops.guard_tos_float { 1 } else { 2 };
             if values.len() < depth { return Err(Inconsistent) }
-            if values[values.len() - depth] == VirtualValue::ReallocatedOperand { return Ok(None) }
+            if !values[values.len() - depth].is_float() { return Ok(None) }
             replacement = ops.nop;
         }
         else if [ops.float_add, ops.float_subtract, ops.float_multiply, ops.float_divide].contains(&opcode)
@@ -220,7 +262,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
             }
             let mut right = values.pop().unwrap();
             let mut left = values.pop().unwrap();
-            if left == VirtualValue::ReallocatedOperand || right == VirtualValue::ReallocatedOperand {
+            if !left.is_float() || !right.is_float() {
                 return Ok(None);
             }
             let normal = [ops.float_add, ops.float_subtract, ops.float_multiply, ops.float_divide];
@@ -238,19 +280,22 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
             values.extend([VirtualValue::UniqueFloat, left, right]);
             operations += 1;
         }
-        else if opcode == ops.pop_borrow || opcode == ops.pop_float {
+        else if opcode == ops.pop_borrow || opcode == ops.pop_float || opcode == ops.pop {
             let Some(value) = values.pop() else { return Err(Inconsistent) };
             replacement = match (opcode, value) {
-                (op, VirtualValue::BorrowedFloat) if op == ops.pop_borrow => ops.pop_borrow,
-                (op, VirtualValue::UniqueFloat | VirtualValue::SharedFloat) if op == ops.pop_float => ops.pop_float,
-                (op, VirtualValue::ReallocatedOperand) if op == ops.pop_borrow => ops.pop_float,
+                (op, VirtualValue::BorrowedFloat | VirtualValue::BorrowedLocal(_) | VirtualValue::Null)
+                    if op == ops.pop_borrow || op == ops.pop => ops.pop_borrow,
+                (op, value) if value.is_float() && (op == ops.pop_float || op == ops.pop) => ops.pop_float,
+                (op, VirtualValue::ReallocatedOperand) if op == ops.pop_borrow || op == ops.pop => ops.pop_float,
                 _ => return Ok(None),
             };
         }
         else if opcode == ops.heap_safe {
             let Some(value) = values.last_mut() else { return Err(Inconsistent) };
-            if *value == VirtualValue::ReallocatedOperand { return Ok(None) }
-            if *value == VirtualValue::BorrowedFloat { *value = VirtualValue::SharedFloat }
+            if !value.is_float() { return Ok(None) }
+            if matches!(*value, VirtualValue::BorrowedFloat | VirtualValue::BorrowedLocal(_) | VirtualValue::ArgumentCopy) {
+                *value = VirtualValue::SharedFloat;
+            }
             replacement = opcode;
         }
         else if opcode == ops.return_value {
@@ -259,7 +304,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
                 return Ok(None);
             }
             changes.push(VirtualChange { index, opcode: ops.virtual_return, oparg: 0 });
-            return Ok(Some(VirtualBody { end: index, changes }));
+            return Ok(Some(VirtualBody { end: index, changes, local_count: local_count as u32 }));
         }
         else { return Ok(None) }
         changes.push(VirtualChange { index, opcode: replacement, oparg: uop.oparg });
@@ -492,7 +537,9 @@ fn leaf_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
 /// operation with an error-only frame reconstruction recipe. Longer callback-free
 /// float bodies use a reserved operand stack and borrowed argument loads, preserving
 /// original arithmetic targets. In-place arithmetic and its NULL cleanup are
-/// normalized together to boxed arithmetic and owning cleanup. Slot guards must
+/// normalized together to boxed arithmetic and owning cleanup. Extra locals hold
+/// heap-safe floats or NULL; argument writes and live local-borrow overwrites are
+/// rejected. Slot guards must
 /// already be discharged by the interpreter optimizer. An unsupported body or
 /// allocation failure leaves the trace unchanged. A globals-version guard is
 /// preserved before the call, checking the callee's dictionary.
@@ -500,7 +547,7 @@ pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
     -> Result<Option<Vec<LeafStep>>, Inconsistent>
 {
     if uops.len() > u32::MAX as usize
-        || [ops.init, ops.load_fast, ops.load_borrow].iter().any(|range| range.first > range.last)
+        || [ops.init, ops.load_fast, ops.load_borrow, ops.store_fast].iter().any(|range| range.first > range.last)
         || uops.iter().any(|uop| uop.effectful > 1)
     {
         return Err(Inconsistent);
@@ -553,7 +600,7 @@ pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
         if let Some(body) = virtual_body(uops, at, ops)? {
             steps[at].opcode = ops.nop;
             steps[at + 2] = LeafStep { opcode: ops.virtual_begin, oparg: uops[at].oparg,
-                source: (at - 1) as u32, result: 0 };
+                source: (at - 1) as u32, result: u64::from(body.local_count) };
             for change in body.changes {
                 steps[change.index].opcode = change.opcode;
                 steps[change.index].oparg = change.oparg;
@@ -608,6 +655,7 @@ mod tests {
             managed_values: 58, load_instance: 59,
             pop_float: 60, virtual_begin: 61, virtual_argument: 62, virtual_return: 63,
             float_inplace_left: [64, 65, 66, 67], float_inplace_right: [68, 69, 70, 71],
+            store_fast: OpcodeRange { first: 72, last: 80 }, pop: 81, virtual_argument_copy: 82,
         }
     }
 
@@ -764,7 +812,7 @@ mod tests {
         assert!(output.iter().all(|step| *step == untouched));
         assert_eq!(std::mem::size_of::<LeafUop>(), 16);
         assert_eq!(std::mem::size_of::<LeafStep>(), 16);
-        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 108);
+        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 116);
     }
 
     fn pair() -> Vec<LeafUop> {
@@ -895,7 +943,7 @@ mod tests {
             uop(ops.pop_borrow, 0), uop(ops.pop_float, 0),
             uop(ops.heap_safe, 0), uop(ops.return_value, 0)]);
         let plan = plan_leaf_calls(&input, &ops).unwrap().unwrap();
-        assert_eq!(plan[4], LeafStep { opcode: ops.virtual_begin, oparg: 2, source: 1, result: 0 });
+        assert_eq!(plan[4], LeafStep { opcode: ops.virtual_begin, oparg: 2, source: 1, result: 2 });
         assert_eq!(plan[3].opcode, ops.save_return);
         assert_eq!(plan[6].opcode, ops.virtual_argument);
         assert_eq!(plan[7].opcode, ops.virtual_argument);
@@ -955,6 +1003,69 @@ mod tests {
         shared.insert(7, uop(ops.heap_safe, 0));
         shared[11].opcode = ops.float_inplace_left[0];
         assert!(plan_leaf_calls(&shared, &ops).unwrap().is_none());
+    }
+
+    #[test]
+    fn virtual_locals_preserve_nullable_cleanup_aliases_and_required_extent() {
+        let ops = opcodes();
+        let input = virtual_locals();
+        let plan = plan_leaf_calls(&input, &ops).unwrap().unwrap();
+        assert_eq!(plan[4].result, 4);
+        assert_eq!(plan[15].opcode, ops.pop_borrow);
+        assert_eq!(plan[18].opcode, ops.pop_borrow);
+        assert_eq!(plan[27].opcode, ops.pop_float);
+        assert_eq!(plan[16].opcode, ops.load_fast.first);
+        assert_eq!(plan[19].opcode, ops.load_borrow.first);
+        assert_eq!(plan[20].opcode, ops.virtual_argument);
+        assert_eq!(plan[28].opcode, ops.load_fast.first);
+        assert_eq!(plan[30].opcode, ops.virtual_return);
+        let mut large = input.clone();
+        for item in &mut large {
+            if (ops.load_fast.contains(item.opcode) || ops.load_borrow.contains(item.opcode)
+                || ops.store_fast.contains(item.opcode)) && item.oparg >= 2 {
+                item.oparg = u16::MAX - (item.oparg - 2);
+            }
+        }
+        assert_eq!(plan_leaf_calls(&large, &ops).unwrap().unwrap()[4].result, 65_536);
+    }
+
+    fn virtual_locals() -> Vec<LeafUop> {
+        let ops = opcodes();
+        let mut input = float_call()[..14].to_vec();
+        input.extend([uop(ops.store_fast.first, 2), uop(ops.pop, 0),
+            uop(ops.load_fast.first, 2), uop(ops.store_fast.first, 3), uop(ops.pop, 0),
+            uop(ops.load_borrow.first, 2), uop(ops.load_borrow.first, 0),
+            uop(ops.guard_tos_float, 0), uop(ops.guard_nos_float, 0),
+            LeafUop { opcode: ops.float_multiply, oparg: 0, effectful: 1, operand: 7 },
+            uop(ops.pop_borrow, 0), uop(ops.pop_borrow, 0),
+            uop(ops.store_fast.first, 2), uop(ops.pop, 0), uop(ops.load_fast.first, 3),
+            uop(ops.heap_safe, 0), uop(ops.return_value, 0)]);
+        input
+    }
+
+    #[test]
+    fn local_borrows_and_argument_copies_cannot_outlive_their_anchors() {
+        let ops = opcodes();
+        let mut argument_write = virtual_locals();
+        argument_write[14].oparg = 0;
+        assert!(plan_leaf_calls(&argument_write, &ops).unwrap().is_none());
+        let mut unassigned = virtual_locals();
+        unassigned[16].oparg = 4;
+        assert!(plan_leaf_calls(&unassigned, &ops).unwrap().is_none());
+        let mut borrowed = virtual_locals();
+        borrowed.insert(19, uop(ops.load_borrow.first, 2));
+        assert!(plan_leaf_calls(&borrowed, &ops).unwrap().is_none());
+        let mut shared = virtual_locals();
+        shared[16].oparg = 0;
+        assert!(plan_leaf_calls(&shared, &ops).unwrap().is_none());
+        shared.insert(17, uop(ops.heap_safe, 0));
+        let plan = plan_leaf_calls(&shared, &ops).unwrap().unwrap();
+        assert_eq!(plan[16].opcode, ops.virtual_argument_copy);
+        let mut not_unique = virtual_locals();
+        not_unique[19].opcode = ops.load_fast.first;
+        not_unique[23].opcode = ops.float_inplace_left[2];
+        not_unique[25].opcode = ops.pop_borrow;
+        assert!(plan_leaf_calls(&not_unique, &ops).unwrap().is_none());
     }
 
     #[test]

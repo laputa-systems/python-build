@@ -5006,12 +5006,13 @@ dummy_func(
             res = returned;
         }
 
-        tier2 op(_BEGIN_VIRTUAL_FLOAT_CALL, (callable, self_or_null, args[oparg] --)) {
+        tier2 op(_BEGIN_VIRTUAL_FLOAT_CALL, (required_locals/2, callable, self_or_null, args[oparg] --)) {
             PyFunctionObject *func = (PyFunctionObject *)PyStackRef_AsPyObjectBorrow(callable);
             assert(PyFunction_Check(func));
             PyCodeObject *code = (PyCodeObject *)func->func_code;
             EXIT_IF(!PyStackRef_IsNull(self_or_null));
-            EXIT_IF(code->co_argcount != oparg || code->co_nlocalsplus != oparg);
+            EXIT_IF(code->co_argcount != oparg || code->co_nlocalsplus < oparg);
+            EXIT_IF((uint32_t)code->co_nlocalsplus < required_locals);
             EXIT_IF(code->co_kwonlyargcount != 0 || code->co_ncellvars != 0 || code->co_nfreevars != 0);
             EXIT_IF(code->co_flags & (CO_GENERATOR | CO_COROUTINE | CO_ASYNC_GENERATOR |
                                        CO_VARARGS | CO_VARKEYWORDS));
@@ -5030,6 +5031,9 @@ dummy_func(
             frame->owner = FRAME_OWNED_BY_THREAD;
             frame->instr_ptr = _PyCode_CODE(code);
             frame->stackpointer = frame->localsplus + code->co_nlocalsplus;
+            for (int i = oparg; i < code->co_nlocalsplus; i++) {
+                frame->localsplus[i] = PyStackRef_NULL;
+            }
             #ifdef Py_DEBUG
             frame->stackpointer_valid = 1;
             frame->lltrace = 0;
@@ -5044,10 +5048,18 @@ dummy_func(
             value = PyStackRef_Borrow(held[2 + oparg]);
         }
 
+        tier2 op(_COPY_VIRTUAL_FLOAT_ARGUMENT, (-- value)) {
+            assert(frame == (_PyInterpreterFrame *)tstate->datastack_top);
+            _PyStackRef *held = _PyFrame_GetStackPointer(tstate->current_frame);
+            value = PyStackRef_DUP(held[2 + oparg]);
+        }
+
         tier2 op(_RETURN_VIRTUAL_FLOAT_CALL, (retval -- res)) {
             assert(frame == (_PyInterpreterFrame *)tstate->datastack_top);
             PyCodeObject *code = _PyFrame_GetCode(frame);
             int argc = code->co_argcount;
+            int locals_count = code->co_nlocalsplus;
+            _PyStackRef *locals = frame->localsplus;
             Py_INCREF(code);
             _PyStackRef returned = PyStackRef_MakeHeapSafe(retval);
             DEAD(retval);
@@ -5058,8 +5070,11 @@ dummy_func(
             RELOAD_STACK();
             _PyStackRef *held = stack_pointer;
             SAVE_STACK();
-            /* Callbacks may reuse scratch immediately; only caller storage
-               and the held code reference remain live during cleanup. */
+            /* Exact-float locals cannot run Python. Finish scratch reads
+               before function/code callbacks can reuse the reservation. */
+            for (int i = locals_count; --i >= argc; ) {
+                PyStackRef_XCLOSE(locals[i]);
+            }
             for (int i = argc; --i >= 0; ) {
                 PyStackRef_CLOSE(held[2 + i]);
             }
@@ -5078,9 +5093,10 @@ dummy_func(
             _PyStackRef *held = _PyFrame_GetStackPointer(caller);
             _PyStackRef *live_top = stack_pointer;
             int argc = _PyFrame_GetCode(frame)->co_argcount;
+            int locals_count = _PyFrame_GetCode(frame)->co_nlocalsplus;
             SAVE_STACK();
             PyStackRef_CLOSE(frame->f_executable);
-            _PyInterpreterFrame *child = _PyFrame_PushUnchecked(tstate, held[0], argc, caller);
+            _PyInterpreterFrame *child = _PyFrame_PushUnchecked(tstate, held[0], locals_count, caller);
             assert(child == frame && PyStackRef_IsNull(held[1]));
             for (int i = 0; i < argc; i++) {
                 child->localsplus[i] = held[2 + i];

@@ -2117,6 +2117,9 @@ typedef struct {
     uint16_t virtual_return;
     uint16_t float_inplace_left[4];
     uint16_t float_inplace_right[4];
+    _PyJitOpcodeRange store_fast;
+    uint16_t pop;
+    uint16_t virtual_argument_copy;
 } _PyJitLeafOpcodes;
 
 typedef struct {
@@ -2133,7 +2136,7 @@ typedef struct {
     uint64_t result;
 } _PyJitLeafStep;
 
-static_assert(sizeof(_PyJitLeafOpcodes) == 108, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
+static_assert(sizeof(_PyJitLeafOpcodes) == 116, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
 static_assert(_Alignof(PyObject) >= 4, "leaf result tags use two object-alignment bits");
 static_assert(sizeof(_PyJitLeafUop) == 16, "_PyJitLeafUop matches Rust LeafUop");
 static_assert(offsetof(_PyJitLeafUop, operand) == 8, "LeafUop operand offset matches Rust");
@@ -2199,6 +2202,9 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
                                _BINARY_OP_MULTIPLY_FLOAT_INPLACE, _BINARY_OP_TRUEDIV_FLOAT_INPLACE},
         .float_inplace_right = {_BINARY_OP_ADD_FLOAT_INPLACE_RIGHT, _BINARY_OP_SUBTRACT_FLOAT_INPLACE_RIGHT,
                                 _BINARY_OP_MULTIPLY_FLOAT_INPLACE_RIGHT, _BINARY_OP_TRUEDIV_FLOAT_INPLACE_RIGHT},
+        .store_fast = {_SWAP_FAST, _SWAP_FAST_7},
+        .pop = _POP_TOP,
+        .virtual_argument_copy = _COPY_VIRTUAL_FLOAT_ARGUMENT,
     };
     _PyJitLeafUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
     _PyJitLeafStep *steps = PyMem_RawMalloc((size_t)length * sizeof(*steps));
@@ -2263,6 +2269,7 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
                 buffer[i].operand1 = (uint32_t)(step->result >> 32);
             }
             else if (step->opcode == _LOAD_VIRTUAL_FLOAT_ARGUMENT ||
+                     step->opcode == _COPY_VIRTUAL_FLOAT_ARGUMENT ||
                      step->opcode == _RETURN_VIRTUAL_FLOAT_CALL || step->opcode == _POP_TOP_FLOAT ||
                      step->opcode == _BINARY_OP_ADD_FLOAT || step->opcode == _BINARY_OP_SUBTRACT_FLOAT ||
                      step->opcode == _BINARY_OP_MULTIPLY_FLOAT || step->opcode == _BINARY_OP_TRUEDIV_FLOAT) {
