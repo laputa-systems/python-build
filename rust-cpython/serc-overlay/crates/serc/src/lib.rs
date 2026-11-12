@@ -33,8 +33,8 @@ use std::path::Path;
 use code_object::{CodeFilename, CodeObject};
 use compiler::Compiler;
 pub use config::{
-    CompileOptions, NativeBuildProfile, OptimizationLevel, ParseOptimizationLevelError,
-    ParsePythonVersionError, PythonVersion,
+    CompileMode, CompileOptions, NativeBuildProfile, OptimizationLevel, ParseCompileModeError,
+    ParseOptimizationLevelError, ParsePythonVersionError, PythonVersion,
 };
 pub use initial_intern_state::InitialInternState;
 use ruff_text_size::{Ranged, TextRange, TextSize};
@@ -761,6 +761,7 @@ fn with_stack_reentry_bypass<T>(callback: impl FnOnce() -> T) -> T {
 /// Owns the parser output while allowing deeply nested expressions to be dropped safely.
 struct ParsedModule {
     parsed: Option<ruff_python_parser::Parsed<ruff_python_ast::ModModule>>,
+    owned: Option<(ruff_python_ast::Suite, ruff_python_ast::token::Tokens)>,
     recovered: Option<(ruff_python_ast::Suite, ruff_python_ast::token::Tokens)>,
 }
 
@@ -768,20 +769,41 @@ impl ParsedModule {
     fn new(parsed: ruff_python_parser::Parsed<ruff_python_ast::ModModule>) -> Self {
         Self {
             parsed: Some(parsed),
+            owned: None,
             recovered: None,
         }
     }
 
+    /// Wrap an expression-mode parse result in the statement suite the compiler visits.
+    fn from_suite(
+        suite: ruff_python_ast::Suite,
+        tokens: ruff_python_ast::token::Tokens,
+    ) -> Self {
+        Self {
+            parsed: None,
+            owned: Some((suite, tokens)),
+            recovered: None,
+        }
+    }
+
+    fn parsed(&self) -> &ruff_python_parser::Parsed<ruff_python_ast::ModModule> {
+        self.parsed.as_ref().expect("module parse is present")
+    }
+
+    fn unsupported_syntax_errors(&self) -> &[ruff_python_parser::UnsupportedSyntaxError] {
+        self.parsed().unsupported_syntax_errors()
+    }
+
     fn suite(&self) -> &ruff_python_ast::Suite {
-        self.recovered.as_ref().map_or_else(
-            || self.parsed.as_ref().expect("module is present").suite(),
+        self.owned.as_ref().or(self.recovered.as_ref()).map_or_else(
+            || self.parsed().suite(),
             |(suite, _)| suite,
         )
     }
 
     fn tokens(&self) -> &ruff_python_ast::token::Tokens {
-        self.recovered.as_ref().map_or_else(
-            || self.parsed.as_ref().expect("module is present").tokens(),
+        self.owned.as_ref().or(self.recovered.as_ref()).map_or_else(
+            || self.parsed().tokens(),
             |(_, tokens)| tokens,
         )
     }
@@ -798,10 +820,13 @@ impl ParsedModule {
     }
 
     fn take_suite(&mut self) -> ruff_python_ast::Suite {
-        self.recovered.take().map_or_else(
-            || self.parsed.take().expect("module is present").into_suite(),
-            |(suite, _)| suite,
-        )
+        self.owned
+            .take()
+            .or_else(|| self.recovered.take())
+            .map_or_else(
+                || self.parsed.take().expect("module is present").into_suite(),
+                |(suite, _)| suite,
+            )
     }
 }
 
@@ -846,7 +871,7 @@ impl Drop for ParsedModule {
             }
         }
 
-        if self.parsed.is_some() || self.recovered.is_some() {
+        if self.parsed.is_some() || self.owned.is_some() || self.recovered.is_some() {
             let shallow_drop = self
                 .parsed
                 .as_ref()
@@ -921,7 +946,8 @@ fn has_large_decimal_token(source: &str, tokens: &ruff_python_ast::token::Tokens
 /// CPython creates identifier objects as its PEG parser consumes names.
 fn invalid_singleton_identifier(
     source: &str,
-    parsed: &ruff_python_parser::Parsed<ruff_python_ast::ModModule>,
+    tokens: &ruff_python_ast::token::Tokens,
+    unsupported_syntax_errors: &[ruff_python_parser::UnsupportedSyntaxError],
     errors: &[ruff_python_parser::ParseError],
     version: PythonVersion,
 ) -> Option<CompileError> {
@@ -933,7 +959,7 @@ fn invalid_singleton_identifier(
         return None;
     }
     let mut statement_start = TextSize::default();
-    'tokens: for token in parsed.tokens() {
+    'tokens: for token in tokens {
         match token.kind() {
             TokenKind::Newline | TokenKind::Semi => statement_start = token.end(),
             TokenKind::Identifier => {
@@ -960,7 +986,7 @@ fn invalid_singleton_identifier(
                 }) {
                     return None;
                 }
-                for error in parsed.unsupported_syntax_errors() {
+                for error in unsupported_syntax_errors {
                     if error.range.start() > token.start() {
                         continue;
                     }
@@ -978,6 +1004,87 @@ fn invalid_singleton_identifier(
                 return Some(CompileError::InvalidIdentifier(name));
             }
             _ => {}
+        }
+    }
+    None
+}
+
+/// CPython's `single_input` accepts one simple-statement line or one compound statement.
+///
+/// Ruff parses both source modes as modules, so reject the module-only shapes before
+/// compiling and leave CPython's own diagnostic to the C compiler.
+fn validate_single_input(
+    source: &str,
+    suite: &ruff_python_ast::Suite,
+    tokens: &ruff_python_ast::token::Tokens,
+) -> Option<CompileError> {
+    fn compound_body(statement: &ruff_python_ast::Stmt) -> Option<&ruff_python_ast::Suite> {
+        match statement {
+            ruff_python_ast::Stmt::FunctionDef(statement) => Some(&statement.body),
+            ruff_python_ast::Stmt::ClassDef(statement) => Some(&statement.body),
+            ruff_python_ast::Stmt::For(statement) => Some(&statement.body),
+            ruff_python_ast::Stmt::While(statement) => Some(&statement.body),
+            ruff_python_ast::Stmt::If(statement) => Some(&statement.body),
+            ruff_python_ast::Stmt::With(statement) => Some(&statement.body),
+            ruff_python_ast::Stmt::Try(statement) => Some(&statement.body),
+            ruff_python_ast::Stmt::Match(statement) => {
+                statement.cases.first().map(|case| &case.body)
+            }
+            _ => None,
+        }
+    }
+
+    let interactive_shape = || {
+        CompileError::RequiresCpythonParser(
+            "CPython accepts one interactive statement per single-mode input",
+        )
+    };
+    if suite.is_empty() || suite.iter().filter(|statement| compound_body(statement).is_some()).count() > 1
+    {
+        return Some(interactive_shape());
+    }
+    if let Some(statement) = suite.first()
+        && let Some(body) = compound_body(statement)
+    {
+        if suite.len() != 1 {
+            return Some(interactive_shape());
+        }
+        if let Some(first) = body.first() {
+            let mut index = tokens.partition_point(|token| token.start() < first.start());
+            let inline = loop {
+                let Some(previous) = index.checked_sub(1) else {
+                    break false;
+                };
+                index = previous;
+                let kind = tokens
+                    .get(index)
+                    .expect("token index is within the token stream")
+                    .kind();
+                if kind.is_trivia() {
+                    continue;
+                }
+                break kind != ruff_python_ast::token::TokenKind::Indent;
+            };
+            if inline && !source.ends_with('\n') {
+                return Some(interactive_shape());
+            }
+        }
+        return None;
+    }
+    if suite.len() > 1 {
+        // Semicolon-separated simple statements share one logical line; an intervening
+        // logical NEWLINE starts the second interactive input CPython rejects.
+        let first = suite.first().expect("suite is nonempty");
+        let last = suite.last().expect("suite is nonempty");
+        let from = tokens.partition_point(|token| token.start() < first.start());
+        let to = tokens.partition_point(|token| token.start() < last.end());
+        if tokens
+            .iter()
+            .skip(from)
+            .take(to - from)
+            .any(|token| token.kind() == ruff_python_ast::token::TokenKind::Newline)
+        {
+            return Some(interactive_shape());
         }
     }
     None
@@ -1004,49 +1111,108 @@ fn compile_normalized(
     options
         .native_build_profile
         .validate(options.python_version)?;
+    // The interactive and expression grammars track CPython 3.16's code object shape and
+    // interactive displayhook. Earlier targets retain their existing exec-only contract.
+    if options.mode != CompileMode::Exec && options.python_version != PythonVersion::Py316 {
+        return Err(CompileError::Unsupported(
+            "eval and single compile modes require the CPython 3.16 target".to_owned(),
+        ));
+    }
     let target_version = match options.python_version {
         PythonVersion::Py312 => ruff_python_ast::PythonVersion::PY312,
         PythonVersion::Py313 => ruff_python_ast::PythonVersion::PY313,
         PythonVersion::Py314 => ruff_python_ast::PythonVersion::PY314,
         PythonVersion::Py315 | PythonVersion::Py316 => ruff_python_ast::PythonVersion::PY315,
     };
-    let parse_options = ruff_python_parser::ParseOptions::from(ruff_python_parser::Mode::Module)
+    let ruff_mode = match options.mode {
+        CompileMode::Eval => ruff_python_parser::Mode::Expression,
+        CompileMode::Exec | CompileMode::Single => ruff_python_parser::Mode::Module,
+    };
+    let parse_options = ruff_python_parser::ParseOptions::from(ruff_mode)
         .with_target_version(target_version);
     let may_depend_on_decimal_parse =
         || parse_int_max_str_digits.is_none() && may_depend_on_decimal_parse(source);
-    let parsed = ruff_python_parser::parse_unchecked(source, parse_options.clone())
-        .try_into_module()
-        .ok_or_else(|| CompileError::Internal("parser did not return a module".to_string()))?;
-    let mut parsed_module = ParsedModule::new(parsed);
-    let parsed = parsed_module
-        .parsed
-        .as_ref()
-        .expect("parsed module is present");
-    if let Some(reason) = cpython_only::grammar(parsed.suite()) {
+    let mut eval_errors = None;
+    let mut eval_unsupported = Vec::new();
+    let mut parsed_module = if options.mode == CompileMode::Eval {
+        let parsed = ruff_python_parser::parse_unchecked(source, parse_options.clone());
+        eval_errors = Some(parsed.errors().to_vec());
+        eval_unsupported = parsed.unsupported_syntax_errors().to_vec();
+        let tokens = parsed.tokens().clone();
+        let expression = match parsed.into_syntax() {
+            ruff_python_ast::Mod::Expression(module) => *module.body,
+            ruff_python_ast::Mod::Module(_) => {
+                return Err(CompileError::Internal(
+                    "expression parser returned a module".to_string(),
+                ));
+            }
+        };
+        let suite = vec![ruff_python_ast::Stmt::Expr(ruff_python_ast::StmtExpr {
+            node_index: ruff_python_ast::AtomicNodeIndex::default(),
+            range: expression.range(),
+            value: Box::new(expression),
+        })];
+        ParsedModule::from_suite(suite.into(), tokens)
+    } else {
+        let parsed = ruff_python_parser::parse_unchecked(source, parse_options.clone())
+            .try_into_module()
+            .ok_or_else(|| CompileError::Internal("parser did not return a module".to_string()))?;
+        ParsedModule::new(parsed)
+    };
+    let unsupported = if options.mode == CompileMode::Eval {
+        &eval_unsupported
+    } else {
+        parsed_module.unsupported_syntax_errors()
+    };
+    if options.mode == CompileMode::Single
+        && let Some(error) =
+            validate_single_input(source, parsed_module.suite(), parsed_module.tokens())
+    {
+        return Err(error);
+    }
+    if let Some(reason) = cpython_only::grammar(parsed_module.suite()) {
         return Err(CompileError::RequiresCpythonParser(reason));
     }
-    if let Some(reason) = cpython_only::unicode_name_escape(parsed.errors()) {
+    let initial_errors: &[ruff_python_parser::ParseError] = match &eval_errors {
+        Some(errors) => errors,
+        None => parsed_module.parsed().errors(),
+    };
+    if let Some(reason) = cpython_only::unicode_name_escape(initial_errors) {
         return Err(CompileError::RequiresCpythonParser(reason));
     }
-    if indentation::cpython_layout_error(source, parsed.tokens()) {
+    if indentation::cpython_layout_error(source, parsed_module.tokens()) {
         return Err(CompileError::RequiresCpythonParser(
             "CPython's tokenizer rejects this tab and space indentation",
         ));
     }
     // Ruff grows its parser stack for deeply nested expressions. Successful parses can
     // reuse its tokens; malformed input still uses the independent tokenizer before diagnostics.
-    if let Err(error) =
-        delimiter_nesting::validate_parsed(source, &parse_options, options.python_version, parsed)
-    {
+    let delimiters = if options.mode == CompileMode::Eval {
+        delimiter_nesting::validate(source, &parse_options, options.python_version)
+    } else {
+        delimiter_nesting::validate_parsed(
+            source,
+            &parse_options,
+            options.python_version,
+            parsed_module.parsed(),
+        )
+    };
+    if let Err(error) = delimiters {
         return Err(if may_depend_on_decimal_parse() {
             unknown_decimal_parse()
         } else {
             error
         });
     }
-    let (errors, bare_raises) = semicolon_syntax::recover(source, &parse_options, parsed);
+    let (errors, bare_raises) = match eval_errors {
+        Some(errors) => (
+            std::borrow::Cow::Owned(errors),
+            semicolon_syntax::BareRaises::default(),
+        ),
+        None => semicolon_syntax::recover(source, &parse_options, parsed_module.parsed()),
+    };
     let parse_error = errors.first();
-    if let Some(range) = indentation::first_excess(parsed.tokens())
+    if let Some(range) = indentation::first_excess(parsed_module.tokens())
         && parse_error.is_none_or(|error| range.start() <= error.location.start())
     {
         if let Some(error) = yield_syntax::before_indentation_error(
@@ -1062,18 +1228,22 @@ fn compile_normalized(
     let prefer_type_alias_error = |error| {
         type_alias_syntax::before_error(
             source,
-            parsed.suite(),
-            parsed.tokens(),
+            parsed_module.suite(),
+            parsed_module.tokens(),
             &errors,
-            parsed.unsupported_syntax_errors(),
+            unsupported,
             options.python_version,
             &error,
         )
         .unwrap_or(error)
     };
-    if let Some(error) =
-        invalid_singleton_identifier(source, parsed, &errors, options.python_version)
-    {
+    if let Some(error) = invalid_singleton_identifier(
+        source,
+        parsed_module.tokens(),
+        unsupported,
+        &errors,
+        options.python_version,
+    ) {
         return Err(error);
     }
     if let Some(error) = parse_error {
@@ -1082,26 +1252,27 @@ fn compile_normalized(
         }
         let error = if let Some(yield_error) = yield_syntax::before_parse_error(
             source,
-            parsed.tokens(),
+            parsed_module.tokens(),
             &errors,
-            parsed.unsupported_syntax_errors(),
+            unsupported,
             options.python_version,
         ) {
             yield_error
         } else if errors.len() == 1
-            && parsed.unsupported_syntax_errors().is_empty()
+            && unsupported.is_empty()
             && matches!(
                 error.error,
                 ruff_python_parser::ParseErrorType::InvalidNamedAssignmentTarget
             )
-            && is_attribute_named_expression_target(parsed.suite(), error.location)
+            && is_attribute_named_expression_target(parsed_module.suite(), error.location)
         {
             CompileError::invalid_syntax(
                 "cannot use assignment expressions with attribute",
                 error.location,
             )
-        } else if let Some((message, range)) =
-            yield_from_syntax::invalid_tuple_diagnostic(parsed, &errors)
+        } else if options.mode != CompileMode::Eval
+            && let Some((message, range)) =
+                yield_from_syntax::invalid_tuple_diagnostic(parsed_module.parsed(), &errors)
         {
             CompileError::invalid_syntax(message, range)
         } else {
@@ -1111,39 +1282,37 @@ fn compile_normalized(
     }
     if let Some(error) = yield_syntax::earlier_unsupported(
         source,
-        parsed.tokens(),
-        parsed.unsupported_syntax_errors(),
+        parsed_module.tokens(),
+        unsupported,
         options.python_version,
     ) {
         return Err(prefer_type_alias_error(error));
     }
-    if let Err(error) = yield_syntax::validate(source, parsed.tokens(), options.python_version) {
+    if let Err(error) = yield_syntax::validate(source, parsed_module.tokens(), options.python_version)
+    {
         return Err(prefer_type_alias_error(error));
     }
     decimal_literals::validate(
         source,
-        parsed.tokens(),
-        parsed.suite(),
-        parsed.unsupported_syntax_errors(),
+        parsed_module.tokens(),
+        parsed_module.suite(),
+        unsupported,
         parse_int_max_str_digits.unwrap_or(4300),
     )?;
     if options.python_version == PythonVersion::Py312 {
         // Both validators can find errors in one module; CPython reports the first.
-        let starred = python_312_starred_defaults::validate(parsed);
+        let starred = python_312_starred_defaults::validate(parsed_module.parsed());
         let paramspec = (source.contains("**") && source.contains('['))
-            .then(|| paramspec_default::validate(parsed.suite(), parsed.tokens()))
+            .then(|| paramspec_default::validate(parsed_module.suite(), parsed_module.tokens()))
             .flatten()
             .filter(|error| {
-                parsed
-                    .unsupported_syntax_errors()
-                    .first()
-                    .is_none_or(|existing| {
-                        error
-                            .range()
-                            .expect("ParamSpec diagnostic has a range")
-                            .start()
-                            < existing.range.start()
-                    })
+                unsupported.first().is_none_or(|existing| {
+                    error
+                        .range()
+                        .expect("ParamSpec diagnostic has a range")
+                        .start()
+                        < existing.range.start()
+                })
             });
         if let Some(error) = [starred, paramspec]
             .into_iter()
@@ -1153,7 +1322,7 @@ fn compile_normalized(
             return Err(error);
         }
     }
-    if let Some(error) = parsed.unsupported_syntax_errors().first() {
+    if let Some(error) = unsupported.first() {
         if may_depend_on_decimal_parse() {
             return Err(unknown_decimal_parse());
         }
@@ -1191,9 +1360,11 @@ fn compile_normalized(
         return Err(CompileError::RequiresCpythonCompiler(reason));
     }
     let mut owned_tokens = None;
+    let suppress_module_docstring = options.mode != CompileMode::Exec;
     let (optimized_body, original_scopes) = if compiler::optimization::requires_optimization(
         parsed.suite(),
         options.optimization_level,
+        suppress_module_docstring,
     ) {
         let scopes =
             compiler::OriginalScopes::analyze(source, parsed.suite(), options.python_version);
@@ -1210,6 +1381,7 @@ fn compile_normalized(
                 body,
                 options.optimization_level,
                 options.python_version,
+                suppress_module_docstring,
             )),
             Some(scopes),
         )
@@ -1229,6 +1401,7 @@ fn compile_normalized(
         original_scopes,
         options.python_version,
         options.native_build_profile,
+        options.mode,
         optimized_body.as_ref(),
     )
     .compile_module(body)?;

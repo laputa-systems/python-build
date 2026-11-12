@@ -214,6 +214,57 @@ impl fmt::Display for ParseOptimizationLevelError {
 
 impl Error for ParseOptimizationLevelError {}
 
+/// The CPython source grammar a compile request selects.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum CompileMode {
+    /// A module body, matching `compile(..., "exec")`.
+    #[default]
+    Exec,
+    /// One expression, matching `compile(..., "eval")`.
+    Eval,
+    /// One interactive input unit, matching `compile(..., "single")`.
+    Single,
+}
+
+impl fmt::Display for CompileMode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Exec => "exec",
+            Self::Eval => "eval",
+            Self::Single => "single",
+        })
+    }
+}
+
+impl FromStr for CompileMode {
+    type Err = ParseCompileModeError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "exec" => Ok(Self::Exec),
+            "eval" => Ok(Self::Eval),
+            "single" => Ok(Self::Single),
+            _ => Err(ParseCompileModeError(value.to_owned())),
+        }
+    }
+}
+
+/// An unsupported compile mode supplied to [`CompileMode::from_str`].
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ParseCompileModeError(String);
+
+impl fmt::Display for ParseCompileModeError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "unsupported compile mode {:?}; expected exec, eval, or single",
+            self.0
+        )
+    }
+}
+
+impl Error for ParseCompileModeError {}
+
 /// Configuration for compiling Python source and serializing its code objects.
 #[derive(Clone, Debug, Default)]
 pub struct CompileOptions {
@@ -223,6 +274,8 @@ pub struct CompileOptions {
     pub native_build_profile: NativeBuildProfile,
     /// The Python optimization level. Defaults to zero (no `-O` or `-OO`).
     pub optimization_level: OptimizationLevel,
+    /// The source grammar and code object shape to produce. Defaults to module execution.
+    pub mode: CompileMode,
     /// Canonical strings present before compiling. See [`InitialInternState`] for state modes.
     pub initial_intern_state: InitialInternState,
 }
@@ -562,6 +615,55 @@ mod tests {
                 .membership_for(PythonVersion::Py312, "Codec.encode"),
             None
         );
+    }
+
+    #[test]
+    fn compile_modes_default_to_exec_and_parse_explicit_values() {
+        use super::CompileMode;
+
+        assert_eq!(CompileOptions::default().mode, CompileMode::Exec);
+        for (spelling, mode) in [
+            ("exec", CompileMode::Exec),
+            ("eval", CompileMode::Eval),
+            ("single", CompileMode::Single),
+        ] {
+            assert_eq!(spelling.parse::<CompileMode>().unwrap(), mode);
+            assert_eq!(mode.to_string(), spelling);
+        }
+        for invalid in ["", "Exec", "module", "interactive"] {
+            assert!(invalid.parse::<CompileMode>().is_err());
+        }
+    }
+
+    #[test]
+    fn nonexpression_modes_require_python_316() {
+        use super::CompileMode;
+        use crate::CompileError;
+
+        for python_version in [
+            PythonVersion::Py312,
+            PythonVersion::Py313,
+            PythonVersion::Py314,
+            PythonVersion::Py315,
+        ] {
+            for mode in [CompileMode::Eval, CompileMode::Single] {
+                let options = CompileOptions {
+                    python_version,
+                    mode,
+                    ..CompileOptions::default()
+                };
+                assert!(matches!(
+                    compile_with_options("value\n", "mode.py", &options),
+                    Err(CompileError::Unsupported(_))
+                ));
+            }
+        }
+        let options = CompileOptions {
+            python_version: PythonVersion::Py316,
+            mode: CompileMode::Eval,
+            ..CompileOptions::default()
+        };
+        assert!(compile_with_options("value\n", "mode.py", &options).is_ok());
     }
 
     #[test]

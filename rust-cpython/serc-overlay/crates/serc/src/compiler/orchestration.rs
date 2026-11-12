@@ -26,7 +26,7 @@ use crate::target::local_kinds::{
     CO_FAST_LOCAL,
 };
 use crate::target::operands::{FunctionAttribute, ResumeLocation, UnaryIntrinsic};
-use crate::{CompileError, PythonVersion};
+use crate::{CompileError, CompileMode, PythonVersion};
 
 use super::constant::{DeferredConstantTarget, OutputState, fold_constant, literal_constant};
 use super::definition::clean_doc;
@@ -126,6 +126,7 @@ fn metadata_alias_scan_unnecessary(code: &CodeObject, names: &NameInterner) -> b
 #[derive(Clone, Debug)]
 pub(super) struct CodeUnit {
     pub(super) scope: Scope,
+    pub(super) mode: CompileMode,
     pub(super) scope_id: ScopeId,
     pub(super) generic_target_qualified_name: Option<String>,
     pub(super) child_qualified_name_parent: Option<String>,
@@ -318,6 +319,7 @@ impl<'source> Compiler<'source> {
             None,
             python_version,
             crate::NativeBuildProfile::Default,
+            CompileMode::Exec,
             None,
         )
     }
@@ -330,6 +332,7 @@ impl<'source> Compiler<'source> {
         original_scopes: Option<OriginalScopes>,
         python_version: crate::PythonVersion,
         native_build_profile: crate::NativeBuildProfile,
+        mode: CompileMode,
         optimized: Option<&super::optimization::OptimizedSuite>,
     ) -> Box<Self> {
         let mut context = CompilationContext::with_scopes(
@@ -346,7 +349,7 @@ impl<'source> Compiler<'source> {
         }
         let context = Rc::new(context);
         let future_flags = context.module_plan().future_flags;
-        let unit = CodeUnit::from_spec(CodeUnitSpec {
+        let mut unit = CodeUnit::from_spec(CodeUnitSpec {
             scope: Scope::Module,
             scope_id: ScopeId::MODULE,
             name: "<module>".to_string(),
@@ -358,6 +361,7 @@ impl<'source> Compiler<'source> {
             flags: future_flags,
             first_line_number: 1,
         });
+        unit.mode = mode;
         Self::new(context, unit, SymbolState::default())
     }
 
@@ -721,6 +725,20 @@ impl<'source> Compiler<'source> {
         }
         self.assembler.set_location(SourceLocation::new(0, 1, 0, 0));
         self.emit_resume(ResumeLocation::AT_FUNC_START, ResumeDepth::Zero)?;
+        // Expression mode returns the visited value directly; CPython adds no implicit
+        // None return and keeps an empty constant tuple for a bare name.
+        if self.unit.mode == CompileMode::Eval {
+            let [Stmt::Expr(expression)] = body.as_slice() else {
+                return Err(CompileError::Internal(
+                    "eval body is not one expression statement".to_string(),
+                ));
+            };
+            self.compile_expression(&expression.value)?;
+            // CPython appends the expression's RETURN_VALUE without a location.
+            self.assembler.set_location(SourceLocation::NONE);
+            self.emit(RETURN_VALUE, 0, -1)?;
+            return self.finish_expression();
+        }
         // Match the deferred annotation function's visitation order, including suites
         // omitted during lowering. Repeated cleanup visits require occurrence IDs,
         // so those modules retain their existing sequential registration path.
@@ -777,9 +795,14 @@ impl<'source> Compiler<'source> {
             }
         }
 
-        let has_docstring = matches!(body.first(), Some(Stmt::Expr(expression))
-            if expression.value.is_string_literal_expr());
-        let body = if let Some(Stmt::Expr(expression)) = body.first() {
+        // An interactive string literal is displayed, not stored as a module docstring.
+        let interactive = self.unit.mode == CompileMode::Single;
+        let has_docstring = !interactive
+            && matches!(body.first(), Some(Stmt::Expr(expression))
+                if expression.value.is_string_literal_expr());
+        let body = if interactive {
+            body
+        } else if let Some(Stmt::Expr(expression)) = body.first() {
             if let Expr::StringLiteral(string) = expression.value.as_ref() {
                 let constant =
                     self.add_constant(if self.context.python_version == PythonVersion::Py312 {
@@ -1264,8 +1287,21 @@ impl<'source> Compiler<'source> {
     }
 
     pub(super) fn finish_inner(
+        self: Box<Self>,
+        add_implicit_return: bool,
+    ) -> Result<Box<CodeObject>, CompileError> {
+        self.finish_with_options(add_implicit_return, true)
+    }
+
+    /// Finish expression mode without the implicit None return or its placeholder constant.
+    pub(super) fn finish_expression(self: Box<Self>) -> Result<Box<CodeObject>, CompileError> {
+        self.finish_with_options(false, false)
+    }
+
+    fn finish_with_options(
         mut self: Box<Self>,
         add_implicit_return: bool,
+        ensure_constant: bool,
     ) -> Result<Box<CodeObject>, CompileError> {
         for (instruction, constant) in
             std::mem::take(&mut self.output.deferred_constants_before_return)
@@ -1287,7 +1323,8 @@ impl<'source> Compiler<'source> {
             // exits for conditional predecessors before propagating locations.
             self.assembler.allow_last_no_location_block_inlining();
         }
-        if self.output.constants.is_empty()
+        if ensure_constant
+            && self.output.constants.is_empty()
             && !(self.unit.name == "<lambda>" && self.unit.flags & CO_GENERATOR != 0)
         {
             self.add_constant(Constant::None)?;
@@ -1746,6 +1783,7 @@ impl CodeUnit {
             first_line_number: spec.first_line_number,
             annotation_thunk: false,
             renames_format_parameter: false,
+            mode: CompileMode::Exec,
         }
     }
 }

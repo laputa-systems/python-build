@@ -16,7 +16,6 @@ use super::{
     PUSH_EXC_INFO, PUSH_NULL, RAISE_VARARGS, RETURN_VALUE, SEND, SET_ADD, STORE_ATTR, STORE_SLICE,
     STORE_SUBSCR, SWAP, TO_BOOL, WITH_EXCEPT_START, YIELD_VALUE,
 };
-use crate::CompileError;
 use crate::assembler::{
     Assembler, BooleanValueMarkerScan, EmittedInstruction, EmittedJump, ExceptionPolicy, Label,
     NameReturnBorrowExit, SourceLocation,
@@ -29,6 +28,7 @@ use crate::target::opcodes::{POP_ITER, RERAISE, STORE_FAST};
 use crate::target::operands::{
     BinaryIntrinsic, BinaryOperation, CommonConstant, ResumeLocation, SpecialMethod, UnaryIntrinsic,
 };
+use crate::{CompileError, CompileMode};
 
 use super::constant::{
     FirstConstant, first_literal_constant, first_suite_constant, fold_constant,
@@ -2333,6 +2333,19 @@ impl<'source> Compiler<'source> {
                 .is_some_and(|statement| self.context.is_elided_statement(statement));
         let mut next_runtime_statement = 0;
         for (index, statement) in body.iter().enumerate() {
+            // The interactive top level displays every expression statement, including
+            // ones inside compound suites; nested functions and classes keep their discard.
+            if self.unit.mode == CompileMode::Single
+                && matches!(self.unit.scope, Scope::Module)
+                && let Stmt::Expr(expression) = statement
+            {
+                self.compile_expression(&expression.value)?;
+                self.assembler
+                    .set_location(self.source_location(statement.range()));
+                self.emit_unary_intrinsic(UnaryIntrinsic::PRINT)?;
+                self.emit(POP_TOP, 0, -1)?;
+                continue;
+            }
             if legacy_protected_sync_manager_body
                 && matches!(statement, Stmt::Pass(_))
                 && next_runtime_statement <= index

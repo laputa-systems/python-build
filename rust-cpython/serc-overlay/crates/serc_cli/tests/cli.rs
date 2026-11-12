@@ -2621,3 +2621,79 @@ fn compile_matches_cpython_for_legacy_class_comprehension_cells() {
         }
     }
 }
+
+#[test]
+fn compile_modes_name_nonexec_caches_and_match_library_bytes() {
+    let directory = tempfile::tempdir().unwrap();
+    let source_path = directory.path().join("module.py");
+    let source = "value + 1\n";
+    fs_err::write(&source_path, source).unwrap();
+
+    let compile = |arguments: &[&str]| {
+        serc()
+            .arg("compile")
+            .args(arguments)
+            .args(["--python-version", "3.16"])
+            .arg(&source_path)
+            .output()
+            .unwrap()
+    };
+
+    let output = compile(&[]);
+    assert!(output.status.success(), "{output:?}");
+    let exec_cache = directory.path().join("__pycache__/module.cpython-316.pyc");
+    let exec_bytes = fs_err::read(&exec_cache).unwrap();
+
+    let output = compile(&["--quiet", "--mode", "eval"]);
+    assert!(output.status.success(), "{output:?}");
+    let eval_cache = directory
+        .path()
+        .join("__pycache__/module.cpython-316.eval.pyc");
+    let eval_bytes = fs_err::read(&eval_cache).unwrap();
+    assert_eq!(fs_err::read(&exec_cache).unwrap(), exec_bytes);
+    assert_ne!(eval_bytes, exec_bytes);
+
+    let output = compile(&["--quiet", "--mode", "single", "--optimize", "1"]);
+    assert!(output.status.success(), "{output:?}");
+    let single_cache = directory
+        .path()
+        .join("__pycache__/module.cpython-316.single.opt-1.pyc");
+    let single_bytes = fs_err::read(&single_cache).unwrap();
+
+    let filename = source_path.to_string_lossy();
+    for (mode, optimization, bytes) in [
+        (
+            serc::CompileMode::Exec,
+            serc::OptimizationLevel::Zero,
+            exec_bytes.as_slice(),
+        ),
+        (
+            serc::CompileMode::Eval,
+            serc::OptimizationLevel::Zero,
+            eval_bytes.as_slice(),
+        ),
+        (
+            serc::CompileMode::Single,
+            serc::OptimizationLevel::One,
+            single_bytes.as_slice(),
+        ),
+    ] {
+        let module = serc::compile_with_options(
+            source,
+            &filename,
+            &serc::CompileOptions {
+                python_version: serc::PythonVersion::Py316,
+                mode,
+                optimization_level: optimization,
+                ..serc::CompileOptions::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(&bytes[16..], module.marshal(), "{mode:?}");
+    }
+
+    let output = compile(&["--output-format", "json"]);
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(output.stdout, b"{\"compiled\":0,\"skipped\":1}\n");
+    assert_eq!(fs_err::read(&exec_cache).unwrap(), exec_bytes);
+}
