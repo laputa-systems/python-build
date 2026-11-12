@@ -2162,9 +2162,11 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 ## Status
 
+**Winding down 2026-11-12:** no new feature work. Last accepted `f74aad6`; final integer correctness pass is green. Retain evidence and record reboot-safe resume state.
+
 | Lane | State | Current item | Last result |
 | --- | --- | --- | --- |
-| J | active | Integer and float scalar regions share typed ownership and original-PC reconstruction; integer reuse waits for operand cleanup, and outer unboxing remains available. Next: mixed arithmetic, then broader call/lookup/allocation/loop shapes. Performance acceptance deferred under OD16 | Integer slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; 16 independently reviewed shape exclusions; 62 Rust tests; 68 new active-JIT integer/boundary/receiver/generator/allocation cases plus prior integrations and assertion-enabled tail validation; independent source/generated/native review approves |
+| J | winding down | Integer and float scalar regions share typed ownership and original-PC reconstruction; integer reuse waits for operand cleanup, and outer unboxing remains available. Next: mixed arithmetic, then broader call/lookup/allocation/loop shapes. Performance acceptance deferred under OD16 | Integer slice: 31 digests equal; 2,000 fuzz programs, 97.45% JIT coverage, 0 differences; 16 independently reviewed shape exclusions; 62 Rust tests; 68 new active-JIT integer/boundary/receiver/generator/allocation cases plus prior integrations and assertion-enabled tail validation; independent source/generated/native review approves |
 | R1 | done | — | `S = 0.7960` steady JIT vs off, held-out 1.0621; catalog below |
 | C | feature complete | C3 integrated with refreshed main dependencies; performance acceptance deferred under OD16. Routing/API owner reviews remain asynchronous; nothing pushed | Integrated normal and verify runs each execute 52,102 tests, with exactly the matched reference's five failing files and 0 compiler mismatches; native 11-case integration passes; C3 corpus and independent reviews remain valid |
 | Close | deferred | macOS only by owner ruling (2026-11-09); Linux image absent | — |
