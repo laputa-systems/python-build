@@ -15,6 +15,7 @@
 #include "pycore_opcode_utils.h"  // MAX_REAL_OPCODE
 #include "pycore_optimizer.h"     // _Py_uop_analyze_and_optimize()
 #include "pycore_pystate.h"       // _PyInterpreterState_GET()
+#include "pycore_runtime.h"
 #include "pycore_tuple.h"         // _PyTuple_FromArraySteal
 #include "pycore_unicodeobject.h" // _PyUnicode_FromASCII
 #include "pycore_uop_ids.h"
@@ -132,6 +133,9 @@ _PyOptimizer_Optimize(
 {
     _PyThreadStateImpl *_tstate = (_PyThreadStateImpl *)tstate;
     PyInterpreterState *interp = _PyInterpreterState_GET();
+    if (_Py_atomic_load_int_relaxed(&_PyRuntime.tracemalloc.config.tracing)) {
+        return 0;
+    }
     if (!interp->jit) {
         // gh-140936: It is possible that interp->jit will become false during
         // interpreter finalization. However, the specialized JUMP_BACKWARD_JIT

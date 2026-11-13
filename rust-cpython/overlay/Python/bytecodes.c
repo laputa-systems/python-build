@@ -3874,9 +3874,11 @@ dummy_func(
             assert(executor->vm_data.valid);
             assert(tstate->current_executor == NULL);
             /* If the eval breaker is set, or instrumentation is needed, then stay in tier 1.
+             * Allocation tracing also needs bytecode positions maintained by tier 1.
              * This avoids any potentially infinite loops involving _RESUME_CHECK */
             uintptr_t iversion = FT_ATOMIC_LOAD_UINTPTR_ACQUIRE(code->_co_instrumentation_version);
-            if (_Py_atomic_load_uintptr_relaxed(&tstate->eval_breaker) != iversion) {
+            if (_Py_atomic_load_uintptr_relaxed(&tstate->eval_breaker) != iversion ||
+                _Py_atomic_load_int_relaxed(&_PyRuntime.tracemalloc.config.tracing)) {
                 opcode = executor->vm_data.opcode;
                 oparg = (oparg & ~255) | executor->vm_data.oparg;
                 next_instr = this_instr;
@@ -6845,7 +6847,8 @@ dummy_func(
         }
 
         tier2 op(_CHECK_VALIDITY, (--)) {
-            DEOPT_IF(!current_executor->vm_data.valid);
+            DEOPT_IF(!current_executor->vm_data.valid ||
+                     _Py_atomic_load_int_relaxed(&_PyRuntime.tracemalloc.config.tracing));
         }
 
         tier2 pure op(_LOAD_CONST_INLINE, (ptr/4 -- value)) {
