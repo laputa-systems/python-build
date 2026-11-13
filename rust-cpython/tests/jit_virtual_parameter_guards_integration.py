@@ -222,11 +222,12 @@ for fn in (replace_two, Scale(1.0).replace_two):
     for cls in (MultiReleased, MultiInt, MultiFloat):
         for position in (0, 1):
             old = cls() if cls is MultiReleased else cls(19)
-            left = Source(([old] if position == 0 else [1.25]) + [1.25] * WARM)
-            right = Source(([old] if position == 1 else [2.5]) + [2.5] * WARM)
+            left = ([old] if position == 0 else [1.25]) + [1.25] * (COUNT - 1)
+            right = ([old] if position == 1 else [2.5]) + [2.5] * (COUNT - 1)
             del old
             value, entries, was_active = fresh(multi_released_loop)(
-                WARM + 1, fn, left, right, sys._jit.is_active)
+                COUNT, fn, left, right, sys._jit.is_active)
+            assert value == 5.0 and not left and not right
             multi_traces.append(entries)
             multi_active.append(was_active)
 
@@ -237,8 +238,8 @@ def fail_before(a, b, c):
     return b
 
 def fail_between(a, b, c):
-    first = 1.0 + 1.0
-    a = first + 1.0
+    first = c + 1.0
+    a = first + 2.0
     second = a / c
     b = second + 1.0
     return b
@@ -301,6 +302,7 @@ for skip, failures in ((0, 1), (1, 1), (1, 16)):
         raise AssertionError('allocation did not fail')
 
 def multi_allocating(a, b, c):
+    first = 1.0 + c
     a = ~c
     b = ~c
     return ~c
@@ -394,7 +396,8 @@ def main():
         assert error[3]['a'] == ['float', (1.25 if index < 2 else 3.0 if index < 4 else 0.0).hex()], error
         assert error[3]['b'] == (['int', str(2**100)] if index < 4 else ['float', (0.0).hex()]), error
     for index, error in enumerate(candidate['multi_allocation']):
-        assert error[0] == 'UNARY_INVERT', error
+        assert error[:3] == ['UNARY_INVERT', 8 if index < 2 else 11,
+                            10 if index < 2 else 13], error
         assert error[3]['a'] == (['float', (1.25).hex()] if index == 0 else ['int', str(-(2**70)-1)]), error
         assert error[3]['b'] == (['float', (2.5).hex()] if index < 2 else ['int', str(-(2**70)-1)]), error
     assert len(candidate['multi_observed']) == 8
@@ -403,7 +406,7 @@ def main():
         names = [entry[0] for entry in entries]
         begin, end = names.index('_BEGIN_VIRTUAL_CALL'), names.index('_RETURN_VIRTUAL_CALL')
         assert names[begin:end].count('_STORE_VIRTUAL_ARGUMENT_NUMERIC') == 2, names
-    for entries in candidate['multi_traces'][:26]:
+    for entries in candidate['multi_traces']:
         names = [entry[0] for entry in entries]
         begin, end = names.index('_BEGIN_VIRTUAL_CALL'), names.index('_RETURN_VIRTUAL_CALL')
         assert names[begin:end].count('_STORE_VIRTUAL_ARGUMENT_NUMERIC') >= 2, names
