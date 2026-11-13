@@ -2622,10 +2622,11 @@ typedef struct {
     uint16_t argument_swap, float_pop, int_pop, argument_float_store, argument_int_store;
     uint16_t argument_numeric_store;
     uint16_t local_float_store, local_int_store;
+    uint16_t local_float_guard, push_frame, return_value, virtual_begin, virtual_return;
 } _PyJitStoreOpcodes;
 
 typedef struct {
-    uint16_t opcode, oparg;
+    uint16_t opcode, oparg, observed_kind;
 } _PyJitStoreUop;
 
 typedef struct {
@@ -2633,18 +2634,24 @@ typedef struct {
     uint32_t source;
 } _PyJitStoreStep;
 
-static_assert(sizeof(_PyJitStoreOpcodes) == 26, "store opcode map matches Rust");
+static_assert(sizeof(_PyJitStoreOpcodes) == 36, "store opcode map matches Rust");
 static_assert(offsetof(_PyJitStoreOpcodes, local_float_store) == 22, "float store matches Rust");
 static_assert(offsetof(_PyJitStoreOpcodes, local_int_store) == 24, "int store matches Rust");
-static_assert(sizeof(_PyJitStoreUop) == 4, "store descriptors match Rust");
+static_assert(offsetof(_PyJitStoreOpcodes, local_float_guard) == 26, "guard matches Rust");
+static_assert(offsetof(_PyJitStoreOpcodes, virtual_return) == 34, "frame boundary matches Rust");
+static_assert(offsetof(_PyJitStoreUop, observed_kind) == 4, "store hint matches Rust");
+static_assert(sizeof(_PyJitStoreUop) == 6, "store descriptors match Rust");
 static_assert(sizeof(_PyJitStoreStep) == 8, "store steps match Rust");
 static_assert(offsetof(_PyJitStoreStep, source) == 4, "store source offset matches Rust");
 
 extern Py_ssize_t _PyJitOpt_PlanStores(
     const _PyJitStoreUop *, size_t, const _PyJitStoreOpcodes *, _PyJitStoreStep *, size_t);
 
+static uint16_t loop_scalar_kind(PyObject *value);
+
 static void
-fuse_local_stores(_PyUOpInstruction *buffer, int length)
+fuse_local_stores(_PyUOpInstruction *buffer, int length, _PyInterpreterFrame *frame,
+                  PyCodeObject *code)
 {
 #if !defined(Py_GIL_DISABLED) && !defined(WITH_DTRACE)
     static const _PyJitStoreOpcodes opcodes = {
@@ -2653,6 +2660,7 @@ fuse_local_stores(_PyUOpInstruction *buffer, int length)
         _STORE_VIRTUAL_ARGUMENT_FLOAT, _STORE_VIRTUAL_ARGUMENT_INT,
         _STORE_VIRTUAL_ARGUMENT_NUMERIC,
         _STORE_FAST_FUSED_FLOAT, _STORE_FAST_FUSED_INT,
+        _GUARD_LOCAL_FLOAT, _PUSH_FRAME, _RETURN_VALUE, _BEGIN_VIRTUAL_CALL, _RETURN_VIRTUAL_CALL,
     };
     _PyJitStoreUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
     _PyJitStoreStep *steps = PyMem_RawMalloc((size_t)length * sizeof(*steps));
@@ -2661,40 +2669,40 @@ fuse_local_stores(_PyUOpInstruction *buffer, int length)
         PyMem_RawFree(steps);
         return;
     }
+    bool matches = code == _PyFrame_GetCode(frame) &&
+        code == (PyCodeObject *)_PyFrame_GetFunction(frame)->func_code &&
+        code->co_nlocalsplus > 0;
+    _PyStackRef *fast = matches ? _PyFrame_GetLocalsArray(frame) : NULL;
     for (int i = 0; i < length; i++) {
-        uops[i] = (_PyJitStoreUop){buffer[i].opcode, buffer[i].oparg};
+        uint16_t opcode = buffer[i].opcode, local = buffer[i].oparg, kind = 0;
+        if (matches && opcode >= _SWAP_FAST && opcode <= _SWAP_FAST_7 &&
+            local < code->co_nlocalsplus && !PyStackRef_IsNull(fast[local]) &&
+            !PyStackRef_IsTaggedInt(fast[local]) &&
+            loop_scalar_kind(PyStackRef_AsPyObjectBorrow(fast[local])) == _GUARD_LOCAL_FLOAT) {
+            kind = _GUARD_LOCAL_FLOAT;
+        }
+        uops[i] = (_PyJitStoreUop){opcode, local, kind};
     }
     Py_ssize_t count = _PyJitOpt_PlanStores(uops, (size_t)length, &opcodes, steps, (size_t)length);
     if (count == length) {
         for (int i = 0; i < length; i++) {
             const _PyJitStoreStep *step = &steps[i];
             assert(step->source >= (uint32_t)i && step->source < (uint32_t)length);
-            if (step->opcode == _STORE_FAST_FUSED ||
-                step->opcode == _STORE_FAST_FUSED_FLOAT ||
-                step->opcode == _STORE_FAST_FUSED_INT ||
-                step->opcode == _STORE_VIRTUAL_ARGUMENT_FLOAT ||
-                step->opcode == _STORE_VIRTUAL_ARGUMENT_INT ||
-                step->opcode == _STORE_VIRTUAL_ARGUMENT_NUMERIC) {
-                assert(buffer[step->source].opcode == (step->opcode == _STORE_FAST_FUSED ||
-                    step->opcode == _STORE_VIRTUAL_ARGUMENT_NUMERIC
-                    ? _POP_TOP : step->opcode == _STORE_VIRTUAL_ARGUMENT_FLOAT ||
-                    step->opcode == _STORE_FAST_FUSED_FLOAT
-                    ? _POP_TOP_FLOAT : _POP_TOP_INT));
-                buffer[i] = buffer[step->source];
-                buffer[i].opcode = step->opcode;
-                buffer[i].oparg = step->oparg;
-            }
-            else if (step->opcode != buffer[i].opcode) {
-                assert(step->opcode == _NOP);
-                buffer[i].opcode = _NOP;
-                buffer[i].oparg = 0;
-                buffer[i].operand0 = 0;
-                buffer[i].operand1 = 0;
+            uint16_t original_opcode = buffer[i].opcode;
+            buffer[i] = buffer[step->source];
+            buffer[i].opcode = step->opcode;
+            buffer[i].oparg = step->oparg;
+            if ((step->opcode == _GUARD_LOCAL_FLOAT && step->source != (uint32_t)i) ||
+                (step->opcode == _NOP && original_opcode != _NOP)) {
+                if (step->opcode == _NOP) {
+                    buffer[i].oparg = 0;
+                }
+                buffer[i].operand0 = buffer[i].operand1 = 0;
             }
         }
     }
-    PyMem_RawFree(uops);
     PyMem_RawFree(steps);
+    PyMem_RawFree(uops);
 #endif
 }
 
@@ -2915,7 +2923,8 @@ uop_optimize(
         length = guard_loop_locals(buffer, length, frame,
                                    (PyCodeObject *)_tstate->jit_tracer_state->initial_state.code,
                                    curr_stackentries);
-        fuse_local_stores(buffer, length);
+        fuse_local_stores(buffer, length, frame,
+                          (PyCodeObject *)_tstate->jit_tracer_state->initial_state.code);
     }
     OPT_HIST(effective_trace_length(buffer, length), optimized_trace_length_hist);
     _PyUOpInstruction *output = &_tstate->jit_tracer_state->uop_array[0];
