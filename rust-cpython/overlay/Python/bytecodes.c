@@ -3205,6 +3205,20 @@ dummy_func(
             DEAD(owner);
         }
 
+        tier2 op(_LOAD_ATTR_INSTANCE_VALUE_CHECKED, (offset/1, owner -- attr, o)) {
+            PyObject *owner_o = PyStackRef_AsPyObjectBorrow(owner);
+            assert(Py_TYPE(owner_o)->tp_dictoffset < 0);
+            assert(Py_TYPE(owner_o)->tp_flags & Py_TPFLAGS_INLINE_VALUES);
+            EXIT_IF(!FT_ATOMIC_LOAD_UINT8(_PyObject_InlineValues(owner_o)->valid));
+            PyObject **value_ptr = (PyObject **)(((char *)owner_o) + offset);
+            PyObject *attr_o = FT_ATOMIC_LOAD_PTR_ACQUIRE(*value_ptr);
+            EXIT_IF(attr_o == NULL);
+            attr = PyStackRef_FromPyObjectNew(attr_o);
+            STAT_INC(LOAD_ATTR, hit);
+            o = owner;
+            DEAD(owner);
+        }
+
         macro(LOAD_ATTR_INSTANCE_VALUE) =
             unused/1 + // Skip over the counter
             _RECORD_TOS_TYPE +

@@ -2656,6 +2656,44 @@ extern Py_ssize_t _PyJitOpt_PlanStores(
     const _PyJitStoreUop *, size_t, const _PyJitStoreOpcodes *, _PyJitStoreStep *, size_t);
 
 static uint16_t loop_scalar_kind(PyObject *value);
+typedef struct { uint16_t opcode; uint32_t target; } _PyJitAttributeUop;
+typedef struct { uint16_t check, load, checked, nop, virtual_begin, virtual_return; } _PyJitAttributeOpcodes;
+static_assert(sizeof(_PyJitAttributeUop) == 8 && offsetof(_PyJitAttributeUop, target) == 4, "attribute input layout");
+static_assert(sizeof(_PyJitAttributeOpcodes) == 12, "attribute opcodes layout");
+static_assert(offsetof(_PyJitAttributeOpcodes, virtual_return) == 10, "attribute boundary layout");
+extern Py_ssize_t _PyJitOpt_PlanAttributeLoads(const _PyJitAttributeUop *, size_t,
+    const _PyJitAttributeOpcodes *, uint16_t *, size_t);
+
+static void
+specialize_attribute_loads(_PyUOpInstruction *buffer, int length)
+{
+#if !defined(Py_GIL_DISABLED) && !defined(WITH_DTRACE)
+    const _PyJitAttributeOpcodes ops = {_CHECK_MANAGED_OBJECT_HAS_VALUES,
+        _LOAD_ATTR_INSTANCE_VALUE, _LOAD_ATTR_INSTANCE_VALUE_CHECKED, _NOP,
+        _BEGIN_VIRTUAL_CALL, _RETURN_VIRTUAL_CALL};
+    _PyJitAttributeUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
+    uint16_t *steps = PyMem_RawMalloc((size_t)length * sizeof(*steps));
+    if (uops != NULL && steps != NULL) {
+        for (int i = 0; i < length; i++) {
+            uint16_t opcode = buffer[i].opcode;
+            uint32_t target = opcode == ops.check || opcode == ops.load ? uop_get_target(&buffer[i]) : 0;
+            uops[i] = (_PyJitAttributeUop){opcode, target};
+        }
+        if (_PyJitOpt_PlanAttributeLoads(uops, (size_t)length, &ops, steps, (size_t)length) == length) {
+            for (int i = 0; i < length; i++) {
+                buffer[i].opcode = steps[i];
+                if (steps[i] == _NOP && uops[i].opcode != _NOP) {
+                    buffer[i].oparg = 0;
+                    buffer[i].operand0 = buffer[i].operand1 = 0;
+                }
+            }
+        }
+    }
+    PyMem_RawFree(steps);
+    PyMem_RawFree(uops);
+#endif
+}
+
 
 static void
 specialize_stores(_PyUOpInstruction *buffer, int length, _PyInterpreterFrame *frame,
@@ -2938,6 +2976,7 @@ uop_optimize(
         length = guard_loop_locals(buffer, length, frame,
                                    (PyCodeObject *)_tstate->jit_tracer_state->initial_state.code,
                                    curr_stackentries);
+        specialize_attribute_loads(buffer, length);
         specialize_stores(buffer, length, frame,
                           (PyCodeObject *)_tstate->jit_tracer_state->initial_state.code);
     }

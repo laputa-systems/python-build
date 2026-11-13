@@ -5,6 +5,7 @@ mod cache;
 mod loop_globals;
 mod store;
 mod loop_types;
+mod attributes;
 
 use std::mem::MaybeUninit;
 use std::slice;
@@ -379,4 +380,30 @@ fn exit_stubs_ffi_uninitialized_and_atomic() {
     // SAFETY: initialized descriptor and separate writable output.
     assert_eq!(unsafe { _PyJitOpt_PlanExitStubs(bad.as_ptr(), 1, sentinel.as_mut_ptr(), 4) }, -1);
     assert_eq!(sentinel, [77; 4]);
+}
+
+/// Plans adjacent instance loads with matching original bytecode targets. A positive
+/// result writes a complete plan; zero preserves output, and -1 rejects inconsistent
+/// descriptors. Allocation failure and short output capacity preserve output.
+///
+/// # Safety
+/// Inputs must point to initialized live descriptors and one generated opcode map.
+/// Output must be separate, aligned writable storage for `capacity` opcode IDs.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn _PyJitOpt_PlanAttributeLoads(
+    uops: *const attributes::AttributeUop, length: usize,
+    opcodes: *const attributes::AttributeOpcodes,
+    output: *mut u16, capacity: usize,
+) -> isize {
+    // SAFETY: the caller supplies live aligned input descriptors and opcode map.
+    let (uops, opcodes) = unsafe { (slice::from_raw_parts(uops, length), &*opcodes) };
+    match attributes::plan(uops, opcodes) {
+        Ok(Some(plan)) if plan.len() <= capacity && plan.len() <= isize::MAX as usize => {
+            // SAFETY: capacity was checked and the caller supplies separate writable output.
+            unsafe { std::ptr::copy_nonoverlapping(plan.as_ptr(), output, plan.len()) };
+            plan.len() as isize
+        }
+        Ok(_) => 0,
+        Err(Inconsistent) => -1,
+    }
 }
