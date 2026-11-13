@@ -143,6 +143,7 @@ CLIMB_SUPERSEDED_UOP_ASSERTIONS = frozenset({
     "test.test_capi.test_opt.TestUopsOptimization.test_func_version_guarded_on_change",
     "test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_locked_propagates",
     "test.test_capi.test_opt.TestUopsOptimization.test_int_inplace_chain_propagation",
+    "test.test_capi.test_opt.TestUopsOptimization.test_load_attr_instance_value",
     "test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_optimized_immortal",
     "test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_not_optimized_for_owned",
     "test.test_capi.test_opt.TestUopsOptimization.test_record_bound_method_exact_args",
