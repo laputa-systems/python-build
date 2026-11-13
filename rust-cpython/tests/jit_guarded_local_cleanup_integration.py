@@ -46,6 +46,23 @@ def loop(source, a, b):
         x = a + b
     return x
 
+def null_loop(source, active):
+    for index in range(len(source) + 1):
+        was_active = active()
+        if index:
+            x = source.pop()
+        remaining = len(source)
+    return x, was_active, remaining
+
+def null_case():
+    warm, _, remaining = null_loop([1.0] * WARM, sys._jit.is_active)
+    assert remaining == 0
+    snapshot = trace(null_loop)
+    source = [3.25]
+    value, entered, remaining = null_loop(source, sys._jit.is_active)
+    assert remaining == len(source)
+    return [warm, value, entered, len(source), snapshot, null_loop.__code__.co_varnames.index('x')]
+
 def run(kind):
     global EVENTS
     EVENTS = []
@@ -73,6 +90,7 @@ for setter in (sys.settrace, sys.setprofile):
     loop([1.0] * 3, 1.0, 2.0)
     setter(None)
 print(json.dumps({'old': old, 'subclass': subclass, 'refdelta': refdelta,
+                  'null': null_case(),
                   'nonfloat': nonfloat, 'observers': observers,
                   'store_pc': [i.offset for i in dis.get_instructions(loop) if i.opname == 'STORE_FAST' and i.argval == 'x'][-1],
                   'local': loop.__code__.co_varnames.index('x')}))
@@ -94,6 +112,7 @@ def main():
     args = parser.parse_args()
     candidate, off, noopt = run(True, True), run(False, True), run(True, False)
     for result in (candidate, off, noopt):
+        assert result['null'][:2] == [1.0, 3.25] and result['null'][3] == 0, result['null']
         for name in ('old', 'subclass'):
             value, events, _, remaining = result[name]
             assert value == 9.0 and remaining == 0, (name, result[name])
@@ -114,6 +133,12 @@ def main():
         else:
             assert not pairs, pairs
             assert any(entry[0] == '_STORE_FAST_FUSED' and entry[1] == local for entry in entries), entries
+    assert candidate['null'][2], candidate['null']
+    null_entries, null_local = candidate['null'][4:]
+    null_pair = any(first[0] == '_GUARD_LOCAL_FLOAT' and first[1] == null_local and
+                    second[0] == '_STORE_FAST_FUSED_FLOAT' and second[1] == null_local
+                    for first, second in zip(null_entries, null_entries[1:]))
+    assert null_pair == (args.expect == 'candidate'), null_entries
     print('OK guarded local cleanup and interpreter controls')
 
 
