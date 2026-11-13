@@ -4904,6 +4904,15 @@ dummy_func(
             assert(PyFunction_Check(func));
             PyCodeObject *code = (PyCodeObject *)func->func_code;
             int has_self = !PyStackRef_IsNull(self_or_null);
+            /* Bit 63 marks virtual execution only for argument-kind results;
+               constant addresses retain every bit. */
+            int virtual_identity = (result & 3) == 1 && (result >> 63);
+            if (virtual_identity) {
+                DEOPT_IF((result & ~(UINT64_C(1) << 63)) != 1 || oparg != 0 || !has_self);
+                DEOPT_IF(frame != (_PyInterpreterFrame *)tstate->datastack_top);
+                DEOPT_IF(Py_REFCNT(func) <= 1);
+                DEOPT_IF(tstate->py_recursion_remaining <= 2);
+            }
             DEOPT_IF(code->co_argcount != oparg + has_self);
             DEOPT_IF(code->co_kwonlyargcount != 0);
             DEOPT_IF(code->co_flags & (CO_GENERATOR | CO_COROUTINE | CO_ASYNC_GENERATOR |

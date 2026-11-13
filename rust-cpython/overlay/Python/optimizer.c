@@ -2178,6 +2178,7 @@ typedef struct {
     uint16_t unary_invert;
     uint16_t virtual_argument_swap;
     uint16_t bound_method_init;
+    uint16_t swap_two;
 } _PyJitLeafOpcodes;
 
 typedef struct {
@@ -2194,7 +2195,8 @@ typedef struct {
     uint64_t result;
 } _PyJitLeafStep;
 
-static_assert(sizeof(_PyJitLeafOpcodes) == 164, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
+static_assert(sizeof(_PyJitLeafOpcodes) == 166, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
+static_assert(offsetof(_PyJitLeafOpcodes, swap_two) == 164, "LeafOpcodes swap_two offset matches Rust");
 static_assert(_Alignof(PyObject) >= 4, "leaf result tags use two object-alignment bits");
 static_assert(sizeof(_PyJitLeafUop) == 16, "_PyJitLeafUop matches Rust LeafUop");
 static_assert(offsetof(_PyJitLeafUop, operand) == 8, "LeafUop operand offset matches Rust");
@@ -2281,6 +2283,7 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         .unary_invert = _UNARY_INVERT,
         .virtual_argument_swap = _SWAP_VIRTUAL_ARGUMENT,
         .bound_method_init = _INIT_CALL_BOUND_METHOD_EXACT_ARGS,
+        .swap_two = _SWAP_2,
     };
     _PyJitLeafUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
     _PyJitLeafStep *steps = PyMem_RawMalloc(UOP_MAX_TRACE_LENGTH * sizeof(*steps));

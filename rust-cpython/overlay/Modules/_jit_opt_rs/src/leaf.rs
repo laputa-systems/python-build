@@ -83,6 +83,7 @@ pub struct LeafOpcodes {
     pub unary_invert: u16,
     pub virtual_argument_swap: u16,
     pub bound_method_init: u16,
+    pub swap_two: u16,
 }
 
 impl LeafOpcodes {
@@ -145,6 +146,8 @@ pub struct LeafUop {
 /// select a constant address (0), argument (1), argument slot (2), or guarded
 /// inline instance value (3). Argument
 /// indices occupy bits 2..18; slot byte offsets occupy bits 18..34.
+/// Argument-kind leaf results may set bit 63 for a guarded zero-argument bound
+/// identity call inside a virtual frame. Other result tags retain all their bits.
 /// For a leaf-globals guard, `result` holds the expected dictionary keys version.
 /// For a pair call it holds 0 for argument order or 1 for reversed order.
 /// For a float call, bits 0..16 hold the operation identity, bit 16 reverses
@@ -269,6 +272,7 @@ enum VirtualValue {
     ReplacedNumericArgument,
     ReallocatedOperand,
     Null,
+    IdentityCopy(u16),
 }
 
 impl VirtualValue {
@@ -304,7 +308,7 @@ impl VirtualValue {
             Self::Scalar(proven, _) if proven.implies(kind) => Some(self),
             Self::Scalar(proven, ownership) if kind.implies(proven) => Some(Self::Scalar(kind, ownership)),
             Self::Scalar(_, _) => None,
-            Self::BorrowedReceiver | Self::ManagedReceiver | Self::ManagedArgument(_) | Self::ReplacedArgument(_) | Self::ReplacedNumericArgument | Self::ReallocatedOperand | Self::Null => None,
+            Self::BorrowedReceiver | Self::ManagedReceiver | Self::ManagedArgument(_) | Self::ReplacedArgument(_) | Self::ReplacedNumericArgument | Self::ReallocatedOperand | Self::Null | Self::IdentityCopy(_) => None,
         }
     }
 }
@@ -314,6 +318,7 @@ struct VirtualChange {
     index: usize,
     opcode: u16,
     oparg: u16,
+    result: Option<u64>,
 }
 
 #[derive(PartialEq, Eq)]
@@ -370,8 +375,13 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
     let mut operations = 0;
     let mut pending_cleanup: u8 = 0;
     let mut numeric_arguments = [None; 2];
+    let mut nested_header = false;
     for (index, uop) in uops.iter().enumerate().skip(at + 3) {
         let opcode = uop.opcode;
+        if nested_header && ![ops.nop, ops.set_ip, ops.validity, ops.stack_space,
+            ops.recursion, ops.function_args, ops.pep523, ops.save_return, ops.leaf_call].contains(&opcode) {
+            return Ok(None);
+        }
         if pending_cleanup != 0 && ![ops.nop, ops.set_ip, ops.validity,
             ops.pop_borrow, ops.pop_float, ops.pop_int, ops.pop].contains(&opcode)
         {
@@ -425,7 +435,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
             if u32::from(uop.oparg) < argc {
                 if bound && uop.oparg == 0 { return Ok(None) }
                 if values.iter().any(|value| matches!(value,
-                    VirtualValue::BorrowedArgument(index) | VirtualValue::ManagedArgument(index) | VirtualValue::CopiedArgument(index) |
+                    VirtualValue::BorrowedArgument(index) | VirtualValue::ManagedArgument(index) | VirtualValue::CopiedArgument(index) | VirtualValue::IdentityCopy(index) |
                     VirtualValue::Scalar(_, ScalarOwnership::BorrowedArgument(index) | ScalarOwnership::ArgumentCopy(index))
                         if *index == uop.oparg))
                 {
@@ -461,6 +471,35 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                 *local = Some(kind);
                 replacement = opcode;
             }
+        }
+        else if opcode == ops.swap_two && uop.effectful == 0 && uop.oparg == 2 {
+            if values.len() < 2 { return Err(Inconsistent) }
+            let len = values.len();
+            values.swap(len - 1, len - 2);
+            replacement = opcode;
+        }
+        else if [ops.function_version, ops.function_version_inline].contains(&opcode) && uop.effectful == 0 {
+            if uop.oparg != 0 || values.len() < 2 || values[values.len() - 2] != VirtualValue::OwnedUnknown
+                || !values[values.len() - 1].is_attribute_owner() { return Ok(None) }
+            nested_header = true;
+            replacement = opcode;
+        }
+        else if nested_header && [ops.stack_space, ops.recursion, ops.function_args, ops.pep523, ops.save_return].contains(&opcode) && uop.effectful == 0 {
+            replacement = opcode;
+        }
+        else if opcode == ops.leaf_call && nested_header && uop.oparg == 0 && uop.operand == 1 {
+            let next = uops.iter().skip(index + 1).find(|next| ![ops.nop, ops.set_ip, ops.validity].contains(&next.opcode));
+            if !next.is_some_and(|next| next.opcode == ops.pop) { return Ok(None) }
+            let Some(owner) = values.pop() else { return Err(Inconsistent) };
+            let root = match owner {
+                VirtualValue::BorrowedArgument(i) | VirtualValue::ManagedArgument(i) => i,
+                VirtualValue::BorrowedReceiver | VirtualValue::ManagedReceiver if bound => 0,
+                _ => return Ok(None),
+            };
+            if values.pop() != Some(VirtualValue::OwnedUnknown) { return Ok(None) }
+            values.push(VirtualValue::IdentityCopy(root));
+            nested_header = false;
+            replacement = opcode;
         }
         else if let Some((kind, depth)) = ops.virtual_guard(opcode) {
             if uop.effectful != 0 { return Ok(None) }
@@ -572,6 +611,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                 (op, VirtualValue::ReplacedArgument(kind))
                     if op == ops.pop_borrow || op == ops.scalar_pop(kind) || op == ops.pop => ops.scalar_pop(kind),
                 (_, VirtualValue::ReplacedNumericArgument) => ops.pop,
+                (op, VirtualValue::IdentityCopy(_)) if op == ops.pop => ops.pop,
                 (op, VirtualValue::ReallocatedOperand) if op == ops.pop_borrow || op == ops.pop => ops.pop_float,
                 _ => return Ok(None),
             };
@@ -590,13 +630,13 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                 || !matches!(values[0], VirtualValue::Scalar(_, ScalarOwnership::Fresh | ScalarOwnership::Shared)) {
                 return Ok(None);
             }
-            changes.push(VirtualChange { index, opcode: ops.virtual_return, oparg: 0 });
+            changes.push(VirtualChange { index, opcode: ops.virtual_return, oparg: 0, result: None });
             return Ok(Some(VirtualBody { end: index, changes, local_count: local_count as u32,
                 shape: if bound { CallShape::Bound } else { CallShape::Standalone },
                 numeric_arguments, guards }));
         }
         else { return Ok(None) }
-        changes.push(VirtualChange { index, opcode: replacement, oparg: uop.oparg });
+        changes.push(VirtualChange { index, opcode: replacement, oparg: uop.oparg, result: if opcode == ops.leaf_call { Some((1u64 << 63) | 1) } else { None } });
     }
     Ok(None)
 }
@@ -833,6 +873,18 @@ fn leaf_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
     Ok(None)
 }
 
+fn project_steps(projected: &mut [LeafUop], steps: &[LeafStep],
+                 range: std::ops::RangeInclusive<usize>, ops: &LeafOpcodes) {
+    for index in range {
+        let step = steps[index];
+        let uop = &mut projected[index];
+        uop.opcode = step.opcode;
+        uop.oparg = step.oparg;
+        if step.opcode == ops.nop { uop.effectful = 0; }
+        if step.opcode == ops.leaf_call { uop.operand = step.result; }
+    }
+}
+
 /// Fuses guarded exact-argument calls whose optimized body only returns an argument
 /// or constant, loads one slot from a borrowed argument, or returns both arguments
 /// in a tuple or list that is immediately unpacked, or computes one exact-float
@@ -845,7 +897,10 @@ fn leaf_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
 /// numeric entry guards; local stores reject live local borrows.
 /// Virtual attribute reads retain type and storage guards on borrowed argument
 /// owners, preserving slot identity through managed storage checks. Copied generic
-/// owners are unsupported. Leaf-slot guards must already be discharged by the
+/// owners are unsupported. Closed zero-argument bound identity calls may borrow
+/// an argument root and immediately close their owned result copy. Runtime guards
+/// preserve logical recursion depth and prevent callable cleanup from finalizing.
+/// Leaf-slot guards must already be discharged by the
 /// interpreter optimizer. An unsupported body or
 /// allocation failure leaves the trace unchanged. A globals-version guard is
 /// preserved before the call, checking the callee's dictionary.
@@ -866,16 +921,18 @@ pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
         steps.push(LeafStep { opcode: uop.opcode, oparg: uop.oparg,
                               source: index as u32, result: 0 });
     }
+    let mut projected = Vec::new();
+    if projected.try_reserve_exact(uops.len()).is_err() { return Ok(None) }
+    projected.extend_from_slice(uops);
     let mut changed = false;
     let mut guards = Vec::new();
-    let mut at = 0;
-    while at + 2 < uops.len() {
+    for at in (0..uops.len().saturating_sub(2)).rev() {
+        let uops = projected.as_slice();
         if !ops.init.contains(uops[at].opcode)
             || uops[at + 1].opcode != ops.save_return
             || uops[at + 2].opcode != ops.push_frame
             || !header_is_guarded(uops, at, ops)
         {
-            at += 1;
             continue;
         }
         if let Some((end, order)) = pair_body(uops, at, ops) {
@@ -888,7 +945,7 @@ pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
                 step.opcode = ops.nop;
             }
             changed = true;
-            at = end + 1;
+            project_steps(&mut projected, &steps, at..=end, ops);
             continue;
         }
         if let Some((end, result)) = float_body(uops, at, ops)? {
@@ -901,7 +958,7 @@ pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
                 step.opcode = ops.nop;
             }
             changed = true;
-            at = end + 1;
+            project_steps(&mut projected, &steps, at..=end, ops);
             continue;
         }
         let virtual_call = if header_is_bound_method(uops, at, ops) {
@@ -925,7 +982,9 @@ pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
         };
         if let Some(body) = virtual_call {
             if guards.try_reserve_exact(body.guards.len()).is_err() { return Ok(None) }
+            let added = body.guards.len();
             guards.extend(body.guards);
+            guards.rotate_right(added);
             let numeric_shape = match body.numeric_arguments {
                 [None, None] => 0,
                 [Some(argument), None] => (u32::from(argument) + 1) << 1,
@@ -945,13 +1004,13 @@ pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
             for change in body.changes {
                 steps[change.index].opcode = change.opcode;
                 steps[change.index].oparg = change.oparg;
+                if let Some(result) = change.result { steps[change.index].result = result; }
             }
             changed = true;
-            at = body.end + 1;
+            project_steps(&mut projected, &steps, at..=body.end, ops);
             continue;
         }
         let Some(body) = leaf_body(uops, at, ops)? else {
-            at += 1;
             continue;
         };
         if let Some(version) = body.globals_version {
@@ -969,7 +1028,7 @@ pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
             step.opcode = ops.nop;
         }
         changed = true;
-        at = body.end + 1;
+        project_steps(&mut projected, &steps, at..=body.end, ops);
     }
     if !changed { return Ok(None) }
     if guards.is_empty() { return Ok(Some(steps)) }
@@ -1018,12 +1077,132 @@ mod tests {
             float_add_int: 101, guard_tos_exact_int: 102,
             unary_negative: 103, unary_negative_float_inplace: 104, unary_invert: 105,
             virtual_argument_swap: 106,
-            bound_method_init: 107,
+            bound_method_init: 107, swap_two: 108,
         }
     }
 
     fn uop(opcode: u16, oparg: u16) -> LeafUop {
         LeafUop { opcode, oparg, effectful: 0, operand: 0 }
+    }
+
+    fn nested_identity() -> Vec<LeafUop> {
+        let o = opcodes();
+        vec![uop(o.function_version, 2), uop(o.recursion, 2),
+            uop(o.init.first, 2), uop(o.save_return, 4), uop(o.push_frame, 2),
+            uop(o.resume, 0), uop(o.load_borrow.first + 1, 1),
+            uop(o.type_version, 0), uop(o.managed_values, 0),
+            LeafUop { operand: 16, ..uop(o.load_const, 0) }, uop(o.swap_two, 2),
+            uop(o.function_version, 0), uop(o.stack_space, 0), uop(o.recursion, 0),
+            uop(o.init.first, 0), uop(o.save_return, 4), uop(o.push_frame, 0),
+            uop(o.resume, 0), uop(o.load_borrow.first, 0), uop(o.heap_safe, 0),
+            uop(o.return_value, 0), uop(o.validity, 0), uop(o.pop, 0),
+            uop(o.load_borrow.first, 0), uop(o.load_borrow.first + 1, 1),
+            LeafUop { effectful: 1, operand: 7, ..uop(o.float_add, 0) },
+            uop(o.pop_float, 0), uop(o.pop_float, 0), uop(o.heap_safe, 0),
+            uop(o.return_value, 0)]
+    }
+
+    #[test]
+    fn nested_identity_composes_source_cache_and_guards() {
+        let o = opcodes();
+        let input = nested_identity();
+        let plan = plan_leaf_calls(&input, &o).unwrap().unwrap();
+        let begin = plan.iter().find(|s| s.opcode == o.virtual_begin).unwrap();
+        assert_eq!(begin.source, 1);
+        let leaf = plan.iter().find(|s| s.opcode == o.leaf_call).unwrap();
+        assert_eq!((leaf.source, leaf.result), (13, (1u64 << 63) | 1));
+        assert!(plan.iter().any(|s| s.source == 22 && s.opcode == o.pop));
+        assert_eq!(plan.iter().filter(|s| s.source == 25 && [o.guard_nos_float, o.guard_tos_float].contains(&s.opcode)).map(|s| s.opcode).collect::<Vec<_>>(), vec![o.guard_nos_float, o.guard_tos_float]);
+        let mut two = input.clone();
+        two.extend(input);
+        let plan = plan_leaf_calls(&two, &o).unwrap().unwrap();
+        assert_eq!(plan.iter().filter(|s| s.opcode == o.virtual_begin).count(), 2);
+        let positions: Vec<_> = plan.iter().filter(|s| [o.guard_nos_float, o.guard_tos_float].contains(&s.opcode)).map(|s| s.source).collect();
+        assert_eq!(positions, vec![25, 25, 55, 55]);
+    }
+
+    #[test]
+    fn nested_identity_rejects_other_shapes() {
+        let o = opcodes();
+        for (index, replacement) in [(18, uop(o.load_const_borrow, 0)),
+            (14, uop(o.init.first, 1)), (6, uop(o.load_fast.first + 1, 1)),
+            (22, uop(o.pop_borrow, 0)), (11, uop(o.function_version, 1))] {
+            let mut input = nested_identity();
+            input[index] = replacement;
+            if index == 18 { input[index].operand = 16; }
+            let plan = plan_leaf_calls(&input, &o).unwrap();
+            assert!(!plan.unwrap_or_default().iter().any(|s| s.opcode == o.virtual_begin), "index {index}");
+        }
+    }
+
+    #[test]
+    fn nested_identity_refuses_callbacks_and_live_copy_uses() {
+        let o = opcodes();
+        let mut effectful = nested_identity();
+        effectful[7].effectful = 1;
+        let mut replace_live = nested_identity();
+        replace_live[22] = uop(o.store_fast.first + 1, 1);
+        let mut non_discard = nested_identity();
+        non_discard[22] = uop(o.load_borrow.first, 0);
+        for input in [effectful, replace_live, non_discard] {
+            let plan = plan_leaf_calls(&input, &o).unwrap().unwrap();
+            assert!(!plan.iter().any(|step| step.opcode == o.virtual_begin));
+            assert!(plan.iter().filter(|step| step.opcode == o.leaf_call)
+                .all(|step| step.result >> 63 == 0));
+        }
+        let mut owned_cleanup = nested_identity();
+        owned_cleanup[22].effectful = 1;
+        let plan = plan_leaf_calls(&owned_cleanup, &o).unwrap().unwrap();
+        assert!(plan.iter().any(|step| step.source == 22 && step.opcode == o.pop));
+        assert!(plan.iter().any(|step| step.opcode == o.virtual_begin));
+    }
+
+    fn nested_fields() -> Vec<LeafUop> {
+        let o = opcodes();
+        let mut input = nested_identity()[..23].to_vec();
+        for index in [0, 1, 2, 4] { input[index].oparg = 4; }
+        for argument in [0, 1] {
+            input.extend([uop(o.load_borrow.first + argument, argument),
+                uop(o.managed_values, 0),
+                LeafUop { operand: 24, ..uop(o.load_instance, 0) },
+                uop(o.pop_borrow, 0)]);
+        }
+        input.extend([LeafUop { effectful: 1, operand: 7, ..uop(o.float_add, 0) },
+            uop(o.pop_float, 0), uop(o.pop_float, 0),
+            uop(o.store_fast.first + 2, 2), uop(o.pop, 0),
+            uop(o.load_fast.first + 2, 2), uop(o.heap_safe, 0),
+            uop(o.store_fast.first + 3, 3), uop(o.pop, 0),
+            uop(o.load_fast.first + 3, 3), uop(o.heap_safe, 0),
+            uop(o.return_value, 0)]);
+        input
+    }
+
+    #[test]
+    fn nested_identity_keeps_inferred_shape_and_both_numeric_entry_guards() {
+        let o = opcodes();
+        let plan = plan_leaf_calls(&nested_fields(), &o).unwrap().unwrap();
+        let begin = plan.iter().find(|step| step.opcode == o.virtual_begin).unwrap();
+        assert_eq!(begin.result as u32, (1 << 31) | 4);
+        assert_eq!((begin.result >> 32) as u32, (1 << 31) | (2 << 1) | (3 << 16));
+        assert_eq!(plan.iter().find(|step| step.opcode == o.leaf_call).unwrap().result,
+                   (1u64 << 63) | 1);
+        let mut bound = nested_fields();
+        bound.insert(0, uop(o.bound_method_init, 4));
+        let plan = plan_leaf_calls(&bound, &o).unwrap().unwrap();
+        let begin = plan.iter().find(|step| step.opcode == o.virtual_begin).unwrap();
+        assert_eq!(begin.result as u32, 5);
+        assert_eq!((begin.result >> 32) as u32, (1 << 31) | (2 << 1) | (3 << 16) | 1);
+    }
+
+    #[test]
+    fn projection_preserves_unabsorbed_inner_leaf_cache_and_source() {
+        let o = opcodes();
+        let mut input = nested_identity();
+        input[22] = uop(o.load_borrow.first, 0);
+        let plan = plan_leaf_calls(&input, &o).unwrap().unwrap();
+        assert!(!plan.iter().any(|step| step.opcode == o.virtual_begin));
+        let inner = plan.iter().find(|step| step.opcode == o.leaf_call).unwrap();
+        assert_eq!((inner.source, inner.result), (13, 1));
     }
 
     fn identity() -> Vec<LeafUop> {
@@ -1175,7 +1354,8 @@ mod tests {
         assert!(output.iter().all(|step| *step == untouched));
         assert_eq!(std::mem::size_of::<LeafUop>(), 16);
         assert_eq!(std::mem::size_of::<LeafStep>(), 16);
-        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 164);
+        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 166);
+        assert_eq!(std::mem::offset_of!(LeafOpcodes, swap_two), 164);
     }
 
     fn pair() -> Vec<LeafUop> {
