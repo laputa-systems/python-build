@@ -106,12 +106,13 @@ def main():
         assert candidate[name][1][0][4], candidate[name]
         entries = candidate[name][2]
         local = candidate['local']
+        pairs = [(first, second) for first, second in zip(entries, entries[1:])
+                 if first[0] == '_GUARD_LOCAL_FLOAT' and first[1] == local and
+                    second[0] == '_STORE_FAST_FUSED_FLOAT' and second[1] == local]
         if args.expect == 'candidate':
-            assert any(entry[0] == '_GUARD_LOCAL_FLOAT' and entry[1] == local and
-                       any(other[0] == '_STORE_FAST_FUSED_FLOAT' and other[1] == local
-                           for other in entries[i + 1:])
-                       for i, entry in enumerate(entries)), entries
+            assert len(pairs) == 2, entries
         else:
+            assert not pairs, pairs
             assert any(entry[0] == '_STORE_FAST_FUSED' and entry[1] == local for entry in entries), entries
     print('OK guarded local cleanup and interpreter controls')
 
