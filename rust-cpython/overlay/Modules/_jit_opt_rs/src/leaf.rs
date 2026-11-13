@@ -257,6 +257,7 @@ enum ScalarOwnership {
 enum VirtualValue {
     BorrowedReceiver,
     ManagedReceiver,
+    ManagedArgument(u16),
     OwnedUnknown,
     BorrowedArgument(u16),
     CopiedArgument(u16),
@@ -269,8 +270,8 @@ enum VirtualValue {
 }
 
 impl VirtualValue {
-    fn is_receiver(self) -> bool {
-        matches!(self, Self::BorrowedReceiver | Self::ManagedReceiver)
+    fn is_attribute_owner(self) -> bool {
+        matches!(self, Self::BorrowedReceiver | Self::ManagedReceiver | Self::BorrowedArgument(_) | Self::ManagedArgument(_))
     }
 
     fn scalar_is_proven(self, kind: ScalarKind, arguments: &[Option<ScalarKind>]) -> bool {
@@ -301,7 +302,7 @@ impl VirtualValue {
             Self::Scalar(proven, _) if proven.implies(kind) => Some(self),
             Self::Scalar(proven, ownership) if kind.implies(proven) => Some(Self::Scalar(kind, ownership)),
             Self::Scalar(_, _) => None,
-            Self::BorrowedReceiver | Self::ManagedReceiver | Self::ReplacedArgument(_) | Self::ReplacedNumericArgument | Self::ReallocatedOperand | Self::Null => None,
+            Self::BorrowedReceiver | Self::ManagedReceiver | Self::ManagedArgument(_) | Self::ReplacedArgument(_) | Self::ReplacedNumericArgument | Self::ReallocatedOperand | Self::Null => None,
         }
     }
 }
@@ -413,7 +414,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
             if u32::from(uop.oparg) < argc {
                 if bound && uop.oparg == 0 { return Ok(None) }
                 if values.iter().any(|value| matches!(value,
-                    VirtualValue::BorrowedArgument(index) | VirtualValue::CopiedArgument(index) |
+                    VirtualValue::BorrowedArgument(index) | VirtualValue::ManagedArgument(index) | VirtualValue::CopiedArgument(index) |
                     VirtualValue::Scalar(_, ScalarOwnership::BorrowedArgument(index) | ScalarOwnership::ArgumentCopy(index))
                         if *index == uop.oparg))
                 {
@@ -466,13 +467,19 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
             && uop.effectful == 0
         {
             let Some(owner) = values.last_mut() else { return Err(Inconsistent) };
-            if !owner.is_receiver() { return Ok(None) }
-            if opcode == ops.managed_values { *owner = VirtualValue::ManagedReceiver }
+            if !owner.is_attribute_owner() { return Ok(None) }
+            if opcode == ops.managed_values {
+                *owner = match *owner {
+                    VirtualValue::BorrowedReceiver | VirtualValue::ManagedReceiver => VirtualValue::ManagedReceiver,
+                    VirtualValue::BorrowedArgument(index) | VirtualValue::ManagedArgument(index) => VirtualValue::ManagedArgument(index),
+                    _ => unreachable!(),
+                };
+            }
             replacement = opcode;
         }
         else if [ops.load_slot, ops.load_instance].contains(&opcode) && uop.effectful == 0 {
             let Some(owner) = values.pop() else { return Err(Inconsistent) };
-            if !owner.is_receiver() || (opcode == ops.load_instance && owner != VirtualValue::ManagedReceiver) {
+            if !owner.is_attribute_owner() || (opcode == ops.load_instance && !matches!(owner, VirtualValue::ManagedReceiver | VirtualValue::ManagedArgument(_))) {
                 return Ok(None);
             }
             values.extend([VirtualValue::OwnedUnknown, owner]);
@@ -547,7 +554,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
             if opcode == ops.pop_borrow && uop.effectful != 0 { return Ok(None) }
             let Some(value) = values.pop() else { return Err(Inconsistent) };
             replacement = match (opcode, value) {
-                (op, VirtualValue::BorrowedReceiver | VirtualValue::ManagedReceiver | VirtualValue::Null |
+                (op, VirtualValue::BorrowedReceiver | VirtualValue::ManagedReceiver | VirtualValue::BorrowedArgument(_) | VirtualValue::ManagedArgument(_) | VirtualValue::Null |
                     VirtualValue::Scalar(_, ScalarOwnership::Borrowed | ScalarOwnership::BorrowedArgument(_) | ScalarOwnership::BorrowedLocal(_)))
                     if op == ops.pop_borrow || op == ops.pop => ops.pop_borrow,
                 (op, VirtualValue::Scalar(kind, _)) if op == ops.scalar_pop(kind) || op == ops.pop => ops.scalar_pop(kind),
@@ -823,8 +830,10 @@ fn leaf_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
 /// heap-safe exact numbers or NULL. Parameter stores require numeric old values
 /// and no live argument borrow. Up to two unproved old parameters may get
 /// numeric entry guards; local stores reject live local borrows.
-/// Slot guards must
-/// already be discharged by the interpreter optimizer. An unsupported body or
+/// Virtual attribute reads retain type and storage guards on borrowed argument
+/// owners, preserving slot identity through managed storage checks. Copied generic
+/// owners are unsupported. Leaf-slot guards must already be discharged by the
+/// interpreter optimizer. An unsupported body or
 /// allocation failure leaves the trace unchanged. A globals-version guard is
 /// preserved before the call, checking the callee's dictionary.
 pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
@@ -1670,8 +1679,68 @@ mod tests {
             }
             let mut large = input.clone();
             large[2].oparg = u16::MAX;
-            assert_eq!(plan_leaf_calls(&large, &ops).unwrap().unwrap()[4].result,
+            large.insert(0, LeafUop { opcode: ops.bound_method_init, oparg: u16::MAX, effectful: 1, operand: 0 });
+            assert_eq!(plan_leaf_calls(&large, &ops).unwrap().unwrap()[5].result,
                        (1 << 32) | 65_536);
+        }
+    }
+
+    #[test]
+    fn argument_owner_does_not_hide_bound_method_shape() {
+        let ops = opcodes();
+        let mut input = bound_float_call(true);
+        input[2].oparg = 3;
+        assert!(virtual_body(&input, 2, &ops, false).unwrap().is_some());
+        assert!(virtual_body(&input, 2, &ops, true).unwrap().is_some());
+        let standalone = plan_leaf_calls(&input, &ops).unwrap().unwrap();
+        assert_eq!(standalone[4].result >> 32 & 1, 0);
+        input.insert(0, LeafUop { opcode: ops.bound_method_init, oparg: 3, effectful: 1, operand: 0 });
+        let bound = plan_leaf_calls(&input, &ops).unwrap().unwrap();
+        assert_eq!(bound[5].result >> 32 & 1, 1);
+        let end = input.len() - 2;
+        input.splice(end..end, [uop(ops.store_fast.first, 0), uop(ops.pop, 0),
+            uop(ops.load_borrow.first, 0)]);
+        assert!(plan_leaf_calls(&input, &ops).unwrap().is_none());
+    }
+
+    #[test]
+    fn virtual_argument_owners_keep_identity_and_refuse_unproved_storage() {
+        let ops = opcodes();
+        for bound in [false, true] {
+            for managed in [false, true] {
+                let mut input = bound_float_call(managed);
+                input[2].oparg = 2;
+                input[6].oparg = 1;
+                let body = virtual_body(&input, 2, &ops, bound).unwrap().unwrap();
+                for (index, original) in input.iter().enumerate() {
+                    if [ops.type_version, ops.managed_values, ops.load_slot, ops.load_instance].contains(&original.opcode) {
+                        assert!(body.changes.iter().any(|change| change.index == index && change.opcode == original.opcode));
+                    }
+                }
+                let mut copied = input.clone();
+                copied[6].opcode = ops.load_fast.first;
+                assert!(virtual_body(&copied, 2, &ops, bound).unwrap().is_none());
+                let mut effectful = input.clone();
+                effectful[7].effectful = 1;
+                assert!(virtual_body(&effectful, 2, &ops, bound).unwrap().is_none());
+                if managed {
+                    let mut unknown = input.clone();
+                    unknown[8].opcode = ops.nop;
+                    assert!(virtual_body(&unknown, 2, &ops, bound).unwrap().is_none());
+                }
+                let load = input.iter().position(|u| u.opcode == ops.load_slot || u.opcode == ops.load_instance).unwrap();
+                let mut reassigned = input.clone();
+                reassigned[2].oparg = 4;
+                reassigned.splice(load + 1..load + 1, [uop(ops.load_borrow.first, 2),
+                    uop(ops.load_borrow.first, 3), uop(ops.guard_tos_float, 0),
+                    uop(ops.guard_nos_float, 0),
+                    LeafUop { opcode: ops.float_add, oparg: 0, effectful: 1, operand: 13 },
+                    uop(ops.pop_borrow, 0), uop(ops.pop_borrow, 0),
+                    uop(ops.store_fast.first, 1), uop(ops.pop, 0)]);
+                assert!(virtual_body(&reassigned, 2, &ops, bound).unwrap().is_none());
+                reassigned[load + 8].oparg = 2;
+                assert!(virtual_body(&reassigned, 2, &ops, bound).unwrap().is_some());
+            }
         }
     }
 
