@@ -6,6 +6,7 @@ import sys
 
 PROGRAM = r'''
 import _opcode
+import _testcapi
 import dis
 import gc
 import json
@@ -124,6 +125,16 @@ def owners():
     assert not source and EVENTS == [['STORE_SUBSCR', WARM]], EVENTS
     return [list(EVENTS), entered, trace(own)]
 
+def reftracer():
+    source = [[1.0] for _ in range(WARM)]
+    _testcapi.start_counting_list_destroys()
+    try:
+        own(source, 0.5, sys._jit.is_active)
+    finally:
+        destroyed = _testcapi.stop_counting_list_destroys()
+    assert not source and destroyed >= WARM, destroyed
+    return destroyed
+
 def controls():
     values = []
     for old in (None, True, 7, 'old', object()):
@@ -147,7 +158,7 @@ def controls():
 
 print(json.dumps(dict(old=finalizer(Old), subclass=finalizer(FloatSubclass),
                       aliases=aliases(), bounds=bounds_case(), owners=owners(),
-                      controls=controls())))
+                      controls=controls(), reftracer=reftracer())))
 '''
 
 
@@ -167,6 +178,7 @@ def main():
     on, off, noopt = run(True, True), run(False, True), run(True, False)
     for result in (on, off, noopt):
         assert result['controls'] == on['controls']
+        assert result['reftracer'] >= 7000
         assert result['aliases'][:2] == on['aliases'][:2]
         assert result['bounds'][0][:2] == off['bounds'][0][:2]
         assert result['owners'][0] == off['owners'][0]
