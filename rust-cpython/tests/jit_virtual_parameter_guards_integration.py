@@ -84,6 +84,13 @@ def allocating(a, b, c):
     a = ~b
     return ~a
 
+def replace_two(a, b, c):
+    first = c + c
+    a = first + c
+    b = a + c
+    a = b + c
+    return a / c
+
 class Scale:
     __slots__ = ('value',)
     def __init__(self, value):
@@ -92,10 +99,29 @@ class Scale:
         first = b + self.value
         a = first + b
         return a / c
+    def replace_two(self, a, b, c):
+        first = c + self.value
+        a = first + c
+        b = a + c
+        a = b + c
+        return a / c
 
 results = []
 traces = []
 active = []
+multi_results = []
+multi_traces = []
+multi_active = []
+for fn in (replace_two, Scale(1.0).replace_two):
+    for a, b in ((1.25, 2**100), (2**100, 1.25), (True, 1.25),
+                 (1.25, True), (None, 1.25), (1.25, None),
+                 (2**100, 2**100)):
+        caller = fresh(loop)
+        source = Source([(a, b, 1.0)] + [(1.25, 2.5, 1.0)] * (COUNT - 1))
+        value, entries, was_active = caller(COUNT, fn, source, sys._jit.is_active)
+        multi_results.append([encode(value), source.calls, len(source.values)])
+        multi_traces.append(entries)
+        multi_active.append(was_active)
 for fn in (replace, Scale(2.5).replace):
     for old in (1.25, int(str(2**100)), float('nan'), True, None):
         caller = fresh(loop)
@@ -168,6 +194,75 @@ except ValueError:
 results.append([encode(value), source.calls, len(source.values), len(events)])
 traces.append(entries)
 
+multi_events = []
+class MultiReleased:
+    def __del__(self):
+        frame = sys._getframe(1)
+        inst = next(i for i in dis.get_instructions(frame.f_code) if i.offset == frame.f_lasti)
+        multi_events.append([frame.f_code.co_name, inst.opname, inst.argval,
+            {k: encode(v) for k,v in frame.f_locals.items()}])
+
+class MultiInt(int):
+    __del__ = MultiReleased.__del__
+
+class MultiFloat(float):
+    __del__ = MultiReleased.__del__
+
+def multi_released_loop(n, fn, left, right, active):
+    entries = []
+    was_active = False
+    for index in range(n):
+        was_active = active()
+        value = fn(left.pop(), right.pop(), 1.0)
+        if index == WARM - 1:
+            entries = trace(multi_released_loop)
+    return value, entries, was_active
+
+for fn in (replace_two, Scale(1.0).replace_two):
+    for cls in (MultiReleased, MultiInt, MultiFloat):
+        for position in (0, 1):
+            old = cls() if cls is MultiReleased else cls(19)
+            left = Source(([old] if position == 0 else [1.25]) + [1.25] * WARM)
+            right = Source(([old] if position == 1 else [2.5]) + [2.5] * WARM)
+            del old
+            value, entries, was_active = fresh(multi_released_loop)(
+                WARM + 1, fn, left, right, sys._jit.is_active)
+            multi_traces.append(entries)
+            multi_active.append(was_active)
+
+def fail_before(a, b, c):
+    first = 1.0 / c
+    a = first + 1.0
+    b = a + 1.0
+    return b
+
+def fail_between(a, b, c):
+    first = 1.0 + 1.0
+    a = first + 1.0
+    second = a / c
+    b = second + 1.0
+    return b
+
+multi_errors = []
+for fn in (fail_before, fail_between, replace_two):
+    for template in (loop, generator):
+        caller = fresh(template)
+        source = Source([(1.25, 2**100, 0.0)] + [(1.25, 2.5, 1.0)] * (COUNT - 1))
+        try:
+            result = caller(COUNT, fn, source, sys._jit.is_active)
+            if template is generator:
+                list(result)
+        except ZeroDivisionError as error:
+            multi_errors.append(state(error, fn))
+            tb = error.__traceback__
+            while tb:
+                if tb.tb_frame.f_code is caller.__code__:
+                    multi_traces.append(tb.tb_frame.f_locals['entries'])
+                    multi_active.append(tb.tb_frame.f_locals['was_active'])
+                tb = tb.tb_next
+        else:
+            raise AssertionError('multi division did not fail')
+
 allocation_traces = []
 allocation_active = []
 class Arm:
@@ -205,6 +300,54 @@ for skip, failures in ((0, 1), (1, 1), (1, 16)):
         _testcapi.remove_mem_hooks()
         raise AssertionError('allocation did not fail')
 
+def multi_allocating(a, b, c):
+    a = ~c
+    b = ~c
+    return ~c
+
+def multi_allocation_loop(n, fn, source, active, c):
+    held = [None] * n
+    transient = None
+    entries = []
+    was_active = False
+    for index in range(n):
+        was_active = active()
+        transient = source.pop()
+        held[index] = fn(1.25, 2.5, c)
+        if index == WARM - 1:
+            entries = trace(multi_allocation_loop)
+    return held
+
+multi_allocation = []
+multi_allocation_traces = []
+multi_allocation_active = []
+class MultiArm(Arm):
+    def __del__(self):
+        frame = sys._getframe(1)
+        multi_allocation_active.append(frame.f_locals['was_active'])
+        multi_allocation_traces.append(frame.f_locals['entries'])
+        _testcapi.set_nomemory(self.skip, self.skip + self.failures)
+
+for skip in (0, 1, 2):
+    caller = fresh(multi_allocation_loop)
+    try:
+        caller(COUNT + 2, multi_allocating, Source([None, MultiArm(skip, 1)] + [None] * COUNT),
+               sys._jit.is_active, 2**70)
+    except MemoryError as error:
+        _testcapi.remove_mem_hooks()
+        multi_allocation.append(state(error, multi_allocating))
+    else:
+        _testcapi.remove_mem_hooks()
+        raise AssertionError('multi allocation did not fail')
+
+multi_observed = []
+def multi_profiler(frame, event, arg):
+    if frame.f_code is replace_two.__code__ and event == 'return':
+        multi_observed.append([encode(arg), {k: encode(v) for k,v in frame.f_locals.items()}])
+sys.setprofile(multi_profiler)
+fresh(loop)(8, replace_two, Source([(1.25, 2.5, 1.0)] * 8), sys._jit.is_active)
+sys.setprofile(None)
+
 observed = []
 def profiler(frame, event, arg):
     if frame.f_code is replace.__code__ and event == 'return':
@@ -215,7 +358,12 @@ sys.setprofile(None)
 print(json.dumps({'results': results, 'errors': errors, 'events': events,
     'active': active, 'traces': traces, 'allocation': allocation,
     'allocation_traces': allocation_traces, 'allocation_active': allocation_active,
-    'observed': observed}))
+    'observed': observed, 'multi_results': multi_results,
+    'multi_traces': multi_traces, 'multi_active': multi_active,
+    'multi_events': multi_events, 'multi_errors': multi_errors,
+    'multi_allocation': multi_allocation, 'multi_observed': multi_observed,
+    'multi_allocation_traces': multi_allocation_traces,
+    'multi_allocation_active': multi_allocation_active}))
 '''
 
 
@@ -230,8 +378,37 @@ def run(jit, optimize=True):
 
 def main():
     candidate, reference, noopt = run(True), run(False), run(True, False)
-    for key in ('results', 'errors', 'events', 'observed'):
+    for key in ('results', 'errors', 'events', 'observed', 'multi_results', 'multi_events', 'multi_errors',
+                'multi_allocation', 'multi_observed'):
         assert candidate[key] == reference[key] == noopt[key], (key, candidate[key], reference[key], noopt[key])
+    assert candidate['multi_results'] == [[['float', (5.0).hex()], 7016, 0]] * 14
+    assert all(candidate['multi_active'])
+    assert len(candidate['multi_events']) == 12
+    for index, event in enumerate(candidate['multi_events']):
+        assert event[:3] == ['replace_two', 'STORE_FAST', 'a' if index % 2 == 0 else 'b'], event
+        assert event[3]['a'] == ['float', (3.0).hex()], event
+        if index % 2:
+            assert event[3]['b'] == ['float', (4.0).hex()], event
+    for index, error in enumerate(candidate['multi_errors']):
+        assert error[0] == 'BINARY_OP', error
+        assert error[3]['a'] == ['float', (1.25 if index < 2 else 3.0 if index < 4 else 0.0).hex()], error
+        assert error[3]['b'] == (['int', str(2**100)] if index < 4 else ['float', (0.0).hex()]), error
+    for index, error in enumerate(candidate['multi_allocation']):
+        assert error[0] == 'UNARY_INVERT', error
+        assert error[3]['a'] == (['float', (1.25).hex()] if index == 0 else ['int', str(-(2**70)-1)]), error
+        assert error[3]['b'] == (['float', (2.5).hex()] if index < 2 else ['int', str(-(2**70)-1)]), error
+    assert len(candidate['multi_observed']) == 8
+    assert candidate['multi_allocation_active'] == [True] * 3
+    for entries in candidate['multi_allocation_traces']:
+        names = [entry[0] for entry in entries]
+        begin, end = names.index('_BEGIN_VIRTUAL_CALL'), names.index('_RETURN_VIRTUAL_CALL')
+        assert names[begin:end].count('_STORE_VIRTUAL_ARGUMENT_NUMERIC') == 2, names
+    for entries in candidate['multi_traces'][:26]:
+        names = [entry[0] for entry in entries]
+        begin, end = names.index('_BEGIN_VIRTUAL_CALL'), names.index('_RETURN_VIRTUAL_CALL')
+        assert names[begin:end].count('_STORE_VIRTUAL_ARGUMENT_NUMERIC') >= 2, names
+    for entries in noopt['multi_traces']:
+        assert '_BEGIN_VIRTUAL_CALL' not in [entry[0] for entry in entries]
     assert candidate['results'][:10] == [[['float', (7.5).hex()], 7016, 0, 0]] * 10
     assert candidate['results'][10] == [['float', (11.0).hex()], 7004, 0, 4]
     locals_state = {'a': ['float', (7.5).hex()], 'b': ['float', (2.5).hex()],

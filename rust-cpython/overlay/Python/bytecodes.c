@@ -5022,8 +5022,11 @@ dummy_func(
             EXIT_IF(code->co_argcount != argc || code->co_nlocalsplus < argc);
             EXIT_IF((uint32_t)code->co_nlocalsplus < required_locals);
             uint32_t numeric_argument = call_shape >> 1;
-            if (numeric_argument != 0) {
-                uint32_t index = numeric_argument - 1;
+            int numeric_count = (call_shape >> 31) ? 2 : (numeric_argument != 0);
+            for (int guard = 0; guard < numeric_count; guard++) {
+                uint32_t index = (call_shape >> 31)
+                    ? (guard == 0 ? (call_shape >> 1) & 0x7fff : (call_shape >> 16) & 0x7fff)
+                    : numeric_argument - 1;
                 EXIT_IF(index < (uint32_t)bound || index >= (uint32_t)argc);
                 PyObject *old = PyStackRef_AsPyObjectBorrow(args[index - bound]);
                 EXIT_IF(!PyFloat_CheckExact(old) && !PyLong_CheckExact(old));

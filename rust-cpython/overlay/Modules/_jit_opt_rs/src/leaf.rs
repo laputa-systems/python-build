@@ -152,6 +152,7 @@ pub struct LeafUop {
 /// For a virtual-call begin, the low 32 bits hold the minimum locals-plus
 /// extent. The high word's low bit selects a bound call; remaining bits encode
 /// one numeric entry-guard argument index plus one, or zero for no guard.
+/// Bit 31 selects two 15-bit argument indices in bits 1..16 and 16..31.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LeafStep {
@@ -321,7 +322,7 @@ struct VirtualBody {
     changes: Vec<VirtualChange>,
     local_count: u32,
     bound: bool,
-    numeric_argument: Option<u16>,
+    numeric_arguments: [Option<u16>; 2],
     guards: Vec<VirtualGuard>,
 }
 
@@ -356,7 +357,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
     let mut resumed = false;
     let mut operations = 0;
     let mut pending_cleanup: u8 = 0;
-    let mut numeric_argument = None;
+    let mut numeric_arguments = [None; 2];
     for (index, uop) in uops.iter().enumerate().skip(at + 3) {
         let opcode = uop.opcode;
         if pending_cleanup != 0 && ![ops.nop, ops.set_ip, ops.validity,
@@ -421,10 +422,15 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                 values.push(match arguments[usize::from(uop.oparg)] {
                     Some(old_kind) => VirtualValue::ReplacedArgument(old_kind),
                     None => {
-                        if numeric_argument.is_some_and(|argument| argument != uop.oparg) {
-                            return Ok(None);
+                        if !numeric_arguments.contains(&Some(uop.oparg)) {
+                            let Some(slot) = numeric_arguments.iter_mut().find(|slot| slot.is_none()) else {
+                                return Ok(None);
+                            };
+                            *slot = Some(uop.oparg);
+                            if numeric_arguments[1].is_some() && numeric_arguments.iter().flatten().any(|&i| i >= 32768) {
+                                return Ok(None);
+                            }
                         }
-                        numeric_argument = Some(uop.oparg);
                         VirtualValue::ReplacedNumericArgument
                     }
                 });
@@ -567,7 +573,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                 return Ok(None);
             }
             changes.push(VirtualChange { index, opcode: ops.virtual_return, oparg: 0 });
-            return Ok(Some(VirtualBody { end: index, changes, local_count: local_count as u32, bound, numeric_argument, guards }));
+            return Ok(Some(VirtualBody { end: index, changes, local_count: local_count as u32, bound, numeric_arguments, guards }));
         }
         else { return Ok(None) }
         changes.push(VirtualChange { index, opcode: replacement, oparg: uop.oparg });
@@ -815,8 +821,8 @@ fn leaf_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
 /// original arithmetic targets. In-place arithmetic and its NULL cleanup are
 /// normalized together to boxed arithmetic and owning cleanup. Extra locals hold
 /// heap-safe exact numbers or NULL. Parameter stores require numeric old values
-/// and no live argument borrow. One unproved old parameter may get a numeric
-/// entry guard; local stores reject live local borrows.
+/// and no live argument borrow. Up to two unproved old parameters may get
+/// numeric entry guards; local stores reject live local borrows.
 /// Slot guards must
 /// already be discharged by the interpreter optimizer. An unsupported body or
 /// allocation failure leaves the trace unchanged. A globals-version guard is
@@ -887,8 +893,13 @@ pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
         if let Some(body) = virtual_call {
             if guards.try_reserve_exact(body.guards.len()).is_err() { return Ok(None) }
             guards.extend(body.guards);
-            let shape = u32::from(body.bound)
-                | body.numeric_argument.map_or(0, |argument| (u32::from(argument) + 1) << 1);
+            let numeric_shape = match body.numeric_arguments {
+                [None, None] => 0,
+                [Some(argument), None] => (u32::from(argument) + 1) << 1,
+                [Some(first), Some(second)] => (1 << 31) | (u32::from(first) << 1) | (u32::from(second) << 16),
+                [None, Some(_)] => unreachable!(),
+            };
+            let shape = u32::from(body.bound) | numeric_shape;
             steps[at].opcode = ops.nop;
             steps[at + 2] = LeafStep { opcode: ops.virtual_begin, oparg: uops[at].oparg,
                 source: (at - 1) as u32,
@@ -1481,17 +1492,66 @@ mod tests {
     }
 
     #[test]
-    fn numeric_entry_guard_is_limited_to_one_unproved_parameter() {
+    fn numeric_entry_guards_preserve_single_and_bounded_multiple_indices() {
         let ops = opcodes();
         let mut input = virtual_locals();
         input[2].oparg = 4;
         input.insert(17, uop(ops.heap_safe, 0));
-        assert!(plan_leaf_calls(&input, &ops).unwrap().is_none());
+        let multi = plan_leaf_calls(&input, &ops).unwrap().unwrap();
+        assert_eq!(multi[4].result >> 32, (1u64 << 31) | (2 << 1) | (3 << 16));
+        assert_eq!(multi[15].opcode, ops.pop);
+        assert_eq!(multi[19].opcode, ops.pop);
         input.splice(6..6, [uop(ops.load_borrow.first, 3),
             uop(ops.guard_tos_float, 0), uop(ops.pop_borrow, 0)]);
         let guarded = plan_leaf_calls(&input, &ops).unwrap().unwrap();
         assert_eq!(guarded[4].result >> 32, 6);
         assert_eq!(guarded[18].opcode, ops.pop);
+    }
+
+    #[test]
+    fn numeric_entry_guard_capacity_indices_and_bound_mapping() {
+        let ops = opcodes();
+        let mut pair = virtual_locals();
+        pair[2].oparg = 4;
+        pair.insert(17, uop(ops.heap_safe, 0));
+        let remap = |input: &mut Vec<LeafUop>, from: u16, to: u16| {
+            for item in input {
+                if (ops.load_fast.contains(item.opcode) || ops.load_borrow.contains(item.opcode)
+                    || ops.store_fast.contains(item.opcode)) && item.oparg == from {
+                    item.oparg = to;
+                }
+            }
+        };
+        let mut edge = pair.clone();
+        remap(&mut edge, 3, 32767);
+        edge[2].oparg = 32768;
+        assert_eq!(plan_leaf_calls(&edge, &ops).unwrap().unwrap()[4].result >> 32,
+            (1u64 << 31) | (2 << 1) | (32767 << 16));
+        remap(&mut edge, 32767, 32768);
+        edge[2].oparg = 32769;
+        assert!(plan_leaf_calls(&edge, &ops).unwrap().is_none());
+        edge.splice(6..6, [uop(ops.load_borrow.first, 2),
+            uop(ops.guard_tos_float, 0), uop(ops.pop_borrow, 0)]);
+        assert_eq!(plan_leaf_calls(&edge, &ops).unwrap().unwrap()[4].result >> 32,
+            (32769u64) << 1);
+        remap(&mut edge, 32768, u16::MAX - 1);
+        edge[2].oparg = u16::MAX;
+        assert_eq!(plan_leaf_calls(&edge, &ops).unwrap().unwrap()[4].result >> 32,
+            (u16::MAX as u64) << 1);
+        let mut third = pair.clone();
+        third[2].oparg = 5;
+        let end = third.len() - 2;
+        third.splice(end..end, [uop(ops.heap_safe, 0), uop(ops.store_fast.first, 4),
+            uop(ops.pop, 0), uop(ops.load_fast.first, 3)]);
+        assert!(plan_leaf_calls(&third, &ops).unwrap().is_none());
+        let mut bound = pair.clone();
+        remap(&mut bound, 0, 1);
+        bound[2].oparg = 3;
+        bound.insert(0, LeafUop { opcode: ops.bound_method_init, oparg: 3, effectful: 1, operand: 0 });
+        let plan = plan_leaf_calls(&bound, &ops).unwrap().unwrap();
+        assert_eq!(plan[5].result >> 32, (1u64 << 31) | (2 << 1) | (3 << 16) | 1);
+        bound[15].oparg = 0;
+        assert!(plan_leaf_calls(&bound, &ops).unwrap().is_none());
     }
 
     #[test]
