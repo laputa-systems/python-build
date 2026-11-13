@@ -1391,11 +1391,15 @@ typedef struct {
     uint8_t kind;
     uint16_t exit_variant;
     uint32_t target;
+    uint32_t exit_floats;
+    uint32_t exit_ints;
 } _PyJitExitStubUop;
-static_assert(sizeof(_PyJitExitStubUop) == 8, "exit stub descriptor size");
+static_assert(sizeof(_PyJitExitStubUop) == 16, "exit stub descriptor size");
 static_assert(offsetof(_PyJitExitStubUop, kind) == 0, "exit stub kind offset");
 static_assert(offsetof(_PyJitExitStubUop, exit_variant) == 2, "exit stub variant offset");
 static_assert(offsetof(_PyJitExitStubUop, target) == 4, "exit stub target offset");
+static_assert(offsetof(_PyJitExitStubUop, exit_floats) == 8, "exit stub float mask offset");
+static_assert(offsetof(_PyJitExitStubUop, exit_ints) == 12, "exit stub int mask offset");
 extern Py_ssize_t _PyJitOpt_PlanExitStubs(const _PyJitExitStubUop *, size_t, uint32_t *, size_t);
 
 /* Convert implicit exits, errors and deopts
@@ -1458,8 +1462,7 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
                 else if (base == _RETURN_VIRTUAL_CALL) {
                     descriptors[i].kind = 2;
                 }
-                else if (flags && (unboxed == NULL ||
-                         (unboxed[i].exit_floats | unboxed[i].exit_ints) == 0)) {
+                else if (flags) {
                     uint16_t exit_base = flags & HAS_DEOPT_FLAG ? _DEOPT :
                         flags & HAS_PERIODIC_FLAG ? _HANDLE_PENDING_AND_DEOPT : _EXIT_TRACE;
                     if (dynamic_exit_uop[base]) {
@@ -1469,6 +1472,8 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
                     descriptors[i].kind = 3;
                     descriptors[i].exit_variant = _PyUop_Caching[exit_base].entries[depth].opcode;
                     descriptors[i].target = uop_get_target(inst);
+                    descriptors[i].exit_floats = unboxed == NULL ? 0 : unboxed[i].exit_floats;
+                    descriptors[i].exit_ints = unboxed == NULL ? 0 : unboxed[i].exit_ints;
                 }
             }
             if (_PyJitOpt_PlanExitStubs(descriptors, length, exit_sources, length) != length) {
@@ -1525,13 +1530,13 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
             if (virtual_call) {
                 assert(!is_control_flow && !(exit_flags & HAS_PERIODIC_FLAG));
                 uint32_t source = exit_sources == NULL ? (uint32_t)i : exit_sources[i];
-                if ((exit_floats | exit_ints) != 0) {
+                if (source < (uint32_t)i) {
+                    current_jump = buffer[source].jump_target;
+                }
+                else if ((exit_floats | exit_ints) != 0) {
                     current_jump = next_spare;
                     next_spare = make_boxing_exit(buffer, next_spare, exit_depth, base_exit_op,
                                                   jump_target, false, exit_floats, exit_ints, JIT_FRAME_VIRTUAL);
-                }
-                else if (source < (uint32_t)i) {
-                    current_jump = buffer[source].jump_target;
                 }
                 else {
                     current_jump = next_spare;

@@ -295,6 +295,7 @@ mod tests {
 }
 
 /// Plans virtual resume exit reuse. Output is written only for a complete plan.
+/// Resume descriptors with overlapping float and integer masks are invalid.
 ///
 /// # Safety
 /// Input is non-null and aligned for `length` initialized live descriptors.
@@ -325,7 +326,7 @@ pub unsafe extern "C" fn _PyJitOpt_PlanExitStubs(
 #[test]
 fn exit_stubs_ffi_uninitialized_and_atomic() {
     use exit_stubs::ExitStubUop;
-    let input = [ExitStubUop { kind: 1, exit_variant: 0, target: 0 }, ExitStubUop { kind: 3, exit_variant: 1, target: 4 }, ExitStubUop { kind: 3, exit_variant: 1, target: 4 }, ExitStubUop { kind: 2, exit_variant: 0, target: 0 }];
+    let input = [ExitStubUop { kind: 1, exit_variant: 0, target: 0, exit_floats: 0, exit_ints: 0 }, ExitStubUop { kind: 3, exit_variant: 1, target: 4, exit_floats: 1, exit_ints: 2 }, ExitStubUop { kind: 3, exit_variant: 1, target: 4, exit_floats: 1, exit_ints: 2 }, ExitStubUop { kind: 2, exit_variant: 0, target: 0, exit_floats: 0, exit_ints: 0 }];
     let mut output = [MaybeUninit::<u32>::uninit(); 4];
     // SAFETY: initialized input and separate aligned writable uninitialized output.
     assert_eq!(unsafe { _PyJitOpt_PlanExitStubs(input.as_ptr(), 4, output.as_mut_ptr().cast(), 4) }, 4);
@@ -335,8 +336,12 @@ fn exit_stubs_ffi_uninitialized_and_atomic() {
     // SAFETY: valid separate arrays with deliberately insufficient declared output capacity.
     assert_eq!(unsafe { _PyJitOpt_PlanExitStubs(input.as_ptr(), 4, sentinel.as_mut_ptr(), 3) }, 0);
     assert_eq!(sentinel, [77; 4]);
-    let bad = [ExitStubUop { kind: 99, exit_variant: 0, target: 0 }];
+    let bad = [ExitStubUop { kind: 99, exit_variant: 0, target: 0, exit_floats: 0, exit_ints: 0 }];
     // SAFETY: the descriptor is initialized; its raw kind is deliberately invalid.
+    assert_eq!(unsafe { _PyJitOpt_PlanExitStubs(bad.as_ptr(), 1, sentinel.as_mut_ptr(), 4) }, -1);
+    assert_eq!(sentinel, [77; 4]);
+    let bad = [ExitStubUop { kind: 3, exit_variant: 0, target: 0, exit_floats: 3, exit_ints: 2 }];
+    // SAFETY: initialized descriptor and separate writable output.
     assert_eq!(unsafe { _PyJitOpt_PlanExitStubs(bad.as_ptr(), 1, sentinel.as_mut_ptr(), 4) }, -1);
     assert_eq!(sentinel, [77; 4]);
 }
