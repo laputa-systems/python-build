@@ -84,6 +84,11 @@ pub struct LeafOpcodes {
     pub virtual_argument_swap: u16,
     pub bound_method_init: u16,
     pub swap_two: u16,
+    pub copy_one: u16,
+    pub to_bool_bool: u16,
+    pub unary_not: u16,
+    pub guard_bit_set: OpcodeRange,
+    pub guard_bit_unset: OpcodeRange,
 }
 
 impl LeafOpcodes {
@@ -264,6 +269,8 @@ enum VirtualValue {
     ManagedReceiver,
     ManagedArgument(u16),
     OwnedUnknown,
+    OwnedAttribute(usize),
+    Boolean,
     BorrowedArgument(u16),
     CopiedArgument(u16),
     BorrowedConstant,
@@ -304,11 +311,11 @@ impl VirtualValue {
                 } else { ScalarOwnership::ArgumentCopy(index) }))
             }
             Self::BorrowedConstant => Some(Self::Scalar(kind, ScalarOwnership::Borrowed)),
-            Self::OwnedUnknown => Some(Self::Scalar(kind, ScalarOwnership::Shared)),
+            Self::OwnedUnknown | Self::OwnedAttribute(_) => Some(Self::Scalar(kind, ScalarOwnership::Shared)),
             Self::Scalar(proven, _) if proven.implies(kind) => Some(self),
             Self::Scalar(proven, ownership) if kind.implies(proven) => Some(Self::Scalar(kind, ownership)),
             Self::Scalar(_, _) => None,
-            Self::BorrowedReceiver | Self::ManagedReceiver | Self::ManagedArgument(_) | Self::ReplacedArgument(_) | Self::ReplacedNumericArgument | Self::ReallocatedOperand | Self::Null | Self::IdentityCopy(_) => None,
+            Self::Boolean | Self::BorrowedReceiver | Self::ManagedReceiver | Self::ManagedArgument(_) | Self::ReplacedArgument(_) | Self::ReplacedNumericArgument | Self::ReallocatedOperand | Self::Null | Self::IdentityCopy(_) => None,
         }
     }
 }
@@ -343,14 +350,21 @@ struct VirtualBody {
     guards: Vec<VirtualGuard>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum VirtualMode { Numeric, Predicate }
+
 fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
     -> Result<Option<VirtualBody>, Inconsistent>
 {
-    if !uops.iter().skip(at + 3).take_while(|uop| uop.opcode != ops.return_value)
-        .any(|uop| ops.virtual_arithmetic(uop.opcode))
-    {
-        return Ok(None);
-    }
+    let body = uops.iter().skip(at + 3).take_while(|uop| uop.opcode != ops.return_value);
+    let numeric = body.clone().any(|uop| ops.virtual_arithmetic(uop.opcode));
+    let predicate = body.clone().any(|uop| uop.opcode == ops.to_bool_bool || uop.opcode == ops.unary_not
+        || ops.guard_bit_set.contains(uop.opcode) || ops.guard_bit_unset.contains(uop.opcode));
+    let mode = match (numeric, predicate) {
+        (true, false) => VirtualMode::Numeric,
+        (false, true) => VirtualMode::Predicate,
+        _ => return Ok(None),
+    };
     let argc = u32::from(uops[at].oparg) + u32::from(bound);
     let local_count = uops.iter().skip(at + 3).take_while(|uop| uop.opcode != ops.return_value)
         .filter(|uop| ops.load_fast.contains(uop.opcode) || ops.load_borrow.contains(uop.opcode)
@@ -378,6 +392,11 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
     let mut nested_header = false;
     for (index, uop) in uops.iter().enumerate().skip(at + 3) {
         let opcode = uop.opcode;
+        if mode == VirtualMode::Predicate && (ops.store_fast.contains(opcode)
+            || [ops.load_const, ops.load_const_borrow, ops.function_version, ops.function_version_inline,
+                ops.leaf_call, ops.swap_two].contains(&opcode) || ops.virtual_guard(opcode).is_some()) {
+            return Ok(None);
+        }
         if nested_header && ![ops.nop, ops.set_ip, ops.validity, ops.stack_space,
             ops.recursion, ops.function_args, ops.pep523, ops.save_return, ops.leaf_call].contains(&opcode) {
             return Ok(None);
@@ -479,7 +498,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
             replacement = opcode;
         }
         else if [ops.function_version, ops.function_version_inline].contains(&opcode) && uop.effectful == 0 {
-            if uop.oparg != 0 || values.len() < 2 || values[values.len() - 2] != VirtualValue::OwnedUnknown
+            if uop.oparg != 0 || values.len() < 2 || !matches!(values[values.len() - 2], VirtualValue::OwnedUnknown | VirtualValue::OwnedAttribute(_))
                 || !values[values.len() - 1].is_attribute_owner() { return Ok(None) }
             nested_header = true;
             replacement = opcode;
@@ -496,7 +515,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                 VirtualValue::BorrowedReceiver | VirtualValue::ManagedReceiver if bound => 0,
                 _ => return Ok(None),
             };
-            if values.pop() != Some(VirtualValue::OwnedUnknown) { return Ok(None) }
+            if !matches!(values.pop(), Some(VirtualValue::OwnedUnknown | VirtualValue::OwnedAttribute(_))) { return Ok(None) }
             values.push(VirtualValue::IdentityCopy(root));
             nested_header = false;
             replacement = opcode;
@@ -532,8 +551,38 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
             if !owner.is_attribute_owner() || (opcode == ops.load_instance && !matches!(owner, VirtualValue::ManagedReceiver | VirtualValue::ManagedArgument(_))) {
                 return Ok(None);
             }
-            values.extend([VirtualValue::OwnedUnknown, owner]);
+            values.extend([VirtualValue::OwnedAttribute(index), owner]);
             replacement = opcode;
+        }
+        else if mode == VirtualMode::Predicate && opcode == ops.copy_one && uop.effectful == 0 {
+            let Some(value) = values.last().copied() else { return Err(Inconsistent) };
+            if !matches!(value, VirtualValue::OwnedAttribute(_) | VirtualValue::Boolean) { return Ok(None) }
+            values.push(value);
+            replacement = opcode;
+        }
+        else if mode == VirtualMode::Predicate && opcode == ops.to_bool_bool && uop.effectful == 0 {
+            let Some(value) = values.last().copied() else { return Err(Inconsistent) };
+            match value {
+                VirtualValue::OwnedAttribute(origin) => {
+                    for value in &mut values {
+                        if *value == VirtualValue::OwnedAttribute(origin) { *value = VirtualValue::Boolean }
+                    }
+                }
+                VirtualValue::Boolean => (),
+                _ => return Ok(None),
+            }
+            replacement = opcode;
+            operations += 1;
+        }
+        else if mode == VirtualMode::Predicate && opcode == ops.unary_not && uop.effectful == 0 {
+            if values.last() != Some(&VirtualValue::Boolean) { return Ok(None) }
+            replacement = opcode;
+            operations += 1;
+        }
+        else if mode == VirtualMode::Predicate && (ops.guard_bit_set.contains(opcode) || ops.guard_bit_unset.contains(opcode)) && uop.effectful == 0 {
+            if values.pop() != Some(VirtualValue::Boolean) { return Ok(None) }
+            replacement = opcode;
+            operations += 1;
         }
         else if opcode == ops.unary_negative || opcode == ops.unary_negative_float_inplace || opcode == ops.unary_invert {
             let Some(value) = values.pop() else { return Err(Inconsistent) };
@@ -611,6 +660,8 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                 (op, VirtualValue::ReplacedArgument(kind))
                     if op == ops.pop_borrow || op == ops.scalar_pop(kind) || op == ops.pop => ops.scalar_pop(kind),
                 (_, VirtualValue::ReplacedNumericArgument) => ops.pop,
+                (op, VirtualValue::Boolean) if mode == VirtualMode::Predicate && (op == ops.pop || op == ops.pop_borrow) => op,
+                (op, VirtualValue::OwnedAttribute(_)) if mode == VirtualMode::Predicate && op == ops.pop => op,
                 (op, VirtualValue::IdentityCopy(_)) if op == ops.pop => ops.pop,
                 (op, VirtualValue::ReallocatedOperand) if op == ops.pop_borrow || op == ops.pop => ops.pop_float,
                 _ => return Ok(None),
@@ -619,15 +670,23 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
         }
         else if opcode == ops.heap_safe {
             let Some(value) = values.last_mut() else { return Err(Inconsistent) };
-            let VirtualValue::Scalar(_, ownership) = value else { return Ok(None) };
-            if !matches!(ownership, ScalarOwnership::Fresh | ScalarOwnership::Shared) {
-                *ownership = ScalarOwnership::Shared;
+            match value {
+                VirtualValue::Scalar(_, ownership) if mode == VirtualMode::Numeric => {
+                    if !matches!(ownership, ScalarOwnership::Fresh | ScalarOwnership::Shared) {
+                        *ownership = ScalarOwnership::Shared;
+                    }
+                }
+                VirtualValue::Boolean | VirtualValue::OwnedAttribute(_) if mode == VirtualMode::Predicate => (),
+                _ => return Ok(None),
             }
             replacement = opcode;
         }
         else if opcode == ops.return_value {
             if operations == 0 || values.len() != 1
-                || !matches!(values[0], VirtualValue::Scalar(_, ScalarOwnership::Fresh | ScalarOwnership::Shared)) {
+                || !(match mode {
+                    VirtualMode::Numeric => matches!(values[0], VirtualValue::Scalar(_, ScalarOwnership::Fresh | ScalarOwnership::Shared)),
+                    VirtualMode::Predicate => matches!(values[0], VirtualValue::Boolean | VirtualValue::OwnedAttribute(_)),
+                }) {
                 return Ok(None);
             }
             changes.push(VirtualChange { index, opcode: ops.virtual_return, oparg: 0, result: None });
@@ -1077,12 +1136,76 @@ mod tests {
             float_add_int: 101, guard_tos_exact_int: 102,
             unary_negative: 103, unary_negative_float_inplace: 104, unary_invert: 105,
             virtual_argument_swap: 106,
+            copy_one: 110, to_bool_bool: 111, unary_not: 112,
+            guard_bit_set: OpcodeRange { first: 113, last: 117 },
+            guard_bit_unset: OpcodeRange { first: 118, last: 122 },
             bound_method_init: 107, swap_two: 108,
         }
     }
 
     fn uop(opcode: u16, oparg: u16) -> LeafUop {
         LeafUop { opcode, oparg, effectful: 0, operand: 0 }
+    }
+
+    fn predicate_call() -> Vec<LeafUop> {
+        let o = opcodes();
+        let mut input = float_call()[..6].to_vec();
+        input[2].oparg = 1;
+        input.extend([uop(o.load_borrow.first, 0), uop(o.type_version, 0),
+            uop(o.load_slot, 0), uop(o.pop_borrow, 0), uop(o.copy_one, 0),
+            uop(o.to_bool_bool, 0), uop(o.guard_bit_set.first, 0),
+            uop(o.pop_borrow, 0), uop(o.load_borrow.first, 0),
+            uop(o.type_version, 0), uop(o.load_slot, 0), uop(o.pop_borrow, 0),
+            uop(o.heap_safe, 0), uop(o.return_value, 0)]);
+        input
+    }
+
+    #[test]
+    fn predicate_aliases_and_short_circuit_preserve_sources() {
+        let o = opcodes();
+        let input = predicate_call();
+        let plan = plan_leaf_calls(&input, &o).unwrap().unwrap();
+        assert_eq!(plan[4].opcode, o.virtual_begin);
+        for i in 10..=12 { assert_eq!(plan[i].opcode, input[i].opcode); assert_eq!(plan[i].source as usize, i); }
+        assert_eq!(plan.last().unwrap().opcode, o.virtual_return);
+        let mut not_narrowed = input.clone();
+        not_narrowed[11].opcode = o.nop;
+        assert!(virtual_body(&not_narrowed, 2, &o, false).unwrap().is_none());
+        let mut pop_before_bool = input.clone();
+        pop_before_bool.insert(11, uop(o.pop_borrow, 0));
+        assert!(virtual_body(&pop_before_bool, 2, &o, false).unwrap().is_none());
+        let mut invalid_guard = input.clone();
+        invalid_guard[11].opcode = o.nop;
+        assert!(virtual_body(&invalid_guard, 2, &o, false).unwrap().is_none());
+        let mut inverted = input.clone();
+        inverted.insert(12, uop(o.unary_not, 0));
+        assert!(virtual_body(&inverted, 2, &o, false).unwrap().is_some());
+        for op in [o.store_fast.first, o.function_version, o.float_add, o.load_const] {
+            let mut rejected = input.clone();
+            rejected.insert(10, uop(op, 0));
+            assert!(virtual_body(&rejected, 2, &o, false).unwrap().is_none());
+        }
+        let mut generic_pop = input.clone();
+        generic_pop[10] = uop(o.pop, 0);
+        generic_pop.drain(11..14);
+        assert!(virtual_body(&generic_pop, 2, &o, false).unwrap().is_none());
+    }
+
+    #[test]
+    fn predicate_ffi_uninitialized_and_short_output() {
+        use std::mem::MaybeUninit;
+        let o = opcodes();
+        let input = predicate_call();
+        let mut output = vec![MaybeUninit::<LeafStep>::uninit(); input.len() * 2];
+        let count = unsafe { crate::_PyJitOpt_PlanLeafCalls(input.as_ptr(), input.len(), &o, output.as_mut_ptr().cast(), output.len()) };
+        assert!(count > 0);
+        let plan: Vec<_> = output[..count as usize].iter().map(|slot| unsafe { slot.assume_init() }).collect();
+        assert!(plan.iter().any(|step| step.opcode == o.virtual_return));
+        let sentinel = LeafStep { opcode: 65535, oparg: 65535, source: u32::MAX, result: u64::MAX };
+        let mut short = vec![sentinel; count as usize - 1];
+        let result = unsafe { crate::_PyJitOpt_PlanLeafCalls(input.as_ptr(), input.len(), &o, short.as_mut_ptr(), short.len()) };
+        assert_eq!(result, 0);
+        assert!(short.iter().all(|step| *step == sentinel));
     }
 
     fn nested_identity() -> Vec<LeafUop> {
@@ -1354,8 +1477,13 @@ mod tests {
         assert!(output.iter().all(|step| *step == untouched));
         assert_eq!(std::mem::size_of::<LeafUop>(), 16);
         assert_eq!(std::mem::size_of::<LeafStep>(), 16);
-        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 166);
+        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 180);
         assert_eq!(std::mem::offset_of!(LeafOpcodes, swap_two), 164);
+        assert_eq!(std::mem::offset_of!(LeafOpcodes, copy_one), 166);
+        assert_eq!(std::mem::offset_of!(LeafOpcodes, to_bool_bool), 168);
+        assert_eq!(std::mem::offset_of!(LeafOpcodes, unary_not), 170);
+        assert_eq!(std::mem::offset_of!(LeafOpcodes, guard_bit_set), 172);
+        assert_eq!(std::mem::offset_of!(LeafOpcodes, guard_bit_unset), 176);
     }
 
     fn pair() -> Vec<LeafUop> {
