@@ -608,7 +608,10 @@ static int
 d_setitem(arrayobject *ap, Py_ssize_t i, PyObject *v)
 {
     double x;
-    if (!PyArg_Parse(v, "d;array item must be float", &x))
+    if (v != NULL && PyFloat_CheckExact(v)) {
+        x = PyFloat_AS_DOUBLE(v);
+    }
+    else if (!PyArg_Parse(v, "d;array item must be float", &x))
         return -1;
 
     CHECK_ARRAY_BOUNDS(ap, i);
