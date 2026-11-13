@@ -14,6 +14,7 @@ pub struct StoreOpcodes {
     pub int_pop: u16,
     pub argument_float_store: u16,
     pub argument_int_store: u16,
+    pub argument_numeric_store: u16,
 }
 
 #[repr(C)]
@@ -33,7 +34,8 @@ pub struct StoreStep {
 }
 
 /// Fuse local swaps with generic cleanup and virtual argument swaps with typed
-/// numeric cleanup. Only NOPs may separate the swap from its cleanup.
+/// numeric cleanup or entry-guarded numeric cleanup. Only NOPs may separate the
+/// swap from its cleanup. Generic virtual cleanup requires a numeric entry guard.
 pub fn plan_stores(uops: &[StoreUop], ops: &StoreOpcodes)
     -> Result<Option<Vec<StoreStep>>, Inconsistent>
 {
@@ -64,6 +66,7 @@ pub fn plan_stores(uops: &[StoreUop], ops: &StoreOpcodes)
             (true, cleanup) if cleanup == ops.pop => ops.store,
             (false, cleanup) if cleanup == ops.float_pop => ops.argument_float_store,
             (false, cleanup) if cleanup == ops.int_pop => ops.argument_int_store,
+            (false, cleanup) if cleanup == ops.pop => ops.argument_numeric_store,
             _ => continue,
         };
         steps[index] = StoreStep { opcode, oparg: uop.oparg, source: pop as u32 };
@@ -80,7 +83,7 @@ mod tests {
     fn opcodes() -> StoreOpcodes {
         StoreOpcodes { swap_first: 1, swap_last: 9, pop: 10, store: 11, nop: 12,
             argument_swap: 13, float_pop: 14, int_pop: 15,
-            argument_float_store: 16, argument_int_store: 17 }
+            argument_float_store: 16, argument_int_store: 17, argument_numeric_store: 18 }
     }
 
     fn uop(opcode: u16, oparg: u16) -> StoreUop {
@@ -113,23 +116,21 @@ mod tests {
     fn virtual_argument_stores_preserve_numeric_cleanup_and_its_source() {
         let ops = opcodes();
         for (pop, store) in [(ops.float_pop, ops.argument_float_store),
-                             (ops.int_pop, ops.argument_int_store)] {
+                             (ops.int_pop, ops.argument_int_store), (ops.pop, ops.argument_numeric_store)] {
             for argument in [0, 1, 7, u16::MAX] {
                 let input = [uop(ops.argument_swap, argument), uop(ops.nop, 0), uop(pop, 0)];
                 let steps = plan_stores(&input, &ops).unwrap().unwrap();
                 assert_eq!(steps[0], StoreStep { opcode: store, oparg: argument, source: 2 });
                 assert_eq!(steps[2].opcode, ops.nop);
-                for boundary in [ops.pop, 99] {
-                    let mut stopped = input;
-                    stopped[1].opcode = boundary;
-                    assert!(plan_stores(&stopped, &ops).unwrap().is_none());
+                let mut stopped = input;
+                stopped[1].opcode = 99;
+                assert!(plan_stores(&stopped, &ops).unwrap().is_none());
+                if pop != ops.pop {
+                    assert!(plan_stores(&[uop(ops.swap_first, argument), uop(pop, 0)], &ops)
+                        .unwrap().is_none());
                 }
-                assert!(plan_stores(&[uop(ops.swap_first, argument), uop(pop, 0)], &ops)
-                    .unwrap().is_none());
             }
         }
-        assert!(plan_stores(&[uop(ops.argument_swap, 0), uop(ops.pop, 0)], &ops)
-            .unwrap().is_none());
     }
 
     #[test]
@@ -148,7 +149,7 @@ mod tests {
             &bad, output.as_mut_ptr(), output.len()) };
         assert_eq!(status, -1);
         assert_eq!(output, [untouched; 2]);
-        assert_eq!(std::mem::size_of::<StoreOpcodes>(), 20);
+        assert_eq!(std::mem::size_of::<StoreOpcodes>(), 22);
         assert_eq!(std::mem::size_of::<StoreUop>(), 4);
         assert_eq!(std::mem::size_of::<StoreStep>(), 8);
     }

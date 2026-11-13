@@ -352,19 +352,21 @@ def main():
     assert candidate['allocation_active'] == [True, True]
     float_store = '_STORE_VIRTUAL_ARGUMENT_FLOAT'
     int_store = '_STORE_VIRTUAL_ARGUMENT_INT'
+    numeric_store = '_STORE_VIRTUAL_ARGUMENT_NUMERIC'
     stores = {'floats': [float_store] * 3, 'integers': [int_store] * 3,
         'complement': [int_store], 'changing': [int_store], 'bound': [float_store] * 2,
         'float-error': [float_store] * 2, 'mixed-error': [int_store, float_store],
-        'generator': [float_store] * 2, 'callback': [float_store] * 2}
+        'generator': [float_store] * 2, 'callback': [float_store] * 2,
+        'unproved': [numeric_store]}
     for key, entries in candidate['traces'].items():
         names = [entry[0] for entry in entries]
-        if key in ('unproved', 'receiver-0'):
+        if key == 'receiver-0':
             assert '_BEGIN_VIRTUAL_CALL' not in names, names
         else:
             assert {'_BEGIN_VIRTUAL_CALL', '_RETURN_VIRTUAL_CALL'} <= set(names), (key, names)
             begin, end = names.index('_BEGIN_VIRTUAL_CALL'), names.index('_RETURN_VIRTUAL_CALL')
             kind = key.rsplit('-', 1)[0] if key[-1].isdigit() else key
-            assert [name for name in names[begin:end] if name in (float_store, int_store)] == stores[kind], (key, names)
+            assert [name for name in names[begin:end] if name in (float_store, int_store, numeric_store)] == stores[kind], (key, names)
             assert '_SWAP_VIRTUAL_ARGUMENT' not in names[begin:end], (key, names)
             assert '_MATERIALIZE_VIRTUAL_FRAME' in names, key
     for entries in candidate['allocation_traces']:

@@ -82,6 +82,7 @@ pub struct LeafOpcodes {
     pub unary_negative_float_inplace: u16,
     pub unary_invert: u16,
     pub virtual_argument_swap: u16,
+    pub bound_method_init: u16,
 }
 
 impl LeafOpcodes {
@@ -149,7 +150,8 @@ pub struct LeafUop {
 /// For a float call, bits 0..16 hold the operation identity, bit 16 reverses
 /// arguments, and bits 32..64 hold the callee's arithmetic error offset.
 /// For a virtual-call begin, the low 32 bits hold the minimum locals-plus
-/// extent and the high 32 bits select a standalone (0) or bound (1) call.
+/// extent. The high word's low bit selects a bound call; remaining bits encode
+/// one numeric entry-guard argument index plus one, or zero for no guard.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LeafStep {
@@ -260,6 +262,7 @@ enum VirtualValue {
     BorrowedConstant,
     Scalar(ScalarKind, ScalarOwnership),
     ReplacedArgument(ScalarKind),
+    ReplacedNumericArgument,
     ReallocatedOperand,
     Null,
 }
@@ -297,7 +300,7 @@ impl VirtualValue {
             Self::Scalar(proven, _) if proven.implies(kind) => Some(self),
             Self::Scalar(proven, ownership) if kind.implies(proven) => Some(Self::Scalar(kind, ownership)),
             Self::Scalar(_, _) => None,
-            Self::BorrowedReceiver | Self::ManagedReceiver | Self::ReplacedArgument(_) | Self::ReallocatedOperand | Self::Null => None,
+            Self::BorrowedReceiver | Self::ManagedReceiver | Self::ReplacedArgument(_) | Self::ReplacedNumericArgument | Self::ReallocatedOperand | Self::Null => None,
         }
     }
 }
@@ -318,6 +321,7 @@ struct VirtualBody {
     changes: Vec<VirtualChange>,
     local_count: u32,
     bound: bool,
+    numeric_argument: Option<u16>,
     guards: Vec<VirtualGuard>,
 }
 
@@ -352,6 +356,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
     let mut resumed = false;
     let mut operations = 0;
     let mut pending_cleanup: u8 = 0;
+    let mut numeric_argument = None;
     for (index, uop) in uops.iter().enumerate().skip(at + 3) {
         let opcode = uop.opcode;
         if pending_cleanup != 0 && ![ops.nop, ops.set_ip, ops.validity,
@@ -406,7 +411,6 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
             };
             if u32::from(uop.oparg) < argc {
                 if bound && uop.oparg == 0 { return Ok(None) }
-                let Some(old_kind) = arguments[usize::from(uop.oparg)] else { return Ok(None) };
                 if values.iter().any(|value| matches!(value,
                     VirtualValue::BorrowedArgument(index) | VirtualValue::CopiedArgument(index) |
                     VirtualValue::Scalar(_, ScalarOwnership::BorrowedArgument(index) | ScalarOwnership::ArgumentCopy(index))
@@ -414,7 +418,16 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                 {
                     return Ok(None);
                 }
-                values.push(VirtualValue::ReplacedArgument(old_kind));
+                values.push(match arguments[usize::from(uop.oparg)] {
+                    Some(old_kind) => VirtualValue::ReplacedArgument(old_kind),
+                    None => {
+                        if numeric_argument.is_some_and(|argument| argument != uop.oparg) {
+                            return Ok(None);
+                        }
+                        numeric_argument = Some(uop.oparg);
+                        VirtualValue::ReplacedNumericArgument
+                    }
+                });
                 arguments[usize::from(uop.oparg)] = Some(kind);
                 replacement = ops.virtual_argument_swap;
                 pending_cleanup = 1;
@@ -534,6 +547,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                 (op, VirtualValue::Scalar(kind, _)) if op == ops.scalar_pop(kind) || op == ops.pop => ops.scalar_pop(kind),
                 (op, VirtualValue::ReplacedArgument(kind))
                     if op == ops.pop_borrow || op == ops.scalar_pop(kind) || op == ops.pop => ops.scalar_pop(kind),
+                (_, VirtualValue::ReplacedNumericArgument) => ops.pop,
                 (op, VirtualValue::ReallocatedOperand) if op == ops.pop_borrow || op == ops.pop => ops.pop_float,
                 _ => return Ok(None),
             };
@@ -553,7 +567,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                 return Ok(None);
             }
             changes.push(VirtualChange { index, opcode: ops.virtual_return, oparg: 0 });
-            return Ok(Some(VirtualBody { end: index, changes, local_count: local_count as u32, bound, guards }));
+            return Ok(Some(VirtualBody { end: index, changes, local_count: local_count as u32, bound, numeric_argument, guards }));
         }
         else { return Ok(None) }
         changes.push(VirtualChange { index, opcode: replacement, oparg: uop.oparg });
@@ -703,6 +717,19 @@ fn header_is_guarded(uops: &[LeafUop], at: usize, ops: &LeafOpcodes) -> bool {
     false
 }
 
+fn header_is_bound_method(uops: &[LeafUop], at: usize, ops: &LeafOpcodes) -> bool {
+    for previous in uops[at.saturating_sub(16)..at].iter().rev() {
+        let opcode = previous.opcode;
+        if opcode == ops.bound_method_init { return true }
+        if previous.effectful != 0 || ![ops.nop, ops.recursion, ops.stack_space,
+            ops.function_args, ops.pep523, ops.function_version, ops.function_version_inline].contains(&opcode)
+        {
+            break;
+        }
+    }
+    false
+}
+
 fn leaf_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
     -> Result<Option<LeafBody>, Inconsistent>
 {
@@ -787,8 +814,9 @@ fn leaf_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes)
 /// float bodies use a reserved operand stack and borrowed argument loads, preserving
 /// original arithmetic targets. In-place arithmetic and its NULL cleanup are
 /// normalized together to boxed arithmetic and owning cleanup. Extra locals hold
-/// heap-safe exact numbers or NULL. Parameter stores require proven numeric old
-/// values and no live argument borrow; local stores reject live local borrows.
+/// heap-safe exact numbers or NULL. Parameter stores require numeric old values
+/// and no live argument borrow. One unproved old parameter may get a numeric
+/// entry guard; local stores reject live local borrows.
 /// Slot guards must
 /// already be discharged by the interpreter optimizer. An unsupported body or
 /// allocation failure leaves the trace unchanged. A globals-version guard is
@@ -848,17 +876,23 @@ pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
             at = end + 1;
             continue;
         }
-        let virtual_call = match virtual_body(uops, at, ops, false)? {
-            Some(body) => Some(body),
-            None => virtual_body(uops, at, ops, true)?,
+        let virtual_call = if header_is_bound_method(uops, at, ops) {
+            virtual_body(uops, at, ops, true)?
+        } else {
+            match virtual_body(uops, at, ops, false)? {
+                Some(body) => Some(body),
+                None => virtual_body(uops, at, ops, true)?,
+            }
         };
         if let Some(body) = virtual_call {
             if guards.try_reserve_exact(body.guards.len()).is_err() { return Ok(None) }
             guards.extend(body.guards);
+            let shape = u32::from(body.bound)
+                | body.numeric_argument.map_or(0, |argument| (u32::from(argument) + 1) << 1);
             steps[at].opcode = ops.nop;
             steps[at + 2] = LeafStep { opcode: ops.virtual_begin, oparg: uops[at].oparg,
                 source: (at - 1) as u32,
-                result: u64::from(body.local_count) | (u64::from(body.bound) << 32) };
+                result: u64::from(body.local_count) | (u64::from(shape) << 32) };
             for change in body.changes {
                 steps[change.index].opcode = change.opcode;
                 steps[change.index].oparg = change.oparg;
@@ -935,6 +969,7 @@ mod tests {
             float_add_int: 101, guard_tos_exact_int: 102,
             unary_negative: 103, unary_negative_float_inplace: 104, unary_invert: 105,
             virtual_argument_swap: 106,
+            bound_method_init: 107,
         }
     }
 
@@ -1091,7 +1126,7 @@ mod tests {
         assert!(output.iter().all(|step| *step == untouched));
         assert_eq!(std::mem::size_of::<LeafUop>(), 16);
         assert_eq!(std::mem::size_of::<LeafStep>(), 16);
-        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 162);
+        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 164);
     }
 
     fn pair() -> Vec<LeafUop> {
@@ -1433,7 +1468,9 @@ mod tests {
         let mut unknown_old = input.clone();
         unknown_old[14].oparg = 2;
         unknown_old[2].oparg = 3;
-        assert!(plan_leaf_calls(&unknown_old, &ops).unwrap().is_none());
+        let guarded = plan_leaf_calls(&unknown_old, &ops).unwrap().unwrap();
+        assert_eq!(guarded[4].result >> 32, 6);
+        assert_eq!(guarded[15].opcode, ops.pop);
         unknown_old.splice(6..6, [uop(ops.load_borrow.first, 2),
             uop(ops.guard_tos_float, 0), uop(ops.pop_borrow, 0)]);
         assert!(plan_leaf_calls(&unknown_old, &ops).unwrap().is_some());
@@ -1441,6 +1478,34 @@ mod tests {
         borrowed_new.remove(17);
         borrowed_new[17].oparg = 0;
         assert!(plan_leaf_calls(&borrowed_new, &ops).unwrap().is_none());
+    }
+
+    #[test]
+    fn numeric_entry_guard_is_limited_to_one_unproved_parameter() {
+        let ops = opcodes();
+        let mut input = virtual_locals();
+        input[2].oparg = 4;
+        input.insert(17, uop(ops.heap_safe, 0));
+        assert!(plan_leaf_calls(&input, &ops).unwrap().is_none());
+        input.splice(6..6, [uop(ops.load_borrow.first, 3),
+            uop(ops.guard_tos_float, 0), uop(ops.pop_borrow, 0)]);
+        let guarded = plan_leaf_calls(&input, &ops).unwrap().unwrap();
+        assert_eq!(guarded[4].result >> 32, 6);
+        assert_eq!(guarded[18].opcode, ops.pop);
+    }
+
+    #[test]
+    fn bound_method_setup_prevents_receiver_writes_from_using_standalone_proof() {
+        let ops = opcodes();
+        let mut input = float_call()[..14].to_vec();
+        input[2].oparg = 3;
+        input[6].oparg = 1;
+        input[7].oparg = 2;
+        input.extend([uop(ops.store_fast.first, 0), uop(ops.pop_borrow, 0),
+            uop(ops.load_borrow.first, 0), uop(ops.heap_safe, 0), uop(ops.return_value, 0)]);
+        assert!(plan_leaf_calls(&input, &ops).unwrap().is_some());
+        input.insert(0, LeafUop { opcode: ops.bound_method_init, oparg: 3, effectful: 1, operand: 0 });
+        assert!(plan_leaf_calls(&input, &ops).unwrap().is_none());
     }
 
     #[test]

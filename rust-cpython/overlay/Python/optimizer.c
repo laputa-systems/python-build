@@ -2177,6 +2177,7 @@ typedef struct {
     uint16_t unary_negative_float_inplace;
     uint16_t unary_invert;
     uint16_t virtual_argument_swap;
+    uint16_t bound_method_init;
 } _PyJitLeafOpcodes;
 
 typedef struct {
@@ -2193,7 +2194,7 @@ typedef struct {
     uint64_t result;
 } _PyJitLeafStep;
 
-static_assert(sizeof(_PyJitLeafOpcodes) == 162, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
+static_assert(sizeof(_PyJitLeafOpcodes) == 164, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
 static_assert(_Alignof(PyObject) >= 4, "leaf result tags use two object-alignment bits");
 static_assert(sizeof(_PyJitLeafUop) == 16, "_PyJitLeafUop matches Rust LeafUop");
 static_assert(offsetof(_PyJitLeafUop, operand) == 8, "LeafUop operand offset matches Rust");
@@ -2279,6 +2280,7 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         .unary_negative_float_inplace = _UNARY_NEGATIVE_FLOAT_INPLACE,
         .unary_invert = _UNARY_INVERT,
         .virtual_argument_swap = _SWAP_VIRTUAL_ARGUMENT,
+        .bound_method_init = _INIT_CALL_BOUND_METHOD_EXACT_ARGS,
     };
     _PyJitLeafUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
     _PyJitLeafStep *steps = PyMem_RawMalloc(UOP_MAX_TRACE_LENGTH * sizeof(*steps));
@@ -2362,6 +2364,7 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
                      step->opcode == _COPY_VIRTUAL_ARGUMENT ||
                      step->opcode == _SWAP_VIRTUAL_ARGUMENT ||
                      step->opcode == _RETURN_VIRTUAL_CALL || step->opcode == _POP_TOP_FLOAT || step->opcode == _POP_TOP_INT ||
+                     step->opcode == _POP_TOP ||
                      step->opcode == _GUARD_TOS_FLOAT || step->opcode == _GUARD_NOS_FLOAT ||
                      step->opcode == _GUARD_TOS_INT || step->opcode == _GUARD_NOS_INT ||
                      step->opcode == _GUARD_TOS_EXACT_INT ||
@@ -2481,6 +2484,7 @@ hoist_loop_globals(_PyUOpInstruction *buffer, int length, PyFunctionObject *func
 typedef struct {
     uint16_t swap_first, swap_last, pop, store, nop;
     uint16_t argument_swap, float_pop, int_pop, argument_float_store, argument_int_store;
+    uint16_t argument_numeric_store;
 } _PyJitStoreOpcodes;
 
 typedef struct {
@@ -2492,7 +2496,7 @@ typedef struct {
     uint32_t source;
 } _PyJitStoreStep;
 
-static_assert(sizeof(_PyJitStoreOpcodes) == 20, "store opcode map matches Rust");
+static_assert(sizeof(_PyJitStoreOpcodes) == 22, "store opcode map matches Rust");
 static_assert(sizeof(_PyJitStoreUop) == 4, "store descriptors match Rust");
 static_assert(sizeof(_PyJitStoreStep) == 8, "store steps match Rust");
 static_assert(offsetof(_PyJitStoreStep, source) == 4, "store source offset matches Rust");
@@ -2508,6 +2512,7 @@ fuse_local_stores(_PyUOpInstruction *buffer, int length)
         _SWAP_FAST, _SWAP_FAST_7, _POP_TOP, _STORE_FAST_FUSED, _NOP,
         _SWAP_VIRTUAL_ARGUMENT, _POP_TOP_FLOAT, _POP_TOP_INT,
         _STORE_VIRTUAL_ARGUMENT_FLOAT, _STORE_VIRTUAL_ARGUMENT_INT,
+        _STORE_VIRTUAL_ARGUMENT_NUMERIC,
     };
     _PyJitStoreUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
     _PyJitStoreStep *steps = PyMem_RawMalloc((size_t)length * sizeof(*steps));
@@ -2526,8 +2531,10 @@ fuse_local_stores(_PyUOpInstruction *buffer, int length)
             assert(step->source >= (uint32_t)i && step->source < (uint32_t)length);
             if (step->opcode == _STORE_FAST_FUSED ||
                 step->opcode == _STORE_VIRTUAL_ARGUMENT_FLOAT ||
-                step->opcode == _STORE_VIRTUAL_ARGUMENT_INT) {
-                assert(buffer[step->source].opcode == (step->opcode == _STORE_FAST_FUSED
+                step->opcode == _STORE_VIRTUAL_ARGUMENT_INT ||
+                step->opcode == _STORE_VIRTUAL_ARGUMENT_NUMERIC) {
+                assert(buffer[step->source].opcode == (step->opcode == _STORE_FAST_FUSED ||
+                    step->opcode == _STORE_VIRTUAL_ARGUMENT_NUMERIC
                     ? _POP_TOP : step->opcode == _STORE_VIRTUAL_ARGUMENT_FLOAT
                     ? _POP_TOP_FLOAT : _POP_TOP_INT));
                 buffer[i] = buffer[step->source];

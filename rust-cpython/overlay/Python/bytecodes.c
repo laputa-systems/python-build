@@ -5010,16 +5010,24 @@ dummy_func(
             res = returned;
         }
 
-        tier2 op(_BEGIN_VIRTUAL_CALL, (required_locals/2, bound/1, callable, self_or_null, args[oparg] --)) {
+        tier2 op(_BEGIN_VIRTUAL_CALL, (required_locals/2, call_shape/2, callable, self_or_null, args[oparg] --)) {
             EXIT_IF(_PyRuntime.ref_tracer.tracer_func != NULL ||
                     _Py_atomic_load_int_relaxed(&_PyRuntime.tracemalloc.config.tracing));
             PyFunctionObject *func = (PyFunctionObject *)PyStackRef_AsPyObjectBorrow(callable);
             assert(PyFunction_Check(func));
             PyCodeObject *code = (PyCodeObject *)func->func_code;
-            EXIT_IF(bound > 1 || bound != !PyStackRef_IsNull(self_or_null));
+            int bound = call_shape & 1;
+            EXIT_IF(bound != !PyStackRef_IsNull(self_or_null));
             int argc = oparg + (int)bound;
             EXIT_IF(code->co_argcount != argc || code->co_nlocalsplus < argc);
             EXIT_IF((uint32_t)code->co_nlocalsplus < required_locals);
+            uint32_t numeric_argument = call_shape >> 1;
+            if (numeric_argument != 0) {
+                uint32_t index = numeric_argument - 1;
+                EXIT_IF(index < (uint32_t)bound || index >= (uint32_t)argc);
+                PyObject *old = PyStackRef_AsPyObjectBorrow(args[index - bound]);
+                EXIT_IF(!PyFloat_CheckExact(old) && !PyLong_CheckExact(old));
+            }
             EXIT_IF(code->co_kwonlyargcount != 0 || code->co_ncellvars != 0 || code->co_nfreevars != 0);
             EXIT_IF(code->co_flags & (CO_GENERATOR | CO_COROUTINE | CO_ASYNC_GENERATOR |
                                        CO_VARARGS | CO_VARKEYWORDS));
@@ -5097,6 +5105,21 @@ dummy_func(
             DEAD(value);
             INPUTS_DEAD();
             PyStackRef_CLOSE_SPECIALIZED_TSTATE(tstate, old, _PyLong_ExactDeallocTstate);
+        }
+
+        tier2 op(_STORE_VIRTUAL_ARGUMENT_NUMERIC, (value --)) {
+            assert(frame == (_PyInterpreterFrame *)tstate->datastack_top);
+            _PyStackRef *held = _PyFrame_GetStackPointer(tstate->current_frame);
+            int bound = !PyStackRef_IsNull(held[1]);
+            assert(oparg >= bound && oparg < _PyFrame_GetCode(frame)->co_argcount);
+            _PyStackRef *slot = &held[2 + oparg - bound];
+            _PyStackRef old = *slot;
+            assert(PyFloat_CheckExact(PyStackRef_AsPyObjectBorrow(old)) ||
+                   PyLong_CheckExact(PyStackRef_AsPyObjectBorrow(old)));
+            *slot = value;
+            DEAD(value);
+            INPUTS_DEAD();
+            PyStackRef_XCLOSE_TSTATE(tstate, old);
         }
 
         tier2 op(_RETURN_VIRTUAL_CALL, (retval -- res)) {
