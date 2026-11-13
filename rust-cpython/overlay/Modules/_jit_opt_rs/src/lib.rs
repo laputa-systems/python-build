@@ -1,3 +1,4 @@
+mod exit_stubs;
 mod unbox;
 mod leaf;
 mod cache;
@@ -291,4 +292,51 @@ mod tests {
         assert_eq!(plan(&sum_of_products(), &synthetic(), &mut steps), 0);
         assert!(steps.iter().all(|step| *step == UNTOUCHED));
     }
+}
+
+/// Plans virtual resume exit reuse. Output is written only for a complete plan.
+///
+/// # Safety
+/// Input is non-null and aligned for `length` initialized live descriptors.
+/// Output is non-null, aligned writable storage for `capacity` u32 values,
+/// possibly uninitialized, and does not overlap input. Both remain live for
+/// the call. Zero preserves output on allocation failure or short capacity;
+/// -1 preserves output on invalid descriptors.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn _PyJitOpt_PlanExitStubs(
+    input: *const exit_stubs::ExitStubUop, length: usize,
+    output: *mut u32, capacity: usize,
+) -> isize {
+    // SAFETY: the caller supplies a non-null aligned live descriptor array.
+    let input = unsafe { slice::from_raw_parts(input, length) };
+    match exit_stubs::plan(input) {
+        Ok(Some(plan)) if plan.len() <= capacity && plan.len() <= isize::MAX as usize => {
+            // SAFETY: separate live output storage may be uninitialized until written.
+            let output = unsafe { slice::from_raw_parts_mut(output.cast::<MaybeUninit<u32>>(), capacity) };
+            for (slot, value) in output.iter_mut().zip(plan) { slot.write(value); }
+            length as isize
+        }
+        Ok(_) => 0,
+        Err(Inconsistent) => -1,
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn exit_stubs_ffi_uninitialized_and_atomic() {
+    use exit_stubs::ExitStubUop;
+    let input = [ExitStubUop { kind: 1, exit_variant: 0, target: 0 }, ExitStubUop { kind: 3, exit_variant: 1, target: 4 }, ExitStubUop { kind: 3, exit_variant: 1, target: 4 }, ExitStubUop { kind: 2, exit_variant: 0, target: 0 }];
+    let mut output = [MaybeUninit::<u32>::uninit(); 4];
+    // SAFETY: initialized input and separate aligned writable uninitialized output.
+    assert_eq!(unsafe { _PyJitOpt_PlanExitStubs(input.as_ptr(), 4, output.as_mut_ptr().cast(), 4) }, 4);
+    // SAFETY: the positive count confirms every returned output entry was initialized.
+    assert_eq!(output.map(|x| unsafe { x.assume_init() }), [0, 1, 1, 3]);
+    let mut sentinel = [77u32; 4];
+    // SAFETY: valid separate arrays with deliberately insufficient declared output capacity.
+    assert_eq!(unsafe { _PyJitOpt_PlanExitStubs(input.as_ptr(), 4, sentinel.as_mut_ptr(), 3) }, 0);
+    assert_eq!(sentinel, [77; 4]);
+    let bad = [ExitStubUop { kind: 99, exit_variant: 0, target: 0 }];
+    // SAFETY: the descriptor is initialized; its raw kind is deliberately invalid.
+    assert_eq!(unsafe { _PyJitOpt_PlanExitStubs(bad.as_ptr(), 1, sentinel.as_mut_ptr(), 4) }, -1);
+    assert_eq!(sentinel, [77; 4]);
 }

@@ -1376,6 +1376,17 @@ make_boxing_exit(_PyUOpInstruction *buffer, int next_spare, int exit_depth,
     return next_spare + 1;
 }
 
+typedef struct {
+    uint8_t kind;
+    uint16_t exit_variant;
+    uint32_t target;
+} _PyJitExitStubUop;
+static_assert(sizeof(_PyJitExitStubUop) == 8, "exit stub descriptor size");
+static_assert(offsetof(_PyJitExitStubUop, kind) == 0, "exit stub kind offset");
+static_assert(offsetof(_PyJitExitStubUop, exit_variant) == 2, "exit stub variant offset");
+static_assert(offsetof(_PyJitExitStubUop, target) == 4, "exit stub target offset");
+extern Py_ssize_t _PyJitOpt_PlanExitStubs(const _PyJitExitStubUop *, size_t, uint32_t *, size_t);
+
 /* Convert implicit exits, errors and deopts
  * into explicit ones. */
 static int
@@ -1414,8 +1425,54 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
     if (unboxed != NULL && length > UOP_MAX_TRACE_LENGTH) {
         return -1;
     }
+    uint32_t *exit_sources = NULL;
+    bool has_virtual = false;
+    for (int i = 0; i < length; i++) {
+        if (_PyUop_Uncached[buffer[i].opcode] == _BEGIN_VIRTUAL_CALL) {
+            has_virtual = true;
+            break;
+        }
+    }
+    if (has_virtual) {
+        _PyJitExitStubUop *descriptors = PyMem_RawCalloc(length, sizeof(*descriptors));
+        exit_sources = PyMem_RawMalloc(length * sizeof(*exit_sources));
+        if (descriptors != NULL && exit_sources != NULL) {
+            for (int i = 0; i < length; i++) {
+                _PyUOpInstruction *inst = &buffer[i];
+                int base = _PyUop_Uncached[inst->opcode];
+                uint16_t flags = _PyUop_Flags[base] & (HAS_EXIT_FLAG | HAS_DEOPT_FLAG | HAS_PERIODIC_FLAG);
+                if (base == _BEGIN_VIRTUAL_CALL) {
+                    descriptors[i].kind = 1;
+                }
+                else if (base == _RETURN_VIRTUAL_CALL) {
+                    descriptors[i].kind = 2;
+                }
+                else if (flags) {
+                    uint16_t exit_base = flags & HAS_DEOPT_FLAG ? _DEOPT :
+                        flags & HAS_PERIODIC_FLAG ? _HANDLE_PENDING_AND_DEOPT : _EXIT_TRACE;
+                    if (dynamic_exit_uop[base]) {
+                        exit_base = _DYNAMIC_EXIT;
+                    }
+                    int depth = get_cached_entries_for_side_exit(inst);
+                    descriptors[i].kind = 3;
+                    descriptors[i].exit_variant = _PyUop_Caching[exit_base].entries[depth].opcode;
+                    descriptors[i].target = uop_get_target(inst);
+                }
+            }
+            if (_PyJitOpt_PlanExitStubs(descriptors, length, exit_sources, length) != length) {
+                PyMem_RawFree(exit_sources);
+                exit_sources = NULL;
+            }
+        }
+        else {
+            PyMem_RawFree(exit_sources);
+            exit_sources = NULL;
+        }
+        PyMem_RawFree(descriptors);
+    }
     for (int i = 0; i < length; i++) {
         if (unboxed != NULL && next_spare + 6 > UOP_MAX_TRACE_LENGTH) {
+            PyMem_RawFree(exit_sources);
             return -1;
         }
         _PyUOpInstruction *inst = &buffer[i];
@@ -1456,17 +1513,23 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
             if (virtual_call) {
                 assert(!is_control_flow && !(exit_flags & HAS_PERIODIC_FLAG));
                 assert((exit_floats | exit_ints) == 0);
-                current_jump = next_spare;
-                if (exit_depth != 0) {
-                    make_exit(&buffer[next_spare], _PyUop_SpillsAndReloads[exit_depth][0], 0, false);
+                uint32_t source = exit_sources == NULL ? (uint32_t)i : exit_sources[i];
+                if (source < (uint32_t)i) {
+                    current_jump = buffer[source].jump_target;
+                }
+                else {
+                    current_jump = next_spare;
+                    if (exit_depth != 0) {
+                        make_exit(&buffer[next_spare], _PyUop_SpillsAndReloads[exit_depth][0], 0, false);
+                        next_spare++;
+                    }
+                    int opcode = _PyUop_Caching[_MATERIALIZE_VIRTUAL_FRAME].entries[0].opcode;
+                    assert(opcode > 0);
+                    make_exit(&buffer[next_spare], opcode, 0, false);
+                    buffer[next_spare].operand0 = jump_target;
+                    buffer[next_spare].operand1 = true;
                     next_spare++;
                 }
-                int opcode = _PyUop_Caching[_MATERIALIZE_VIRTUAL_FRAME].entries[0].opcode;
-                assert(opcode > 0);
-                make_exit(&buffer[next_spare], opcode, 0, false);
-                buffer[next_spare].operand0 = jump_target;
-                buffer[next_spare].operand1 = true;
-                next_spare++;
                 current_jump_target = current_exit_op = -1;
             }
             else if ((exit_floats | exit_ints) != 0) {
@@ -1548,6 +1611,7 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
         }
     }
     assert(!virtual_call);
+    PyMem_RawFree(exit_sources);
     return next_spare;
 }
 
