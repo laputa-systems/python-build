@@ -1200,7 +1200,7 @@ stores, aliases, compact overflow, exact-int-to-float changes, bound calls,
 updated error locals and PCs, callbacks, reference counts and later unary OOM.
 Trace, profile and monitoring observations agree with interpreter control.
 A C consumer keeps the generator caller's executor on its own code object.
-The fixture requires 20 active samples and 18 virtual traces. Independent
+The fixture requires 20 active samples and 18 virtual trace samples. Independent
 source, generated-code and native review approves the final candidate.
 Performance acceptance remains deferred under OD16.
 
@@ -1441,7 +1441,7 @@ approves; performance acceptance remains deferred under OD16.
 
 **Local-store stencil fusion (2026-11-12).** The Rust planner in
 `Modules/_jit_opt_rs/src/store.rs` replaces a local swap followed only by
-NOPs and a generic pop with `_STORE_FAST_FUSED`. It keeps typed pops,
+NOPs and a generic pop with `_STORE_FAST_FUSED`. Ordinary local stores keep typed pops,
 instruction-pointer changes, guards and callbacks as boundaries. The new
 private `_PyJitOpt_PlanStores` ABI returns transactional steps using generated
 opcode identities and preserves the original pop's target metadata.
@@ -1462,6 +1462,31 @@ store now), and `test_call_method_descriptor_noargs` expects at least five
 methods with only the count helper including fused stores. Every numeric,
 list-slice and descriptor assertion, and the four unchanged no-op pops in the
 slice test, passed. CPython's tests remain unchanged.
+
+**Virtual parameter store fusion (2026-11-12).** The Rust store planner
+replaces `_SWAP_VIRTUAL_ARGUMENT` and its typed numeric cleanup with one
+`_STORE_VIRTUAL_ARGUMENT_FLOAT` or `_STORE_VIRTUAL_ARGUMENT_INT` stencil.
+Selection follows the old value's cleanup type, including integer-to-float
+parameter changes. The fused store retains the argument index and copies the
+original cleanup's metadata. Only NOPs may intervene. Guards, instruction-pointer
+updates, callbacks, generic argument cleanup and typed ordinary local cleanup
+remain boundaries.
+
+Both stencils transfer the incoming reference into the bound-aware held slot
+before closing the old number with its original specialized deallocator.
+Generated code consumes one operand and leaves zero cached values, matching
+the original pair. The existing ownership proof and frame materializer stay
+unchanged. The original pair remains executable when planning allocation fails
+or a pair is ineligible. The private store opcode map grows from 10 to 20
+bytes. Store descriptors remain 4 bytes and rewrite steps remain 8 bytes.
+The leaf opcode map stays 162 bytes.
+
+The native parameter fixture requires the exact fused-store kinds and counts
+across 18 virtual trace samples, with no remaining virtual swaps. All 20 activity
+checks, aliases, bound calls, callbacks, updated error PCs and locals, one-shot
+and sustained OOM, reference counts and observer checks still pass. Independent
+source, generated-code and native review approves. This removes a stencil
+boundary. No speedup is claimed, and performance gates remain deferred under OD16.
 
 ### J acceptance
 
@@ -2651,21 +2676,22 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 **Resumed 2026-11-12.** J feature completion continues under OD16; performance gates remain deferred.
 Closeout cancellation reports inactive. Main and the retained candidate are clean; protected worktrees remain registered.
-Integration: `main`, including accepted mixed float/int, scalar negation, integer inversion, numeric parameter stores and the allocation-observer guard. Current correctness incumbent is `perf-jit-parameters` in `.work/wt/jit-parameters`, based on accepted inversion at `0b9f27e0`. A clean build followed by the root-caused cleanup correction and incremental rebuild verifies all 58 Rust extensions. Its raw overlay matches the final candidate source. Pin-refresh and older stage evidence remains historical. This workflow does not push.
+Integration: `main`, including accepted mixed float/int, scalar negation, integer inversion, numeric parameter stores, their typed stencil fusion and the allocation-observer guard. Current correctness incumbent is `perf-jit-parameter-fusion` in `.work/wt/jit-parameter-fusion`, based on accepted parameter stores at `b90b486f`. Its clean build verifies all 58 Rust extensions, and its raw overlay matches the candidate source. Pin-refresh and older stage evidence remains historical. This workflow does not push.
 
 The repository moved from `~/d/python-build` to `/Users/josh/repos/laputa-systems/python-build`, including `.work/`, caches, Cargo homes, logs and overlay targets. Worktrees are re-registered; campaign branches and tags remain. Main now includes the shared build-repository contract, buildlib migration, opt-in cold-compile workloads and dependency refresh. Lane TLS forks are `laputa/0.23.46` (`9105f44f`) and `laputa/0.103.17` (`2978880e`); overlay Cargo.lock digest is `27c9e6ba…`. Distrusted certificates report verify code 28. The owner reports locked fetch, debug build, `test_httplib` and `test_urllib2_localnet` passing after refresh. Epoch e891 retains known `test_ssl` failures because RTLS lacks `HAS_ECH`.
 
 | Lane | State | Resume / last evidence |
 | --- | --- | --- |
-| J | active: numeric parameter stores accepted | Held slots preserve reassigned exact numbers for later loads, return cleanup and frame reconstruction. Live argument anchors, unproved old values and receiver writes stay concrete. 66 Rust tests; 24 native integrations; same 16 reviewed suite exclusions; 2,000 fuzz programs (1,949 JIT-active, 0 differences); 31 equal digests; independent source/generated/native review approves. Evidence: `.work/wt/jit-parameters/.work/tmp/parameters-feature-acceptance.json`. |
+| J | active: typed virtual parameter store fusion accepted | Adjacent virtual swaps and typed cleanup use one stencil with the same reference transfer, bound-call indexing and original cleanup metadata. 67 Rust tests; 24 native integrations; same 16 reviewed suite exclusions; 2,000 fuzz programs (1,949 JIT-active, 0 differences); 31 equal digests; independent source/generated/native review approves. Evidence: `.work/wt/jit-parameter-fusion/.work/tmp/fusion-feature-acceptance.json`. |
 | C | feature complete | C3: integrated normal/verify each run 52,102 tests with the same five reference failures and 0 compiler mismatches; native 11 passes. C2/C3 performance acceptance remains deferred. |
 | R1 / Close | done / deferred | R1 catalog below; Close still needs deferred gates and the owner-approved macOS-only scope. No M4 or overall completion claim. |
 
-Completed slice: numeric parameter reassignment with immediate typed cleanup and original-PC reconstruction. Next bounded T4 item: fuse an adjacent virtual-argument swap and typed numeric pop into one stencil. The existing Rust store planner already fuses ordinary local swaps and generic pops. Keep every instruction-pointer update, guard and callback as a boundary. Remaining T3 lookup caches, non-escaping allocations, loop peeling and broader call shapes stay open. Carbon stays disabled under OD17; performance acceptance remains deferred under OD16.
+Completed slices: proven numeric parameter reassignment and its typed store fusion. Next bounded T3 item: assess stores whose old parameter type lacks a static proof. Any use-site guard must preserve the original STORE_FAST PC and old-value callback state on refusal. No design for this extension is accepted yet. Remaining lookup caches, non-escaping allocations, loop peeling, broader call shapes and stencil glue stay open. Carbon stays disabled under OD17; performance acceptance remains deferred under OD16.
 Parked compiler work: `campaign/c0` (pre-existing report committed as `e2b4fde`), `campaign/c2-layout`, `campaign/c2-memgate`; historical/unreviewed alternatives, not required for closed C3. Review against main before any reuse or integration.
 Parked J/reference work: `campaign/t2-store`, `campaign/t3-pending` (array-store experiment), `campaign/t3-inline` (dropped linked-frame experiment), `campaign/r1` (older CinderX study), `campaign/jit-main-ref` (matched C3 reference). Reopen only for an explicit feature/reference review.
 Retained `.work/wt/jit-tracemalloc` holds the accepted observer fix, stage and evidence; `.work/wt/jit-tracemalloc-review` holds its source-review snapshot. Retained `.work/wt/jit-invert` holds accepted inversion sources, rebuilt stage and final evidence. `jit-invert-review` preserves the independently reviewed inversion snapshot. Root `.work/tmp/jit-invert-before-observer-fix.json` retains the superseded blocked evidence.
 Retained `.work/wt/jit-parameters` holds accepted numeric parameter stores, final stage and evidence. `jit-parameters-review` holds the initial source-review snapshot; its final review also covers the candidate working diff and native stage. The bootstrap-created local object cache is preserved at `.work/tmp/jit-parameters-bootstrap-objects` before linking the primary cache.
+Retained `.work/wt/jit-parameter-fusion` holds the accepted typed store fusion, clean stage and evidence. `jit-parameter-fusion-review` holds its independently reviewed source snapshot. Its bootstrap object cache is preserved at `.work/tmp/jit-parameter-fusion-bootstrap-objects`.
 Retained `.work/wt/jit-unary` holds accepted negation sources, stage and evidence; `.work/wt/jit-unary-review` holds the independently reviewed source snapshot. The final regression isolates caller code objects per callee/type so it cannot mistake an older cached executor for the tested path.
 Retained `.work/wt/jit-float-int` holds the accepted mixed-add sources, fresh stage and evidence. Its setup required preserving the bootstrap-created local objects directory at `.work/tmp/jit-float-int-bootstrap-objects` before linking the primary cache. No harness change was made.
 Protected `.work/wt/` trees: `c2`, `c3`, `j3`, `jit-loop`, `r0` retain compiler/epoch/per-step gate stages; `jit-integrate` retains frozen `4b66ce3` oracle; `jit-main-ref` retains matched C3/pins; `jit-pair` retains the pre-refresh candidate/evidence; `c0`, `r1`, `t2-unbox` retain parked report/source and their evidence.
@@ -2820,4 +2846,5 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-12 | e891 | J | T3 | virtualize proven exact numeric negation and retain fresh-float in-place transfer with NULL cleanup | accepted `perf-jit-float-int` at main `1622358` | performance deferred (OD16) | — | CORRECT: clean JIT/Serc build verifies 58 Rust extensions; 64 Rust tests; 21 native integrations, 35 active samples and 11 unary traces; same 16 reviewed shape exclusions; 2,000 fuzz programs (1,949 JIT-active, 0 differences); 31 equal digests; independent source/generated/native review approves, including explicit variants and integer/float OOM PCs | `.work/wt/jit-unary/.work/tmp/unary-feature-acceptance.json`; corpus runs `20261112T215124Z-perf-jit-float-int-vs-perf-jit-unary`, `20261112T215357Z-perf-jit-float-int-vs-perf-jit-unary`; root `.work/tmp/jit-unary-rust-tests.log`, `jit-unary-native.log`, `jit-unary-independent-review.json` |
 | 2026-11-12 | e891 | J | correctness | retain physical callee allocation frames for memory/reference observers; recognize the pure integer atomic load in the case generator | accepted `perf-jit-unary` at main `e993507` | performance deferred (OD16) | — | CORRECT: incumbent reproduces missing callee in both allocating entry paths; fixed regression passes JIT/on/off/noopt before/after warming with observer and progress parity; 22 native integrations; same 16 shape exclusions including added `test_tracemalloc` suite; 2,000 fuzz programs (1,949 JIT-active, 0 differences); 31 equal digests; independent source/generated/native review approves. Incremental retry follows a root-caused generator failure; unchanged 64 Rust tests reuse accepted evidence | `.work/wt/jit-tracemalloc/.work/tmp/tracemalloc-feature-acceptance.json`; corpus `20261112T232608Z-perf-jit-unary-vs-perf-jit-tracemalloc`, `20261112T232756Z-perf-jit-unary-vs-perf-jit-tracemalloc`; root `.work/tmp/jit-tracemalloc-independent-review.json`, `jit-tracemalloc-regression-baseline.log`, `jit-tracemalloc-generator-{before,after}.log` |
 | 2026-11-12 | e891 | J | T3 | virtualize proven integer inversion with an ExactInt result, preserving compact guards, ownership and original unary PCs | accepted `perf-jit-tracemalloc` at main `b4201dae` | performance deferred (OD16) | — | CORRECT: incremental rebuild verifies 58 Rust extensions; 65 Rust tests; 23 native integrations, 16 active samples and five virtual inversion traces; same 16 reviewed shape exclusions; 2,000 fuzz programs (1,949 JIT-active, 0 differences); 31 equal digests. Original allocation-stack regression passes both modes after observer repair. Independent inversion approval is reused for byte-identical source after rebase, alongside the separately approved shared guard | `.work/wt/jit-invert/.work/tmp/invert-feature-acceptance.json`; corpus `20261112T234548Z-perf-jit-tracemalloc-vs-perf-jit-invert`, `20261112T234720Z-perf-jit-tracemalloc-vs-perf-jit-invert`; root `.work/tmp/jit-invert-{rust-tests,composition-check,source-proof}.log`, `jit-invert-independent-review.json` |
-| 2026-11-12 | e891 | J | T3 | virtualize proven numeric parameter stores in held argument slots with live-anchor rejection and immediate typed cleanup | accepted `perf-jit-invert` at main `0b9f27e0` | performance deferred (OD16) | — | CORRECT: 66 Rust tests; 24 native integrations, 20 active samples and 18 virtual traces; same 16 reviewed shape exclusions; 2,000 fuzz programs (1,949 JIT-active, 0 differences); 31 equal digests; independent final-source/generated/native review approves. A root-caused no-op-cleanup refusal required an incremental rebuild after the clean build; final stage verifies 58 Rust extensions and matches the source overlay | `.work/wt/jit-parameters/.work/tmp/parameters-feature-acceptance.json`; corpus `20261113T001612Z-perf-jit-invert-vs-perf-jit-parameters`, `20261113T001754Z-perf-jit-invert-vs-perf-jit-parameters`; root `.work/tmp/jit-parameters-{rust-tests,native,source-proof}.log`, `jit-parameters-independent-review.json` |
+| 2026-11-12 | e891 | J | T3 | virtualize proven numeric parameter stores in held argument slots with live-anchor rejection and immediate typed cleanup | accepted `perf-jit-invert` at main `0b9f27e0` | performance deferred (OD16) | — | CORRECT: 66 Rust tests; 24 native integrations, 20 active samples and 18 virtual trace samples; same 16 reviewed shape exclusions; 2,000 fuzz programs (1,949 JIT-active, 0 differences); 31 equal digests; independent final-source/generated/native review approves. A root-caused no-op-cleanup refusal required an incremental rebuild after the clean build; final stage verifies 58 Rust extensions and matches the source overlay | `.work/wt/jit-parameters/.work/tmp/parameters-feature-acceptance.json`; corpus `20261113T001612Z-perf-jit-invert-vs-perf-jit-parameters`, `20261113T001754Z-perf-jit-invert-vs-perf-jit-parameters`; root `.work/tmp/jit-parameters-{rust-tests,native,source-proof}.log`, `jit-parameters-independent-review.json` |
+| 2026-11-12 | e891 | J | T4 | fuse virtual parameter swaps and typed numeric cleanup while preserving ownership, bound indices and cleanup metadata | accepted `perf-jit-parameters` at main `b90b486f` | performance deferred (OD16) | eligible swap/cleanup pairs become one stencil; instruction count only | CORRECT: clean JIT/Serc build verifies 58 Rust extensions; 67 Rust tests; 24 native integrations, including exact fused kinds/counts across 18 virtual trace samples and 20 active samples; same 16 reviewed suite exclusions; 2,000 fuzz programs (1,949 JIT-active, 0 differences); 31 equal digests; independent source/generated/native review approves | `.work/wt/jit-parameter-fusion/.work/tmp/fusion-feature-acceptance.json`; corpus `20261113T003515Z-perf-jit-parameters-vs-perf-jit-parameter-fusion`, `20261113T003648Z-perf-jit-parameters-vs-perf-jit-parameter-fusion`; root `.work/tmp/jit-parameter-fusion-{rust-tests,native,source-proof}.log`, `jit-parameter-fusion-independent-review.json` |
