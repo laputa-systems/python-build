@@ -183,8 +183,8 @@ pub unsafe extern "C" fn _PyJitOpt_PlanLeafCalls(
 pub use unbox::{
     ACTION_COPY, ARITH_ADD, ARITH_MULTIPLY, ARITH_SUBTRACT, ARITH_TRUE_DIVIDE, EFFECT_BARRIER,
     EFFECT_ERROR, EFFECT_ERROR_NO_POP, EFFECT_EXIT, Inconsistent, JitOptStep, JitOptUop,
-    KIND_FLOAT_ARITH, KIND_FLOAT_COMPARE, KIND_INT_ARITH, KIND_INT_COMPARE, KIND_NOP, KIND_OTHER,
-    KIND_POP, MAX_UNBOXED_DEPTH, Plan, REUSE_LEFT, REUSE_NONE, REUSE_RIGHT, SYNTHETIC_ACTIONS,
+    KIND_FLOAT_ARITH, KIND_FLOAT_ARRAY_READ, KIND_FLOAT_COMPARE, KIND_INT_ARITH, KIND_INT_COMPARE, KIND_NOP, KIND_OTHER,
+    KIND_POP, POP_OTHER, POP_BORROWED, POP_INT, MAX_UNBOXED_DEPTH, Plan, REUSE_LEFT, REUSE_NONE, REUSE_RIGHT, SYNTHETIC_ACTIONS,
     plan_unboxing,
 };
 
@@ -258,6 +258,41 @@ mod tests {
         unsafe {
             _PyJitOpt_PlanUnboxing(trace.as_ptr(), trace.len(), synthetic.as_ptr(), steps.as_mut_ptr(), steps.len())
         }
+    }
+
+    #[test]
+    fn array_read_ffi_uninit_short_and_malformed_are_atomic() {
+        let load = uop(KIND_OTHER, 0, (0, 0, 1), 0, 0);
+        let read = uop(KIND_FLOAT_ARRAY_READ, 0, (2, 2, 3), 3, EFFECT_EXIT | EFFECT_ERROR | EFFECT_ERROR_NO_POP);
+        let idx = uop(KIND_POP, POP_INT, (1, 1, 0), 1, 0);
+        let borrowed = uop(KIND_POP, POP_BORROWED, (1, 1, 0), 1, 0);
+        let arith = uop(KIND_FLOAT_ARITH, ARITH_MULTIPLY, (2, 2, 3), 3, EFFECT_ERROR | EFFECT_ERROR_NO_POP);
+        let pop = uop(KIND_POP, POP_OTHER, (1, 1, 0), 1, 0);
+        let trace = [load, load, read, idx, borrowed, load, load, read, idx, borrowed, arith, pop, pop,
+                     uop(KIND_OTHER, 0, (1, 1, 1), 1, 0)];
+        let desc = synthetic();
+        let mut output = [MaybeUninit::<JitOptStep>::uninit(); 32];
+        // SAFETY: the descriptor and writable output arrays are live and disjoint.
+        let count = unsafe { _PyJitOpt_PlanUnboxing(trace.as_ptr(), trace.len(), desc.as_ptr(), output.as_mut_ptr().cast(), output.len()) };
+        assert!(count > 0 && count as usize <= output.len());
+        // SAFETY: a positive return initializes exactly this output prefix.
+        let written: Vec<_> = output[..count as usize].iter().map(|slot| unsafe { slot.assume_init() }).collect();
+        let reads: Vec<_> = written.iter().filter(|step| step.action == 16).collect();
+        assert_eq!(reads.iter().map(|step| step.source).collect::<Vec<_>>(), vec![2, 7]);
+        assert_eq!(reads.iter().map(|step| step.exit_floats).collect::<Vec<_>>(), vec![0, 4]);
+        assert!(written.iter().all(|step| usize::from(step.source) < trace.len()));
+        let mut short = [UNTOUCHED; 1];
+        assert_eq!(plan(&trace, &desc, &mut short), 0);
+        assert_eq!(short, [UNTOUCHED; 1]);
+        let mut malformed = trace;
+        malformed[2].detail = 1;
+        let mut sentinel = [UNTOUCHED; 32];
+        assert_eq!(plan(&malformed, &desc, &mut sentinel), -1);
+        assert!(sentinel.iter().all(|s| *s == UNTOUCHED));
+        let mut bad_desc = desc;
+        bad_desc[15].effects = 0;
+        assert_eq!(plan(&trace, &bad_desc, &mut sentinel), -1);
+        assert!(sentinel.iter().all(|s| *s == UNTOUCHED));
     }
 
     #[test]

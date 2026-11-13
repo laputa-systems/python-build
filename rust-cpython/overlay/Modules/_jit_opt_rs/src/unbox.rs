@@ -5,6 +5,10 @@ pub const KIND_FLOAT_ARITH: u8 = 3;
 pub const KIND_FLOAT_COMPARE: u8 = 4;
 pub const KIND_INT_ARITH: u8 = 5;
 pub const KIND_INT_COMPARE: u8 = 6;
+pub const KIND_FLOAT_ARRAY_READ: u8 = 7;
+pub const POP_OTHER: u8 = 0;
+pub const POP_BORROWED: u8 = 1;
+pub const POP_INT: u8 = 2;
 
 pub const ARITH_ADD: u8 = 0;
 pub const ARITH_SUBTRACT: u8 = 1;
@@ -20,12 +24,14 @@ pub const EFFECT_ERROR: u8 = 4;
 pub const EFFECT_ERROR_NO_POP: u8 = 8;
 
 pub const ACTION_COPY: u8 = 0;
-pub const SYNTHETIC_ACTIONS: usize = 15;
+pub const SYNTHETIC_ACTIONS: usize = 16;
 
 pub const MAX_UNBOXED_DEPTH: usize = 32;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// `KIND_POP` uses `POP_OTHER`, `POP_BORROWED`, or `POP_INT` in `detail`.
+/// Array-read descriptors retain boxed inputs and the original error stack.
 pub struct JitOptUop {
     pub kind: u8,
     pub detail: u8,
@@ -80,21 +86,33 @@ enum Side {
 enum NodeKind {
     Arith { domain: Domain, op: ArithOp, reuses: Option<Side> },
     Compare { domain: Domain },
+    FloatArrayRead,
 }
 
 impl NodeKind {
+    fn input_domain(self) -> Option<Domain> {
+        match self {
+            Self::FloatArrayRead => None,
+            Self::Arith { domain, .. } | Self::Compare { domain } => Some(domain),
+        }
+    }
+
     fn domain(self) -> Domain {
         match self {
             NodeKind::Arith { domain, .. } | NodeKind::Compare { domain } => domain,
+            NodeKind::FloatArrayRead => Domain::Float,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PopKind { Other, Borrowed, Int }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Kind {
     Other,
     Nop,
-    Pop,
+    Pop(PopKind),
     Node(NodeKind),
 }
 
@@ -143,7 +161,10 @@ fn decode(raw: &JitOptUop) -> Result<Uop, Inconsistent> {
     let kind = match (raw.kind, raw.detail) {
         (KIND_OTHER, 0) => Kind::Other,
         (KIND_NOP, 0) => Kind::Nop,
-        (KIND_POP, 0) => Kind::Pop,
+        (KIND_POP, POP_OTHER) => Kind::Pop(PopKind::Other),
+        (KIND_POP, POP_BORROWED) => Kind::Pop(PopKind::Borrowed),
+        (KIND_POP, POP_INT) => Kind::Pop(PopKind::Int),
+        (KIND_FLOAT_ARRAY_READ, 0) => Kind::Node(NodeKind::FloatArrayRead),
         (KIND_FLOAT_COMPARE, 0) => Kind::Node(NodeKind::Compare { domain: Domain::Float }),
         (KIND_INT_COMPARE, 0) => Kind::Node(NodeKind::Compare { domain: Domain::Int }),
         (KIND_FLOAT_ARITH, detail) => Kind::Node(decode_arith(Domain::Float, detail)?),
@@ -164,7 +185,7 @@ fn decode(raw: &JitOptUop) -> Result<Uop, Inconsistent> {
     };
     let expected = match kind {
         Kind::Nop => Some((0, 0, 0)),
-        Kind::Pop => Some((1, 1, 0)),
+        Kind::Pop(_) => Some((1, 1, 0)),
         Kind::Node(_) => Some((2, 2, 3)),
         Kind::Other => None,
     };
@@ -203,6 +224,7 @@ enum Action {
     Arith(Domain, ArithOp),
     Compare(Domain),
     Box(Domain),
+    FloatArrayRead,
 }
 
 struct Contract {
@@ -228,6 +250,7 @@ impl Action {
         Action::Arith(Domain::Int, ArithOp::Multiply),
         Action::Compare(Domain::Int),
         Action::Box(Domain::Int),
+        Action::FloatArrayRead,
     ];
 
     fn code(self) -> u8 {
@@ -258,6 +281,7 @@ impl Action {
             Action::Arith(Domain::Float, ArithOp::TrueDivide) | Action::Arith(Domain::Int, _) => ((2, 2, 1), true, None),
             Action::Arith(Domain::Float, _) | Action::Compare(_) => ((2, 2, 1), false, None),
             Action::Box(_) => ((1, 1, 1), false, Some(ErrorStack::PopsInputs)),
+            Action::FloatArrayRead => ((2, 2, 1), true, None),
         };
         Contract { shape, exits, error }
     }
@@ -360,8 +384,8 @@ struct Dataflow {
 
 fn consumes_in_place(kind: Kind, producer: Producer, depth: usize) -> bool {
     match kind {
-        Kind::Node(_) => depth < 2,
-        Kind::Pop => matches!(producer, Producer::Operand(_)),
+        Kind::Node(kind) => kind.input_domain().is_some() && depth < 2,
+        Kind::Pop(_) => matches!(producer, Producer::Operand(_)),
         Kind::Other | Kind::Nop => false,
     }
 }
@@ -407,7 +431,7 @@ fn dataflow(uops: &[Uop]) -> Dataflow {
             Kind::Node(kind) => {
                 let node = nodes.len();
                 let result = match kind {
-                    NodeKind::Arith { .. } => fresh(&mut values, Producer::Result(node)),
+                    NodeKind::Arith { .. } | NodeKind::FloatArrayRead => fresh(&mut values, Producer::Result(node)),
                     NodeKind::Compare { .. } => fresh(&mut values, Producer::Other),
                 };
                 let left = fresh(&mut values, Producer::Operand(node));
@@ -415,9 +439,9 @@ fn dataflow(uops: &[Uop]) -> Dataflow {
                 nodes.push(Node {
                     uop: index,
                     kind,
-                    left: window[1],
-                    right: window[0],
-                    result: matches!(kind, NodeKind::Arith { .. }).then_some(result),
+                    left: kind.input_domain().and(window[1]),
+                    right: kind.input_domain().and(window[0]),
+                    result: matches!(kind, NodeKind::Arith { .. } | NodeKind::FloatArrayRead).then_some(result),
                     operands: [left, right],
                 });
                 node_at[index] = Some(node);
@@ -445,7 +469,13 @@ fn operand_pops(uops: &[Uop], flow: &Dataflow, node: &Node) -> Option<[usize; 2]
     let [left, right] = node.operands;
     let (right_pop, 0) = flow.values[right].consumer? else { return None };
     let (left_pop, 0) = flow.values[left].consumer? else { return None };
-    if uops[right_pop].kind != Kind::Pop || uops[left_pop].kind != Kind::Pop || right_pop >= left_pop {
+    if !matches!(uops[right_pop].kind, Kind::Pop(_)) || !matches!(uops[left_pop].kind, Kind::Pop(_)) || right_pop >= left_pop {
+        return None;
+    }
+    if matches!(node.kind, NodeKind::FloatArrayRead) &&
+        (!matches!(uops[right_pop].kind, Kind::Pop(PopKind::Borrowed | PopKind::Int)) ||
+         uops[left_pop].kind != Kind::Pop(PopKind::Borrowed) ||
+         uops[right_pop].barrier || uops[left_pop].barrier) {
         return None;
     }
     let mut between = (node.uop + 1..left_pop).filter(|&index| index != right_pop);
@@ -486,7 +516,7 @@ pub fn plan_unboxing(raw: &[JitOptUop], synthetic: &[JitOptUop]) -> Result<Plan,
         let value = value?;
         let producer = producer_node(value)?;
         let usable = !flow.values[value].blocked
-            && flow.nodes[producer].kind.domain() == flow.nodes[consumer].kind.domain()
+            && flow.nodes[consumer].kind.input_domain() == Some(flow.nodes[producer].kind.domain())
             && pops[producer].is_some()
             && pops[consumer].is_some();
         usable.then_some(producer)
@@ -513,13 +543,14 @@ pub fn plan_unboxing(raw: &[JitOptUop], synthetic: &[JitOptUop]) -> Result<Plan,
             continue;
         }
         let root = find(&mut parent, index);
-        if let NodeKind::Arith { reuses: None, .. } = node.kind {
+        if matches!(node.kind, NodeKind::Arith { reuses: None, .. } | NodeKind::FloatArrayRead) {
             boxed_cost[root] += 1;
         }
         if node.result.is_some_and(|result| flow.values[result].consumer.and_then(|(uop, _)| flow.node_at[uop]).and_then(|consumer| eligible(Some(result), consumer)).is_none()) {
             unboxed_cost[root] += 1;
         }
         for side in [Side::Left, Side::Right] {
+            if node.kind.input_domain().is_none() { continue; }
             let input = node.input(side);
             if !node.reuses(side) && unique(input) {
                 boxed_cost[root] += 1;
@@ -567,15 +598,21 @@ pub fn plan_unboxing(raw: &[JitOptUop], synthetic: &[JitOptUop]) -> Result<Plan,
         let node = &flow.nodes[node_id];
         debug_assert!(matches!(uop.kind, Kind::Node(_)));
         let domain = node.kind.domain();
-        if !raw_edge(node.left, node_id) {
-            emit(index, Action::UnboxNos(domain));
-        }
-        if !raw_edge(node.right, node_id) {
-            emit(index, Action::UnboxTos(domain));
+        if let Some(input_domain) = node.kind.input_domain() {
+            if !raw_edge(node.left, node_id) {
+                emit(index, Action::UnboxNos(input_domain));
+            }
+            if !raw_edge(node.right, node_id) {
+                emit(index, Action::UnboxTos(input_domain));
+            }
         }
         match node.kind {
-            NodeKind::Arith { op, .. } => {
-                emit(index, Action::Arith(domain, op));
+            NodeKind::Arith { .. } | NodeKind::FloatArrayRead => {
+                match node.kind {
+                    NodeKind::Arith { op, .. } => emit(index, Action::Arith(domain, op)),
+                    NodeKind::FloatArrayRead => emit(index, Action::FloatArrayRead),
+                    _ => unreachable!(),
+                }
                 let result = node.result.expect("arithmetic nodes produce a number");
                 let feeds_unboxed = flow.values[result]
                     .consumer
@@ -672,6 +709,11 @@ fn verify(uops: &[Uop], synthetic: &[Uop; SYNTHETIC_ACTIONS], steps: &mut [JitOp
                 expect(0, Slot::Unboxed(domain))?;
                 expect(1, Slot::Unboxed(domain))?;
                 vec![Slot::Boxed]
+            }
+            Action::FloatArrayRead => {
+                expect(0, Slot::Boxed)?;
+                expect(1, Slot::Boxed)?;
+                vec![Slot::Unboxed(Domain::Float)]
             }
             Action::Box(domain) => {
                 expect(0, Slot::Unboxed(domain))?;
@@ -811,6 +853,64 @@ mod tests {
 
     use Action::{Arith, Box as BoxValue, Compare, Copy, UnboxNos, UnboxTos};
     use Domain::{Float, Int};
+
+    fn array_products(index_pop: u8) -> Vec<JitOptUop> {
+        let read = uop(KIND_FLOAT_ARRAY_READ, 0, (2, 2, 3), 3, EFFECT_EXIT | EFFECT_ERROR | EFFECT_ERROR_NO_POP);
+        let cleanup = |detail| uop(KIND_POP, detail, (1, 1, 0), 1, 0);
+        let mut trace = Vec::new();
+        for pair in 0..2 {
+            for _ in 0..2 {
+                trace.extend([load(), load(), read, cleanup(index_pop), cleanup(POP_BORROWED)]);
+            }
+            trace.extend([arith(ARITH_MULTIPLY, REUSE_NONE), pop(), pop()]);
+            if pair == 1 { trace.extend([arith(ARITH_ADD, REUSE_LEFT), pop(), pop(), consume(0)]); }
+        }
+        trace
+    }
+
+    #[test]
+    fn borrowed_array_reads_feed_float_products_and_record_exit_prefixes() {
+        for detail in [POP_BORROWED, POP_INT] {
+            let plan = rewrite(&array_products(detail));
+            let reads: Vec<_> = plan.iter().filter(|s| s.action == Action::FloatArrayRead.code()).collect();
+            assert_eq!(reads.iter().map(|s| s.source).collect::<Vec<_>>(), vec![2, 7, 15, 20]);
+            assert_eq!(reads.iter().map(|s| s.exit_floats).collect::<Vec<_>>(), vec![0, 4, 4, 12]);
+            assert_eq!(Action::FloatArrayRead.code(), 16);
+        }
+    }
+
+    #[test]
+    fn array_reads_require_borrowed_cleanup_and_do_not_accept_raw_inputs() {
+        let mut trace = array_products(POP_INT);
+        trace[4].detail = POP_OTHER;
+        trace[4].effects = EFFECT_BARRIER;
+        let plan = rewrite(&trace);
+        assert!(!plan.iter().any(|s| s.source == 2 && s.action == Action::FloatArrayRead.code()));
+        let mut trace = array_products(POP_INT);
+        trace[3].detail = POP_OTHER;
+        let plan = rewrite(&trace);
+        assert!(!plan.iter().any(|s| s.source == 2 && s.action == Action::FloatArrayRead.code()));
+        let trace = vec![load(), load(), arith(ARITH_MULTIPLY, REUSE_NONE), pop(), pop(), load(),
+                         uop(KIND_FLOAT_ARRAY_READ, 0, (2, 2, 3), 3, EFFECT_EXIT | EFFECT_ERROR | EFFECT_ERROR_NO_POP),
+                         uop(KIND_POP, POP_INT, (1, 1, 0), 1, 0),
+                         uop(KIND_POP, POP_BORROWED, (1, 1, 0), 1, 0), consume(0)];
+        assert_eq!(steps(&trace), Vec::new());
+        let single = &array_products(POP_INT)[..5];
+        assert_eq!(steps(single), Vec::new());
+    }
+
+    #[test]
+    fn malformed_array_descriptors_refuse_the_plan() {
+        let mut trace = array_products(POP_INT);
+        trace[2].detail = 1;
+        assert_eq!(plan_unboxing(&trace, &synthetic()), Err(Inconsistent));
+        trace[2].detail = 0;
+        trace[3].detail = 3;
+        assert_eq!(plan_unboxing(&trace, &synthetic()), Err(Inconsistent));
+        let mut wrong = synthetic();
+        wrong[15].effects = 0;
+        assert_eq!(plan_unboxing(&array_products(POP_INT), &wrong), Err(Inconsistent));
+    }
 
     #[test]
     fn merging_two_temporaries_boxes_only_the_sum() {
