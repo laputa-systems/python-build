@@ -89,6 +89,10 @@ pub struct LeafOpcodes {
     pub unary_not: u16,
     pub guard_bit_set: OpcodeRange,
     pub guard_bit_unset: OpcodeRange,
+    pub store_instance: u16,
+    pub store_instance_bool: u16,
+    pub guard_no_dict: u16,
+    pub lock_object: u16,
 }
 
 impl LeafOpcodes {
@@ -137,13 +141,16 @@ impl LeafOpcodes {
     }
 }
 
-/// `effectful` is 0 or 1. Operand bits are opaque; Rust never dereferences them.
+/// `effectful` and `boolean_constant` are 0 or 1. C sets `boolean_constant`
+/// only for a constant load whose operand is exactly `Py_True` or `Py_False`.
+/// Operand bits are opaque; Rust never dereferences them.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct LeafUop {
     pub opcode: u16,
     pub oparg: u16,
     pub effectful: u8,
+    pub boolean_constant: u8,
     pub operand: u64,
 }
 
@@ -351,21 +358,87 @@ struct VirtualBody {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum VirtualMode { Numeric, Predicate }
+enum VirtualMode { Numeric, Predicate, BoolMutation }
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MutationStack { Empty, Constant, Owner, Locked, Writable, Stored, ReturnRoot, SafeRoot }
+
+fn bool_mutation_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool, argc: u32)
+    -> Result<Option<VirtualBody>, Inconsistent>
+{
+    if argc != 1 { return Ok(None) }
+    let mut stack = MutationStack::Empty;
+    let mut resumed = false;
+    let mut stores = 0;
+    let mut changes = Vec::new();
+    if changes.try_reserve_exact(uops.len()).is_err() { return Ok(None) }
+    for (index, uop) in uops.iter().enumerate().skip(at + 3) {
+        let opcode = uop.opcode;
+        let replacement = if [ops.nop, ops.set_ip, ops.validity].contains(&opcode) && uop.effectful == 0 {
+            ops.nop
+        } else if opcode == ops.resume && !resumed {
+            resumed = true;
+            ops.nop
+        } else if !resumed {
+            return Ok(None)
+        } else if [ops.load_const, ops.load_const_borrow].contains(&opcode)
+            && uop.effectful == 0 && uop.boolean_constant == 1 && stack == MutationStack::Empty {
+            stack = MutationStack::Constant;
+            opcode
+        } else if ops.load_borrow.contains(opcode) && uop.oparg == 0 && uop.effectful == 0 {
+            stack = match stack {
+                MutationStack::Constant => MutationStack::Owner,
+                MutationStack::Empty if stores > 0 => MutationStack::ReturnRoot,
+                _ => return Ok(None),
+            };
+            ops.virtual_argument
+        } else if opcode == ops.lock_object && stack == MutationStack::Owner && uop.effectful == 0 {
+            stack = MutationStack::Locked;
+            opcode
+        } else if opcode == ops.type_version_locked && stack == MutationStack::Locked && uop.effectful == 0 {
+            opcode
+        } else if opcode == ops.guard_no_dict && stack == MutationStack::Locked && uop.effectful == 0 {
+            stack = MutationStack::Writable;
+            opcode
+        } else if opcode == ops.store_instance && stack == MutationStack::Writable {
+            stack = MutationStack::Stored;
+            stores += 1;
+            ops.store_instance_bool
+        } else if opcode == ops.pop_borrow && stack == MutationStack::Stored && uop.effectful == 0 {
+            stack = MutationStack::Empty;
+            opcode
+        } else if opcode == ops.heap_safe && stack == MutationStack::ReturnRoot && uop.effectful == 0 {
+            stack = MutationStack::SafeRoot;
+            opcode
+        } else if opcode == ops.return_value && stack == MutationStack::SafeRoot {
+            changes.push(VirtualChange { index, opcode: ops.virtual_return, oparg: 0, result: None });
+            return Ok(Some(VirtualBody { end: index, changes, local_count: 1,
+                shape: if bound { CallShape::Bound } else { CallShape::Standalone },
+                numeric_arguments: [None, None], guards: Vec::new() }));
+        } else { return Ok(None) };
+        changes.push(VirtualChange { index, opcode: replacement, oparg: uop.oparg, result: None });
+    }
+    Ok(None)
+}
 
 fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
     -> Result<Option<VirtualBody>, Inconsistent>
 {
     let body = uops.iter().skip(at + 3).take_while(|uop| uop.opcode != ops.return_value);
+    let mutation = body.clone().any(|uop| uop.opcode == ops.store_instance);
     let numeric = body.clone().any(|uop| ops.virtual_arithmetic(uop.opcode));
     let predicate = body.clone().any(|uop| uop.opcode == ops.to_bool_bool || uop.opcode == ops.unary_not
         || ops.guard_bit_set.contains(uop.opcode) || ops.guard_bit_unset.contains(uop.opcode));
-    let mode = match (numeric, predicate) {
-        (true, false) => VirtualMode::Numeric,
-        (false, true) => VirtualMode::Predicate,
+    let mode = match (numeric, predicate, mutation) {
+        (true, false, false) => VirtualMode::Numeric,
+        (false, true, false) => VirtualMode::Predicate,
+        (false, false, true) => VirtualMode::BoolMutation,
         _ => return Ok(None),
     };
     let argc = u32::from(uops[at].oparg) + u32::from(bound);
+    if mode == VirtualMode::BoolMutation {
+        return bool_mutation_body(uops, at, ops, bound, argc);
+    }
     let local_count = uops.iter().skip(at + 3).take_while(|uop| uop.opcode != ops.return_value)
         .filter(|uop| ops.load_fast.contains(uop.opcode) || ops.load_borrow.contains(uop.opcode)
             || ops.store_fast.contains(uop.opcode))
@@ -686,6 +759,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                 || !(match mode {
                     VirtualMode::Numeric => matches!(values[0], VirtualValue::Scalar(_, ScalarOwnership::Fresh | ScalarOwnership::Shared)),
                     VirtualMode::Predicate => matches!(values[0], VirtualValue::Boolean | VirtualValue::OwnedAttribute(_)),
+                    VirtualMode::BoolMutation => unreachable!(),
                 }) {
                 return Ok(None);
             }
@@ -938,6 +1012,7 @@ fn project_steps(projected: &mut [LeafUop], steps: &[LeafStep],
         let step = steps[index];
         let uop = &mut projected[index];
         uop.opcode = step.opcode;
+        if ![ops.load_const, ops.load_const_borrow].contains(&uop.opcode) { uop.boolean_constant = 0; }
         uop.oparg = step.oparg;
         if step.opcode == ops.nop { uop.effectful = 0; }
         if step.opcode == ops.leaf_call { uop.operand = step.result; }
@@ -968,7 +1043,8 @@ pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
 {
     if uops.len() > u32::MAX as usize
         || [ops.init, ops.load_fast, ops.load_borrow, ops.store_fast].iter().any(|range| range.first > range.last)
-        || uops.iter().any(|uop| uop.effectful > 1)
+        || uops.iter().any(|uop| uop.effectful > 1 || uop.boolean_constant > 1
+            || (uop.boolean_constant != 0 && ![ops.load_const, ops.load_const_borrow].contains(&uop.opcode)))
     {
         return Err(Inconsistent);
     }
@@ -1140,11 +1216,12 @@ mod tests {
             guard_bit_set: OpcodeRange { first: 113, last: 117 },
             guard_bit_unset: OpcodeRange { first: 118, last: 122 },
             bound_method_init: 107, swap_two: 108,
+            store_instance: 123, store_instance_bool: 124, guard_no_dict: 125, lock_object: 126,
         }
     }
 
     fn uop(opcode: u16, oparg: u16) -> LeafUop {
-        LeafUop { opcode, oparg, effectful: 0, operand: 0 }
+        LeafUop { opcode, oparg, effectful: 0, boolean_constant: 0, operand: 0 }
     }
 
     fn predicate_call() -> Vec<LeafUop> {
@@ -1220,7 +1297,7 @@ mod tests {
             uop(o.resume, 0), uop(o.load_borrow.first, 0), uop(o.heap_safe, 0),
             uop(o.return_value, 0), uop(o.validity, 0), uop(o.pop, 0),
             uop(o.load_borrow.first, 0), uop(o.load_borrow.first + 1, 1),
-            LeafUop { effectful: 1, operand: 7, ..uop(o.float_add, 0) },
+            LeafUop { effectful: 1, boolean_constant: 0, operand: 7, ..uop(o.float_add, 0) },
             uop(o.pop_float, 0), uop(o.pop_float, 0), uop(o.heap_safe, 0),
             uop(o.return_value, 0)]
     }
@@ -1290,7 +1367,7 @@ mod tests {
                 LeafUop { operand: 24, ..uop(o.load_instance, 0) },
                 uop(o.pop_borrow, 0)]);
         }
-        input.extend([LeafUop { effectful: 1, operand: 7, ..uop(o.float_add, 0) },
+        input.extend([LeafUop { effectful: 1, boolean_constant: 0, operand: 7, ..uop(o.float_add, 0) },
             uop(o.pop_float, 0), uop(o.pop_float, 0),
             uop(o.store_fast.first + 2, 2), uop(o.pop, 0),
             uop(o.load_fast.first + 2, 2), uop(o.heap_safe, 0),
@@ -1328,6 +1405,78 @@ mod tests {
         assert_eq!((inner.source, inner.result), (13, 1));
     }
 
+    fn mutation_call(bound: bool) -> Vec<LeafUop> {
+        let o = opcodes();
+        let argc = if bound { 0 } else { 1 };
+        let mut input = vec![uop(o.function_version, argc), uop(o.recursion, argc),
+            uop(o.init.first + argc, argc), uop(o.save_return, 4), uop(o.push_frame, argc), uop(o.resume, 0)];
+        for i in 0..3 {
+            input.extend([LeafUop { boolean_constant: 1, operand: 16, ..uop(o.load_const_borrow, 0) },
+                uop(o.load_borrow.first, 0), uop(o.lock_object, i), uop(o.type_version_locked, i),
+                uop(o.guard_no_dict, i), LeafUop { effectful: 1, operand: 24 + 8 * u64::from(i), ..uop(o.store_instance, i) },
+                uop(o.pop_borrow, 0)]);
+        }
+        input.extend([uop(o.load_borrow.first, 0), uop(o.heap_safe, 0), uop(o.return_value, 0)]);
+        input
+    }
+
+    #[test]
+    fn bool_mutation_proof_and_refusals() {
+        let o = opcodes();
+        for bound in [false, true] {
+            let input = mutation_call(bound);
+            let plan = plan_leaf_calls(&input, &o).unwrap().unwrap();
+            assert_eq!(plan.iter().filter(|s| s.opcode == o.virtual_begin).count(), 1);
+            assert_eq!(plan.iter().filter(|s| s.opcode == o.virtual_return).count(), 1);
+            for (index, source) in input.iter().enumerate().filter(|(_, u)| u.opcode == o.store_instance) {
+                assert_eq!((plan[index].opcode, plan[index].source, plan[index].oparg),
+                           (o.store_instance_bool, index as u32, source.oparg));
+            }
+            for (index, replacement) in [(6, uop(o.load_const_borrow, 0)),
+                (7, uop(o.load_borrow.first, 1)), (8, uop(o.nop, 0)),
+                (10, uop(o.managed_values, 0)), (11, uop(o.load_slot, 0)),
+                (12, uop(o.pop, 0)), (13, uop(o.store_fast.first, 0)),
+                (13, uop(o.leaf_call, 0)), (13, uop(o.load_instance, 0)),
+                (13, uop(o.to_bool_bool, 0)), (13, uop(o.float_add, 0))] {
+                let mut bad = input.clone(); bad[index] = replacement;
+                assert!(!plan_leaf_calls(&bad, &o).unwrap_or(None).unwrap_or_default().iter()
+                    .any(|step| step.opcode == o.virtual_begin), "bound={bound} index={index}");
+            }
+        }
+        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 188);
+        assert_eq!(std::mem::offset_of!(LeafOpcodes, store_instance), 180);
+        assert_eq!(std::mem::offset_of!(LeafOpcodes, store_instance_bool), 182);
+        assert_eq!(std::mem::offset_of!(LeafOpcodes, guard_no_dict), 184);
+        assert_eq!(std::mem::offset_of!(LeafOpcodes, lock_object), 186);
+        assert_eq!(std::mem::offset_of!(LeafUop, boolean_constant), 5);
+        let mut literal = identity();
+        literal[6] = LeafUop { boolean_constant: 1, operand: 16, ..uop(o.load_const_borrow, 0) };
+        let plan = plan_leaf_calls(&literal, &o).unwrap().unwrap();
+        assert_eq!((plan[4].opcode, plan[4].result), (o.leaf_call, 16));
+    }
+
+    #[test]
+    fn bool_mutation_ffi_uninitialized_and_atomic() {
+        use std::mem::MaybeUninit;
+        let o = opcodes();
+        let mut input = mutation_call(false);
+        let mut out = vec![MaybeUninit::<LeafStep>::uninit(); input.len()];
+        let n = unsafe { crate::_PyJitOpt_PlanLeafCalls(input.as_ptr(), input.len(), &o, out.as_mut_ptr().cast(), out.len()) };
+        assert_eq!(n, input.len() as isize);
+        let result = unsafe { out.iter().map(|s| s.assume_init()).collect::<Vec<_>>() };
+        assert_eq!(result.iter().filter(|s| s.opcode == o.store_instance_bool).count(), 3);
+        let sentinel = LeafStep { opcode: 65535, oparg: 65535, source: u32::MAX, result: u64::MAX };
+        let mut short = vec![sentinel; input.len() - 1];
+        let n = unsafe { crate::_PyJitOpt_PlanLeafCalls(input.as_ptr(), input.len(), &o, short.as_mut_ptr(), short.len()) };
+        assert_eq!(n, 0); assert!(short.iter().all(|s| *s == sentinel));
+        for (index, flag) in [(6, 2), (7, 1)] {
+            input[index].boolean_constant = flag;
+            let n = unsafe { crate::_PyJitOpt_PlanLeafCalls(input.as_ptr(), input.len(), &o, short.as_mut_ptr(), short.len()) };
+            assert_eq!(n, -1); assert!(short.iter().all(|s| *s == sentinel));
+            input[index].boolean_constant = if index == 6 { 1 } else { 0 };
+        }
+    }
+
     fn identity() -> Vec<LeafUop> {
         let ops = opcodes();
         vec![uop(ops.function_version, 1), uop(ops.recursion, 1),
@@ -1353,7 +1502,7 @@ mod tests {
     fn constants_and_bound_arguments_keep_distinct_results() {
         let mut uops = identity();
         uops[6] = LeafUop { opcode: opcodes().load_const_borrow, oparg: 0,
-                            effectful: 0, operand: 0x1230 };
+                            effectful: 0, boolean_constant: 0, operand: 0x1230 };
         assert_eq!(plan_leaf_calls(&uops, &opcodes()).unwrap().unwrap()[4].result, 0x1230);
         uops[6] = uop(opcodes().load_fast.first, 1);
         assert_eq!(plan_leaf_calls(&uops, &opcodes()).unwrap().unwrap()[4].result, 5);
@@ -1394,7 +1543,7 @@ mod tests {
     fn slot_results_require_a_borrowed_owner_and_complete_cleanup() {
         let mut uops = identity();
         uops.insert(7, LeafUop { opcode: opcodes().load_slot, oparg: 0,
-                                effectful: 0, operand: 16 });
+                                effectful: 0, boolean_constant: 0, operand: 16 });
         uops.insert(8, uop(opcodes().pop_borrow, 0));
         assert_eq!(plan_leaf_calls(&uops, &opcodes()).unwrap().unwrap()[4].result,
                    (16 << 18) | 2);
@@ -1417,7 +1566,7 @@ mod tests {
         let ops = opcodes();
         let mut input = identity();
         input.splice(7..7, [uop(ops.managed_values, 0),
-            LeafUop { opcode: ops.load_instance, oparg: 0, effectful: 0, operand: 24 },
+            LeafUop { opcode: ops.load_instance, oparg: 0, effectful: 0, boolean_constant: 0, operand: 24 },
             uop(ops.pop_borrow, 0)]);
         let plan = plan_leaf_calls(&input, &ops).unwrap().unwrap();
         assert_eq!(plan[4].result, (24 << 18) | 3);
@@ -1442,7 +1591,7 @@ mod tests {
     fn global_guards_keep_callee_context_and_precall_deopt() {
         let mut uops = identity();
         uops.insert(6, LeafUop { opcode: opcodes().guard_globals, oparg: 0,
-                                effectful: 0, operand: 42 });
+                                effectful: 0, boolean_constant: 0, operand: 42 });
         let steps = plan_leaf_calls(&uops, &opcodes()).unwrap().unwrap();
         assert_eq!(steps[2], LeafStep { opcode: opcodes().leaf_globals, oparg: 1,
                                        source: 1, result: 42 });
@@ -1477,7 +1626,7 @@ mod tests {
         assert!(output.iter().all(|step| *step == untouched));
         assert_eq!(std::mem::size_of::<LeafUop>(), 16);
         assert_eq!(std::mem::size_of::<LeafStep>(), 16);
-        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 180);
+        assert_eq!(std::mem::size_of::<LeafOpcodes>(), 188);
         assert_eq!(std::mem::offset_of!(LeafOpcodes, swap_two), 164);
         assert_eq!(std::mem::offset_of!(LeafOpcodes, copy_one), 166);
         assert_eq!(std::mem::offset_of!(LeafOpcodes, to_bool_bool), 168);
@@ -1580,7 +1729,7 @@ mod tests {
              uop(ops.init.first + 2, 2), uop(ops.save_return, 4), uop(ops.push_frame, 2),
              uop(ops.resume, 0), uop(ops.load_borrow.first, 0), uop(ops.load_borrow.first + 1, 1),
              uop(ops.guard_tos_float, 0), uop(ops.guard_nos_float, 0),
-             LeafUop { opcode: ops.float_add, oparg: 0, effectful: 1, operand: 3 },
+             LeafUop { opcode: ops.float_add, oparg: 0, effectful: 1, boolean_constant: 0, operand: 3 },
              uop(ops.pop_borrow, 0), uop(ops.pop_borrow, 0), uop(ops.validity, 0),
              uop(ops.set_ip, 0), uop(ops.heap_safe, 0), uop(ops.return_value, 0)]
     }
@@ -1610,7 +1759,7 @@ mod tests {
         input.truncate(14);
         input.extend([uop(ops.load_borrow.first, 0), uop(ops.guard_tos_float, 0),
             uop(ops.guard_nos_float, 0),
-            LeafUop { opcode: ops.float_multiply, oparg: 0, effectful: 1, operand: 7 },
+            LeafUop { opcode: ops.float_multiply, oparg: 0, effectful: 1, boolean_constant: 0, operand: 7 },
             uop(ops.pop_borrow, 0), uop(ops.pop_float, 0),
             uop(ops.heap_safe, 0), uop(ops.return_value, 0)]);
         let plan = plan_leaf_calls(&input, &ops).unwrap().unwrap();
@@ -1655,7 +1804,7 @@ mod tests {
             for load in [ops.load_borrow.first, ops.load_fast.first] {
                 let mut input = float_call()[..6].to_vec();
                 input.extend([uop(load, 0), uop(guard, 0),
-                    LeafUop { opcode: ops.unary_negative, oparg: 0, effectful: 1, operand: 9 },
+                    LeafUop { opcode: ops.unary_negative, oparg: 0, effectful: 1, boolean_constant: 0, operand: 9 },
                     uop(if load == ops.load_borrow.first { ops.pop_borrow } else { pop }, 0),
                     uop(ops.heap_safe, 0), uop(ops.return_value, 0)]);
                 let body = virtual_body(&input, 2, &ops, false).unwrap().unwrap();
@@ -1691,11 +1840,11 @@ mod tests {
             for load in [ops.load_borrow.first, ops.load_fast.first] {
                 let mut input = float_call()[..6].to_vec();
                 input.extend([uop(load, 0), uop(guard, 0),
-                    LeafUop { opcode: ops.unary_invert, oparg: 0, effectful: 1, operand: 9 },
+                    LeafUop { opcode: ops.unary_invert, oparg: 0, effectful: 1, boolean_constant: 0, operand: 9 },
                     uop(if load == ops.load_borrow.first { ops.pop_borrow } else { ops.pop_int }, 0),
                     uop(ops.load_borrow.first, 0), uop(ops.overflow_nos, 0),
                     uop(ops.overflow_tos, 0),
-                    LeafUop { opcode: ops.int_arithmetic[2], oparg: 0, effectful: 1, operand: 17 },
+                    LeafUop { opcode: ops.int_arithmetic[2], oparg: 0, effectful: 1, boolean_constant: 0, operand: 17 },
                     uop(ops.pop_borrow, 0), uop(ops.pop_int, 0),
                     uop(ops.heap_safe, 0), uop(ops.return_value, 0)]);
                 let body = virtual_body(&input, 2, &ops, false).unwrap().unwrap();
@@ -1731,7 +1880,7 @@ mod tests {
                 input.extend([uop(ops.guard_tos_float, 0), uop(ops.guard_nos_float, 0)]);
                 let arithmetic = input.len();
                 input.push(LeafUop { opcode: if right { ops.float_inplace_right[operation] }
-                    else { ops.float_inplace_left[operation] }, oparg: 0, effectful: 0, operand: 7 });
+                    else { ops.float_inplace_left[operation] }, oparg: 0, effectful: 0, boolean_constant: 0, operand: 7 });
                 input.extend([uop(ops.pop_borrow, 0), uop(ops.pop_borrow, 0),
                     uop(ops.heap_safe, 0), uop(ops.return_value, 0)]);
                 let plan = plan_leaf_calls(&input, &ops).unwrap().unwrap();
@@ -1779,7 +1928,7 @@ mod tests {
             uop(ops.load_fast.first, 2), uop(ops.store_fast.first, 3), uop(ops.pop, 0),
             uop(ops.load_borrow.first, 2), uop(ops.load_borrow.first, 0),
             uop(ops.guard_tos_float, 0), uop(ops.guard_nos_float, 0),
-            LeafUop { opcode: ops.float_multiply, oparg: 0, effectful: 1, operand: 7 },
+            LeafUop { opcode: ops.float_multiply, oparg: 0, effectful: 1, boolean_constant: 0, operand: 7 },
             uop(ops.pop_borrow, 0), uop(ops.pop_borrow, 0),
             uop(ops.store_fast.first, 2), uop(ops.pop, 0), uop(ops.load_fast.first, 3),
             uop(ops.heap_safe, 0), uop(ops.return_value, 0)]);
@@ -1893,7 +2042,7 @@ mod tests {
         let mut bound = pair.clone();
         remap(&mut bound, 0, 1);
         bound[2].oparg = 3;
-        bound.insert(0, LeafUop { opcode: ops.bound_method_init, oparg: 3, effectful: 1, operand: 0 });
+        bound.insert(0, LeafUop { opcode: ops.bound_method_init, oparg: 3, effectful: 1, boolean_constant: 0, operand: 0 });
         let plan = plan_leaf_calls(&bound, &ops).unwrap().unwrap();
         assert_eq!(plan[5].result >> 32, (1u64 << 31) | (2 << 1) | (3 << 16) | 1);
         bound[15].oparg = 0;
@@ -1910,7 +2059,7 @@ mod tests {
         input.extend([uop(ops.store_fast.first, 0), uop(ops.pop_borrow, 0),
             uop(ops.load_borrow.first, 0), uop(ops.heap_safe, 0), uop(ops.return_value, 0)]);
         assert!(plan_leaf_calls(&input, &ops).unwrap().is_some());
-        input.insert(0, LeafUop { opcode: ops.bound_method_init, oparg: 3, effectful: 1, operand: 0 });
+        input.insert(0, LeafUop { opcode: ops.bound_method_init, oparg: 3, effectful: 1, boolean_constant: 0, operand: 0 });
         assert!(plan_leaf_calls(&input, &ops).unwrap().is_none());
     }
 
@@ -1969,10 +2118,10 @@ mod tests {
         if managed { input.push(uop(ops.managed_values, 0)) }
         input.extend([
             LeafUop { opcode: if managed { ops.load_instance } else { ops.load_slot },
-                oparg: 0, effectful: 0, operand: 16 },
+                oparg: 0, effectful: 0, boolean_constant: 0, operand: 16 },
             uop(ops.pop_borrow, 0), uop(ops.load_borrow.first, 1),
             uop(ops.guard_nos_float, 0), uop(ops.guard_tos_float, 0),
-            LeafUop { opcode: ops.float_add, oparg: 0, effectful: 1, operand: 13 },
+            LeafUop { opcode: ops.float_add, oparg: 0, effectful: 1, boolean_constant: 0, operand: 13 },
             uop(ops.pop_borrow, 0), uop(ops.pop_float, 0),
             uop(ops.heap_safe, 0), uop(ops.return_value, 0)]);
         input
@@ -2016,7 +2165,7 @@ mod tests {
             }
             let mut large = input.clone();
             large[2].oparg = u16::MAX;
-            large.insert(0, LeafUop { opcode: ops.bound_method_init, oparg: u16::MAX, effectful: 1, operand: 0 });
+            large.insert(0, LeafUop { opcode: ops.bound_method_init, oparg: u16::MAX, effectful: 1, boolean_constant: 0, operand: 0 });
             assert_eq!(plan_leaf_calls(&large, &ops).unwrap().unwrap()[5].result,
                        (1 << 32) | 65_536);
         }
@@ -2032,7 +2181,7 @@ mod tests {
         let standalone = plan_leaf_calls(&input, &ops).unwrap().unwrap();
         assert_eq!(standalone[4].result >> 32 & 1, 0);
         assert_eq!(standalone[4].result as u32, (1 << 31) | 3);
-        input.insert(0, LeafUop { opcode: ops.bound_method_init, oparg: 3, effectful: 1, operand: 0 });
+        input.insert(0, LeafUop { opcode: ops.bound_method_init, oparg: 3, effectful: 1, boolean_constant: 0, operand: 0 });
         let bound = plan_leaf_calls(&input, &ops).unwrap().unwrap();
         assert_eq!(bound[5].result >> 32 & 1, 1);
         assert_eq!(bound[5].result as u32, 4);
@@ -2069,7 +2218,7 @@ mod tests {
         input.extend([uop(ops.store_fast.first, 1), uop(ops.pop, 0),
             uop(ops.load_borrow.first, 1), uop(ops.load_borrow.first, 3),
             uop(ops.guard_tos_float, 0), uop(ops.guard_nos_float, 0),
-            LeafUop { opcode: ops.float_add, oparg: 0, effectful: 1, operand: 17 },
+            LeafUop { opcode: ops.float_add, oparg: 0, effectful: 1, boolean_constant: 0, operand: 17 },
             uop(ops.pop_borrow, 0), uop(ops.pop_borrow, 0), uop(ops.heap_safe, 0),
             uop(ops.store_fast.first, 2), uop(ops.pop, 0),
             uop(ops.load_fast.first, 2), uop(ops.heap_safe, 0), uop(ops.return_value, 0)]);
@@ -2110,7 +2259,7 @@ mod tests {
                 reassigned.splice(load + 1..load + 1, [uop(ops.load_borrow.first, 2),
                     uop(ops.load_borrow.first, 3), uop(ops.guard_tos_float, 0),
                     uop(ops.guard_nos_float, 0),
-                    LeafUop { opcode: ops.float_add, oparg: 0, effectful: 1, operand: 13 },
+                    LeafUop { opcode: ops.float_add, oparg: 0, effectful: 1, boolean_constant: 0, operand: 13 },
                     uop(ops.pop_borrow, 0), uop(ops.pop_borrow, 0),
                     uop(ops.store_fast.first, 1), uop(ops.pop, 0)]);
                 assert!(virtual_body(&reassigned, 2, &ops, bound).unwrap().is_none());
@@ -2127,7 +2276,7 @@ mod tests {
             let mut input = float_call();
             input[2].oparg = 3;
             input[7] = LeafUop { opcode: if borrowed { ops.load_const_borrow } else { ops.load_const },
-                oparg: 0, effectful: 0, operand: 0x1000 };
+                oparg: 0, effectful: 0, boolean_constant: 0, operand: 0x1000 };
             input[8].opcode = ops.nop;
             input[9].opcode = ops.nop;
             input[11].opcode = if borrowed { ops.pop_borrow } else { ops.pop_float };
@@ -2172,7 +2321,7 @@ mod tests {
                     uop(ops.overflow_nos, 0), uop(ops.overflow_tos, 0)]);
                 let arithmetic = input.len();
                 let opcode = if right { ops.int_inplace_right[operation] } else { ops.int_inplace_left[operation] };
-                input.extend([LeafUop { opcode, oparg: 0, effectful: 0, operand: 7 },
+                input.extend([LeafUop { opcode, oparg: 0, effectful: 0, boolean_constant: 0, operand: 7 },
                     uop(if right { ops.pop_int } else { ops.pop_borrow }, 0),
                     uop(if right { ops.pop_borrow } else { ops.pop_int }, 0),
                     uop(ops.heap_safe, 0), uop(ops.return_value, 0)]);

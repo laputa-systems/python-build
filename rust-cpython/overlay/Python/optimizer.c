@@ -2273,12 +2273,14 @@ typedef struct {
     uint16_t unary_not;
     _PyJitOpcodeRange guard_bit_set;
     _PyJitOpcodeRange guard_bit_unset;
+    uint16_t store_instance, store_instance_bool, guard_no_dict, lock_object;
 } _PyJitLeafOpcodes;
 
 typedef struct {
     uint16_t opcode;
     uint16_t oparg;
     uint8_t effectful;
+    uint8_t boolean_constant;
     uint64_t operand;
 } _PyJitLeafUop;
 
@@ -2289,13 +2291,18 @@ typedef struct {
     uint64_t result;
 } _PyJitLeafStep;
 
-static_assert(sizeof(_PyJitLeafOpcodes) == 180, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
+static_assert(sizeof(_PyJitLeafOpcodes) == 188, "_PyJitLeafOpcodes matches Rust LeafOpcodes");
 static_assert(offsetof(_PyJitLeafOpcodes, swap_two) == 164, "LeafOpcodes swap_two offset matches Rust");
 static_assert(offsetof(_PyJitLeafOpcodes, copy_one) == 166, "LeafOpcodes copy_one offset matches Rust");
 static_assert(offsetof(_PyJitLeafOpcodes, to_bool_bool) == 168, "LeafOpcodes to_bool_bool offset matches Rust");
 static_assert(offsetof(_PyJitLeafOpcodes, unary_not) == 170, "LeafOpcodes unary_not offset matches Rust");
 static_assert(offsetof(_PyJitLeafOpcodes, guard_bit_set) == 172, "LeafOpcodes guard_bit_set offset matches Rust");
 static_assert(offsetof(_PyJitLeafOpcodes, guard_bit_unset) == 176, "LeafOpcodes guard_bit_unset offset matches Rust");
+static_assert(offsetof(_PyJitLeafOpcodes, store_instance) == 180, "store_instance offset");
+static_assert(offsetof(_PyJitLeafOpcodes, store_instance_bool) == 182, "store_instance_bool offset");
+static_assert(offsetof(_PyJitLeafOpcodes, guard_no_dict) == 184, "guard_no_dict offset");
+static_assert(offsetof(_PyJitLeafOpcodes, lock_object) == 186, "lock_object offset");
+static_assert(offsetof(_PyJitLeafUop, boolean_constant) == 5, "boolean_constant offset");
 static_assert(_Alignof(PyObject) >= 4, "leaf result tags use two object-alignment bits");
 static_assert(sizeof(_PyJitLeafUop) == 16, "_PyJitLeafUop matches Rust LeafUop");
 static_assert(offsetof(_PyJitLeafUop, operand) == 8, "LeafUop operand offset matches Rust");
@@ -2386,6 +2393,9 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
         .copy_one = _COPY_1, .to_bool_bool = _TO_BOOL_BOOL, .unary_not = _UNARY_NOT,
         .guard_bit_set = {_GUARD_BIT_IS_SET_POP, _GUARD_BIT_IS_SET_POP_7},
         .guard_bit_unset = {_GUARD_BIT_IS_UNSET_POP, _GUARD_BIT_IS_UNSET_POP_7},
+        .store_instance = _STORE_ATTR_INSTANCE_VALUE,
+        .store_instance_bool = _STORE_ATTR_INSTANCE_VALUE_BOOL,
+        .guard_no_dict = _GUARD_DORV_NO_DICT, .lock_object = _LOCK_OBJECT,
     };
     _PyJitLeafUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
     _PyJitLeafStep *steps = PyMem_RawMalloc(UOP_MAX_TRACE_LENGTH * sizeof(*steps));
@@ -2407,6 +2417,8 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
             .oparg = buffer[i].oparg,
             .effectful = (flags & (HAS_ESCAPES_FLAG | HAS_ERROR_FLAG | HAS_PERIODIC_FLAG |
                                    HAS_EVAL_BREAK_FLAG | HAS_SYNC_SP_FLAG)) != 0,
+            .boolean_constant = (opcode == _LOAD_CONST_INLINE || opcode == _LOAD_CONST_INLINE_BORROW) &&
+                (buffer[i].operand0 == (uintptr_t)Py_True || buffer[i].operand0 == (uintptr_t)Py_False),
             .operand = (opcode == _LOAD_CONST_INLINE || opcode == _LOAD_CONST_INLINE_BORROW ||
                         opcode == _LOAD_ATTR_SLOT || opcode == _LOAD_ATTR_INSTANCE_VALUE ||
                         opcode == _GUARD_GLOBALS_VERSION)
@@ -2464,6 +2476,10 @@ fuse_leaf_calls(_PyUOpInstruction *buffer, int length)
                 buffer[i].oparg = step->oparg;
                 buffer[i].operand0 = (uint32_t)step->result;
                 buffer[i].operand1 = (uint32_t)(step->result >> 32);
+            }
+            else if (step->opcode == _STORE_ATTR_INSTANCE_VALUE_BOOL) {
+                assert(buffer[i].opcode == _STORE_ATTR_INSTANCE_VALUE);
+                buffer[i].opcode = step->opcode;
             }
             else if (step->opcode == _LOAD_VIRTUAL_ARGUMENT ||
                      step->opcode == _COPY_VIRTUAL_ARGUMENT ||

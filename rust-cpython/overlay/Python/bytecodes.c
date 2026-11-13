@@ -3374,6 +3374,24 @@ dummy_func(
             _Py_XDECREF_TSTATE(tstate, old_value);
         }
 
+        op(_STORE_ATTR_INSTANCE_VALUE_BOOL, (offset/1, value, owner -- o)) {
+            PyObject *owner_o = PyStackRef_AsPyObjectBorrow(owner);
+            PyObject **value_ptr = (PyObject **)(((char *)owner_o) + offset);
+            PyObject *old_value = *value_ptr;
+            if ((old_value != Py_True && old_value != Py_False) ||
+                !PyStackRef_BoolCheck(value)) {
+                UNLOCK_OBJECT(owner_o);
+                EXIT_IF(true);
+            }
+            assert(_PyObject_GetManagedDict(owner_o) == NULL);
+            STAT_INC(STORE_ATTR, hit);
+            /* Exact Boolean references are immortal and cannot finalize here. */
+            FT_ATOMIC_STORE_PTR_RELEASE(*value_ptr, PyStackRef_AsPyObjectSteal(value));
+            UNLOCK_OBJECT(owner_o);
+            o = owner;
+            DEAD(owner);
+        }
+
         op(_LOCK_OBJECT, (value -- value)) {
             DEOPT_IF(!LOCK_OBJECT(PyStackRef_AsPyObjectBorrow(value)));
         }
