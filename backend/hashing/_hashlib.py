@@ -295,24 +295,30 @@ _openssl_names = (
 )
 
 
-def _openssl_constructor(name):
-    builtin = _constructors[name]
+class _OpensslConstructor:
+    """Non-descriptor callable: Python functions stored as class attributes
+    bind as methods, which breaks callers such as setuptools that store
+    hashlib.sha256 on a class and call it with the instance's argument."""
 
-    def constructor(*args, **kwargs):
-        return builtin(*args, **kwargs)
+    def __init__(self, name: str):
+        self._builtin = _constructors[name]
+        try:
+            self.__signature__ = inspect.signature(self._builtin)
+        except (TypeError, ValueError):
+            self.__signature__ = _openssl_fallback_signature
+        self.__name__ = "openssl_" + name
+        self.__qualname__ = self.__name__
+        self.__module__ = __name__
 
-    constructor.__name__ = "openssl_" + name
-    constructor.__qualname__ = constructor.__name__
-    constructor.__module__ = __name__
-    try:
-        constructor.__signature__ = inspect.signature(builtin)
-    except (TypeError, ValueError):
-        constructor.__signature__ = _openssl_fallback_signature
-    return constructor
+    def __call__(self, *args, **kwargs):
+        return self._builtin(*args, **kwargs)
+
+    def __repr__(self):
+        return f"<built-in function {self.__name__} (built-in)>"
 
 
 for _name in _openssl_names:
-    globals()["openssl_" + _name] = _openssl_constructor(_name)
+    globals()["openssl_" + _name] = _OpensslConstructor(_name)
 
 _digestmod_constructors = {name: globals()["openssl_" + name] for name in _openssl_names}
 
