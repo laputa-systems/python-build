@@ -61,17 +61,19 @@ def finalizer(kind):
     assert EVENTS[0][5] == 6
     return [result, list(EVENTS), TRACES[-1]]
 
-def augment(target, count, a, active):
+def augment(target, position, count, a, active):
     for index in range(count):
         entered = active()
-        target[-1] += a
-    return target[-1], entered
+        target[position] += a
+    return target[position], entered
 
 def replace(target, count, a, b, active):
     for index in range(count):
         entered = active()
-        target[-1] = a + b
-    return target[-1], entered
+        retained = target[0]
+        target[0] = a + b
+        del retained
+    return target[0], entered
 
 def aliases():
     old = float('3.25')
@@ -81,9 +83,11 @@ def aliases():
     assert old.hex() == '0x1.a000000000000p+1'
     assert sys.getrefcount(old) == before - 1
     assert value == 3.0 and target[0] is not old
-    incremented, aug_entered = augment([1.0], WARM, 0.5, sys._jit.is_active)
+    incremented, aug_entered = augment([1.0], 0, WARM, 0.5, sys._jit.is_active)
     assert incremented == 1.0 + 0.5 * WARM
-    return [value, incremented, entered, aug_entered, trace(replace), trace(augment)]
+    negative, negative_entered = augment([1.0], -1, 64, 0.5, sys._jit.is_active)
+    assert negative == 33.0
+    return [value, incremented, entered, aug_entered, trace(replace), trace(augment), [negative, negative_entered]]
 
 def bounds(target, a, b, active):
     for index in range(len(target) - 1):
@@ -187,15 +191,15 @@ def main():
             assert result[name][1][0][:4] == off[name][1][0][:4]
             assert result[name][1][0][5:] == off[name][1][0][5:]
     assert all(on[name][1][0][4] for name in ('old', 'subclass'))
-    assert all(on['aliases'][2:4]) and on['bounds'][0][2] and on['owners'][1]
+    assert all(on['aliases'][2:4]) and on['aliases'][6] == [33.0, True] and on['bounds'][0][2] and on['owners'][1]
     traces = [on[name][2] for name in ('old', 'subclass')]
-    traces += on['aliases'][4:] + [on['bounds'][1], on['owners'][2]]
+    traces += on['aliases'][4:6] + [on['bounds'][1], on['owners'][2]]
     for entries in traces:
         selected = sum(entry[0] == '_STORE_SUBSCR_LIST_INT_FLOAT' for entry in entries)
         assert bool(selected) == (args.expect == 'candidate'), (args.expect, selected, entries)
     for result in (off, noopt):
         for entries in ([result[name][2] for name in ('old', 'subclass')] +
-                        result['aliases'][4:] + [result['bounds'][1], result['owners'][2]]):
+                        result['aliases'][4:6] + [result['bounds'][1], result['owners'][2]]):
             assert not any(entry[0] == '_STORE_SUBSCR_LIST_INT_FLOAT' for entry in entries)
     print('OK guarded list float cleanup, finalizer PC, aliases, bounds, owned lists and observers')
 

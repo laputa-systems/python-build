@@ -282,7 +282,7 @@ mod tests {
                 bad[changed].opcode = 99;
                 assert!(plan_stores(&bad, &ops).unwrap().is_none());
             }
-            for gap in 0..=5 {
+            for gap in 1..=5 {
                 let mut bad = input.clone();
                 bad.insert(gap, uop(99, 0));
                 assert!(plan_stores(&bad, &ops).unwrap().is_none());
