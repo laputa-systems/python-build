@@ -905,11 +905,12 @@ def _jit_llvm_tools(toolchain) -> Path:
             source = tar.extractfile(member)
             if source is None:
                 raise LaneError(f"cannot read LLVM archive member: {member.name}")
-            temporary = directory / f".{name}.part"
-            with temporary.open("wb") as output:
-                shutil.copyfileobj(source, output)
-            temporary.chmod(0o755)
-            os.replace(temporary, directory / name)
+            with source, tempfile.TemporaryDirectory(prefix=f".{name}-", dir=directory) as scratch:
+                temporary = Path(scratch) / name
+                with temporary.open("wb") as output:
+                    shutil.copyfileobj(source, output)
+                temporary.chmod(0o755)
+                os.replace(temporary, directory / name)
             found.add(name)
             if found == set(missing):
                 break

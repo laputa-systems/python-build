@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import hashlib
 import io
 import json
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -202,6 +204,44 @@ class JitConfigurationTests(unittest.TestCase):
                 mock.patch.object(perf.lb, "WORK", root / "work"), \
                 self.assertRaisesRegex(perf.lb.LaneError, "archive is missing"):
             perf.lb._jit_llvm_tools(toolchain)
+
+    def test_concurrent_jit_tool_extraction_publishes_complete_executables(self) -> None:
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        archive = root / "llvm" / "objects" / f"{'a' * 64}.blob"
+        archive.parent.mkdir(parents=True)
+        contents = {name: (name.encode() + b"\n") * 128 for name in
+                    ("llvm-objdump", "llvm-dwarfdump", "llvm-readobj")}
+        with tarfile.open(archive, "w:xz") as tar:
+            for name, data in contents.items():
+                member = tarfile.TarInfo(f"LLVM-root/bin/{name}")
+                member.size = len(data)
+                tar.addfile(member, io.BytesIO(data))
+        toolchain = SimpleNamespace(
+            llvm_version="23.1.2", llvm_archive_root="LLVM-root",
+            llvm_input=lambda: SimpleNamespace(sha256="a" * 64))
+        barrier = threading.Barrier(2)
+        copied = threading.local()
+        copyfileobj = perf.lb.shutil.copyfileobj
+
+        def overlap_first_copy(source, destination):
+            copyfileobj(source, destination)
+            if not getattr(copied, "first_done", False):
+                copied.first_done = True
+                barrier.wait(timeout=5)
+
+        with mock.patch.object(perf.lb, "CACHE_ROOT", root), \
+                mock.patch.object(perf.lb, "WORK", root / "work"), \
+                mock.patch.object(perf.lb, "IS_LINUX", False), \
+                mock.patch.object(perf.lb.shutil, "copyfileobj", side_effect=overlap_first_copy), \
+                concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(perf.lb._jit_llvm_tools, toolchain) for _ in range(2)]
+            directories = [future.result(timeout=10) for future in futures]
+        self.assertEqual(directories[0], directories[1])
+        directory = directories[0]
+        self.assertEqual(sorted(path.name for path in directory.iterdir()), sorted(contents))
+        for name, data in contents.items():
+            self.assertEqual((directory / name).read_bytes(), data)
+            self.assertEqual((directory / name).stat().st_mode & 0o777, 0o755)
 
     def test_a_complete_jit_build_and_a_complete_no_jit_build_verify(self) -> None:
         self.verify(True, '{"available": true, "enabled": true, "active": true}')
