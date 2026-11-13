@@ -2624,6 +2624,9 @@ typedef struct {
     uint16_t local_float_store, local_int_store;
     uint16_t local_float_guard, push_frame, return_value, virtual_begin, virtual_return;
     uint16_t observed_float_store;
+    uint16_t float_binary[12];
+    uint16_t list_store, list_float_store, borrowed_pop, swap_two, swap_three, set_ip;
+    uint16_t borrow_first, borrow_last, small_first, small_last, constant_borrow;
 } _PyJitStoreOpcodes;
 
 typedef struct {
@@ -2635,13 +2638,16 @@ typedef struct {
     uint32_t source;
 } _PyJitStoreStep;
 
-static_assert(sizeof(_PyJitStoreOpcodes) == 38, "store opcode map matches Rust");
+static_assert(sizeof(_PyJitStoreOpcodes) == 84, "store opcode map matches Rust");
 static_assert(offsetof(_PyJitStoreOpcodes, local_float_store) == 22, "float store matches Rust");
 static_assert(offsetof(_PyJitStoreOpcodes, local_int_store) == 24, "int store matches Rust");
 static_assert(offsetof(_PyJitStoreOpcodes, local_float_guard) == 26, "guard matches Rust");
 static_assert(offsetof(_PyJitStoreOpcodes, virtual_return) == 34, "frame boundary matches Rust");
 static_assert(offsetof(_PyJitStoreUop, observed_kind) == 4, "store hint matches Rust");
 static_assert(offsetof(_PyJitStoreOpcodes, observed_float_store) == 36, "observed store matches Rust");
+static_assert(offsetof(_PyJitStoreOpcodes, float_binary) == 38, "arithmetic matches Rust");
+static_assert(offsetof(_PyJitStoreOpcodes, list_store) == 62, "list store matches Rust");
+static_assert(offsetof(_PyJitStoreOpcodes, constant_borrow) == 82, "list index matches Rust");
 static_assert(sizeof(_PyJitStoreUop) == 6, "store descriptors match Rust");
 static_assert(sizeof(_PyJitStoreStep) == 8, "store steps match Rust");
 static_assert(offsetof(_PyJitStoreStep, source) == 4, "store source offset matches Rust");
@@ -2652,7 +2658,7 @@ extern Py_ssize_t _PyJitOpt_PlanStores(
 static uint16_t loop_scalar_kind(PyObject *value);
 
 static void
-fuse_local_stores(_PyUOpInstruction *buffer, int length, _PyInterpreterFrame *frame,
+specialize_stores(_PyUOpInstruction *buffer, int length, _PyInterpreterFrame *frame,
                   PyCodeObject *code)
 {
 #if !defined(Py_GIL_DISABLED) && !defined(WITH_DTRACE)
@@ -2664,6 +2670,12 @@ fuse_local_stores(_PyUOpInstruction *buffer, int length, _PyInterpreterFrame *fr
         _STORE_FAST_FUSED_FLOAT, _STORE_FAST_FUSED_INT,
         _GUARD_LOCAL_FLOAT, _PUSH_FRAME, _RETURN_VALUE, _BEGIN_VIRTUAL_CALL, _RETURN_VIRTUAL_CALL,
         _STORE_FAST_FUSED_FLOAT_OR_NULL,
+        {_BINARY_OP_ADD_FLOAT, _BINARY_OP_ADD_FLOAT_INPLACE, _BINARY_OP_ADD_FLOAT_INPLACE_RIGHT,
+         _BINARY_OP_SUBTRACT_FLOAT, _BINARY_OP_SUBTRACT_FLOAT_INPLACE, _BINARY_OP_SUBTRACT_FLOAT_INPLACE_RIGHT,
+         _BINARY_OP_MULTIPLY_FLOAT, _BINARY_OP_MULTIPLY_FLOAT_INPLACE, _BINARY_OP_MULTIPLY_FLOAT_INPLACE_RIGHT,
+         _BINARY_OP_TRUEDIV_FLOAT, _BINARY_OP_TRUEDIV_FLOAT_INPLACE, _BINARY_OP_TRUEDIV_FLOAT_INPLACE_RIGHT},
+        _STORE_SUBSCR_LIST_INT, _STORE_SUBSCR_LIST_INT_FLOAT, _POP_TOP_NOP, _SWAP_2, _SWAP_3, _SET_IP,
+        _LOAD_FAST_BORROW, _LOAD_FAST_BORROW_7, _LOAD_SMALL_INT, _LOAD_SMALL_INT_3, _LOAD_CONST_INLINE_BORROW,
     };
     _PyJitStoreUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
     _PyJitStoreStep *steps = PyMem_RawMalloc((size_t)length * sizeof(*steps));
@@ -2926,7 +2938,7 @@ uop_optimize(
         length = guard_loop_locals(buffer, length, frame,
                                    (PyCodeObject *)_tstate->jit_tracer_state->initial_state.code,
                                    curr_stackentries);
-        fuse_local_stores(buffer, length, frame,
+        specialize_stores(buffer, length, frame,
                           (PyCodeObject *)_tstate->jit_tracer_state->initial_state.code);
     }
     OPT_HIST(effective_trace_length(buffer, length), optimized_trace_length_hist);

@@ -53,7 +53,7 @@ pub unsafe extern "C" fn _PyJitOpt_PlanLoopTypes(
     }
 }
 
-/// Plans local-store stencil fusion. Positive results write a complete plan;
+/// Plans guarded list stores and local-store fusion. Positive results write a complete plan;
 /// zero preserves the trace, and -1 rejects inconsistent descriptors. Allocation
 /// failure and insufficient output capacity leave output unchanged.
 ///

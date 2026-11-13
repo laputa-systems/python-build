@@ -1718,6 +1718,38 @@ dummy_func(
             _Py_DECREF_TSTATE(tstate, old_value);
         }
 
+        tier2 op(_STORE_SUBSCR_LIST_INT_FLOAT, (value, list_st, sub_st -- ls, ss)) {
+            PyObject *sub = PyStackRef_AsPyObjectBorrow(sub_st);
+            PyObject *list = PyStackRef_AsPyObjectBorrow(list_st);
+            assert(PyLong_CheckExact(sub));
+            assert(PyList_CheckExact(list));
+            DEOPT_IF(_PyRuntime.ref_tracer.tracer_func != NULL);
+            Py_ssize_t index = _PyLong_CompactValue((PyLongObject *)sub);
+            DEOPT_IF(!LOCK_OBJECT(list));
+            Py_ssize_t len = PyList_GET_SIZE(list);
+            if (index < 0) {
+                index += len;
+            }
+            if (index < 0 || index >= len) {
+                UNLOCK_OBJECT(list);
+                DEOPT_IF(true);
+            }
+            PyObject *old_value = PyList_GET_ITEM(list, index);
+            if (!PyFloat_CheckExact(old_value)) {
+                UNLOCK_OBJECT(list);
+                DEOPT_IF(true);
+            }
+            STAT_INC(STORE_SUBSCR, hit);
+            FT_ATOMIC_STORE_PTR_RELEASE(_PyList_ITEMS(list)[index],
+                                        PyStackRef_AsPyObjectSteal(value));
+            UNLOCK_OBJECT(list);
+            INPUTS_DEAD();
+            ls = list_st;
+            ss = sub_st;
+            _PyStackRef old = PyStackRef_FromPyObjectSteal(old_value);
+            PyStackRef_CLOSE_SPECIALIZED_TSTATE(tstate, old, _PyFloat_ExactDeallocTstate);
+        }
+
         macro(STORE_SUBSCR_DICT) =
             _RECORD_NOS_TYPE +
             _GUARD_NOS_DICT_STORE_SUBSCRIPT + unused/1 + _STORE_SUBSCR_DICT + POP_TOP;
