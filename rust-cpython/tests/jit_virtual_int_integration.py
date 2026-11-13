@@ -260,7 +260,7 @@ def main():
             if label == "right":
                 assert "_BINARY_OP_MULTIPLY_INT_INPLACE_RIGHT" in body, body
             if label == "mixed locals":
-                assert "_POP_TOP_INT" in body and "_BINARY_OP_MULTIPLY_FLOAT" in body, body
+                assert "_STORE_FAST_FUSED_INT" in body and "_BINARY_OP_MULTIPLY_FLOAT" in body, body
         assert all("_BEGIN_VIRTUAL_CALL" not in {entry[0] for entry in entries}
                    for entries in noopt["traces"].values())
     print("OK    virtual integers preserve compact exits, reuse ownership, mixed locals, receivers and generators")
