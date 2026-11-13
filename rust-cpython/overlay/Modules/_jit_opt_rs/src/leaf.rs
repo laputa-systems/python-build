@@ -149,8 +149,10 @@ pub struct LeafUop {
 /// For a pair call it holds 0 for argument order or 1 for reversed order.
 /// For a float call, bits 0..16 hold the operation identity, bit 16 reverses
 /// arguments, and bits 32..64 hold the callee's arithmetic error offset.
-/// For a virtual-call begin, the low 32 bits hold the minimum locals-plus
-/// extent. The high word's low bit selects a bound call; remaining bits encode
+/// For a virtual-call begin, low-word bits 0..31 hold the minimum locals-plus
+/// extent. Bit 31 permits either call shape only after equivalent standalone and
+/// bound proofs; entry selects the actual shape and checks its argument count.
+/// The high word's low bit selects a fixed bound call; remaining bits encode
 /// one numeric entry-guard argument index plus one, or zero for no guard.
 /// Bit 31 selects two 15-bit argument indices in bits 1..16 and 16..31.
 #[repr(C)]
@@ -307,22 +309,31 @@ impl VirtualValue {
     }
 }
 
+#[derive(PartialEq, Eq)]
 struct VirtualChange {
     index: usize,
     opcode: u16,
     oparg: u16,
 }
 
+#[derive(PartialEq, Eq)]
 struct VirtualGuard {
     index: usize,
     opcode: u16,
+}
+
+#[derive(Clone, Copy)]
+enum CallShape {
+    Standalone,
+    Bound,
+    Either,
 }
 
 struct VirtualBody {
     end: usize,
     changes: Vec<VirtualChange>,
     local_count: u32,
-    bound: bool,
+    shape: CallShape,
     numeric_arguments: [Option<u16>; 2],
     guards: Vec<VirtualGuard>,
 }
@@ -580,7 +591,9 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                 return Ok(None);
             }
             changes.push(VirtualChange { index, opcode: ops.virtual_return, oparg: 0 });
-            return Ok(Some(VirtualBody { end: index, changes, local_count: local_count as u32, bound, numeric_arguments, guards }));
+            return Ok(Some(VirtualBody { end: index, changes, local_count: local_count as u32,
+                shape: if bound { CallShape::Bound } else { CallShape::Standalone },
+                numeric_arguments, guards }));
         }
         else { return Ok(None) }
         changes.push(VirtualChange { index, opcode: replacement, oparg: uop.oparg });
@@ -895,7 +908,18 @@ pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
             virtual_body(uops, at, ops, true)?
         } else {
             match virtual_body(uops, at, ops, false)? {
-                Some(body) => Some(body),
+                Some(mut body) => {
+                    if let Some(other) = virtual_body(uops, at, ops, true)? {
+                        if body.end == other.end && body.changes == other.changes
+                            && body.numeric_arguments == other.numeric_arguments
+                            && body.guards == other.guards
+                        {
+                            body.shape = CallShape::Either;
+                            body.local_count = body.local_count.min(other.local_count);
+                        }
+                    }
+                    Some(body)
+                }
                 None => virtual_body(uops, at, ops, true)?,
             }
         };
@@ -908,11 +932,16 @@ pub fn plan_leaf_calls(uops: &[LeafUop], ops: &LeafOpcodes)
                 [Some(first), Some(second)] => (1 << 31) | (u32::from(first) << 1) | (u32::from(second) << 16),
                 [None, Some(_)] => unreachable!(),
             };
-            let shape = u32::from(body.bound) | numeric_shape;
+            let (required_locals, bound) = match body.shape {
+                CallShape::Standalone => (body.local_count, 0),
+                CallShape::Bound => (body.local_count, 1),
+                CallShape::Either => (body.local_count | (1 << 31), 0),
+            };
+            let shape = bound | numeric_shape;
             steps[at].opcode = ops.nop;
             steps[at + 2] = LeafStep { opcode: ops.virtual_begin, oparg: uops[at].oparg,
                 source: (at - 1) as u32,
-                result: u64::from(body.local_count) | (u64::from(shape) << 32) };
+                result: u64::from(required_locals) | (u64::from(shape) << 32) };
             for change in body.changes {
                 steps[change.index].opcode = change.opcode;
                 steps[change.index].oparg = change.oparg;
@@ -1694,13 +1723,52 @@ mod tests {
         assert!(virtual_body(&input, 2, &ops, true).unwrap().is_some());
         let standalone = plan_leaf_calls(&input, &ops).unwrap().unwrap();
         assert_eq!(standalone[4].result >> 32 & 1, 0);
+        assert_eq!(standalone[4].result as u32, (1 << 31) | 3);
         input.insert(0, LeafUop { opcode: ops.bound_method_init, oparg: 3, effectful: 1, operand: 0 });
         let bound = plan_leaf_calls(&input, &ops).unwrap().unwrap();
         assert_eq!(bound[5].result >> 32 & 1, 1);
+        assert_eq!(bound[5].result as u32, 4);
         let end = input.len() - 2;
         input.splice(end..end, [uop(ops.store_fast.first, 0), uop(ops.pop, 0),
             uop(ops.load_borrow.first, 0)]);
         assert!(plan_leaf_calls(&input, &ops).unwrap().is_none());
+    }
+
+    #[test]
+    fn incompatible_call_shape_rewrites_keep_the_fixed_standalone_guard() {
+        let ops = opcodes();
+        let mut input = bound_float_call(true);
+        input[2].oparg = 3;
+        let end = input.len() - 1;
+        input.splice(end..end, [uop(ops.store_fast.first, 3), uop(ops.pop, 0),
+            uop(ops.load_fast.first, 3), uop(ops.heap_safe, 0)]);
+        assert!(virtual_body(&input, 2, &ops, false).unwrap().is_some());
+        assert!(virtual_body(&input, 2, &ops, true).unwrap().is_some());
+        let plan = plan_leaf_calls(&input, &ops).unwrap().unwrap();
+        assert_eq!(plan[4].result >> 32, 0);
+        assert_eq!(plan[4].result as u32, 4);
+        assert!(!plan.iter().any(|step| step.opcode == ops.virtual_argument_swap));
+    }
+
+    #[test]
+    fn inferred_call_shape_preserves_both_numeric_entry_guard_indices() {
+        let ops = opcodes();
+        let mut input = bound_float_call(true);
+        input[2].oparg = 4;
+        let argument = input.iter().rposition(|uop| uop.opcode == ops.load_borrow.first).unwrap();
+        input[argument].oparg = 3;
+        input.pop();
+        input.extend([uop(ops.store_fast.first, 1), uop(ops.pop, 0),
+            uop(ops.load_borrow.first, 1), uop(ops.load_borrow.first, 3),
+            uop(ops.guard_tos_float, 0), uop(ops.guard_nos_float, 0),
+            LeafUop { opcode: ops.float_add, oparg: 0, effectful: 1, operand: 17 },
+            uop(ops.pop_borrow, 0), uop(ops.pop_borrow, 0), uop(ops.heap_safe, 0),
+            uop(ops.store_fast.first, 2), uop(ops.pop, 0),
+            uop(ops.load_fast.first, 2), uop(ops.heap_safe, 0), uop(ops.return_value, 0)]);
+        let plan = plan_leaf_calls(&input, &ops).unwrap().unwrap();
+        assert_eq!(plan[4].result as u32, (1 << 31) | 4);
+        assert_eq!(plan[4].result >> 32, (1u64 << 31) | (1 << 1) | (2 << 16));
+        assert_eq!(plan.iter().filter(|step| step.opcode == ops.virtual_argument_swap).count(), 2);
     }
 
     #[test]

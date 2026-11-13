@@ -35,6 +35,11 @@ def make():
             return second / divisor
         def sum_fields(self, other, unused, tail):
             return self.value + other.value
+        def replace_fields(self, first_old, second_old, unused):
+            first = self.value + self.value
+            first_old = first + first
+            second_old = first_old + first
+            return second_old + first
     def calculate(left, right, divisor, unused):
         first = left.value + right.value
         alias = first
@@ -139,6 +144,8 @@ for bound in (False, True):
             value, entries, active = caller(FAULT, fn, left, source, sys._jit.is_active, unused)
         except (AttributeError, ZeroDivisionError) as error:
             RESULTS[label] = capture(error, fn, caller, label)
+            if isinstance(error, AttributeError):
+                RESULTS[label + ' payload'] = [error.name, error.obj is right]
         else:
             ACTIVE.append(active)
             TRACES[label] = entries
@@ -158,6 +165,20 @@ for bound in (False, True):
         value, entries, active = caller(FAULT, fn, left, source, sys._jit.is_active, object())
         label = f'extent {bound} {shared}'
         RESULTS[label] = [value.hex(), source.calls, len(source.values), fn.__code__.co_nlocals]
+        TRACES[label] = entries
+        ACTIVE.append(active)
+
+for bound in (False, True):
+    for first_old, second_old in ((1.25, 2**100), (None, True), (True, None)):
+        Owner, _ = make()
+        left = Owner(1.25)
+        fn = Owner.replace_fields
+        caller = make_loop(bound, method='replace_fields')
+        source = Source(first_old, second_old)
+        source.values = [(first_old, second_old, None)] + [(1.25, 2.5, None)] * (FAULT - 1)
+        value, entries, active = caller(FAULT, fn, left, source, sys._jit.is_active, object())
+        label = f'replacement {bound} {type(first_old).__name__} {type(second_old).__name__}'
+        RESULTS[label] = [value.hex(), source.calls, len(source.values)]
         TRACES[label] = entries
         ACTIVE.append(active)
 
@@ -255,6 +276,7 @@ def main():
             assert results[prefix + 'descriptor'][0] == 18.0.hex()
             assert results[prefix + 'class'][0] == 3.75.hex()
             assert results[prefix + 'missing'][0] == 'AttributeError'
+            assert results[prefix + 'missing payload'] == ['value', True]
             missing_frame = results[prefix + 'missing'][-1][-1]
             assert missing_frame[1] == 'LOAD_ATTR'
             assert missing_frame[2:4] == results[prefix + 'missing position']
@@ -267,6 +289,7 @@ def main():
             if managed:
                 assert results[prefix + 'replace dict'][0] == 10.25.hex()
                 assert results[prefix + 'clear dict'][0] == 'AttributeError'
+                assert results[prefix + 'clear dict payload'] == ['value', True]
         for key, value in results.items():
             if key.endswith(' progress'): assert value == [FAULT, 0], (key, value)
         for bound in (False, True):
@@ -275,8 +298,18 @@ def main():
                 assert results[label] == [(2.5 if shared else 3.75).hex(), FAULT, 0, 4]
                 begin = next(entry for entry in candidate['traces'][label]
                              if entry[0] == '_BEGIN_VIRTUAL_CALL')
-                assert begin[3] == 4, (label, begin)
+                assert begin[3] & (1 << 31), (label, begin)
+                assert begin[3] & 0x7fffffff == (3 if bound else 4), (label, begin)
         assert results['generator'] == [FAULT, 3.75.hex(), FAULT]
+        for bound in (False, True):
+            for first_type, second_type in (('float', 'int'), ('NoneType', 'bool'), ('bool', 'NoneType')):
+                label = f'replacement {bound} {first_type} {second_type}'
+                assert results[label] == [10.0.hex(), FAULT, 0]
+                entries = candidate['traces'][label]
+                names = [entry[0] for entry in entries]
+                begin = next(entry for entry in entries if entry[0] == '_BEGIN_VIRTUAL_CALL')
+                assert bool(begin[3] & (1 << 31)) is bound, (label, begin)
+                assert names.count('_STORE_VIRTUAL_ARGUMENT_NUMERIC') == 2, (label, names)
         assert results['generator error'][0] == 'ZeroDivisionError'
         assert results['oom'][0] == 'MemoryError'
         assert results['oom'][-1][-1][1] == 'BINARY_OP'

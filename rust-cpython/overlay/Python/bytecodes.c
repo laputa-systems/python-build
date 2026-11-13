@@ -5016,11 +5016,12 @@ dummy_func(
             PyFunctionObject *func = (PyFunctionObject *)PyStackRef_AsPyObjectBorrow(callable);
             assert(PyFunction_Check(func));
             PyCodeObject *code = (PyCodeObject *)func->func_code;
-            int bound = call_shape & 1;
+            int bound = (required_locals & 0x80000000U)
+                ? !PyStackRef_IsNull(self_or_null) : call_shape & 1;
             EXIT_IF(bound != !PyStackRef_IsNull(self_or_null));
             int argc = oparg + (int)bound;
             EXIT_IF(code->co_argcount != argc || code->co_nlocalsplus < argc);
-            EXIT_IF((uint32_t)code->co_nlocalsplus < required_locals);
+            EXIT_IF((uint32_t)code->co_nlocalsplus < (required_locals & 0x7fffffffU));
             uint32_t numeric_argument = call_shape >> 1;
             int numeric_count = (call_shape >> 31) ? 2 : (numeric_argument != 0);
             for (int guard = 0; guard < numeric_count; guard++) {
