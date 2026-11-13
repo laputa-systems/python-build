@@ -56,7 +56,7 @@ def check_boxing_exits(entries, domain, incumbent):
     for trace in executors:
         for region in bodies(trace):
             for name, _, target, _ in region:
-                if not name.startswith('_BINARY_OP_') or not name.endswith(domain + '_UNBOXED'):
+                if not ((name.startswith('_BINARY_OP_') and name.endswith(domain + '_UNBOXED')) or name.startswith('_GUARD_')):
                     continue
                 if not 0 < target < len(trace):
                     continue
@@ -72,6 +72,89 @@ def check_boxing_exits(entries, domain, incumbent):
     if not incumbent:
         assert found, (domain, entries)
     return found
+
+
+INTEGER = r'''
+import _opcode, json, sys
+namespace = dict(_opcode=_opcode)
+exec("""def arithmetic(a, b):
+    return (a + b) * (a - b)
+def loop(n, fn, source, active):
+    entries = []
+    was_active = False
+    for index in range(n):
+        a, b = source.pop()
+        was_active = active()
+        result = fn(a, b)
+        if index == 6999:
+            for offset in range(0, len(loop.__code__.co_code), 2):
+                try: entries.extend(_opcode.get_executor(loop.__code__, offset))
+                except (ValueError, RuntimeError): pass
+    return str(result), entries, was_active
+""", namespace)
+fn, loop = namespace['arithmetic'], namespace['loop']
+class Subclass(int): pass
+results, traces, active = {}, {}, []
+for label, pair in [('warm', (12, 15)), ('multiply overflow', (2**29, 2)),
+                    ('add overflow', (2**29, 2**29)), ('large', (2**70, 2)),
+                    ('negative', (-2**29, 2)), ('bool', (True, 2)),
+                    ('subclass', (Subclass(17), 3))]:
+    source = [pair] + [(12, 15)] * 7015
+    result, entries, observed = loop(7016, fn, source, sys._jit.is_active)
+    results[label] = [result, len(source)]
+    traces[label] = entries
+    active.append(observed)
+print(json.dumps(dict(results=results, traces=traces, active=active)))
+'''
+
+
+def run_program(program, *, jit, optimize=True, arguments=(), environment=None):
+    env = dict(os.environ, PYTHON_JIT='1' if jit else '0',
+               PYTHON_UOPS_OPTIMIZE='1' if optimize else '0')
+    if environment:
+        env.update(environment)
+    completed = subprocess.run([sys.executable, '-s', '-c', program, *arguments],
+        env=env,
+        capture_output=True, text=True, timeout=120)
+    assert completed.returncode == 0, completed.stderr
+    return json.loads(completed.stdout)
+
+
+PREFIX = r'''
+import _opcode, json, sys
+events = []
+class Number:
+    def __mul__(self, other):
+        frame = sys._getframe(1)
+        events.append(['mul', frame.f_code.co_name, frame.f_locals['b'] is self,
+                       other is self, sorted(frame.f_locals)])
+        return 4.0
+    def __truediv__(self, other):
+        frame = sys._getframe(1)
+        events.append(['div', frame.f_code.co_name, frame.f_locals['b'] is self,
+                       other.hex(), sorted(frame.f_locals)])
+        return 2.0
+namespace = dict(_opcode=_opcode)
+exec("""def arithmetic(a, b):
+    return (a*a+b*b)+(b/a)
+def loop(n, fn, source, active):
+    entries = []
+    was_active = False
+    for index in range(n):
+        a, b = source.pop()
+        was_active = active()
+        result = fn(a, b)
+        if index == 6999:
+            for offset in range(0, len(loop.__code__.co_code), 2):
+                try: entries.extend(_opcode.get_executor(loop.__code__, offset))
+                except (ValueError, RuntimeError): pass
+    return result.hex(), entries, was_active
+""", namespace)
+fn, loop = namespace['arithmetic'], namespace['loop']
+source = [(1.25, Number())] + [(1.25, 2.5)] * 7015
+value, entries, active = loop(7016, fn, source, sys._jit.is_active)
+print(json.dumps(dict(result=[value, len(source), events], traces=entries, active=active)))
+'''
 
 
 FAULT = r'''
@@ -100,9 +183,9 @@ def loop(n, fn, values, arms, active):
     entries = []
     was_active = False
     for index in range(n):
-        was_active = active()
         a, b = values.pop()
         transient = arms.pop()
+        was_active = active()
         held[index] = fn(a, b)
         if index == WARM - 1: entries = trace(loop)
     return held
@@ -141,12 +224,8 @@ except ValueError:
 
 
 def fault(jit, start, optimize=True):
-    completed = subprocess.run([sys.executable, '-s', '-c', FAULT, str(start)],
-        env=dict(os.environ, PYTHONMALLOC='malloc', PYTHON_JIT='1' if jit else '0',
-                 PYTHON_UOPS_OPTIMIZE='1' if optimize else '0'),
-        capture_output=True, text=True, timeout=120)
-    assert completed.returncode == 0, (jit, start, optimize, completed.stderr)
-    return json.loads(completed.stdout)
+    return run_program(FAULT, jit=jit, optimize=optimize, arguments=(str(start),),
+                       environment={'PYTHONMALLOC': 'malloc'})
 
 
 def main():
@@ -163,22 +242,42 @@ def main():
         assert candidate['results'] == off['results'] == noopt['results']
         assert candidate['active'] == [True] * 34
         assert candidate['results']['overflow callback'][0] == ['int', str((2**29 + 2) * 2 * 4)]
-        for label in ('left', 'right'):
-            check_body(candidate['traces'][label], 'INT', incumbent)
-            check_boxing_exits(candidate['traces'][label], 'INT', incumbent)
-    for start in (0, 1):
+    candidate, off, noopt = run_program(INTEGER, jit=True), run_program(INTEGER, jit=False), run_program(INTEGER, jit=True, optimize=False)
+    assert candidate['results'] == off['results'] == noopt['results']
+    assert candidate['active'] == [True] * 7
+    for label, pair in [('warm', (12, 15)), ('multiply overflow', (2**29, 2)),
+                        ('add overflow', (2**29, 2**29)), ('large', (2**70, 2)),
+                        ('negative', (-2**29, 2)), ('bool', (True, 2)), ('subclass', (17, 3))]:
+        a, b = pair
+        assert candidate['results'][label] == [str((a + b) * (a - b)), 0]
+        check_body(candidate['traces'][label], 'INT', incumbent)
+        check_boxing_exits(candidate['traces'][label], 'INT', incumbent)
+    candidate, off, noopt = run_program(PREFIX, jit=True), run_program(PREFIX, jit=False), run_program(PREFIX, jit=True, optimize=False)
+    assert candidate['result'] == off['result'] == noopt['result']
+    assert candidate['result'] == [7.5625.hex(), 0, [
+        ['mul', 'arithmetic', True, True, ['a', 'b']],
+        ['div', 'arithmetic', True, 1.25.hex(), ['a', 'b']]]]
+    assert candidate['active']
+    check_body(candidate['traces'], 'FLOAT', incumbent)
+    prefix_masks = check_boxing_exits(candidate['traces'], 'FLOAT', incumbent)
+    if not incumbent:
+        assert (3, 0b100) in prefix_masks, prefix_masks
+    for start in (0, 1, 2):
         candidate, off, noopt = fault(True, start), fault(False, start), fault(True, start, False)
         assert candidate['active']
         for mode, data in (('jit', candidate), ('off', off), ('noopt', noopt)):
             result = data['result']
             assert result[:3] == ['MemoryError', '', 'None'], (start, mode, result)
-            position = [12, 17] if start == 0 and (incumbent or mode != 'jit') else [22, 27]
+            position = [12, 17] if start == 0 else [22, 27]
             assert result[3] == [['BINARY_OP', *position, {'a': 0.0.hex(), 'b': 2.5.hex()}]], (start, mode, result)
             assert result[4:] == [0, 0, ['armed']]
         check_body(candidate['traces'], 'FLOAT', incumbent)
         depths = check_boxing_exits(candidate['traces'], 'FLOAT', incumbent)
         if not incumbent:
-            assert (3, 0b111) in depths, depths
+            assert (2, 0b11) in depths, depths
+            math = [entry[0] for region in bodies(candidate['traces']) for entry in region
+                    if entry[0].startswith('_BINARY_OP_')]
+            assert math == ['_BINARY_OP_TRUEDIV_FLOAT', '_BINARY_OP_TRUEDIV_FLOAT_UNBOXED', '_BINARY_OP_ADD_FLOAT_UNBOXED'], math
     print('OK virtual body unboxing, raw resume guards, overflow, OOM and partial boxing', 'incumbent' if incumbent else 'candidate')
 
 
