@@ -1883,75 +1883,52 @@ source, generated-code and native review approves, including that assertion
 update. The rewrite removes a stencil boundary. No speedup is claimed, and
 performance acceptance remains deferred under OD16.
 
-**Guarded old-float cleanup (2026-11-13).** The Rust store planner can use
-an exact-float observation of a root-frame local to select a runtime guard.
+**Guarded old-float cleanup (2026-11-13).** The Rust store planner uses
+an exact-float observation of a root-frame local to select guarded cleanup.
 The observation is a hint, not a type proof. C checks the active frame and
 code before reading boxed locals under the GIL. Rust stops using hints at
-the first physical or virtual frame boundary. Existing ordinary fusions
-continue after that boundary.
+the first physical or virtual frame boundary. Ordinary fusions continue
+after that boundary.
 
-For a local swap followed only by NOPs and generic cleanup, Rust emits the
-existing `_GUARD_LOCAL_FLOAT` before `_STORE_FAST_FUSED_FLOAT`. Both copy
-the original cleanup's STORE target and retain the local index. The guard
-checks the actual old value before replacing the local or consuming the
-incoming reference. NULL, tagged integers and non-floats resume the original
-store. The typed store installs the new value before closing the old float.
-The following validity check remains. No runtime stencil is added.
+The final rewrite replaces a swap followed only by NOPs and generic cleanup
+with `_STORE_FAST_FUSED_FLOAT_OR_NULL`, using the original cleanup's STORE
+target and local index. It checks the current old value before changing the
+local or consuming the incoming reference. NULL and exact floats continue;
+tagged integers and other objects resume the original store. The new value
+is installed before closing the old float. NULL needs no cleanup. The
+following validity check remains.
 
-The private store map grows from 26 to 36 bytes. Input descriptors grow from
-4 to 6 bytes with a closed observed-kind field. Output steps remain 8 bytes.
-Sources never precede their output position, so C emits in place while
-reading original source metadata. Malformed hints and short output leave
-the output untouched. C and Rust must come from the same overlay.
+The first accepted rewrite emitted a separate exact-float guard and typed
+store. End-of-trace observations can see a float after its first assignment,
+while a fresh frame still has NULL before that assignment. The guard then
+exits to the same STORE_FAST, whose side trace can select the same guard.
+The new regression reproduces 49 side traces at Spline's first coefficient
+store during twenty chaos iterations. The nullable store emits zero and
+preserves interpreter and disabled-optimizer digests. It also replaces each
+former guard/store pair with one instruction. Nbody emits fourteen such
+stores in its inner trace and four in its second trace.
 
-All 98 Rust tests and the targeted FFI AddressSanitizer test pass. The native
-fixture requires two adjacent guard/store pairs for its overwritten local.
-Finalizing objects and float subclasses preserve the exact original store
-PC, see the new value once and can mutate that local. Aliases, source counts
-and observers match interpreter and disabled-optimizer controls. A separate
-fresh-frame case enters a warmed executor with an unset local and preserves
-the sole input through guard refusal. Its common loop tail provides one
-backedge, ensuring the guard actually runs before the first assignment.
+The private store map is now 38 bytes, with one appended nullable-store
+identity. Input and output descriptors remain 6 and 8 bytes. Sources never
+precede their output position, so C emits in place while reading original
+source metadata. Malformed hints and short output leave the output
+untouched. C and Rust must come from the same overlay.
 
-The unchanged nbody consumer emits fourteen guarded float-store pairs in
-its inner trace and four in its second trace. The refresh on the accepted
-array predecessor captures 60,701 samples with at least 95.39% named JIT
-attribution per kernel. Generic fused-store self work averages 2.17%.
-These are profile shares and emitted counts, not speedups.
+All 98 Rust tests and targeted FFI AddressSanitizer pass. The updated native
+fixture requires two nullable stores and preserves the original finalizer
+PC, once-only mutation, float-subclass fallback, alias counts and observers.
+Its fresh-frame case preserves the sole incoming reference through NULL
+entry. The reentry fixture parses complete JIT maps and checks actual store
+entry traces, including the failing predecessor control.
 
-All 35 native integrations pass. The 18 focused suites retain the same
-16 reviewed exclusions. All 2,000 fuzz programs match, including 1,949
-JIT-active cases. Independent source, generated-code and leased final native
-reviews approve both variants. Five interleaved resource trials pass:
-matched RSS at most 1.0045x incumbent, isolated Serc footprint at most
-1.0352x no-Serc and code at most 1.8792x M0. Nbody maps 44,396 bytes and
-raytrace stays at 659,248 bytes in every trial. Timing acceptance stays
-deferred under OD16.
-
-**Virtual parameter store fusion (2026-11-12).** The Rust store planner
-replaces `_SWAP_VIRTUAL_ARGUMENT` and its typed numeric cleanup with one
-`_STORE_VIRTUAL_ARGUMENT_FLOAT` or `_STORE_VIRTUAL_ARGUMENT_INT` stencil.
-Selection follows the old value's cleanup type, including integer-to-float
-parameter changes. The fused store retains the argument index and copies the
-original cleanup's metadata. Only NOPs may intervene. Guards, instruction-pointer
-updates, callbacks and typed ordinary local cleanup remain boundaries. Generic
-virtual cleanup fuses only under the numeric entry proof described above.
-
-Both stencils transfer the incoming reference into the bound-aware held slot
-before closing the old number with its original specialized deallocator.
-Generated code consumes one operand and leaves zero cached values, matching
-the original pair. The existing ownership proof and frame materializer stay
-unchanged. The original pair remains executable when planning allocation fails
-or a pair is ineligible. The private store opcode map grows from 10 to 20
-bytes. Store descriptors remain 4 bytes and rewrite steps remain 8 bytes.
-The leaf opcode map stays 162 bytes.
-
-The native parameter fixture requires exact fused-store kinds and counts,
-with no remaining virtual swaps. All 20 activity
-checks, aliases, bound calls, callbacks, updated error PCs and locals, one-shot
-and sustained OOM, reference counts and observer checks still pass. Independent
-source, generated-code and native review approves. This removes a stencil
-boundary. No speedup is claimed, and performance gates remain deferred under OD16.
+All 37 native integrations, eighteen focused suites with the same sixteen
+reviewed exclusions, 2,000 fuzz programs (1,949 JIT-active) and 31 workload
+digests pass. Independent source review and separately leased generated/native
+review approve both variants and the predecessor control. Five interleaved
+resource trials pass: matched RSS at most 1.0046x incumbent, isolated Serc
+footprint at most 1.0301x no-Serc and code at most 1.8792x M0. Nbody maps
+44,540 bytes; raytrace remains 659,248 bytes in every trial. Timing
+acceptance remains deferred under OD16.
 
 ### J acceptance
 
@@ -2929,6 +2906,14 @@ Synthetic action 16 is appended to the existing 15 actions. Callers supply
 The original boxed recipe remains the refusal path. Owned mortal arrays
 refuse before effects. C and Rust must be built together from one overlay.
 
+**Owner queue:** Nullable float-local cleanup (landed, async review). The
+private store map grows from 36 to 38 bytes with the generated nullable-store
+identity; input and step widths stay 6 and 8 bytes. The single instruction
+checks the actual old value before effects, accepts NULL or an exact float,
+and preserves original-store fallback for other types. It replaces the
+separate observed-float guard/store rewrite, preventing repeated side-trace
+compilation on fresh frames. No public API or production change.
+
 **Owner queue:** Allocation-site tracing policy (landed, async review).
 The lane stays in tier one while `tracemalloc` is active. Existing cached
 executors remain available after tracing stops. Callback transitions use
@@ -3186,7 +3171,7 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
 
 **Resumed 2026-11-13.** J feature completion continues under OD16; performance gates remain deferred.
 Closeout cancellation reports inactive. Main and the retained candidate are clean; protected worktrees remain registered.
-Integration: `main`, including exact-float double-array assignment, guarded old-float cleanup, borrowed double-array producers, allocation-site tracing correctness, guarded Boolean state updates and readonly attribute predicates. Current correctness incumbent is `perf-jit-array-exact-setitem` in `.work/wt/jit-array-exact-setitem`, built clean with both `--jit --serc` to match its predecessor. All 58 Rust extensions verify and its raw overlay matches the final source. `perf-jit-array-exact-setitem-noserc` is the same-overlay, JIT-enabled OD15 control. Five interleaved resource trials pass matched RSS, isolated Serc footprint and M0 code-size bars. Raytrace maps 659,248 bytes, 1.8792x M0, below the unchanged 2x bar. This workflow does not push.
+Integration: `main`, including nullable old-float cleanup and its reentry fix, exact-float double-array assignment, borrowed double-array producers, allocation-site tracing correctness, guarded Boolean state updates and readonly attribute predicates. Current correctness incumbent is `perf-jit-null-local-cleanup` in `.work/wt/jit-null-local-cleanup`, built clean with both `--jit --serc` to match its predecessor. All 58 Rust extensions verify and its raw overlay matches the final source. `perf-jit-null-local-cleanup-noserc` is the same-overlay, JIT-enabled OD15 control. Five interleaved resource trials pass matched RSS, isolated Serc footprint and M0 code-size bars. Raytrace maps 659,248 bytes, 1.8792x M0, below the unchanged 2x bar. This workflow does not push.
 
 The lane controller now publishes extracted JIT inspection tools from writer-owned temporary directories. A deterministic two-extractor test reproduces the old shared `.part` collision and passes with complete executable contents after the fix; the locked-extraction and missing-archive tests also pass. The runtime overlay and LLVM pins are unchanged.
 
@@ -3194,13 +3179,14 @@ The repository moved from `~/d/python-build` to `/Users/josh/repos/laputa-system
 
 | Lane | State | Resume / last evidence |
 | --- | --- | --- |
-| J | active: exact-float double-array assignment accepted | Existing C setter bypasses format parsing only for exact floats; parser callbacks and post-conversion bounds remain unchanged. No ABI or opcode change. Unchanged Rust retains 98 tests and targeted FFI AddressSanitizer proof; 36 native integrations; 18 focused suites with the same 16 exclusions; 2,000 fuzz programs (1,949 JIT-active, 0 differences); 31 equal digests. Independent source and leased native review approves both variants. Matched RSS <=1.0034x incumbent; isolated Serc footprint <=1.0371x no-Serc; code <=1.8792x M0. Five affected profiles contain no setter parser self samples. Evidence: `.work/wt/jit-array-exact-setitem/.work/tmp/array-exact-setitem-feature-acceptance.json`. |
+| J | active: nullable local cleanup accepted | A fused guarded store accepts NULL or an exact old float before effects. The predecessor's twenty-iteration chaos control emits 49 side traces at the first coefficient store; the candidate emits zero. Private store map/input/step widths are 38/6/8 bytes. 98 Rust tests and targeted FFI AddressSanitizer; 37 native integrations; 18 focused suites with the same 16 exclusions; 2,000 fuzz programs (1,949 JIT-active, 0 differences); 31 equal digests. Independent source and leased generated/native review approves both variants and the predecessor control. Matched RSS <=1.0046x incumbent; isolated Serc footprint <=1.0301x no-Serc; code <=1.8792x M0. Frozen nbody emits 14+4 nullable stores. Evidence: `.work/wt/jit-null-local-cleanup/.work/tmp/null-local-cleanup-feature-acceptance.json`. |
 | C | feature complete | C3: integrated normal/verify each run 52,102 tests with the same five reference failures and 0 compiler mismatches; native 11 passes. C2/C3 performance acceptance remains deferred. |
 | R1 / Close | done / deferred | R1 catalog below; Close still needs deferred gates and the owner-approved macOS-only scope. No M4 or overall completion claim. |
 
-Completed slices: numeric parameter reassignment, typed store fusion, dual numeric entry guards, borrowed argument attributes, guarded nested identity methods, virtual-body unboxing, plain or masked resume stub reuse, readonly Boolean predicates, guarded state updates, allocation-site tracing, borrowed double-array producers, guarded old-float cleanup and exact-float double-array assignment. The current profile basis is `perf-jit-array-read-unbox`: 60,701 samples and at least 95.39% named JIT attribution per kernel. Root `.work/tmp/jit-array-read-unbox-profile-summary.json` retains reports and shares. `jit-guarded-local-cleanup-frozen-shapes.json` proves 14 inner and 4 outer guarded stores in nbody. Next: assess the remaining list-item cleanup and allocation costs against actual emitted consumers, preserving callback and identity semantics. The exact-float setter removes the grounded parser path; five fresh affected-kernel profiles and `jit-array-exact-setitem-profile-owner.json` retain its mechanism proof. Frame-clear thread-state lookup alone is only 0.31% mean and is dropped below P1’s floor; `_Py_NewReference` has no release-build thread-state fetch to remove. Parked JIT array-store experiments remain parked. Broader lookup, allocation, loop-peeling and stencil work remain open. Carbon stays disabled under OD17; performance acceptance remains deferred under OD16.
+Completed slices: numeric parameter reassignment, typed store fusion, dual numeric entry guards, borrowed argument attributes, guarded nested identity methods, virtual-body unboxing, plain or masked resume stub reuse, readonly Boolean predicates, guarded state updates, allocation-site tracing, borrowed double-array producers, guarded old-float cleanup, exact-float double-array assignment and nullable local reentry. The current profile basis is `perf-jit-array-read-unbox`: 60,701 samples and at least 95.39% named JIT attribution per kernel. Root `.work/tmp/jit-array-read-unbox-profile-summary.json` retains reports and shares. `jit-guarded-local-cleanup-frozen-shapes.json` proves 14 inner and 4 outer guarded stores in nbody. Next: finish the guarded exact-float list-item cleanup slice on this prerequisite. Its initial matched stages pass native controls after correcting constant negative-index fixtures; those constants remain generic in CPython, so the final fixture warms a positive index before passing a negative one through the cached specialization. The rebased private map is 84 bytes and needs fresh layout, build and acceptance proof. The exact-float setter removes the grounded parser path; five fresh affected-kernel profiles and `jit-array-exact-setitem-profile-owner.json` retain its mechanism proof. Frame-clear thread-state lookup alone is only 0.31% mean and is dropped below P1’s floor; `_Py_NewReference` has no release-build thread-state fetch to remove. Parked JIT array-store experiments remain parked. Broader lookup, allocation, loop-peeling and stencil work remain open. Carbon stays disabled under OD17; performance acceptance remains deferred under OD16.
 Parked compiler work: `campaign/c0` (pre-existing report committed as `e2b4fde`), `campaign/c2-layout`, `campaign/c2-memgate`; historical/unreviewed alternatives, not required for closed C3. Review against main before any reuse or integration.
 Parked J/reference work: `campaign/t2-store`, `campaign/t3-pending` (array-store experiment), `campaign/t3-inline` (dropped linked-frame experiment), `campaign/r1` (older CinderX study), `campaign/jit-main-ref` (matched C3 reference). Reopen only for an explicit feature/reference review.
+Retained `.work/wt/jit-null-local-cleanup` holds the accepted nullable store, final fixtures, matched clean stages and correctness/resource evidence. `jit-null-local-cleanup-review` preserves its source approval. That worker's final attempt stopped before execution because its sandbox denied process inspection; root `jit-null-local-cleanup-final-review-blocked-process-inspection.json` records the gap. `jit-null-local-cleanup-native-review` executes all nine commands under the parent's verified live TEST lease and compares both applied sources, generated cases and metadata. Root `jit-null-local-cleanup-{source-review,independent-review,review-lease-audit}.json` retain the accepted proof. The full profile refresh runs through an exclusive host lease. Older exact-setter profile attempts exceeded the coordinator timeout on chaos; the resulting side-trace investigation is retained under `jit-chaos-*` and the new regression. Early probes that inspected only attached executors could not see the repeated side traces and are not the regression proof.
 Retained `.work/wt/jit-array-exact-setitem` holds the accepted setter and fixture, matched clean stages, correctness/resource evidence and five affected-kernel profiles. `jit-array-exact-setitem-review` holds the independently reviewed source. Root `.work/tmp/jit-array-exact-setitem-independent-review.json` records source and nine leased native command approvals. An initial relative ready-marker lookup stopped before execution; the corrected review verifies the absolute marker inside the live parent TEST lease. Root `jit-array-exact-setitem-{before,native,source-proof,integrated-check}.log` and `jit-array-exact-setitem-profile-owner.json` retain controls, integration and mechanism proof.
 Retained `.work/wt/jit-array-allocation-site` holds the accepted tracing policy, final fixture, matched clean stages and correctness/resource evidence. `jit-array-allocation-site-review` holds its runtime source snapshot; `jit-array-allocation-site-final-review` holds the fixture addendum. Root `.work/tmp/jit-array-allocation-site-{source-review,independent-review}.json` record approvals. Source review resolved a withheld proof by tracing existing escape metadata and raw-value barriers. The final review independently executed both variants. The weakref case checks post-callback allocation sites and progress; separate cold, warm and finalizer cases check JIT resumption.
 Retained `.work/wt/jit-array-read-unbox` holds the accepted raw-array producer, final fixture, rebuilt matched stages and correctness/resource evidence. `jit-array-read-unbox-review` preserves the independent runtime snapshot. The final review covers its identical optimizer patch after rebase and executes both final fixtures on both variants. Root `.work/tmp/jit-array-read-unbox-{source-review,independent-review,rebase-proof}.json` retain the proof. Original pre-prerequisite stages, reports, configured trees and logs are preserved under `.work/tmp/jit-array-read-unbox-attempt1/`; their moved binaries require the matching `DYLD_LIBRARY_PATH` if inspected. The original numeric allocation observer remains alongside the isolated-read prerequisite because it checks a four-read arithmetic chain. `jit-array-read-unbox-frozen-counts.json` records actual emitted occurrences from every resource trial.
@@ -3389,3 +3375,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-13 | e891 | J | T2 | connect borrowed double-array reads to profitable raw float arithmetic components while preserving boxed inputs, cleanup and exit state | accepted `perf-jit-array-allocation-site` at main `ebdaf009` | performance deferred (OD16) | five interleaved resource trials pass: matched RSS <=1.0063x incumbent, isolated Serc footprint <=1.0355x no-Serc, code <=1.8792x M0 | CORRECT: clean matched variants verify 58 extensions each; unchanged patch after correctness-prerequisite rebase; 95 Rust tests and targeted FFI AddressSanitizer; 34 native integrations; 18 focused suites retain the same 16 exclusions; 2,000 fuzz programs (1,949 JIT-active, 0 differences); 31 equal digests; independent source/generated/native review approves both variants. Exact bits, masks4/12, bounds, callbacks, owned arrays, observers and injected boxing failures pass. Synthetic action16 is appended; descriptor/step sizes stay8/16. Frozen emitted counts per trial: sparse4, SOR2, LU2, MonteCarlo12, FFT0 | runtime `bd8c5ca6`, fixture `4de52240`; `.work/wt/jit-array-read-unbox/.work/tmp/array-read-unbox-{feature-acceptance,resources}.json`; corpus `20261113T113242Z-perf-jit-array-allocation-site-vs-perf-jit-array-read-unbox`, `20261113T113523Z-...`; root `jit-array-read-unbox-{rust-tests,asan,metadata,before,native,noserc-native,source-proof}.log`, `{source-review,independent-review,rebase-proof,frozen-counts}.json` |
 | 2026-11-13 | e891 | J | T4 | guard observed exact-float old locals before reusing existing typed-store cleanup in the initial root interval | accepted `perf-jit-array-read-unbox` at main `b772dd17` | performance deferred (OD16) | five interleaved resource trials pass: matched RSS <=1.0045x incumbent, isolated Serc footprint <=1.0352x no-Serc, code <=1.8792x M0 | CORRECT: clean matched variants verify 58 extensions each; 98 Rust tests and targeted FFI AddressSanitizer; 35 native integrations; 18 focused suites retain the same 16 exclusions; 2,000 fuzz programs (1,949 JIT-active, 0 differences); 31 equal digests. Independent source/generated and verified leased native-only reviews approve both variants. Two adjacent guard/store pairs preserve original finalizer PC, ownership, reflected local mutation and observers. Fresh-frame NULL fallback preserves sole input and JIT progress. Private map/input/step widths36/6/8; no new stencil. Frozen nbody emits14+4pairs and maps44,396 bytes; raytrace stays659,248 | runtime `f7472384`, fixtures through `9abde336`; `.work/wt/jit-guarded-local-cleanup/.work/tmp/guarded-local-cleanup-{feature-acceptance,resources}.json`; corpus `20261113T121041Z-perf-jit-array-read-unbox-vs-perf-jit-guarded-local-cleanup`, `20261113T121625Z-...`; root `jit-guarded-local-cleanup-{rust-tests,asan,before,native-final,source-proof,frozen-shapes}.log` and `{source-review,independent-review,review-lease-audit,frozen-shapes}.json` |
 | 2026-11-13 | e891 | J | T1 | bypass format parsing for exact-float double-array assignment while retaining conversion callbacks and post-conversion bounds | accepted `perf-jit-guarded-local-cleanup` at main `7218962a` | performance deferred (OD16) | five interleaved resource trials pass: matched RSS <=1.0034x incumbent, isolated Serc footprint <=1.0371x no-Serc, code <=1.8792x M0; zero setter parser self samples in five new affected profiles (18,871 samples) | CORRECT: clean matched variants verify 58 extensions each; unchanged Rust retains 98 tests and targeted FFI AddressSanitizer proof; 36 native integrations; 18 suites retain the same 16 exclusions; 2,000 fuzz programs (1,949 JIT-active, 0 differences); 31 equal digests; independent source and leased native review approves both variants and predecessor control. Twenty active assignment cases preserve bits, aliases, conversion callbacks, bounds, errors and observers. No ABI or opcode change | runtime and fixture `b9ae1ec0`; `.work/wt/jit-array-exact-setitem/.work/tmp/array-exact-setitem-{feature-acceptance,resources}.json`; corpus `20261113T124613Z-perf-jit-guarded-local-cleanup-vs-perf-jit-array-exact-setitem`, `20261113T124926Z-...`; root `jit-array-exact-setitem-{independent-review,profile-owner}.json` and `{before,native,source-proof,integrated-check}.log` |
+| 2026-11-13 | e891 | J | T4 | fuse observed old-float cleanup into a guarded nullable store, preventing repeated fresh-frame STORE_FAST side traces | accepted `perf-jit-array-exact-setitem` at main `33aad47a` | performance deferred (OD16) | five interleaved resource trials pass: matched RSS <=1.0046x incumbent, isolated Serc footprint <=1.0301x no-Serc, code <=1.8792x M0; nbody44,540 bytes and raytrace659,248 | CORRECT: clean matched variants verify58 extensions each;98 Rust tests and targeted FFI AddressSanitizer;37 native integrations;18 suites retain the same16 exclusions;2,000 fuzz programs (1,949 JIT-active,0 differences);31 equal digests. Independent source and verified leased generated/native review approves both variants and predecessor. Twenty chaos iterations emit0 store-entry side traces versus49; frozen nbody emits14+4 nullable stores. Private map/input/step widths38/6/8. Finalizers, original PCs, aliases, subclass fallback, incoming ownership and observers remain checked | runtime/fixtures `84df5b3a`; `.work/wt/jit-null-local-cleanup/.work/tmp/null-local-cleanup-{feature-acceptance,resources}.json`; corpus `20261113T135843Z-perf-jit-array-exact-setitem-vs-perf-jit-null-local-cleanup`, `20261113T140134Z-...`; root `jit-null-local-cleanup-{source-review,independent-review,review-lease-audit,frozen-shapes}.json` and `{rust-tests,asan,before,native,noserc-native,source-proof,integrated-check}.log` |
