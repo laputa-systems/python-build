@@ -86,6 +86,8 @@ fn float_list_store(uops: &[StoreUop], index: usize, ops: &StoreOpcodes) -> bool
 /// Observed float locals select a store that guards an exact float or NULL before
 /// effects, only in the initial frame. Tracing can observe a value after a store;
 /// fresh-frame NULL locals must not repeatedly exit at that same store.
+/// Observed hints cannot specialize the first local store: a side trace starts
+/// there with an incoming value and must not select the same failing guard again.
 /// Numeric list-store sequences select a kernel that guards the current old item
 /// before effects; the incoming float pattern never proves the old item's type.
 pub fn plan_stores(uops: &[StoreUop], ops: &StoreOpcodes)
@@ -108,6 +110,7 @@ pub fn plan_stores(uops: &[StoreUop], ops: &StoreOpcodes)
     }
     let mut changed = false;
     let mut root_interval = true;
+    let mut first_local_store = true;
     for (index, uop) in uops.iter().enumerate() {
         if [ops.push_frame, ops.return_value, ops.virtual_begin, ops.virtual_return].contains(&uop.opcode) {
             root_interval = false;
@@ -118,6 +121,8 @@ pub fn plan_stores(uops: &[StoreUop], ops: &StoreOpcodes)
             continue;
         }
         let local = (ops.swap_first..=ops.swap_last).contains(&uop.opcode);
+        let may_use_hint = local && !first_local_store;
+        if local { first_local_store = false; }
         if !local && uop.opcode != ops.argument_swap {
             continue;
         }
@@ -128,7 +133,7 @@ pub fn plan_stores(uops: &[StoreUop], ops: &StoreOpcodes)
         if pop == uops.len() {
             continue;
         }
-        if local && root_interval && uop.observed_kind == ops.local_float_guard && uops[pop].opcode == ops.pop {
+        if may_use_hint && root_interval && uop.observed_kind == ops.local_float_guard && uops[pop].opcode == ops.pop {
             steps[index] = StoreStep { opcode: ops.observed_float_store, oparg: uop.oparg, source: pop as u32 };
             steps[pop].opcode = ops.nop;
             changed = true;
@@ -234,13 +239,40 @@ mod tests {
         let ops = opcodes();
         let hint = StoreUop { observed_kind: ops.local_float_guard, ..uop(1, 7) };
         let steps = plan_stores(&[hint, uop(ops.nop, 0), uop(ops.pop, 0)], &ops).unwrap().unwrap();
-        assert_eq!(steps[0], StoreStep { opcode: ops.observed_float_store, oparg: 7, source: 2 });
+        assert_eq!(steps[0], StoreStep { opcode: ops.store, oparg: 7, source: 2 });
         assert_eq!(steps[1], StoreStep { opcode: ops.nop, oparg: 0, source: 1 });
         assert_eq!(steps[2], StoreStep { opcode: ops.nop, oparg: 0, source: 2 });
         for boundary in [ops.push_frame, ops.return_value, ops.virtual_begin, ops.virtual_return] {
             let steps = plan_stores(&[uop(boundary, 0), hint, uop(ops.pop, 0)], &ops).unwrap().unwrap();
             assert_eq!(steps[1], StoreStep { opcode: ops.store, oparg: 7, source: 2 });
             assert_eq!(steps[2].opcode, ops.nop);
+        }
+    }
+
+    #[test]
+    fn entry_store_refuses_observation_but_later_stores_keep_hints() {
+        let ops = opcodes();
+        let hint = StoreUop { observed_kind: ops.local_float_guard, ..uop(1, 7) };
+        let input = [hint, uop(ops.pop, 0), uop(ops.nop, 0), hint, uop(ops.pop, 0)];
+        let steps = plan_stores(&input, &ops).unwrap().unwrap();
+        assert_eq!(steps[0], StoreStep { opcode: ops.store, oparg: 7, source: 1 });
+        assert_eq!(steps[3], StoreStep { opcode: ops.observed_float_store, oparg: 7, source: 4 });
+        assert_eq!(steps[1].opcode, ops.nop);
+        assert_eq!(steps[4].opcode, ops.nop);
+    }
+
+    #[test]
+    fn first_local_store_consumes_hint_eligibility_even_without_a_fusible_cleanup() {
+        let ops = opcodes();
+        let hint = StoreUop { observed_kind: ops.local_float_guard, ..uop(1, 7) };
+        let input = [uop(1, 2), uop(99, 0), hint, uop(ops.pop, 0)];
+        let steps = plan_stores(&input, &ops).unwrap().unwrap();
+        assert_eq!(steps[0].opcode, 1);
+        assert_eq!(steps[2].opcode, ops.observed_float_store);
+        for boundary in [ops.push_frame, ops.return_value, ops.virtual_begin, ops.virtual_return] {
+            let input = [uop(1, 2), uop(ops.pop, 0), uop(boundary, 0), hint, uop(ops.pop, 0)];
+            let steps = plan_stores(&input, &ops).unwrap().unwrap();
+            assert_eq!(steps[3].opcode, ops.store);
         }
     }
 
@@ -353,7 +385,7 @@ mod tests {
         assert_eq!(status, 2);
         // SAFETY: a successful complete plan initialized both entries.
         let result = unsafe { [output[0].assume_init(), output[1].assume_init()] };
-        assert_eq!(result[0], StoreStep { opcode: ops.observed_float_store, oparg: 5, source: 1 });
+        assert_eq!(result[0], StoreStep { opcode: ops.store, oparg: 5, source: 1 });
         assert_eq!(result[1], StoreStep { opcode: ops.nop, oparg: 0, source: 1 });
     }
 
