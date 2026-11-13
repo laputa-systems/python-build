@@ -172,8 +172,7 @@ for key, warm, sample in (
 caller = fresh(generator)
 source = Source([(1.25, 2.5, 0.0)] + [(1.25, 2.5, 1.0)] * (COUNT - 1))
 try:
-    for value, entries, was_active in caller(COUNT, failure, source, sys._jit.is_active):
-        pass
+    list(caller(COUNT, failure, source, sys._jit.is_active))
 except ZeroDivisionError as error:
     errors['generator'] = [type(error).__name__, str(error), state(error, failure),
                            source.calls, len(source.values)]
@@ -349,13 +348,14 @@ def main():
             'b': ['float', (1.25).hex()], 'c': ['NoneType', 'NoneType'],
             'value': ['float', (float(2**70) + 1.25).hex()]}], fault
         assert result['allocation']['16'] in (None, fault)
-    assert all(candidate['active']), candidate['active']
+    assert len(candidate['active']) == 18 and all(candidate['active']), candidate['active']
     assert candidate['allocation_active'] == [True, True]
     for key, entries in candidate['traces'].items():
         names = [entry[0] for entry in entries]
         if key in ('unproved', 'receiver-0'):
             assert '_BEGIN_VIRTUAL_CALL' not in names, names
         else:
+            assert {'_BEGIN_VIRTUAL_CALL', '_SWAP_VIRTUAL_ARGUMENT', '_RETURN_VIRTUAL_CALL'} <= set(names), (key, names)
             begin, end = names.index('_BEGIN_VIRTUAL_CALL'), names.index('_RETURN_VIRTUAL_CALL')
             assert '_SWAP_VIRTUAL_ARGUMENT' in names[begin:end], (key, names)
             assert '_MATERIALIZE_VIRTUAL_FRAME' in names, key

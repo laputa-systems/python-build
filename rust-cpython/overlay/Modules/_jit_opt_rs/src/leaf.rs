@@ -259,6 +259,7 @@ enum VirtualValue {
     CopiedArgument(u16),
     BorrowedConstant,
     Scalar(ScalarKind, ScalarOwnership),
+    ReplacedArgument(ScalarKind),
     ReallocatedOperand,
     Null,
 }
@@ -296,7 +297,7 @@ impl VirtualValue {
             Self::Scalar(proven, _) if proven.implies(kind) => Some(self),
             Self::Scalar(proven, ownership) if kind.implies(proven) => Some(Self::Scalar(kind, ownership)),
             Self::Scalar(_, _) => None,
-            Self::BorrowedReceiver | Self::ManagedReceiver | Self::ReallocatedOperand | Self::Null => None,
+            Self::BorrowedReceiver | Self::ManagedReceiver | Self::ReplacedArgument(_) | Self::ReallocatedOperand | Self::Null => None,
         }
     }
 }
@@ -350,11 +351,11 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
     arguments.resize(argc as usize, None);
     let mut resumed = false;
     let mut operations = 0;
-    let mut integer_cleanup: u8 = 0;
+    let mut pending_cleanup: u8 = 0;
     for (index, uop) in uops.iter().enumerate().skip(at + 3) {
         let opcode = uop.opcode;
-        if integer_cleanup != 0 && ![ops.nop, ops.set_ip, ops.validity,
-            ops.pop_borrow, ops.pop_int, ops.pop].contains(&opcode)
+        if pending_cleanup != 0 && ![ops.nop, ops.set_ip, ops.validity,
+            ops.pop_borrow, ops.pop_float, ops.pop_int, ops.pop].contains(&opcode)
         {
             return Ok(None);
         }
@@ -413,9 +414,10 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                 {
                     return Ok(None);
                 }
-                values.push(VirtualValue::Scalar(old_kind, ScalarOwnership::Shared));
+                values.push(VirtualValue::ReplacedArgument(old_kind));
                 arguments[usize::from(uop.oparg)] = Some(kind);
                 replacement = ops.virtual_argument_swap;
+                pending_cleanup = 1;
             }
             else {
                 if values.iter().any(|value| matches!(value,
@@ -515,7 +517,7 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                     || (ops.int_inplace_right.contains(&opcode) && right != VirtualValue::Scalar(kind, ScalarOwnership::Fresh))
                 { return Ok(None) }
                 if ops.int_inplace_left.contains(&opcode) || ops.int_inplace_right.contains(&opcode) {
-                    integer_cleanup = 2;
+                    pending_cleanup = 2;
                 }
                 replacement = opcode;
             }
@@ -530,10 +532,12 @@ fn virtual_body(uops: &[LeafUop], at: usize, ops: &LeafOpcodes, bound: bool)
                     VirtualValue::Scalar(_, ScalarOwnership::Borrowed | ScalarOwnership::BorrowedArgument(_) | ScalarOwnership::BorrowedLocal(_)))
                     if op == ops.pop_borrow || op == ops.pop => ops.pop_borrow,
                 (op, VirtualValue::Scalar(kind, _)) if op == ops.scalar_pop(kind) || op == ops.pop => ops.scalar_pop(kind),
+                (op, VirtualValue::ReplacedArgument(kind))
+                    if op == ops.pop_borrow || op == ops.scalar_pop(kind) || op == ops.pop => ops.scalar_pop(kind),
                 (op, VirtualValue::ReallocatedOperand) if op == ops.pop_borrow || op == ops.pop => ops.pop_float,
                 _ => return Ok(None),
             };
-            integer_cleanup = integer_cleanup.saturating_sub(1);
+            pending_cleanup = pending_cleanup.saturating_sub(1);
         }
         else if opcode == ops.heap_safe {
             let Some(value) = values.last_mut() else { return Err(Inconsistent) };
@@ -1401,6 +1405,8 @@ mod tests {
             }
         }
         input.insert(17, uop(ops.heap_safe, 0));
+        input[15].opcode = ops.pop_borrow;
+        input[28].opcode = ops.pop_borrow;
         let plan = plan_leaf_calls(&input, &ops).unwrap().unwrap();
         assert_eq!(plan[14].opcode, ops.virtual_argument_swap);
         assert_eq!(plan[15].opcode, ops.pop_float);
@@ -1414,13 +1420,23 @@ mod tests {
                 let mut anchored = input.clone();
                 anchored.insert(6, uop(load, 0));
                 if narrowed { anchored.insert(7, uop(ops.guard_tos_float, 0)); }
+                let after_cleanup = 17 + usize::from(narrowed);
+                anchored.insert(after_cleanup, uop(ops.guard_tos_float, 0));
+                anchored.insert(after_cleanup + 1, uop(if load == ops.load_borrow.first {
+                    ops.pop_borrow
+                } else { ops.pop_float }, 0));
                 assert!(plan_leaf_calls(&anchored, &ops).unwrap().is_none());
+                anchored[6].oparg = 1;
+                assert!(plan_leaf_calls(&anchored, &ops).unwrap().is_some());
             }
         }
         let mut unknown_old = input.clone();
         unknown_old[14].oparg = 2;
         unknown_old[2].oparg = 3;
         assert!(plan_leaf_calls(&unknown_old, &ops).unwrap().is_none());
+        unknown_old.splice(6..6, [uop(ops.load_borrow.first, 2),
+            uop(ops.guard_tos_float, 0), uop(ops.pop_borrow, 0)]);
+        assert!(plan_leaf_calls(&unknown_old, &ops).unwrap().is_some());
         let mut borrowed_new = input;
         borrowed_new.remove(17);
         borrowed_new[17].oparg = 0;
