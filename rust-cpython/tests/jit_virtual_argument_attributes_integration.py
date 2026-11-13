@@ -110,13 +110,13 @@ class AddFloat(float):
     __radd__ = Add.__radd__
 
 for bound in (False, True):
-    for scenario in ('success', 'zero', 'missing', 'wrong', 'subclass', 'descriptor', 'class',
+    for scenario in ('success', 'zero', 'missing', 'wrong owner', 'wrong', 'subclass', 'descriptor', 'class',
                      *(('replace dict', 'clear dict') if __MANAGED__ else ())):
         Owner, standalone = make()
         fn = Owner.calculate if bound else standalone
-        if scenario == 'missing':
+        if scenario in ('missing', 'wrong owner'):
             ins = [i for i in dis.get_instructions(fn) if i.opname == 'LOAD_ATTR'][-1]
-            RESULTS[str(bound) + ' missing position'] = [ins.positions.col_offset, ins.positions.end_col_offset]
+            RESULTS[str(bound) + ' ' + scenario + ' position'] = [ins.positions.col_offset, ins.positions.end_col_offset]
         if scenario == 'zero':
             ins = [i for i in dis.get_instructions(fn) if i.opname == 'BINARY_OP'][-1]
             RESULTS[str(bound) + ' zero position'] = [ins.positions.col_offset, ins.positions.end_col_offset]
@@ -139,6 +139,9 @@ for bound in (False, True):
         source = None
         before = sys.getrefcount(right)
         source = Source(right, divisor, action)
+        if scenario == 'wrong owner':
+            right = object()
+            source.values[0] = (right, divisor, None)
         label = str(bound) + ' ' + scenario
         try:
             value, entries, active = caller(FAULT, fn, left, source, sys._jit.is_active, unused)
@@ -280,6 +283,11 @@ def main():
             missing_frame = results[prefix + 'missing'][-1][-1]
             assert missing_frame[1] == 'LOAD_ATTR'
             assert missing_frame[2:4] == results[prefix + 'missing position']
+            assert results[prefix + 'wrong owner'][0] == 'AttributeError'
+            assert results[prefix + 'wrong owner payload'] == ['value', True]
+            owner_frame = results[prefix + 'wrong owner'][-1][-1]
+            assert owner_frame[1] == 'LOAD_ATTR'
+            assert owner_frame[2:4] == results[prefix + 'wrong owner position']
             assert results[prefix + 'zero'][0] == 'ZeroDivisionError'
             zero_frame = results[prefix + 'zero'][-1][-1]
             assert zero_frame[1] == 'BINARY_OP' and zero_frame[2:4] == results[prefix + 'zero position']
@@ -325,7 +333,12 @@ def main():
             names = [entry[0] for entry in entries]
             begin, end = names.index('_BEGIN_VIRTUAL_CALL'), names.index('_RETURN_VIRTUAL_CALL')
             body = names[begin:end]
-            assert any('TYPE_VERSION' in name for name in body), (label, body)
+            guards = body
+            if label.startswith('replacement True '):
+                caller = max((index for index, name in enumerate(names[:begin])
+                              if name == '_RETURN_VALUE'), default=0)
+                guards = names[caller:end]
+            assert any('TYPE_VERSION' in name for name in guards), (label, guards)
             assert ('_LOAD_ATTR_INSTANCE_VALUE' if managed else '_LOAD_ATTR_SLOT') in body, (label, body)
             if managed: assert '_CHECK_MANAGED_OBJECT_HAS_VALUES' in body, (label, body)
         assert all('_BEGIN_VIRTUAL_CALL' not in [entry[0] for entry in entries]
