@@ -153,8 +153,14 @@ class Released:
         frame.f_locals['a'] = 11.0
         gc.collect()
 
+class ReleasedInt(int):
+    __del__ = Released.__del__
+
+class ReleasedFloat(float):
+    __del__ = Released.__del__
+
 caller = fresh(released_loop)
-source = Source([Released() for _ in range(4)] + [1.25] * WARM)
+source = Source([Released(), ReleasedInt(123), ReleasedFloat(1.25), Released()] + [1.25] * WARM)
 try:
     raise ValueError('outer')
 except ValueError:
