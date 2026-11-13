@@ -1,4 +1,4 @@
-"""Full GC empties the float freelist before failmalloc counts boxing allocations."""
+"""Full GC clears float freelists; malloc gives one failmalloc callback per slot."""
 import importlib.util
 import json
 import os
@@ -142,7 +142,7 @@ except ValueError:
 
 def fault(jit, start, optimize=True):
     completed = subprocess.run([sys.executable, '-s', '-c', FAULT, str(start)],
-        env=dict(os.environ, PYTHON_JIT='1' if jit else '0',
+        env=dict(os.environ, PYTHONMALLOC='malloc', PYTHON_JIT='1' if jit else '0',
                  PYTHON_UOPS_OPTIMIZE='1' if optimize else '0'),
         capture_output=True, text=True, timeout=120)
     assert completed.returncode == 0, (jit, start, optimize, completed.stderr)
