@@ -535,6 +535,7 @@ NON_ESCAPING_FUNCTIONS = (
     "PyFloat_AS_DOUBLE",
     "PyFloat_FromDouble",
     "_PyFloat_FromDoubleTstate",
+    "_PyFrame_GetStackPointer",
     "_PyFloat_PowExactTstate",
     "_Py_convert_int_to_double",
     "_PyLong_FromCompactTstate",
