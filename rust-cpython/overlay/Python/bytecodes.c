@@ -341,6 +341,24 @@ dummy_func(
             PyStackRef_XCLOSE_TSTATE(tstate, old);
         }
 
+        tier2 op(_STORE_FAST_FUSED_FLOAT, (value --)) {
+            _PyStackRef old = GETLOCAL(oparg);
+            assert(PyFloat_CheckExact(PyStackRef_AsPyObjectBorrow(old)));
+            GETLOCAL(oparg) = value;
+            DEAD(value);
+            INPUTS_DEAD();
+            PyStackRef_CLOSE_SPECIALIZED_TSTATE(tstate, old, _PyFloat_ExactDeallocTstate);
+        }
+
+        tier2 op(_STORE_FAST_FUSED_INT, (value --)) {
+            _PyStackRef old = GETLOCAL(oparg);
+            assert(PyLong_CheckExact(PyStackRef_AsPyObjectBorrow(old)));
+            GETLOCAL(oparg) = value;
+            DEAD(value);
+            INPUTS_DEAD();
+            PyStackRef_CLOSE_SPECIALIZED_TSTATE(tstate, old, _PyLong_ExactDeallocTstate);
+        }
+
         pseudo(STORE_FAST_MAYBE_NULL, (unused --)) = {
             STORE_FAST,
         };

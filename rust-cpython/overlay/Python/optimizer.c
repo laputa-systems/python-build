@@ -2485,6 +2485,7 @@ typedef struct {
     uint16_t swap_first, swap_last, pop, store, nop;
     uint16_t argument_swap, float_pop, int_pop, argument_float_store, argument_int_store;
     uint16_t argument_numeric_store;
+    uint16_t local_float_store, local_int_store;
 } _PyJitStoreOpcodes;
 
 typedef struct {
@@ -2496,7 +2497,9 @@ typedef struct {
     uint32_t source;
 } _PyJitStoreStep;
 
-static_assert(sizeof(_PyJitStoreOpcodes) == 22, "store opcode map matches Rust");
+static_assert(sizeof(_PyJitStoreOpcodes) == 26, "store opcode map matches Rust");
+static_assert(offsetof(_PyJitStoreOpcodes, local_float_store) == 22, "float store matches Rust");
+static_assert(offsetof(_PyJitStoreOpcodes, local_int_store) == 24, "int store matches Rust");
 static_assert(sizeof(_PyJitStoreUop) == 4, "store descriptors match Rust");
 static_assert(sizeof(_PyJitStoreStep) == 8, "store steps match Rust");
 static_assert(offsetof(_PyJitStoreStep, source) == 4, "store source offset matches Rust");
@@ -2513,6 +2516,7 @@ fuse_local_stores(_PyUOpInstruction *buffer, int length)
         _SWAP_VIRTUAL_ARGUMENT, _POP_TOP_FLOAT, _POP_TOP_INT,
         _STORE_VIRTUAL_ARGUMENT_FLOAT, _STORE_VIRTUAL_ARGUMENT_INT,
         _STORE_VIRTUAL_ARGUMENT_NUMERIC,
+        _STORE_FAST_FUSED_FLOAT, _STORE_FAST_FUSED_INT,
     };
     _PyJitStoreUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
     _PyJitStoreStep *steps = PyMem_RawMalloc((size_t)length * sizeof(*steps));
@@ -2530,12 +2534,15 @@ fuse_local_stores(_PyUOpInstruction *buffer, int length)
             const _PyJitStoreStep *step = &steps[i];
             assert(step->source >= (uint32_t)i && step->source < (uint32_t)length);
             if (step->opcode == _STORE_FAST_FUSED ||
+                step->opcode == _STORE_FAST_FUSED_FLOAT ||
+                step->opcode == _STORE_FAST_FUSED_INT ||
                 step->opcode == _STORE_VIRTUAL_ARGUMENT_FLOAT ||
                 step->opcode == _STORE_VIRTUAL_ARGUMENT_INT ||
                 step->opcode == _STORE_VIRTUAL_ARGUMENT_NUMERIC) {
                 assert(buffer[step->source].opcode == (step->opcode == _STORE_FAST_FUSED ||
                     step->opcode == _STORE_VIRTUAL_ARGUMENT_NUMERIC
-                    ? _POP_TOP : step->opcode == _STORE_VIRTUAL_ARGUMENT_FLOAT
+                    ? _POP_TOP : step->opcode == _STORE_VIRTUAL_ARGUMENT_FLOAT ||
+                    step->opcode == _STORE_FAST_FUSED_FLOAT
                     ? _POP_TOP_FLOAT : _POP_TOP_INT));
                 buffer[i] = buffer[step->source];
                 buffer[i].opcode = step->opcode;

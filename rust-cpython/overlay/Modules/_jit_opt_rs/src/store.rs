@@ -15,6 +15,8 @@ pub struct StoreOpcodes {
     pub argument_float_store: u16,
     pub argument_int_store: u16,
     pub argument_numeric_store: u16,
+    pub local_float_store: u16,
+    pub local_int_store: u16,
 }
 
 #[repr(C)]
@@ -33,8 +35,8 @@ pub struct StoreStep {
     pub source: u32,
 }
 
-/// Fuse local swaps with generic cleanup and virtual argument swaps with typed
-/// numeric cleanup or entry-guarded numeric cleanup. Only NOPs may separate the
+/// Fuse local swaps with generic or typed numeric cleanup and virtual argument
+/// swaps with typed or entry-guarded numeric cleanup. Only NOPs may separate the
 /// swap from its cleanup. Generic virtual cleanup requires a numeric entry guard.
 pub fn plan_stores(uops: &[StoreUop], ops: &StoreOpcodes)
     -> Result<Option<Vec<StoreStep>>, Inconsistent>
@@ -64,6 +66,8 @@ pub fn plan_stores(uops: &[StoreUop], ops: &StoreOpcodes)
         }
         let opcode = match (local, uops[pop].opcode) {
             (true, cleanup) if cleanup == ops.pop => ops.store,
+            (true, cleanup) if cleanup == ops.float_pop => ops.local_float_store,
+            (true, cleanup) if cleanup == ops.int_pop => ops.local_int_store,
             (false, cleanup) if cleanup == ops.float_pop => ops.argument_float_store,
             (false, cleanup) if cleanup == ops.int_pop => ops.argument_int_store,
             (false, cleanup) if cleanup == ops.pop => ops.argument_numeric_store,
@@ -83,7 +87,8 @@ mod tests {
     fn opcodes() -> StoreOpcodes {
         StoreOpcodes { swap_first: 1, swap_last: 9, pop: 10, store: 11, nop: 12,
             argument_swap: 13, float_pop: 14, int_pop: 15,
-            argument_float_store: 16, argument_int_store: 17, argument_numeric_store: 18 }
+            argument_float_store: 16, argument_int_store: 17, argument_numeric_store: 18,
+            local_float_store: 19, local_int_store: 20 }
     }
 
     fn uop(opcode: u16, oparg: u16) -> StoreUop {
@@ -125,9 +130,24 @@ mod tests {
                 let mut stopped = input;
                 stopped[1].opcode = 99;
                 assert!(plan_stores(&stopped, &ops).unwrap().is_none());
-                if pop != ops.pop {
-                    assert!(plan_stores(&[uop(ops.swap_first, argument), uop(pop, 0)], &ops)
-                        .unwrap().is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn typed_local_stores_preserve_replicas_indices_and_cleanup_metadata() {
+        let ops = opcodes();
+        for swap in ops.swap_first..=ops.swap_last {
+            for (pop, store) in [(ops.float_pop, ops.local_float_store),
+                                 (ops.int_pop, ops.local_int_store)] {
+                for local in [0, 1, 7, u16::MAX] {
+                    let input = [uop(swap, local), uop(ops.nop, 0), uop(pop, 0)];
+                    let steps = plan_stores(&input, &ops).unwrap().unwrap();
+                    assert_eq!(steps[0], StoreStep { opcode: store, oparg: local, source: 2 });
+                    assert_eq!(steps[2].opcode, ops.nop);
+                    let mut stopped = input;
+                    stopped[1].opcode = 99;
+                    assert!(plan_stores(&stopped, &ops).unwrap().is_none());
                 }
             }
         }
@@ -149,7 +169,9 @@ mod tests {
             &bad, output.as_mut_ptr(), output.len()) };
         assert_eq!(status, -1);
         assert_eq!(output, [untouched; 2]);
-        assert_eq!(std::mem::size_of::<StoreOpcodes>(), 22);
+        assert_eq!(std::mem::size_of::<StoreOpcodes>(), 26);
+        assert_eq!(std::mem::offset_of!(StoreOpcodes, local_float_store), 22);
+        assert_eq!(std::mem::offset_of!(StoreOpcodes, local_int_store), 24);
         assert_eq!(std::mem::size_of::<StoreUop>(), 4);
         assert_eq!(std::mem::size_of::<StoreStep>(), 8);
     }

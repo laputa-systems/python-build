@@ -9,6 +9,7 @@ import dis
 import gc
 import json
 import sys
+import types
 import weakref
 
 WARM = 7000
@@ -94,30 +95,63 @@ def int_loop(n, step):
     return value
 
 RESULTS["float"] = float_loop(WARM, 0.25)
-RESULTS["int"] = int_loop(WARM, 1000000)
 TRACES["float"] = trace(float_loop)
+RESULTS["int"] = int_loop(WARM, 1000000)
 TRACES["int"] = trace(int_loop)
 
+def numeric_alias_loop(n, step, seed):
+    value = seed
+    alias = value
+    was_active = False
+    for _ in range(n):
+        was_active = sys._jit.is_active()
+        alias = value
+        value = value + step
+    return value, alias, was_active
+
+integer_alias_loop = types.FunctionType(numeric_alias_loop.__code__.replace(co_name='integer_alias_loop'), globals())
+def numeric_sample(name, function, step, seed):
+    before = sys.getrefcount(step)
+    value, alias, was_active = function(WARM, step, seed)
+    TRACES[name] = trace(function)
+    RESULTS[name] = [value, alias, sys.getrefcount(step) - before]
+    ACTIVE.append(was_active)
+for name, function, step, seed in (('float alias', numeric_alias_loop, 0.25, 0.0),
+                                  ('int alias', integer_alias_loop, 1000, 0)):
+    numeric_sample(name, function, step, seed)
+
 profiled = []
+numeric_profiled = []
 def profiler(frame, event, arg):
     if event == "return" and frame.f_code is alias_loop.__code__:
         profiled.append([frame.f_locals["current"] is FRESH, arg is FRESH])
+    if event == "return" and frame.f_code is numeric_alias_loop.__code__:
+        numeric_profiled.append([frame.f_locals['value'], frame.f_locals['alias'],
+                                 arg[0] is frame.f_locals['value']])
 
 sys.setprofile(profiler)
 alias_loop(8, [FRESH] * 8)
+numeric_alias_loop(8, 0.25, 0.0)
 sys.setprofile(None)
 RESULTS["profile"] = profiled
+RESULTS["numeric profile"] = numeric_profiled
 
 traced = []
+numeric_traced = []
 def tracer(frame, event, arg):
     if event == "return" and frame.f_code is alias_loop.__code__:
         traced.append([frame.f_locals["current"] is FRESH, arg is FRESH])
+    if event == "return" and frame.f_code is numeric_alias_loop.__code__:
+        numeric_traced.append([frame.f_locals['value'], frame.f_locals['alias'],
+                               arg[0] is frame.f_locals['value']])
     return tracer
 
 sys.settrace(tracer)
 alias_loop(8, [FRESH] * 8)
+numeric_alias_loop(8, 0.25, 0.0)
 sys.settrace(None)
 RESULTS["trace"] = traced
+RESULTS["numeric trace"] = numeric_traced
 print(json.dumps({"results": RESULTS, "traces": TRACES, "active": ACTIVE}, sort_keys=True))
 '''
 
@@ -136,16 +170,23 @@ def main():
     expected = {"finalizer": ["replacement", "updated",
         [["store_loop", "fresh", "STORE_FAST", "current", "outer"]], True],
         "alias": True, "alias refcount": 0, "float": 1750.0, "int": 7000000000,
-        "profile": [[True, True]], "trace": [[True, True]]}
+        "float alias": [1750.0, 1749.75, 0], "int alias": [7000000, 6999000, 0],
+        "profile": [[True, True]], "trace": [[True, True]],
+        "numeric profile": [[2.0, 1.75, True]], "numeric trace": [[2.0, 1.75, True]]}
     for side in (candidate, reference, unoptimized):
         assert side["results"] == expected, side["results"]
-    assert candidate["active"] == [True], candidate["active"]
+    assert len(candidate["active"]) == 3 and all(candidate["active"]), candidate["active"]
     for name in ("finalizer", "alias", "int"):
         names = {entry[0] for entry in candidate["traces"][name]}
         assert "_STORE_FAST_FUSED" in names, (name, names)
     names = {entry[0] for entry in candidate["traces"]["float"]}
-    assert {"_GUARD_LOCAL_FLOAT", "_POP_TOP_FLOAT"} <= names, names
-    assert all("_STORE_FAST_FUSED" not in {entry[0] for entry in entries}
+    assert {"_GUARD_LOCAL_FLOAT", "_STORE_FAST_FUSED_FLOAT"} <= names, names
+    for label, opcode in (('float alias', '_STORE_FAST_FUSED_FLOAT'),
+                          ('int alias', '_STORE_FAST_FUSED_INT')):
+        names = {entry[0] for entry in candidate['traces'][label]}
+        assert opcode in names, (label, names)
+    assert all(not {"_STORE_FAST_FUSED", "_STORE_FAST_FUSED_FLOAT", "_STORE_FAST_FUSED_INT"}
+               & {entry[0] for entry in entries}
                for entries in unoptimized["traces"].values())
     print("OK    fused and typed stores preserve finalizer IP, locals, invalidation and numeric boxing")
     return 0
