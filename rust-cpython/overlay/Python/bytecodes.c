@@ -5071,6 +5071,34 @@ dummy_func(
             DEAD(value);
         }
 
+        tier2 op(_STORE_VIRTUAL_ARGUMENT_FLOAT, (value --)) {
+            assert(frame == (_PyInterpreterFrame *)tstate->datastack_top);
+            _PyStackRef *held = _PyFrame_GetStackPointer(tstate->current_frame);
+            int bound = !PyStackRef_IsNull(held[1]);
+            assert(oparg >= bound && oparg < _PyFrame_GetCode(frame)->co_argcount);
+            _PyStackRef *slot = &held[2 + oparg - bound];
+            _PyStackRef old = *slot;
+            assert(PyFloat_CheckExact(PyStackRef_AsPyObjectBorrow(old)));
+            *slot = value;
+            DEAD(value);
+            INPUTS_DEAD();
+            PyStackRef_CLOSE_SPECIALIZED_TSTATE(tstate, old, _PyFloat_ExactDeallocTstate);
+        }
+
+        tier2 op(_STORE_VIRTUAL_ARGUMENT_INT, (value --)) {
+            assert(frame == (_PyInterpreterFrame *)tstate->datastack_top);
+            _PyStackRef *held = _PyFrame_GetStackPointer(tstate->current_frame);
+            int bound = !PyStackRef_IsNull(held[1]);
+            assert(oparg >= bound && oparg < _PyFrame_GetCode(frame)->co_argcount);
+            _PyStackRef *slot = &held[2 + oparg - bound];
+            _PyStackRef old = *slot;
+            assert(PyLong_CheckExact(PyStackRef_AsPyObjectBorrow(old)));
+            *slot = value;
+            DEAD(value);
+            INPUTS_DEAD();
+            PyStackRef_CLOSE_SPECIALIZED_TSTATE(tstate, old, _PyLong_ExactDeallocTstate);
+        }
+
         tier2 op(_RETURN_VIRTUAL_CALL, (retval -- res)) {
             assert(frame == (_PyInterpreterFrame *)tstate->datastack_top);
             PyCodeObject *code = _PyFrame_GetCode(frame);

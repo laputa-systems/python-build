@@ -350,20 +350,29 @@ def main():
         assert result['allocation']['16'] in (None, fault)
     assert len(candidate['active']) == 18 and all(candidate['active']), candidate['active']
     assert candidate['allocation_active'] == [True, True]
+    float_store = '_STORE_VIRTUAL_ARGUMENT_FLOAT'
+    int_store = '_STORE_VIRTUAL_ARGUMENT_INT'
+    stores = {'floats': [float_store] * 3, 'integers': [int_store] * 3,
+        'complement': [int_store], 'changing': [int_store], 'bound': [float_store] * 2,
+        'float-error': [float_store] * 2, 'mixed-error': [int_store, float_store],
+        'generator': [float_store] * 2, 'callback': [float_store] * 2}
     for key, entries in candidate['traces'].items():
         names = [entry[0] for entry in entries]
         if key in ('unproved', 'receiver-0'):
             assert '_BEGIN_VIRTUAL_CALL' not in names, names
         else:
-            assert {'_BEGIN_VIRTUAL_CALL', '_SWAP_VIRTUAL_ARGUMENT', '_RETURN_VIRTUAL_CALL'} <= set(names), (key, names)
+            assert {'_BEGIN_VIRTUAL_CALL', '_RETURN_VIRTUAL_CALL'} <= set(names), (key, names)
             begin, end = names.index('_BEGIN_VIRTUAL_CALL'), names.index('_RETURN_VIRTUAL_CALL')
-            assert '_SWAP_VIRTUAL_ARGUMENT' in names[begin:end], (key, names)
+            kind = key.rsplit('-', 1)[0] if key[-1].isdigit() else key
+            assert [name for name in names[begin:end] if name in (float_store, int_store)] == stores[kind], (key, names)
+            assert '_SWAP_VIRTUAL_ARGUMENT' not in names[begin:end], (key, names)
             assert '_MATERIALIZE_VIRTUAL_FRAME' in names, key
     for entries in candidate['allocation_traces']:
         names = [entry[0] for entry in entries]
-        assert '_SWAP_VIRTUAL_ARGUMENT' in names, names
+        assert [name for name in names if name in (float_store, int_store)] == [int_store], names
+        assert '_SWAP_VIRTUAL_ARGUMENT' not in names, names
     names = [entry[0] for entry in candidate['traces']['complement-0']]
-    assert '_GUARD_NOS_INT' in names[names.index('_SWAP_VIRTUAL_ARGUMENT') + 1:], names
+    assert '_GUARD_NOS_INT' in names[names.index(int_store) + 1:], names
     for entries in noopt['traces'].values():
         assert '_BEGIN_VIRTUAL_CALL' not in [entry[0] for entry in entries]
     observed = candidate['observed']

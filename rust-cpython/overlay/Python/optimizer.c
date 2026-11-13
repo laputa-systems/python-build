@@ -2480,6 +2480,7 @@ hoist_loop_globals(_PyUOpInstruction *buffer, int length, PyFunctionObject *func
 
 typedef struct {
     uint16_t swap_first, swap_last, pop, store, nop;
+    uint16_t argument_swap, float_pop, int_pop, argument_float_store, argument_int_store;
 } _PyJitStoreOpcodes;
 
 typedef struct {
@@ -2491,7 +2492,7 @@ typedef struct {
     uint32_t source;
 } _PyJitStoreStep;
 
-static_assert(sizeof(_PyJitStoreOpcodes) == 10, "store opcode map matches Rust");
+static_assert(sizeof(_PyJitStoreOpcodes) == 20, "store opcode map matches Rust");
 static_assert(sizeof(_PyJitStoreUop) == 4, "store descriptors match Rust");
 static_assert(sizeof(_PyJitStoreStep) == 8, "store steps match Rust");
 static_assert(offsetof(_PyJitStoreStep, source) == 4, "store source offset matches Rust");
@@ -2505,6 +2506,8 @@ fuse_local_stores(_PyUOpInstruction *buffer, int length)
 #if !defined(Py_GIL_DISABLED) && !defined(WITH_DTRACE)
     static const _PyJitStoreOpcodes opcodes = {
         _SWAP_FAST, _SWAP_FAST_7, _POP_TOP, _STORE_FAST_FUSED, _NOP,
+        _SWAP_VIRTUAL_ARGUMENT, _POP_TOP_FLOAT, _POP_TOP_INT,
+        _STORE_VIRTUAL_ARGUMENT_FLOAT, _STORE_VIRTUAL_ARGUMENT_INT,
     };
     _PyJitStoreUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
     _PyJitStoreStep *steps = PyMem_RawMalloc((size_t)length * sizeof(*steps));
@@ -2521,10 +2524,14 @@ fuse_local_stores(_PyUOpInstruction *buffer, int length)
         for (int i = 0; i < length; i++) {
             const _PyJitStoreStep *step = &steps[i];
             assert(step->source >= (uint32_t)i && step->source < (uint32_t)length);
-            if (step->opcode == _STORE_FAST_FUSED) {
-                assert(buffer[step->source].opcode == _POP_TOP);
+            if (step->opcode == _STORE_FAST_FUSED ||
+                step->opcode == _STORE_VIRTUAL_ARGUMENT_FLOAT ||
+                step->opcode == _STORE_VIRTUAL_ARGUMENT_INT) {
+                assert(buffer[step->source].opcode == (step->opcode == _STORE_FAST_FUSED
+                    ? _POP_TOP : step->opcode == _STORE_VIRTUAL_ARGUMENT_FLOAT
+                    ? _POP_TOP_FLOAT : _POP_TOP_INT));
                 buffer[i] = buffer[step->source];
-                buffer[i].opcode = _STORE_FAST_FUSED;
+                buffer[i].opcode = step->opcode;
                 buffer[i].oparg = step->oparg;
             }
             else if (step->opcode != buffer[i].opcode) {
