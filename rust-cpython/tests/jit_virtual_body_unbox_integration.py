@@ -1,3 +1,4 @@
+"""Full GC empties the float freelist before failmalloc counts boxing allocations."""
 import importlib.util
 import json
 import os
@@ -67,7 +68,7 @@ def check_boxing_exits(entries, domain, incumbent):
                 if domain == 'FLOAT':
                     assert trace[target][3] != 0
                 assert trace[target + 1][0] == trace[target + 2][0] == '_MATERIALIZE_VIRTUAL_FRAME'
-                found.append(trace[target][1])
+                found.append((trace[target][1], trace[target][3]))
     if not incumbent:
         assert found, (domain, entries)
     return found
@@ -81,6 +82,7 @@ class Arm:
     def __init__(self, start): self.start = start
     def __del__(self):
         events.append('armed')
+        gc.collect(2)
         _testcapi.set_nomemory(self.start, self.start + 1)
 def trace(fn):
     entries = []
@@ -166,16 +168,17 @@ def main():
             check_boxing_exits(candidate['traces'][label], 'INT', incumbent)
     for start in (0, 1):
         candidate, off, noopt = fault(True, start), fault(False, start), fault(True, start, False)
-        assert candidate['result'] == off['result'] == noopt['result'], (start, candidate['result'], off['result'], noopt['result'])
         assert candidate['active']
-        result = candidate['result']
-        assert result[:3] == ['MemoryError', '', 'None']
-        assert result[3] == [['BINARY_OP', 22, 27, {'a': 0.0.hex(), 'b': 2.5.hex()}]]
-        assert result[4:] == [0, 0, ['armed']]
+        for mode, data in (('jit', candidate), ('off', off), ('noopt', noopt)):
+            result = data['result']
+            assert result[:3] == ['MemoryError', '', 'None'], (start, mode, result)
+            position = [12, 17] if start == 0 and (incumbent or mode != 'jit') else [22, 27]
+            assert result[3] == [['BINARY_OP', *position, {'a': 0.0.hex(), 'b': 2.5.hex()}]], (start, mode, result)
+            assert result[4:] == [0, 0, ['armed']]
         check_body(candidate['traces'], 'FLOAT', incumbent)
         depths = check_boxing_exits(candidate['traces'], 'FLOAT', incumbent)
         if not incumbent:
-            assert max(depths) >= 3, depths
+            assert (3, 0b111) in depths, depths
     print('OK virtual body unboxing, raw resume guards, overflow, OOM and partial boxing', 'incumbent' if incumbent else 'candidate')
 
 
