@@ -1351,11 +1351,18 @@ make_stack_fixup(_PyUOpInstruction *inst, int opcode, uint32_t unboxed)
     inst->operand0 = unboxed;
 }
 
+typedef enum {
+    JIT_FRAME_PHYSICAL,
+    JIT_FRAME_VIRTUAL,
+} _PyJitFrameKind;
+
 static int
 make_boxing_exit(_PyUOpInstruction *buffer, int next_spare, int exit_depth,
                  uint16_t base_exit_op, int32_t jump_target, bool is_control_flow,
-                 uint32_t floats, uint32_t ints)
+                 uint32_t floats, uint32_t ints, _PyJitFrameKind frame_kind)
 {
+    bool virtual_call = frame_kind == JIT_FRAME_VIRTUAL;
+    assert(!virtual_call || !is_control_flow);
     if (exit_depth != 0) {
         make_exit(&buffer[next_spare], _PyUop_SpillsAndReloads[exit_depth][0], 0, false);
         next_spare++;
@@ -1365,10 +1372,14 @@ make_boxing_exit(_PyUOpInstruction *buffer, int next_spare, int exit_depth,
     box->operand0 = floats;
     box->operand1 = ints;
     next_spare++;
-    make_exit(&buffer[next_spare], _PyUop_Caching[base_exit_op].entries[0].opcode,
-              jump_target, is_control_flow);
+    make_exit(&buffer[next_spare], _PyUop_Caching[virtual_call ? _MATERIALIZE_VIRTUAL_FRAME : base_exit_op].entries[0].opcode,
+              virtual_call ? 0 : jump_target, is_control_flow);
+    if (virtual_call) {
+        buffer[next_spare].operand0 = jump_target;
+        buffer[next_spare].operand1 = true;
+    }
     next_spare++;
-    make_exit(&buffer[next_spare], _ERROR_POP_N_r00, 0, false);
+    make_exit(&buffer[next_spare], virtual_call ? _PyUop_Caching[_MATERIALIZE_VIRTUAL_FRAME].entries[0].opcode : _ERROR_POP_N_r00, 0, false);
     buffer[next_spare].operand0 = jump_target;
     box->format = UOP_FORMAT_JUMP;
     box->jump_target = 0;
@@ -1447,7 +1458,8 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
                 else if (base == _RETURN_VIRTUAL_CALL) {
                     descriptors[i].kind = 2;
                 }
-                else if (flags) {
+                else if (flags && (unboxed == NULL ||
+                         (unboxed[i].exit_floats | unboxed[i].exit_ints) == 0)) {
                     uint16_t exit_base = flags & HAS_DEOPT_FLAG ? _DEOPT :
                         flags & HAS_PERIODIC_FLAG ? _HANDLE_PENDING_AND_DEOPT : _EXIT_TRACE;
                     if (dynamic_exit_uop[base]) {
@@ -1512,9 +1524,13 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
             uint32_t exit_ints = unboxed == NULL ? 0 : unboxed[i].exit_ints;
             if (virtual_call) {
                 assert(!is_control_flow && !(exit_flags & HAS_PERIODIC_FLAG));
-                assert((exit_floats | exit_ints) == 0);
                 uint32_t source = exit_sources == NULL ? (uint32_t)i : exit_sources[i];
-                if (source < (uint32_t)i) {
+                if ((exit_floats | exit_ints) != 0) {
+                    current_jump = next_spare;
+                    next_spare = make_boxing_exit(buffer, next_spare, exit_depth, base_exit_op,
+                                                  jump_target, false, exit_floats, exit_ints, JIT_FRAME_VIRTUAL);
+                }
+                else if (source < (uint32_t)i) {
                     current_jump = buffer[source].jump_target;
                 }
                 else {
@@ -1535,7 +1551,7 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
             else if ((exit_floats | exit_ints) != 0) {
                 current_jump = next_spare;
                 next_spare = make_boxing_exit(buffer, next_spare, exit_depth, base_exit_op,
-                                              jump_target, is_control_flow, exit_floats, exit_ints);
+                                              jump_target, is_control_flow, exit_floats, exit_ints, JIT_FRAME_PHYSICAL);
                 current_jump_target = -1;
                 current_exit_op = -1;
             }
@@ -1554,8 +1570,12 @@ prepare_for_execution(_PyUOpInstruction *buffer, int length, _PyUnboxedSlots *un
                 0 : _PyUop_num_popped(base_opcode, inst->oparg);
             uint32_t error_unboxed = unboxed == NULL ? 0 : unboxed[i].error;
             if (virtual_call) {
-                assert(error_unboxed == 0 && popped == 0);
+                assert(popped == 0 || ((base_opcode == _BOX_FLOAT || base_opcode == _BOX_INT) && popped == 1));
                 current_error = next_spare;
+                if (error_unboxed != 0) {
+                    make_stack_fixup(&buffer[next_spare], _CLEAR_UNBOXED_SLOTS_r00, error_unboxed);
+                    next_spare++;
+                }
                 int opcode = _PyUop_Caching[_MATERIALIZE_VIRTUAL_FRAME].entries[0].opcode;
                 assert(opcode > 0);
                 make_exit(&buffer[next_spare], opcode, 0, false);
@@ -2104,7 +2124,7 @@ unbox_values(_PyUOpInstruction *buffer, int length,
             assert(!virtual_call);
             virtual_call = true;
         }
-        if (virtual_call) {
+        if (virtual_call && (opcode == _BEGIN_VIRTUAL_CALL || opcode == _RETURN_VIRTUAL_CALL)) {
             uops[i] = (_PyJitOptUop){
                 .kind = JIT_OPT_KIND_OTHER,
                 .inputs = -1,

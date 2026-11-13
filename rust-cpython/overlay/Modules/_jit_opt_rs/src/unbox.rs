@@ -1184,6 +1184,40 @@ mod tests {
     }
 
     #[test]
+    fn virtual_boundaries_box_float_body_and_track_resume_and_error_masks() {
+        let barrier = uop(KIND_OTHER, 0, (-1, -1, -1), 0, EFFECT_BARRIER);
+        let mut body = sum_of_products();
+        body.insert(7, guard_nos());
+        body.insert(8, consume(EFFECT_ERROR));
+        let mut trace = vec![barrier];
+        trace.extend(body);
+        trace.push(barrier);
+        let plan = rewrite(&trace);
+        assert!(plan.iter().any(|s| s.action == Arith(Float, ArithOp::Multiply).code()));
+        assert!(plan.iter().any(|s| s.exit_floats != 0));
+        assert!(plan.iter().any(|s| s.error_unboxed != 0));
+        for boundary in [0, trace.len() - 1] {
+            let step = plan.iter().find(|s| usize::from(s.source) == boundary).unwrap();
+            assert_eq!((step.action, step.exit_floats, step.exit_ints, step.error_unboxed), (ACTION_COPY, 0, 0, 0));
+        }
+    }
+
+    #[test]
+    fn virtual_boundaries_box_integer_body_and_track_overflow_masks() {
+        let barrier = uop(KIND_OTHER, 0, (-1, -1, -1), 0, EFFECT_BARRIER);
+        let mut trace = vec![barrier];
+        trace.extend(int_sum_of_products());
+        trace.push(barrier);
+        let plan = rewrite(&trace);
+        assert!(plan.iter().any(|s| s.action == Arith(Int, ArithOp::Multiply).code() && s.exit_ints != 0));
+        assert!(plan.iter().any(|s| s.action == BoxValue(Int).code()));
+        for boundary in [0, trace.len() - 1] {
+            let step = plan.iter().find(|s| usize::from(s.source) == boundary).unwrap();
+            assert_eq!((step.action, step.exit_floats, step.exit_ints, step.error_unboxed), (ACTION_COPY, 0, 0, 0));
+        }
+    }
+
+    #[test]
     fn contradictory_descriptors_are_rejected() {
         let mut trace = sum_of_products();
         trace[2] = uop(KIND_FLOAT_ARITH, ARITH_MULTIPLY, (2, 2, 1), 0b11, 0);
