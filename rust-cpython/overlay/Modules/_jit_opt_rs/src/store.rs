@@ -22,6 +22,7 @@ pub struct StoreOpcodes {
     pub return_value: u16,
     pub virtual_begin: u16,
     pub virtual_return: u16,
+    pub observed_float_store: u16,
 }
 
 #[repr(C)]
@@ -47,12 +48,14 @@ pub struct StoreStep {
 /// Fuse local swaps with generic or typed numeric cleanup and virtual argument
 /// swaps with typed or entry-guarded numeric cleanup. Only NOPs may separate the
 /// swap from its cleanup. Generic virtual cleanup requires a numeric entry guard.
-/// Observed float locals use a guard before the store, only in the initial frame.
+/// Observed float locals select a store that guards an exact float or NULL before
+/// effects, only in the initial frame. Tracing can observe a value after a store;
+/// fresh-frame NULL locals must not repeatedly exit at that same store.
 pub fn plan_stores(uops: &[StoreUop], ops: &StoreOpcodes)
     -> Result<Option<Vec<StoreStep>>, Inconsistent>
 {
     if ops.swap_first > ops.swap_last || uops.len() > u32::MAX as usize ||
-        ops.local_float_guard == 0 ||
+        ops.local_float_guard == 0 || ops.observed_float_store == 0 ||
         uops.iter().any(|u| u.observed_kind != 0 &&
             (u.observed_kind != ops.local_float_guard || !(ops.swap_first..=ops.swap_last).contains(&u.opcode))) {
         return Err(Inconsistent);
@@ -82,8 +85,8 @@ pub fn plan_stores(uops: &[StoreUop], ops: &StoreOpcodes)
             continue;
         }
         if local && root_interval && uop.observed_kind == ops.local_float_guard && uops[pop].opcode == ops.pop {
-            steps[index] = StoreStep { opcode: ops.local_float_guard, oparg: uop.oparg, source: pop as u32 };
-            steps[pop] = StoreStep { opcode: ops.local_float_store, oparg: uop.oparg, source: pop as u32 };
+            steps[index] = StoreStep { opcode: ops.observed_float_store, oparg: uop.oparg, source: pop as u32 };
+            steps[pop].opcode = ops.nop;
             changed = true;
             continue;
         }
@@ -112,7 +115,7 @@ mod tests {
             argument_swap: 13, float_pop: 14, int_pop: 15,
             argument_float_store: 16, argument_int_store: 17, argument_numeric_store: 18,
             local_float_store: 19, local_int_store: 20, local_float_guard: 21,
-            push_frame: 22, return_value: 23, virtual_begin: 24, virtual_return: 25 }
+            push_frame: 22, return_value: 23, virtual_begin: 24, virtual_return: 25, observed_float_store: 26 }
     }
 
     fn uop(opcode: u16, oparg: u16) -> StoreUop {
@@ -182,9 +185,9 @@ mod tests {
         let ops = opcodes();
         let hint = StoreUop { observed_kind: ops.local_float_guard, ..uop(1, 7) };
         let steps = plan_stores(&[hint, uop(ops.nop, 0), uop(ops.pop, 0)], &ops).unwrap().unwrap();
-        assert_eq!(steps[0], StoreStep { opcode: ops.local_float_guard, oparg: 7, source: 2 });
+        assert_eq!(steps[0], StoreStep { opcode: ops.observed_float_store, oparg: 7, source: 2 });
         assert_eq!(steps[1], StoreStep { opcode: ops.nop, oparg: 0, source: 1 });
-        assert_eq!(steps[2], StoreStep { opcode: ops.local_float_store, oparg: 7, source: 2 });
+        assert_eq!(steps[2], StoreStep { opcode: ops.nop, oparg: 0, source: 2 });
         for boundary in [ops.push_frame, ops.return_value, ops.virtual_begin, ops.virtual_return] {
             let steps = plan_stores(&[uop(boundary, 0), hint, uop(ops.pop, 0)], &ops).unwrap().unwrap();
             assert_eq!(steps[1], StoreStep { opcode: ops.store, oparg: 7, source: 2 });
@@ -227,8 +230,8 @@ mod tests {
         assert_eq!(status, 2);
         // SAFETY: a successful complete plan initialized both entries.
         let result = unsafe { [output[0].assume_init(), output[1].assume_init()] };
-        assert_eq!(result[0], StoreStep { opcode: ops.local_float_guard, oparg: 5, source: 1 });
-        assert_eq!(result[1], StoreStep { opcode: ops.local_float_store, oparg: 5, source: 1 });
+        assert_eq!(result[0], StoreStep { opcode: ops.observed_float_store, oparg: 5, source: 1 });
+        assert_eq!(result[1], StoreStep { opcode: ops.nop, oparg: 0, source: 1 });
     }
 
     #[test]
@@ -247,11 +250,12 @@ mod tests {
             &bad, output.as_mut_ptr(), output.len()) };
         assert_eq!(status, -1);
         assert_eq!(output, [untouched; 2]);
-        assert_eq!(std::mem::size_of::<StoreOpcodes>(), 36);
+        assert_eq!(std::mem::size_of::<StoreOpcodes>(), 38);
         assert_eq!(std::mem::offset_of!(StoreOpcodes, local_float_store), 22);
         assert_eq!(std::mem::offset_of!(StoreOpcodes, local_int_store), 24);
         assert_eq!(std::mem::offset_of!(StoreOpcodes, local_float_guard), 26);
         assert_eq!(std::mem::offset_of!(StoreOpcodes, virtual_return), 34);
+        assert_eq!(std::mem::offset_of!(StoreOpcodes, observed_float_store), 36);
         assert_eq!(std::mem::size_of::<StoreUop>(), 6);
         assert_eq!(std::mem::offset_of!(StoreUop, observed_kind), 4);
         assert_eq!(std::mem::size_of::<StoreStep>(), 8);

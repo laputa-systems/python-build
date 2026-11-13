@@ -2623,6 +2623,7 @@ typedef struct {
     uint16_t argument_numeric_store;
     uint16_t local_float_store, local_int_store;
     uint16_t local_float_guard, push_frame, return_value, virtual_begin, virtual_return;
+    uint16_t observed_float_store;
 } _PyJitStoreOpcodes;
 
 typedef struct {
@@ -2634,12 +2635,13 @@ typedef struct {
     uint32_t source;
 } _PyJitStoreStep;
 
-static_assert(sizeof(_PyJitStoreOpcodes) == 36, "store opcode map matches Rust");
+static_assert(sizeof(_PyJitStoreOpcodes) == 38, "store opcode map matches Rust");
 static_assert(offsetof(_PyJitStoreOpcodes, local_float_store) == 22, "float store matches Rust");
 static_assert(offsetof(_PyJitStoreOpcodes, local_int_store) == 24, "int store matches Rust");
 static_assert(offsetof(_PyJitStoreOpcodes, local_float_guard) == 26, "guard matches Rust");
 static_assert(offsetof(_PyJitStoreOpcodes, virtual_return) == 34, "frame boundary matches Rust");
 static_assert(offsetof(_PyJitStoreUop, observed_kind) == 4, "store hint matches Rust");
+static_assert(offsetof(_PyJitStoreOpcodes, observed_float_store) == 36, "observed store matches Rust");
 static_assert(sizeof(_PyJitStoreUop) == 6, "store descriptors match Rust");
 static_assert(sizeof(_PyJitStoreStep) == 8, "store steps match Rust");
 static_assert(offsetof(_PyJitStoreStep, source) == 4, "store source offset matches Rust");
@@ -2661,6 +2663,7 @@ fuse_local_stores(_PyUOpInstruction *buffer, int length, _PyInterpreterFrame *fr
         _STORE_VIRTUAL_ARGUMENT_NUMERIC,
         _STORE_FAST_FUSED_FLOAT, _STORE_FAST_FUSED_INT,
         _GUARD_LOCAL_FLOAT, _PUSH_FRAME, _RETURN_VALUE, _BEGIN_VIRTUAL_CALL, _RETURN_VIRTUAL_CALL,
+        _STORE_FAST_FUSED_FLOAT_OR_NULL,
     };
     _PyJitStoreUop *uops = PyMem_RawMalloc((size_t)length * sizeof(*uops));
     _PyJitStoreStep *steps = PyMem_RawMalloc((size_t)length * sizeof(*steps));

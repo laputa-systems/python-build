@@ -108,7 +108,7 @@ def run(jit, optimize):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--expect', choices=('baseline', 'candidate'), default='candidate')
+    parser.add_argument('--expect', choices=('baseline', 'previous', 'candidate'), default='candidate')
     args = parser.parse_args()
     candidate, off, noopt = run(True, True), run(False, True), run(True, False)
     for result in (candidate, off, noopt):
@@ -128,17 +128,22 @@ def main():
         pairs = [(first, second) for first, second in zip(entries, entries[1:])
                  if first[0] == '_GUARD_LOCAL_FLOAT' and first[1] == local and
                     second[0] == '_STORE_FAST_FUSED_FLOAT' and second[1] == local]
+        fused = [entry for entry in entries if entry[0] == '_STORE_FAST_FUSED_FLOAT_OR_NULL' and entry[1] == local]
         if args.expect == 'candidate':
-            assert len(pairs) == 2, entries
+            assert len(fused) == 2 and not pairs, entries
+        elif args.expect == 'previous':
+            assert len(pairs) == 2 and not fused, entries
         else:
-            assert not pairs, pairs
+            assert not pairs and not fused, entries
             assert any(entry[0] == '_STORE_FAST_FUSED' and entry[1] == local for entry in entries), entries
     assert candidate['null'][2], candidate['null']
     null_entries, null_local = candidate['null'][4:]
     null_pair = any(first[0] == '_GUARD_LOCAL_FLOAT' and first[1] == null_local and
                     second[0] == '_STORE_FAST_FUSED_FLOAT' and second[1] == null_local
                     for first, second in zip(null_entries, null_entries[1:]))
-    assert null_pair == (args.expect == 'candidate'), null_entries
+    null_fused = any(entry[0] == '_STORE_FAST_FUSED_FLOAT_OR_NULL' and entry[1] == null_local for entry in null_entries)
+    assert null_pair == (args.expect == 'previous'), null_entries
+    assert null_fused == (args.expect == 'candidate'), null_entries
     print('OK guarded local cleanup and interpreter controls')
 
 
