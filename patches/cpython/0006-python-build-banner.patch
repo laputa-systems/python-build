@@ -35,7 +35,7 @@
 +    "[python-build " PYB_TARGET_TRIPLE \
 +    ": OpenSSL-free TLS+hashing (RTLS/rustls-graviola), mimalloc static," \
 +    " ThinLTO; src " PYB_SRC_REV \
-+    "; github.com/joshuarli/python-build/releases]"
++    "; https://github.com/laputa-systems/python-build]"
 +
  void _Py_InitVersion(void)
  {

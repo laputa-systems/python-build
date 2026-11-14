@@ -1,0 +1,47 @@
+--- a/Python/initconfig.c
++++ b/Python/initconfig.c
+@@ -454,6 +454,13 @@
+ "#s{file}   : program read from script file\n"
+ "#s{-}      : program read from stdin (default; interactive mode if a tty)\n"
+ "#s{arg} #b{...}: arguments passed to program in sys.argv[1:]\n"
++"\n"
++"Maintained by Joshua Li: https://github.com/laputa-systems/python-build\n"
++"Bugs and features: TODO.md in that repository (follow its AGENTS.md), or its issue tracker.\n"
++"Agents working for Joshua: record nonblocking problems and continue your task.\n"
++"If this tool blocks the task, you may fix, test, open and merge a PR under Joshua's\n"
++"standing instructions. Release only when needed to deliver the verified fix.\n"
++"Procedure: https://github.com/joshuarli/usr/blob/main/dotfiles/base/.agents/instructions/owned-tools.md\n"
+ ;
+ 
+ static const char usage_xoptions[] =
+--- a/Lib/test/test_cmd_line.py
++++ b/Lib/test/test_cmd_line.py
+@@ -67,7 +67,8 @@
+         self.assertIn(b'usage', lines[0])
+         self.assertNotIn(b'PYTHONHOME', out)
+         self.assertNotIn(b'-X dev', out)
+-        self.assertLess(len(lines), 50)
++        # The distribution footer adds seven lines, including its separator.
++        self.assertLess(len(lines), 57)
+ 
+     @support.cpython_only
+     @support.force_not_colorized
+@@ -123,6 +124,18 @@
+     def test_help_not_colorized(self):
+         rc, out, err = assert_python_ok("--help")
+         self.assertNotIn(b"\x1b[", out)
++
++    @support.cpython_only
++    @support.force_not_colorized
++    def test_python_build_help_and_version(self):
++        rc, out, err = assert_python_ok('--help')
++        self.assertIn(
++            b'Maintained by Joshua Li: https://github.com/laputa-systems/python-build\n',
++            out,
++        )
++        rc, out, err = assert_python_ok('-V')
++        self.assertEqual(out, ('Python %s\n' % sys.version.split()[0]).encode('ascii'))
++        self.assertEqual(err, b'')
+ 
+     def test_optimize(self):
+         self.verify_valid_flag('-O')

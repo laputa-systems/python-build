@@ -13,7 +13,7 @@ from .targets import Target
 LICENSE_DIRECTORY = Path("share/licenses/python-build")
 NATIVE_DIRECTORY = LICENSE_DIRECTORY / "native"
 SOURCES_RECORD = LICENSE_DIRECTORY / "SOURCES.md"
-REPOSITORY_URL = "https://github.com/joshuarli/python-build"
+REPOSITORY_URL = "https://github.com/laputa-systems/python-build"
 RTLS_URL = "https://github.com/jawah/rtls"
 
 NOT_SHIPPED_INPUTS = frozenset({"pkgconf", "openssl"})
