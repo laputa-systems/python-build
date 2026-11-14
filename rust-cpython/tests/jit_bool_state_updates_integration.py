@@ -30,8 +30,8 @@ def make(layout='managed', method='running', bound=False, direct=False):
     layout_code = "__slots__ = ('packet_pending', 'task_waiting', 'task_holding')" if layout == 'slots' else 'pass'
     call = ('source.pop().' + method + '()' if bound else 'fn(source.pop())') if direct else ('owner.' + method + '()' if bound else 'fn(owner)')
     load = '' if direct else '        owner = source.pop()\n'
-    exec('''class Owner:
-    %s
+    exec(f'''class Owner:
+    {layout_code}
     def running(self):
         self.packet_pending = False
         self.task_waiting = False
@@ -60,12 +60,12 @@ def loop(n, fn, source, active):
     trace = []
     observed = False
     for index in range(n):
-%s        observed = active()
-        value = %s
+{load}        observed = active()
+        value = {call}
         if index == 6999:
             trace = entries(loop)
     return value, trace, observed, index
-''' % (layout_code, load, call), namespace)
+''', namespace)
     owner_type = namespace['Owner']
     return owner_type, getattr(owner_type, method), namespace['loop']
 
@@ -189,7 +189,7 @@ def storage_case(scenario, bound):
                 if scenario == 'descriptor-error':
                     raise ValueError('descriptor')
                 self._pending = value
-        setattr(Other, 'running', fn)
+        Other.running = fn
         fault = Other()
     elif scenario == 'wrong':
         fault = object()
@@ -296,12 +296,12 @@ def observers(mode, before):
             monitoring.register_callback(tool, monitoring.events.PY_RETURN, None)
             monitoring.free_tool_id(tool)
     if not before:
-        result, trace_entries, active, progress = caller(7016, fn, [owner] * 7016, sys._jit.is_active)
+        result, trace_entries, active, _progress = caller(7016, fn, [owner] * 7016, sys._jit.is_active)
         assert (active or not jit_expected) and result is owner
         shape(trace_entries, fn)
     enable()
     try:
-        result, trace_entries, active, progress = caller(4, fn, [owner] * 4, sys._jit.is_active)
+        result, trace_entries, active, _progress = caller(4, fn, [owner] * 4, sys._jit.is_active)
     finally:
         disable()
     assert result is owner and values(owner) == STATES['running']
