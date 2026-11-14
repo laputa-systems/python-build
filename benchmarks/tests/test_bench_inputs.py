@@ -33,10 +33,10 @@ class SelectedInputTests(unittest.TestCase):
         django = select_workloads("realworld", "standard", "django_wsgi_request", None)
         stdlib = select_workloads("realworld", "standard", "zlib_decode_1m", None)
         other = select_workloads("realworld", "standard", "pycparser_source", None)
-        self.assertTrue(bench._macos_django_inputs(django))
-        self.assertFalse(bench._macos_django_inputs(stdlib))
+        self.assertTrue(bench._cp316_django_inputs(django))
+        self.assertFalse(bench._cp316_django_inputs(stdlib))
         with self.assertRaisesRegex(ValueError, "no approved inputs"):
-            bench._macos_django_inputs(other)
+            bench._cp316_django_inputs(other)
 
 
 if __name__ == "__main__":
