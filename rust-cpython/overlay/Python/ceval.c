@@ -2070,6 +2070,39 @@ _PyEval_FrameClearAndPop(PyThreadState *tstate, _PyInterpreterFrame * frame)
     }
 }
 
+void
+_PyFrame_Initialize(
+    PyThreadState *tstate, _PyInterpreterFrame *frame, _PyStackRef func,
+    PyObject *locals, PyCodeObject *code, int null_locals_from, _PyInterpreterFrame *previous)
+{
+    frame->previous = previous;
+    frame->f_funcobj = func;
+    frame->f_executable = PyStackRef_FromPyObjectNew(code);
+    PyFunctionObject *func_obj = (PyFunctionObject *)PyStackRef_AsPyObjectBorrow(func);
+    frame->f_builtins = func_obj->func_builtins;
+    frame->f_globals = func_obj->func_globals;
+    frame->f_locals = locals;
+    frame->stackpointer = frame->localsplus + code->co_nlocalsplus;
+    frame->frame_obj = NULL;
+#ifdef Py_GIL_DISABLED
+    _PyFrame_InitializeTLBC(tstate, frame, code);
+#else
+    (void)tstate;
+    frame->instr_ptr = _PyCode_CODE(code);
+#endif
+    frame->return_offset = 0;
+    frame->owner = FRAME_OWNED_BY_THREAD;
+    frame->visited = 0;
+#ifdef Py_DEBUG
+    frame->stackpointer_valid = 1;
+    frame->lltrace = 0;
+#endif
+
+    for (int i = null_locals_from; i < code->co_nlocalsplus; i++) {
+        frame->localsplus[i] = PyStackRef_NULL;
+    }
+}
+
 /* Consumes references to func, locals and all the args */
 _PyInterpreterFrame *
 _PyEvalFramePushAndInit(PyThreadState *tstate, _PyStackRef func,
