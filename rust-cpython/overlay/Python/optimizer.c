@@ -1980,6 +1980,7 @@ enum {
     JIT_OPT_KIND_INT_ARITH = 5,
     JIT_OPT_KIND_INT_COMPARE = 6,
     JIT_OPT_KIND_FLOAT_ARRAY_READ = 7,
+    JIT_OPT_KIND_INT_ARRAY_READ = 8,
 };
 
 enum {
@@ -2006,7 +2007,7 @@ enum {
 
 enum {
     JIT_OPT_ACTION_COPY = 0,
-    JIT_OPT_SYNTHETIC_ACTIONS = 16,
+    JIT_OPT_SYNTHETIC_ACTIONS = 18,
 };
 
 extern Py_ssize_t _PyJitOpt_PlanUnboxing(
@@ -2030,6 +2031,8 @@ static const uint16_t unboxed_action_uops[JIT_OPT_SYNTHETIC_ACTIONS] = {
     _COMPARE_OP_INT_UNBOXED,
     _BOX_INT,
     _BINARY_OP_SUBSCR_ARRAY_D_UNBOXED,
+    _BINARY_OP_SUBSCR_ARRAY_I_UNBOXED,
+    _BINARY_OP_SUBSCR_ARRAY_D_UNBOXED_INDEX,
 };
 
 static bool
@@ -2047,6 +2050,7 @@ int_node(int opcode, uint8_t *kind, uint8_t *detail)
         case _BINARY_OP_MULTIPLY_INT_INPLACE: *detail = JIT_OPT_ARITH_MULTIPLY | JIT_OPT_REUSE_LEFT; return true;
         case _BINARY_OP_MULTIPLY_INT_INPLACE_RIGHT: *detail = JIT_OPT_ARITH_MULTIPLY | JIT_OPT_REUSE_RIGHT; return true;
         case _COMPARE_OP_INT: *kind = JIT_OPT_KIND_INT_COMPARE; *detail = 0; return true;
+        case _BINARY_OP_SUBSCR_ARRAY_I: *kind = JIT_OPT_KIND_INT_ARRAY_READ; *detail = 0; return true;
         default: return false;
     }
 }

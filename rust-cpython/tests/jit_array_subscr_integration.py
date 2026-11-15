@@ -281,8 +281,9 @@ run(WARM + 400)
 '''
 
 EXPECTED_UOPS = {
-    "loads_d": "_BINARY_OP_SUBSCR_ARRAY_D",
-    "loads_i": "_BINARY_OP_SUBSCR_ARRAY_I",
+    "loads_d": ("_BINARY_OP_SUBSCR_ARRAY_D", "_BINARY_OP_SUBSCR_ARRAY_D_UNBOXED",
+                "_BINARY_OP_SUBSCR_ARRAY_D_UNBOXED_INDEX"),
+    "loads_i": ("_BINARY_OP_SUBSCR_ARRAY_I", "_BINARY_OP_SUBSCR_ARRAY_I_UNBOXED"),
 }
 
 # JIT on and off share the tier-1 specialization, so comparing them alone
@@ -317,7 +318,7 @@ def main() -> int:
         if bad != [[]]:
             failures.append(f"array loads disagree with tolist(): {bad}")
     for name, expected in EXPECTED_UOPS.items():
-        if expected not in jit["uops"][name]:
+        if not any(uop in jit["uops"][name] for uop in expected):
             failures.append(f"{name} never ran the array specialization: missing {expected}")
     for failure in failures:
         print(f"FAIL  {failure}")

@@ -6,6 +6,7 @@ pub const KIND_FLOAT_COMPARE: u8 = 4;
 pub const KIND_INT_ARITH: u8 = 5;
 pub const KIND_INT_COMPARE: u8 = 6;
 pub const KIND_FLOAT_ARRAY_READ: u8 = 7;
+pub const KIND_INT_ARRAY_READ: u8 = 8;
 pub const POP_OTHER: u8 = 0;
 pub const POP_BORROWED: u8 = 1;
 pub const POP_INT: u8 = 2;
@@ -24,7 +25,7 @@ pub const EFFECT_ERROR: u8 = 4;
 pub const EFFECT_ERROR_NO_POP: u8 = 8;
 
 pub const ACTION_COPY: u8 = 0;
-pub const SYNTHETIC_ACTIONS: usize = 16;
+pub const SYNTHETIC_ACTIONS: usize = 18;
 
 pub const MAX_UNBOXED_DEPTH: usize = 32;
 
@@ -87,13 +88,18 @@ enum NodeKind {
     Arith { domain: Domain, op: ArithOp, reuses: Option<Side> },
     Compare { domain: Domain },
     FloatArrayRead,
+    IntArrayRead,
 }
 
 impl NodeKind {
-    fn input_domain(self) -> Option<Domain> {
-        match self {
-            Self::FloatArrayRead => None,
-            Self::Arith { domain, .. } | Self::Compare { domain } => Some(domain),
+    /* `Left` is the deeper (NOS) input and `Right` the top (TOS) input.
+     * Array reads consume a compact-int index on the right while their
+     * container operand stays a boxed cleanup placeholder on the left. */
+    fn input_domain(self, side: Side) -> Option<Domain> {
+        match (self, side) {
+            (Self::Arith { domain, .. } | Self::Compare { domain }, _) => Some(domain),
+            (Self::FloatArrayRead, Side::Right) => Some(Domain::Int),
+            _ => None,
         }
     }
 
@@ -101,6 +107,7 @@ impl NodeKind {
         match self {
             NodeKind::Arith { domain, .. } | NodeKind::Compare { domain } => domain,
             NodeKind::FloatArrayRead => Domain::Float,
+            NodeKind::IntArrayRead => Domain::Int,
         }
     }
 }
@@ -165,6 +172,7 @@ fn decode(raw: &JitOptUop) -> Result<Uop, Inconsistent> {
         (KIND_POP, POP_BORROWED) => Kind::Pop(PopKind::Borrowed),
         (KIND_POP, POP_INT) => Kind::Pop(PopKind::Int),
         (KIND_FLOAT_ARRAY_READ, 0) => Kind::Node(NodeKind::FloatArrayRead),
+        (KIND_INT_ARRAY_READ, 0) => Kind::Node(NodeKind::IntArrayRead),
         (KIND_FLOAT_COMPARE, 0) => Kind::Node(NodeKind::Compare { domain: Domain::Float }),
         (KIND_INT_COMPARE, 0) => Kind::Node(NodeKind::Compare { domain: Domain::Int }),
         (KIND_FLOAT_ARITH, detail) => Kind::Node(decode_arith(Domain::Float, detail)?),
@@ -225,6 +233,8 @@ enum Action {
     Compare(Domain),
     Box(Domain),
     FloatArrayRead,
+    IntArrayRead,
+    FloatArrayReadIntIndex,
 }
 
 struct Contract {
@@ -251,6 +261,8 @@ impl Action {
         Action::Compare(Domain::Int),
         Action::Box(Domain::Int),
         Action::FloatArrayRead,
+        Action::IntArrayRead,
+        Action::FloatArrayReadIntIndex,
     ];
 
     fn code(self) -> u8 {
@@ -281,7 +293,9 @@ impl Action {
             Action::Arith(Domain::Float, ArithOp::TrueDivide) | Action::Arith(Domain::Int, _) => ((2, 2, 1), true, None),
             Action::Arith(Domain::Float, _) | Action::Compare(_) => ((2, 2, 1), false, None),
             Action::Box(_) => ((1, 1, 1), false, Some(ErrorStack::PopsInputs)),
-            Action::FloatArrayRead => ((2, 2, 1), true, None),
+            Action::FloatArrayRead | Action::IntArrayRead | Action::FloatArrayReadIntIndex => {
+                ((2, 2, 1), true, None)
+            }
         };
         Contract { shape, exits, error }
     }
@@ -384,7 +398,10 @@ struct Dataflow {
 
 fn consumes_in_place(kind: Kind, producer: Producer, depth: usize) -> bool {
     match kind {
-        Kind::Node(kind) => kind.input_domain().is_some() && depth < 2,
+        Kind::Node(kind) => {
+            let side = if depth == 0 { Side::Right } else { Side::Left };
+            kind.input_domain(side).is_some() && depth < 2
+        }
         Kind::Pop(_) => matches!(producer, Producer::Operand(_)),
         Kind::Other | Kind::Nop => false,
     }
@@ -431,7 +448,9 @@ fn dataflow(uops: &[Uop]) -> Dataflow {
             Kind::Node(kind) => {
                 let node = nodes.len();
                 let result = match kind {
-                    NodeKind::Arith { .. } | NodeKind::FloatArrayRead => fresh(&mut values, Producer::Result(node)),
+                    NodeKind::Arith { .. } | NodeKind::FloatArrayRead | NodeKind::IntArrayRead => {
+                        fresh(&mut values, Producer::Result(node))
+                    }
                     NodeKind::Compare { .. } => fresh(&mut values, Producer::Other),
                 };
                 let left = fresh(&mut values, Producer::Operand(node));
@@ -439,9 +458,9 @@ fn dataflow(uops: &[Uop]) -> Dataflow {
                 nodes.push(Node {
                     uop: index,
                     kind,
-                    left: kind.input_domain().and(window[1]),
-                    right: kind.input_domain().and(window[0]),
-                    result: matches!(kind, NodeKind::Arith { .. } | NodeKind::FloatArrayRead).then_some(result),
+                    left: kind.input_domain(Side::Left).and(window[1]),
+                    right: kind.input_domain(Side::Right).and(window[0]),
+                    result: matches!(kind, NodeKind::Arith { .. } | NodeKind::FloatArrayRead | NodeKind::IntArrayRead).then_some(result),
                     operands: [left, right],
                 });
                 node_at[index] = Some(node);
@@ -472,7 +491,7 @@ fn operand_pops(uops: &[Uop], flow: &Dataflow, node: &Node) -> Option<[usize; 2]
     if !matches!(uops[right_pop].kind, Kind::Pop(_)) || !matches!(uops[left_pop].kind, Kind::Pop(_)) || right_pop >= left_pop {
         return None;
     }
-    if matches!(node.kind, NodeKind::FloatArrayRead) &&
+    if matches!(node.kind, NodeKind::FloatArrayRead | NodeKind::IntArrayRead) &&
         (!matches!(uops[right_pop].kind, Kind::Pop(PopKind::Borrowed | PopKind::Int)) ||
          uops[left_pop].kind != Kind::Pop(PopKind::Borrowed) ||
          uops[right_pop].barrier || uops[left_pop].barrier) {
@@ -512,11 +531,11 @@ pub fn plan_unboxing(raw: &[JitOptUop], synthetic: &[JitOptUop]) -> Result<Plan,
         Producer::Result(node) => Some(node),
         Producer::Operand(_) | Producer::Other => None,
     };
-    let eligible = |value: Option<ValueId>, consumer: NodeId| -> Option<NodeId> {
+    let eligible = |value: Option<ValueId>, consumer: NodeId, side: Side| -> Option<NodeId> {
         let value = value?;
         let producer = producer_node(value)?;
         let usable = !flow.values[value].blocked
-            && flow.nodes[consumer].kind.input_domain() == Some(flow.nodes[producer].kind.domain())
+            && flow.nodes[consumer].kind.input_domain(side) == Some(flow.nodes[producer].kind.domain())
             && pops[producer].is_some()
             && pops[consumer].is_some();
         usable.then_some(producer)
@@ -526,7 +545,7 @@ pub fn plan_unboxing(raw: &[JitOptUop], synthetic: &[JitOptUop]) -> Result<Plan,
     let mut linked = vec![false; flow.nodes.len()];
     for (consumer, node) in flow.nodes.iter().enumerate() {
         for side in [Side::Left, Side::Right] {
-            if let Some(producer) = eligible(node.input(side), consumer) {
+            if let Some(producer) = eligible(node.input(side), consumer, side) {
                 let (a, b) = (find(&mut parent, producer), find(&mut parent, consumer));
                 parent[a] = b;
                 linked[producer] = true;
@@ -543,19 +562,25 @@ pub fn plan_unboxing(raw: &[JitOptUop], synthetic: &[JitOptUop]) -> Result<Plan,
             continue;
         }
         let root = find(&mut parent, index);
-        if matches!(node.kind, NodeKind::Arith { reuses: None, .. } | NodeKind::FloatArrayRead) {
+        if matches!(node.kind, NodeKind::Arith { reuses: None, .. } | NodeKind::FloatArrayRead | NodeKind::IntArrayRead) {
             boxed_cost[root] += 1;
         }
-        if node.result.is_some_and(|result| flow.values[result].consumer.and_then(|(uop, _)| flow.node_at[uop]).and_then(|consumer| eligible(Some(result), consumer)).is_none()) {
+        let result_feeds_unboxed = node.result.is_some_and(|result| {
+            let Some((uop, depth)) = flow.values[result].consumer else { return false };
+            let Some(consumer) = flow.node_at[uop] else { return false };
+            let side = if depth == 0 { Side::Right } else { Side::Left };
+            eligible(Some(result), consumer, side).is_some()
+        });
+        if !result_feeds_unboxed {
             unboxed_cost[root] += 1;
         }
         for side in [Side::Left, Side::Right] {
-            if node.kind.input_domain().is_none() { continue; }
+            if node.kind.input_domain(side).is_none() { continue; }
             let input = node.input(side);
             if !node.reuses(side) && unique(input) {
                 boxed_cost[root] += 1;
             }
-            if eligible(input, index).is_none() && (unique(input) || node.reuses(side)) {
+            if eligible(input, index, side).is_none() && (unique(input) || node.reuses(side)) {
                 unboxed_cost[root] += 1;
             }
         }
@@ -571,8 +596,8 @@ pub fn plan_unboxing(raw: &[JitOptUop], synthetic: &[JitOptUop]) -> Result<Plan,
     if !unboxed.iter().any(|&chosen| chosen) {
         return Ok(Plan::Unchanged);
     }
-    let raw_edge = |value: Option<ValueId>, consumer: NodeId| {
-        unboxed[consumer] && eligible(value, consumer).is_some_and(|producer| unboxed[producer])
+    let raw_edge = |value: Option<ValueId>, consumer: NodeId, side: Side| {
+        unboxed[consumer] && eligible(value, consumer, side).is_some_and(|producer| unboxed[producer])
     };
 
     let mut removed = vec![false; uops.len()];
@@ -598,26 +623,48 @@ pub fn plan_unboxing(raw: &[JitOptUop], synthetic: &[JitOptUop]) -> Result<Plan,
         let node = &flow.nodes[node_id];
         debug_assert!(matches!(uop.kind, Kind::Node(_)));
         let domain = node.kind.domain();
-        if let Some(input_domain) = node.kind.input_domain() {
-            if !raw_edge(node.left, node_id) {
+        let input_domain = match node.kind {
+            NodeKind::Arith { domain, .. } | NodeKind::Compare { domain } => Some(domain),
+            _ => None,
+        };
+        if let Some(input_domain) = input_domain {
+            if !raw_edge(node.left, node_id, Side::Left) {
                 emit(index, Action::UnboxNos(input_domain));
             }
-            if !raw_edge(node.right, node_id) {
+            if !raw_edge(node.right, node_id, Side::Right) {
                 emit(index, Action::UnboxTos(input_domain));
             }
         }
+        let feeds_unboxed = node.result.is_some_and(|result| {
+            flow.values[result]
+                .consumer
+                .and_then(|(uop, depth)| {
+                    let consumer = flow.node_at[uop]?;
+                    let side = if depth == 0 { Side::Right } else { Side::Left };
+                    raw_edge(Some(result), consumer, side).then_some(())
+                })
+                .is_some()
+        });
         match node.kind {
-            NodeKind::Arith { .. } | NodeKind::FloatArrayRead => {
-                match node.kind {
-                    NodeKind::Arith { op, .. } => emit(index, Action::Arith(domain, op)),
-                    NodeKind::FloatArrayRead => emit(index, Action::FloatArrayRead),
-                    _ => unreachable!(),
+            NodeKind::Arith { op, .. } => {
+                emit(index, Action::Arith(domain, op));
+                if !feeds_unboxed {
+                    emit(index, Action::Box(domain));
                 }
-                let result = node.result.expect("arithmetic nodes produce a number");
-                let feeds_unboxed = flow.values[result]
-                    .consumer
-                    .and_then(|(uop, _)| flow.node_at[uop])
-                    .is_some_and(|consumer| raw_edge(Some(result), consumer));
+            }
+            NodeKind::FloatArrayRead => {
+                if raw_edge(node.right, node_id, Side::Right) {
+                    emit(index, Action::FloatArrayReadIntIndex);
+                }
+                else {
+                    emit(index, Action::FloatArrayRead);
+                }
+                if !feeds_unboxed {
+                    emit(index, Action::Box(domain));
+                }
+            }
+            NodeKind::IntArrayRead => {
+                emit(index, Action::IntArrayRead);
                 if !feeds_unboxed {
                     emit(index, Action::Box(domain));
                 }
@@ -712,6 +759,16 @@ fn verify(uops: &[Uop], synthetic: &[Uop; SYNTHETIC_ACTIONS], steps: &mut [JitOp
             }
             Action::FloatArrayRead => {
                 expect(0, Slot::Boxed)?;
+                expect(1, Slot::Boxed)?;
+                vec![Slot::Unboxed(Domain::Float)]
+            }
+            Action::IntArrayRead => {
+                expect(0, Slot::Boxed)?;
+                expect(1, Slot::Boxed)?;
+                vec![Slot::Unboxed(Domain::Int)]
+            }
+            Action::FloatArrayReadIntIndex => {
+                expect(0, Slot::Unboxed(Domain::Int))?;
                 expect(1, Slot::Boxed)?;
                 vec![Slot::Unboxed(Domain::Float)]
             }
@@ -910,6 +967,117 @@ mod tests {
         let mut wrong = synthetic();
         wrong[15].effects = 0;
         assert_eq!(plan_unboxing(&array_products(POP_INT), &wrong), Err(Inconsistent));
+    }
+
+    fn int_indexed_float_read() -> Vec<JitOptUop> {
+        let read = uop(KIND_FLOAT_ARRAY_READ, 0, (2, 2, 3), 3, EFFECT_EXIT | EFFECT_ERROR | EFFECT_ERROR_NO_POP);
+        let cleanup = |detail| uop(KIND_POP, detail, (1, 1, 0), 1, 0);
+        vec![
+            load(),
+            load(),
+            load(),
+            int_arith(ARITH_ADD, REUSE_NONE),
+            pop(),
+            pop(),
+            read,
+            cleanup(POP_INT),
+            cleanup(POP_BORROWED),
+            consume(0),
+        ]
+    }
+
+    #[test]
+    fn an_unboxed_int_index_reads_a_float_array_without_boxing() {
+        let plan = rewrite(&int_indexed_float_read());
+        let index_add = plan
+            .iter()
+            .find(|step| step.action == Arith(Int, ArithOp::Add).code())
+            .expect("the index sum stays unboxed");
+        assert_eq!(index_add.source, 3);
+        let read = plan
+            .iter()
+            .find(|step| step.action == Action::FloatArrayReadIntIndex.code())
+            .expect("the read takes the raw int index");
+        assert_eq!(read.source, 6);
+        assert_eq!((read.exit_floats, read.exit_ints), (0, 0b01));
+        assert!(!plan.iter().any(|step| step.action == BoxValue(Int).code()));
+        assert!(plan.iter().any(|step| step.source == 6 && step.action == BoxValue(Float).code()));
+    }
+
+    #[test]
+    fn a_boxed_index_keeps_the_plain_float_array_read() {
+        let read = uop(KIND_FLOAT_ARRAY_READ, 0, (2, 2, 3), 3, EFFECT_EXIT | EFFECT_ERROR | EFFECT_ERROR_NO_POP);
+        let cleanup = |detail| uop(KIND_POP, detail, (1, 1, 0), 1, 0);
+        let trace = vec![
+            load(),
+            load(),
+            load(),
+            read,
+            cleanup(POP_INT),
+            cleanup(POP_BORROWED),
+            load(),
+            arith(ARITH_ADD, REUSE_NONE),
+            pop(),
+            pop(),
+            consume(0),
+        ];
+        let plan = rewrite(&trace);
+        assert!(plan.iter().any(|step| step.action == Action::FloatArrayRead.code()));
+        assert!(!plan.iter().any(|step| step.action == Action::FloatArrayReadIntIndex.code()));
+    }
+
+    #[test]
+    fn a_float_index_cannot_feed_a_float_array_read_unboxed() {
+        let mut trace = int_indexed_float_read();
+        trace[3] = arith(ARITH_ADD, REUSE_NONE);
+        assert_eq!(steps(&trace), Vec::new());
+    }
+
+    fn int_array_read_trace() -> Vec<JitOptUop> {
+        let read = uop(KIND_INT_ARRAY_READ, 0, (2, 2, 3), 3, EFFECT_EXIT);
+        let cleanup = |detail| uop(KIND_POP, detail, (1, 1, 0), 1, 0);
+        vec![
+            load(),
+            load(),
+            load(),
+            read,
+            cleanup(POP_INT),
+            cleanup(POP_BORROWED),
+            int_arith(ARITH_ADD, REUSE_NONE),
+            pop(),
+            pop(),
+            consume(0),
+        ]
+    }
+
+    #[test]
+    fn an_int_array_read_unboxes_its_result_for_int_arithmetic() {
+        let plan = rewrite(&int_array_read_trace());
+        let read = plan
+            .iter()
+            .find(|step| step.action == Action::IntArrayRead.code())
+            .expect("the int read is rewritten");
+        assert_eq!(read.source, 3);
+        assert_eq!((read.exit_floats, read.exit_ints), (0, 0));
+        let add = plan
+            .iter()
+            .find(|step| step.action == Arith(Int, ArithOp::Add).code())
+            .expect("the sum stays unboxed");
+        assert_eq!(add.source, 6);
+        assert!(plan.iter().any(|step| step.source == 6 && step.action == BoxValue(Int).code()));
+    }
+
+    #[test]
+    fn malformed_int_array_descriptors_refuse_the_plan() {
+        let mut trace = int_array_read_trace();
+        trace[3].detail = 1;
+        assert_eq!(plan_unboxing(&trace, &synthetic()), Err(Inconsistent));
+        let mut wrong = synthetic();
+        wrong[16].effects = 0;
+        assert_eq!(plan_unboxing(&int_array_read_trace(), &wrong), Err(Inconsistent));
+        let mut wrong = synthetic();
+        wrong[17].effects = 0;
+        assert_eq!(plan_unboxing(&int_indexed_float_read(), &wrong), Err(Inconsistent));
     }
 
     #[test]
