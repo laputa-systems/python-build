@@ -2241,6 +2241,35 @@ at most 1.0011x incumbent, isolated Serc footprint at most 1.0303x no-Serc
 and code at most 1.8792x M0. Nbody maps 45,692 bytes; raytrace remains
 659,248 bytes. Timing acceptance remains deferred under OD16.
 
+**CLIMB round 1 backlog (frozen 2026-11-15, source `3e2b80b`, baseline S =
+0.7463).** All 16 training kernels re-profiled on `perf-rust-jit` at
+`3bd21f6` with `perf.py profile --tool sample --jit-map` (1,172-4,559 JIT
+samples per kernel, coverage 96.7-100%; reports
+`rust-cpython/results/perf-profile/20261115T195{459,503,517,531,548,604,618,647,656}*-perf-rust-jit-*-sample`
+and `20261115T195{711,726,737,753,809,824,839}*-perf-rust-jit-*-sample`).
+Equal-weight uop means: `_CHECK_VALIDITY` 7.2% (already proven 0%
+removable, excluded), attribute loads/stores and their guards ~5-7% on the
+object kernels, virtual-call begin/return 11.3% on richards, generic
+subscript/store-slice uops 3-7% across fft/lu/fannkuch/hexiom/nbody/sparse,
+call/frame overhead (`_CHECK_FUNCTION_VERSION`, `_TIER2_RESUME_CHECK`,
+`_CHECK_STACK_SPACE*`, `_RETURN_VALUE` pops) 2-4% on richards/deltablue/sor/lu,
+`_UNPACK_SEQUENCE_*` 3-6% on nbody/spectral/nqueens, and nbody's fused
+store stencils themselves 29% (residual stencil cost, not a new mechanism).
+Ranked finite backlog for this round's ≤12 evaluations:
+
+| Rank | Mechanism | Tier | Expected effect (sample share) | Falsifier |
+| ---: | --- | --- | --- | --- |
+| 1 | Attribute specialization round 2: extend the checked-load planner to adjacent check+store pairs and to virtual-adjacent traces where semantics allow | T3 | `_LOAD_ATTR_INSTANCE_VALUE(_CHECKED)` + `_STORE_ATTR_INSTANCE_VALUE` + attr guards, 5-7% on go/deltablue/monte_carlo/richards/hexiom/sor | no measurable kernel-CPU gain at the 1% floor, or any digest/fuzz/suite difference |
+| 2 | Subscript specialization round 2: `_STORE_SUBSCR`, `_BINARY_OP_SUBSCR_LIST_INT`, `_BINARY_OP_SUBSCR_CHECK_FUNC`, `_STORE_SLICE`/`_BUILD_SLICE` | T2 | 3-7% on fft/lu/fannkuch/hexiom/nbody/sparse | same bars |
+| 3 | Virtual-call overhead: reduce `_BEGIN_VIRTUAL_CALL`/`_RETURN_VIRTUAL_CALL`/`_LOAD_VIRTUAL_ARGUMENT` cost or widen virtualization coverage | T3/T4 | 11.3% on richards, similar raytrace/go | same bars |
+| 4 | Unpack-sequence specialization for hot list/tuple/two-tuple forms | T2/T3 | 3-6% on nbody/spectral/nqueens | same bars |
+| 5 | Call/frame overhead: `_CHECK_FUNCTION_VERSION`, `_TIER2_RESUME_CHECK`, stack-space and return-pop fast paths | T3 | 2-4% on richards/deltablue/sor/lu | same bars |
+
+Item attempt/design counters carry forward from the ledger; `_CHECK_VALIDITY`,
+`_SET_IP`, proven type/version guard stripping, whole-trace register
+re-allocation, boxed-float reuse, and the a1 inline-frame fold stay dropped
+or parked with their recorded evidence. A restart does not reset the round.
+
 ### J acceptance
 
 Historical OD14/OD16 landings used steps 3-6 plus resource checks and remain
