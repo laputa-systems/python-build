@@ -1661,6 +1661,7 @@ dummy_func(
         family(STORE_SUBSCR, INLINE_CACHE_ENTRIES_STORE_SUBSCR) = {
             STORE_SUBSCR_DICT,
             STORE_SUBSCR_LIST_INT,
+            STORE_SUBSCR_ARRAY_D,
         };
 
         specializing op(_SPECIALIZE_STORE_SUBSCR, (counter/1, container, sub -- container, sub)) {
@@ -1749,6 +1750,36 @@ dummy_func(
             _PyStackRef old = PyStackRef_FromPyObjectSteal(old_value);
             PyStackRef_CLOSE_SPECIALIZED_TSTATE(tstate, old, _PyFloat_ExactDeallocTstate);
         }
+
+        op(_STORE_SUBSCR_ARRAY_D, (value, container, sub -- )) {
+            PyObject *sub_o = PyStackRef_AsPyObjectBorrow(sub);
+            PyObject *container_o = PyStackRef_AsPyObjectBorrow(container);
+            PyObject *value_o = PyStackRef_AsPyObjectBorrow(value);
+
+            DEOPT_IF(!PyLong_CheckExact(sub_o) ||
+                     !_PyLong_IsCompact((PyLongObject *)sub_o));
+            Py_ssize_t index = _PyLong_CompactValue((PyLongObject *)sub_o);
+            double d;
+            if (PyFloat_CheckExact(value_o)) {
+                d = PyFloat_AS_DOUBLE(value_o);
+            }
+            else if (PyLong_CheckExact(value_o) &&
+                     _PyLong_IsCompact((PyLongObject *)value_o)) {
+                d = (double)_PyLong_CompactValue((PyLongObject *)value_o);
+            }
+            else {
+                DEOPT_IF(true);
+            }
+            PyTypeObject *array_d_type = _PyArray_DStoreType();
+            DEOPT_IF(Py_TYPE(container_o) != array_d_type);
+            int writable = _PyArray_WriteDoubleItem(container_o, index, d);
+            DEOPT_IF(!writable);
+            STAT_INC(STORE_SUBSCR, hit);
+            DECREF_INPUTS();
+        }
+
+        macro(STORE_SUBSCR_ARRAY_D) =
+            unused/1 + _STORE_SUBSCR_ARRAY_D;
 
         macro(STORE_SUBSCR_DICT) =
             _RECORD_NOS_TYPE +

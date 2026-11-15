@@ -1583,6 +1583,14 @@ store_subscr_fail_kind(PyObject *container, PyObject *sub)
 }
 #endif
 
+/* The canonical array.array type observed when STORE_SUBSCR_ARRAY_D
+ * specialization fired. The specialized instruction compares candidate
+ * containers by type identity, which cannot be forged or poisoned through
+ * mutable module state. The type is per-interpreter module state and
+ * collectable, so the first observed type is kept alive forever; sites in
+ * other interpreters simply fail the identity check and deopt. */
+static PyTypeObject *array_d_store_type;
+
 Py_NO_INLINE void
 _Py_Specialize_StoreSubscr(_PyStackRef container_st, _PyStackRef sub_st, _Py_CODEUNIT *instr)
 {
@@ -1615,6 +1623,17 @@ _Py_Specialize_StoreSubscr(_PyStackRef container_st, _PyStackRef sub_st, _Py_COD
             unspecialize(instr);
             return;
         }
+    }
+    if (PyLong_CheckExact(sub) && _PyLong_IsCompact((PyLongObject *)sub) &&
+        container_type->tp_as_mapping != NULL &&
+        _PyArray_GetSpecializationKind(container) == 1)
+    {
+        if (array_d_store_type == NULL) {
+            array_d_store_type = container_type;
+            Py_INCREF(container_type);
+        }
+        specialize(instr, STORE_SUBSCR_ARRAY_D);
+        return;
     }
     if (container_type->tp_as_mapping != NULL &&
         container_type->tp_as_mapping->mp_ass_subscript == _PyDict_StoreSubscript)
@@ -3116,6 +3135,14 @@ const struct _PyCode8 _Py_InitCleanup = {
 static int
 array_type_matches(PyTypeObject *tp)
 {
+    /* The module-dict check below is mutable from Python
+     * (``array.array = Fake``), so also require structural facts a
+     * Python-level type cannot forge: array.array is created by
+     * PyType_FromSpec with IMMUTABLETYPE and basicsize sizeof(arrayobject). */
+    if (!PyType_HasFeature(tp, Py_TPFLAGS_IMMUTABLETYPE) ||
+        tp->tp_basicsize != (Py_ssize_t)sizeof(arrayobject)) {
+        return 0;
+    }
     PyObject *module = PyType_GetModule(tp);
     if (module == NULL) {
         PyErr_Clear();
@@ -3174,6 +3201,33 @@ _PyArray_ReadDoubleItem(PyObject *op, Py_ssize_t index, double *value)
         return 0;
     }
     *value = ((double *)self->ob_item)[index];
+    return 1;
+}
+
+/* The canonical array.array type recorded when STORE_SUBSCR_ARRAY_D
+ * specialization fired; NULL until the first such specialization. */
+PyTypeObject *
+_PyArray_DStoreType(void)
+{
+    return array_d_store_type;
+}
+
+int
+_PyArray_WriteDoubleItem(PyObject *op, Py_ssize_t index, double value)
+{
+    arrayobject *self = (arrayobject *)op;
+    const char *typecode = self->ob_descr->typecode;
+    if (typecode[0] != 'd' || typecode[1] != '\0') {
+        return 0;
+    }
+    Py_ssize_t size = Py_SIZE(self);
+    if (index < 0) {
+        index += size;
+    }
+    if (index < 0 || index >= size) {
+        return 0;
+    }
+    ((double *)self->ob_item)[index] = value;
     return 1;
 }
 
