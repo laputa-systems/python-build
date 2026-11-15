@@ -1,4 +1,5 @@
 import argparse
+import itertools
 import json
 import os
 import subprocess
@@ -125,7 +126,7 @@ def main():
         assert candidate[name][1][0][4], candidate[name]
         entries = candidate[name][2]
         local = candidate['local']
-        pairs = [(first, second) for first, second in zip(entries, entries[1:])
+        pairs = [(first, second) for first, second in itertools.pairwise(entries)
                  if first[0] == '_GUARD_LOCAL_FLOAT' and first[1] == local and
                     second[0] == '_STORE_FAST_FUSED_FLOAT' and second[1] == local]
         fused = [entry for entry in entries if entry[0] == '_STORE_FAST_FUSED_FLOAT_OR_NULL' and entry[1] == local]
@@ -140,7 +141,7 @@ def main():
     null_entries, null_local = candidate['null'][4:]
     null_pair = any(first[0] == '_GUARD_LOCAL_FLOAT' and first[1] == null_local and
                     second[0] == '_STORE_FAST_FUSED_FLOAT' and second[1] == null_local
-                    for first, second in zip(null_entries, null_entries[1:]))
+                    for first, second in itertools.pairwise(null_entries))
     null_fused = any(entry[0] == '_STORE_FAST_FUSED_FLOAT_OR_NULL' and entry[1] == null_local for entry in null_entries)
     assert null_pair == (args.expect == 'previous'), null_entries
     assert null_fused == (args.expect == 'candidate'), null_entries

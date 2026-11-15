@@ -2,9 +2,9 @@
 import importlib.util
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 spec = importlib.util.spec_from_file_location('attributes', Path(__file__).with_name('jit_virtual_argument_attributes_integration.py'))
 attributes = importlib.util.module_from_spec(spec)
@@ -26,12 +26,11 @@ def exits(trace):
     for index, entry in enumerate(trace):
         name, _, target, _ = entry
         if name == '_RETURN_VIRTUAL_CALL': inside = False
-        if inside and ('GUARD' in name or name.startswith(('_CHECK_', '_LOAD_ATTR_'))):
-            if 0 <= target < len(trace):
-                destination = target
-                if 'SPILL' in trace[destination][0]: destination += 1
-                if destination < len(trace) and trace[destination][0].startswith('_MATERIALIZE_VIRTUAL_FRAME'):
-                    yield index, target, trace[destination][3], name
+        if inside and ('GUARD' in name or name.startswith(('_CHECK_', '_LOAD_ATTR_'))) and 0 <= target < len(trace):
+            destination = target
+            if 'SPILL' in trace[destination][0]: destination += 1
+            if destination < len(trace) and trace[destination][0].startswith('_MATERIALIZE_VIRTUAL_FRAME'):
+                yield index, target, trace[destination][3], name
         if name == '_BEGIN_VIRTUAL_CALL': inside = True
 
 TWO_CALLS = r"""

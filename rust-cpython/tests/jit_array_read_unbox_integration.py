@@ -1,6 +1,5 @@
-import argparse
 import _opcode
-from array import array
+import argparse
 import dis
 import gc
 import itertools
@@ -10,6 +9,7 @@ import struct
 import subprocess
 import sys
 import weakref
+from array import array
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--expect', choices=('baseline', 'candidate', 'interpreter'), default='candidate')
@@ -59,8 +59,8 @@ def capture(error, fn, caller):
         if frame.f_code is caller.__code__:
             trace, active, progress = (frame.f_locals[key] for key in ('trace', 'observed', 'index'))
         tb = tb.tb_next
-    return dict(error=[type(error).__name__, str(error), locations, error.__context__ is None],
-                trace=trace, active=active, progress=progress)
+    return {'error': [type(error).__name__, str(error), locations, error.__context__ is None],
+            'trace': trace, 'active': active, 'progress': progress}
 
 
 def run_case(label, change):
@@ -76,7 +76,7 @@ def run_case(label, change):
     except (IndexError, TypeError, ValueError) as error:
         row = capture(error, fn, caller)
     else:
-        row = dict(value=bits(value), trace=trace, active=active, progress=progress)
+        row = {'value': bits(value), 'trace': trace, 'active': active, 'progress': progress}
     gc.collect()
     row.update(events=events, remaining=len(source), refcounts=[sys.getrefcount(left)-before[0], sys.getrefcount(right)-before[1]])
     assert row['progress'] == COUNT - 1 and row['remaining'] == 0, (label, row)
@@ -156,8 +156,8 @@ def owned_case():
     assert value == 19.0 and factory.calls == COUNT and not source
     assert len(events) == 1 and events[0][0] and events[0][2:4] == ['BINARY_OP', '[]'], events
     assert len(references) == 1 and references[0]() is None
-    return dict(value=bits(value), trace=trace, active=active, progress=progress, events=events,
-                remaining=len(source), calls=factory.calls)
+    return {'value': bits(value), 'trace': trace, 'active': active, 'progress': progress, 'events': events,
+            'remaining': len(source), 'calls': factory.calls}
 
 
 def observer(mode, before):
