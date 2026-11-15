@@ -14,10 +14,10 @@ that needs it.
 
 **Operating contract updated 2026-11-15:** this campaign runs and closes on
 native **macOS arm64 only**. Linux work is deferred until the owner has a
-native Linux host and explicitly reopens it. This update does not launch a
-run or undo the owner's execution pause. For the next launched run, the
-execution model below replaces open-ended correctness-only accumulation
-under OD14/OD16 with measured selection and bounded deferral. Historical
+native Linux host and explicitly reopens it. The owner reopened the campaign on
+2026-11-15; see [Status](#status). For the next launched run, the execution
+model below replaces open-ended correctness-only accumulation under
+OD14/OD16 with measured selection and bounded deferral. Historical
 receipts retain their original verdicts; `CORRECT` never becomes `ACCEPT`
 because the policy changed.
 
@@ -32,18 +32,20 @@ ledger and the [preserved host handoff](#preserved-host-handoff).
 
 | Field | Current state |
 | --- | --- |
-| Execution | **PAUSED** since the owner's 2026-11-13 stop; this is a campaign-document update, not a run |
+| Execution | **REOPENED** by the owner 2026-11-15 (macOS arm64 native; Linux deferred). This document edit is the record of the reopen, not a launched run; the next explicit launch resumes at RECOVER → QUALIFY per **Execution model** |
+| Host | **Fresh clone on the owner's Mac at `b3e2dc2`, 2026-11-15** — this is not the 2026-11-13 checkout. Its machine-local state is absent here, verified 2026-11-15: `e3cbf337` and `eb7f262e` are not valid objects; no `campaign/*` or `lane/*` refs exist on the remote (they were never pushed); `.work/wt/*` (the 26 deferred-qualification trees, the 10 compiler/epoch trees, the 2 review-snapshot trees, and `jit-reference-init`) and `.work/campaign-archive/winddown-20261113/` do not exist; `rust-cpython/results/` from before 2026-11-15 is absent; `codex-campaign-closeout.py` is not in the repository; `mdfind` finds no helper under `.work/tmp` |
+| Preflight (2026-11-15) | `Darwin`/`arm64`, HEAD `b3e2dc2`, clean tree. `perf.py doctor`: lane and production archives cached and verified, Xcode 27.0 matches the lock. `perf.py status`: one build, `perf-rust-jit` at `00ca352` (58 release Rust extensions verified), host lease free. `perf-gate-ready` exits 0. `git worktree list`: only the primary checkout |
 | Target | Native `aarch64-apple-darwin`; Linux is deferred, not a completion blocker |
 | Source epoch | `e891a9117985888df3e5d48145cf07ddda098335` (`3.16.0a1+dev`), as pinned in `rust-cpython/sources.lock.json` |
-| Correctness incumbent | The host handoff records runtime `cb1444fe`; inventory current `main` and its build reports before reuse |
+| Correctness incumbent | `cb1444fe` on `main` (ancestor of `b3e2dc2`, verified). A clean `perf-rust-jit` exists at `00ca352` (overlay source identical to `cb1444fe`-era payload); treat it as unvalidated until the H0 identification step applies |
 | Measured incumbent | **Unqualified current stack.** Historical e891 M0 was `S0 = 0.7748`; that is not the current integrated score |
-| J | Recover reference initialization's correctness/review evidence; qualify the integrated baseline, then measure that candidate before another optimization lands |
+| J | Reference-init candidate **parked 2026-11-15: source unavailable on the reopened host** (fresh clone; `e3cbf337` not a valid object anywhere reachable; nothing to qualify or merge). Then QUALIFY the integrated baseline with fresh A/A and training/held-out/guards; no new optimization lands before measurement |
 | C | C3 feature-complete; cold-compilation performance and final combined qualification remain open |
 | R1 | Complete; reuse the pinned CinderX catalog, do not restart the study |
-| Next action on launch | Run preflight and H0; recover or explicitly park `campaign/jit-reference-init` (`e3cbf337`), keep it unmerged, then qualify the baseline before gating the candidate |
+| Next action on launch | Run the 2026-11-15 preflight above (passing), then RECOVER: treat `campaign/jit-reference-init` as parked (source unavailable), audit the measurement prerequisites under H0, and start QUALIFY with `perf-rust-jit` identified at the H0 commit |
 | Performance debt | Existing OD14/OD16 landings need measured qualification; no new speculative feature landings while this debt is open |
 | Owner queue | Checked-load private ABI and prior routing/API reviews remain asynchronous; Carbon remains disabled (OD17) |
-| Stop counters | No new attempts in this update; recover prior counts from the ledger before starting, never reset them at a session boundary |
+| Stop counters | No attempts recorded on this host; recover prior counts from the ledger before starting, never reset them at a session boundary |
 
 Subsequent checkpoints also record the exact candidate and reference SHAs,
 build names/flags, phase, next command, attempt/design and 8+4 plateau
@@ -3131,8 +3133,9 @@ owner explicitly requests an epoch change:
 Historical decisions below explain their original receipts. The 2026-11-15
 operating contract above applies to the next explicitly launched run:
 macOS-only completion, measurement-first qualification, and bounded deferral.
-It leaves the execution pause, feature semantics, numeric targets, LLVM pins,
-production boundary, and OD17's reviewer restriction intact.
+It preserves feature semantics, numeric targets, LLVM pins, the production
+boundary, and OD17's reviewer restriction. The execution pause it referred to
+was lifted by the owner's 2026-11-15 reopen; see **Status**.
 
 - **OD1 (2026-11-01):** keep the pinned LLVM; see **Boundary**.
 - **OD4:** memory gates stay as written; JIT against no-JIT keeps its peak RSS
@@ -3663,6 +3666,20 @@ machine-local helper or executing the old candidate. Any imperatives or
 present-tense status below describe the 2026-11-13 handoff; the operating
 contract above controls the next run.
 
+**Host note (2026-11-15): the 2026-11-13 checkout is gone.** This Mac holds
+a fresh clone made after the 2026-11-13 stop. Every machine-local artifact
+named below is absent on this host, verified 2026-11-15: the parked
+`campaign/jit-reference-init` candidate tree and its `e3cbf337`/`eb7f262e`
+objects (not reachable from any ref, and `mdfind` finds no helper under
+`.work/tmp`), the retained `.work/wt/*` and `.work/campaign-archive/winddown-20261113/`
+trees, the 2026-11-13-era `rust-cpython/results/`, the unpushed `campaign/*`
+and `lane/*` branches, and `codex-campaign-closeout.py` (not in the
+repository). None of this is reachable and none of it may be invented; the
+candidate's source is unavailable, so RECOVER resolves it as parked per the
+missing-source rule in **Start here**. Treat this section as a historical
+index, not a punch list: any receipt below that cannot be reproduced from
+committed sources is `needs reconstruction`, not a pass.
+
 The owner's stop asked for reference initialization to be finished before
 another slice. The recorded host-specific closeout command was
 `codex-campaign-closeout.py cancel`; it is conditional on actual helper and
@@ -3853,3 +3870,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-13 | e891 | J | correctness | keep the first local store generic when old-type hints describe end-of-trace state, preventing integer-entry side-trace churn | accepted `perf-jit-list-float-cleanup` at main `405d4184` | performance deferred (OD16) | five interleaved resource trials pass: matched RSS <=1.0044x incumbent, isolated Serc footprint <=1.0328x no-Serc, code <=1.8792x M0; nbody 45,604 bytes, raytrace 659,248 | CORRECT: clean matched variants verify 58 extensions each; 103 Rust tests and targeted FFI AddressSanitizer; 38 native integrations; 18 suites retain the same 16 exclusions; 2,000 fuzz programs (1,949 JIT-active, 0 differences); 31 equal digests. Independent source and leased native review approves both variants and predecessor. Initialized integer chaos reentry emits one trace versus 49; unset reentry remains zero. Later nbody stores retain 13+4 nullable and 6+3 guarded list kernels. No C, opcode or private ABI change | source `7c63da96`; `.work/wt/jit-store-entry-provenance/.work/tmp/store-entry-provenance-{feature-acceptance,resources}.json`; corpus `20261113T150931Z-perf-jit-list-float-cleanup-vs-perf-jit-store-entry-provenance`, `20261113T151219Z-...`; root `jit-store-entry-provenance-{independent-review,review-lease-audit,frozen-shapes}.json` and `{rust-tests,asan,before,native,source-proof,integrated-check}.log` |
 | 2026-11-13 | e891 | J | T3/T4 | fuse adjacent managed-value checks and instance loads with equal original targets while preserving type guards and owner cleanup | accepted `perf-jit-store-entry-provenance` at main `769431b8` | performance deferred (OD16) | five interleaved resource trials pass: matched RSS <=0.9997x incumbent, isolated Serc footprint <=1.0260x no-Serc, code <=1.8542x M0; nbody 45,604 bytes, raytrace 650,492 | CORRECT: clean matched variants verify 58 extensions each; 104 Rust tests and targeted FFI AddressSanitizer; 39 native integrations; 18 suites with 17 reviewed obsolete shape assertions; 2,000 fuzz programs (1,949 JIT-active, 0 differences); 31 equal digests. Independent source/generated and leased final native review approves both variants and predecessor. One additional upstream test passes with only its expected opcode changed. Repeated misses, exact PCs, owner finalization, aliases, dictionary and class mutation, weakrefs and observers pass. Nine frozen kernels emit checked loads in all five trials. New private map/input/output widths12/8/2; existing ABIs unchanged; virtual-call traces declined | runtime `e2702b93`, shape recognition `503cdb8e`; `.work/wt/jit-checked-attribute/.work/tmp/checked-attribute-{feature-acceptance,resources}.json`; corpus `20261113T154127Z-perf-jit-store-entry-provenance-vs-perf-jit-checked-attribute`, `20261113T154418Z-...`; root `jit-checked-attribute-{source-review,independent-review,review-lease-audit,emitted-counts}.json` and `{rust-tests,asan,before,native,noserc-native,source-proof,upstream-shape,serc-upstream-shape,integrated-check}.log` |
 | 2026-11-15 | e891 | J/C | operating contract | native macOS qualification, measured selection, bounded rounds/deferral, reproducible closeout | unchanged runtime | unmeasured; no campaign run | — | DOC_ONLY: existing pause retained; Linux deferred; historical CORRECT receipts unchanged; commands checked against actual CLI | this document, AGENTS.md, lane README/ENGINEERING, docs/open-work.md |
+| 2026-11-15 | e891 | J/C | reopen | owner reopens the campaign on the current host; lost-state inventory recorded (fresh clone: candidate objects, all `.work/wt/*`, winddown archive, campaign refs, 2026-11-13 results, closeout helper absent); reference-init candidate parked as source-unavailable | unchanged runtime | unmeasured; no campaign run | — | DOC_ONLY: execution REOPENED; preflight passes on the current host; no build, source, or gate changes | this document; reopen commit on `main` |
