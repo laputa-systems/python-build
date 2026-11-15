@@ -235,7 +235,9 @@ class ProcessSamplerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIsNotNone(result.memory)
         assert result.memory is not None
-        self.assertLess(result.memory.peak_pss_bytes, 2 * 1024 * 1024)
+        # The measured floor on the ubuntu-26.04-arm CI runner is ~4.8 MiB for the
+        # launcher itself; 8 MiB still catches a real inflation by the launcher.
+        self.assertLess(result.memory.peak_pss_bytes, 8 * 1024 * 1024)
 
     def test_timing_pass_skips_cgroup_setup(self):
         with patch("benchmarks.harness.process.CgroupV2MemoryScope.detect_and_create") as detect:
