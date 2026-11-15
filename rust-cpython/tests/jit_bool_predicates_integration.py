@@ -1,10 +1,10 @@
 import _opcode
 import argparse
 import dis
-import itertools
 import gc
-import weakref
+import itertools
 import sys
+import weakref
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--expect', choices=('baseline', 'candidate', 'interpreter'), default='candidate')
@@ -26,8 +26,8 @@ def make(layout, method, bound):
     namespace = {}
     slots = "__slots__ = ('task_holding', 'packet_pending', 'task_waiting')" if layout == 'slots' else 'pass'
     call = 'owner.' + method + '()' if bound else 'fn(owner)'
-    exec('''class Owner:
-    %s
+    exec(f'''class Owner:
+    {slots}
     def isTaskHoldingOrWaiting(self):
         return self.task_holding or (not self.packet_pending and self.task_waiting)
     def isWaitingWithPacket(self):
@@ -37,9 +37,9 @@ def loop(n, fn, owner, active):
     observed = False
     for index in range(n):
         observed = active()
-        value = %s
+        value = {call}
     return value, observed
-''' % (slots, call), namespace)
+''', namespace)
     owner = namespace['Owner']()
     return owner, getattr(namespace['Owner'], method), namespace['loop']
 
@@ -144,16 +144,16 @@ def source_loop(method, bound, direct=False):
     namespace = {'entries': entries}
     call = ('source.pop().' + method + '()' if bound else 'fn(source.pop())') if direct else ('owner.' + method + '()' if bound else 'fn(owner)')
     load = '' if direct else '        owner = source.pop()\n'
-    exec('''def loop(n, fn, source, active):
+    exec(f'''def loop(n, fn, source, active):
     trace = []
     observed = False
     for index in range(n):
-%s        observed = active()
-        value = %s
+{load}        observed = active()
+        value = {call}
         if index == 6999:
             trace = entries(loop)
     return value, trace, observed, index
-''' % (load, call), namespace)
+''', namespace)
     return namespace['loop']
 
 
@@ -215,7 +215,7 @@ def fault_case(layout, method, bound, scenario):
         fault.task_waiting = fault
         result = fault
     elif scenario == 'replace':
-        fault.__dict__ = dict(task_holding=True, packet_pending=False, task_waiting=False)
+        fault.__dict__ = {'task_holding': True, 'packet_pending': False, 'task_waiting': False}
         result = expected(method, (True, False, False))
     elif scenario == 'clear':
         fault.__dict__.clear()
