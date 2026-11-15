@@ -17,8 +17,8 @@
   RTLS/rustls-graviola TLS plus hashing backend, static mimalloc,
   ThinLTO), the 12-character source revision (supplied by
   the harness as `-DPYB_SRC_REV`, recorded in `artifact.json`), and the
-  release page. The banner keeps its leading version
-  token, so `platform`'s `sys.version` parser, `sys.version.split()[0]`
+  canonical repository (`https://github.com/laputa-systems/python-build`). The
+  banner keeps its leading version token, so `platform`'s `sys.version` parser, `sys.version.split()[0]`
   consumers, and `pydoc` output keep working; the date-less `buildno`
   slot still parses (`platform.python_build()` returns an empty
   builddate). `SOURCE_DATE_EPOCH` itself is untouched: it still pins the
