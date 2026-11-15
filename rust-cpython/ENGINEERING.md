@@ -1,10 +1,13 @@
 # Lane engineering contract
 
-The lane is an isolated CPython 3.16.0a1 research interpreter with a Rust
-overlay. It is not the shipping 3.15.1 product, and Linux arm64 is not
-implemented. Build and benchmark commands are in [README.md](README.md);
-route suites are in [ROUTES.md](ROUTES.md); remaining work is in
-[../docs/open-work.md](../docs/open-work.md).
+The lane is an isolated CPython 3.16 research interpreter with a Rust overlay,
+pinned by [`sources.lock.json`](sources.lock.json). It is not the shipping
+3.15.1 product. The [campaign](../docs/CAMPAIGN-RUST-CPYTHON-JIT.md) owns the
+current epoch, execution status, and native macOS arm64 qualification. Linux
+research work is deferred until a native host is available and the owner
+explicitly reopens it; Linux arm64 is not implemented. Build and benchmark
+commands are in [README.md](README.md); route suites are in [ROUTES.md](ROUTES.md);
+remaining work is in [../docs/open-work.md](../docs/open-work.md).
 
 ## Rules
 
@@ -49,6 +52,10 @@ move thresholds to clear debt. Identical interpreters must not read
 differently under calibration.
 
 ## Findings
+
+These receipts describe their recorded source epochs and hosts. Historical
+Linux or 3.16.0a1 results do not qualify the current macOS campaign; use its
+same-epoch evidence for current acceptance.
 
 - Startup and Django RSS debt is dyld fixup residency proportional to Rust
   text in `libpython`. Moving `_ssl_rs` to a shared extension cut `libpython`
@@ -128,8 +135,14 @@ source; removing `std` entirely is dropped unless a measured target needs it.
 
 ## Known red
 
-macOS arm64 and Linux x86-64 full suites fail only `test_ssl` (RTLS policy
-gaps) and `test_support` (hashlib shim); Linux hosts add host-specific
-`test_socket` RDS and multiprocessing `TMPDIR` failures. The lane keeps
-`test_unicodedata` green because the a1 test file reads the loaded
-`unidata_version`.
+The historical 3.16.0a1 receipts list `test_ssl` (RTLS policy gaps) and
+`test_support` (hashlib shim), plus Linux host-specific `test_socket` RDS and
+multiprocessing `TMPDIR` failures. These are not a current failure allowlist.
+
+The campaign's epoch-e891 macOS baseline records five failed files:
+`test_asyncio.test_sendfile`, `test_asyncio.test_sslproto`,
+`test_multiprocessing_forkserver.test_misc`, `test_ssl`, and `test_support`.
+Use the campaign's source-matched baseline and exact failure attribution;
+each candidate must reproduce its control's failures without introducing
+new ones. Historical counts or a matching filename alone do not establish
+parity. Current Linux qualification is deferred.

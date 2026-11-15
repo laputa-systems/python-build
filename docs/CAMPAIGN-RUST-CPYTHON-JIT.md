@@ -8,17 +8,58 @@ JIT. Track **C** ports Serc, a Rust source-to-bytecode compiler, to the same
 It replaces `CAMPAIGN-JIT.md` (J0-J9, closed 2026-11-01),
 `CAMPAIGN-JIT-CLIMB.md` (hill-climb, 2026-11-02), and
 `CAMPAIGN-JIT-CINDERX-316.md` (R0-R3, 2026-11-09); their text is in git at
-`76de0e1`. The campaign runs unattended. Every rule below is written so an
-agent can apply it without asking; owner input is collected asynchronously
-(see **Owner queue**) and blocks only the lane that needs it.
+`76de0e1`. Once launched, the campaign runs unattended. Owner input is
+collected asynchronously (see **Owner queue**) and blocks only the lane
+that needs it.
+
+**Operating contract updated 2026-11-15:** this campaign runs and closes on
+native **macOS arm64 only**. Linux work is deferred until the owner has a
+native Linux host and explicitly reopens it. This update does not launch a
+run or undo the owner's execution pause. For the next launched run, the
+execution model below replaces open-ended correctness-only accumulation
+under OD14/OD16 with measured selection and bounded deferral. Historical
+receipts retain their original verdicts; `CORRECT` never becomes `ACCEPT`
+because the policy changed.
+
+Read [Status](#status), [Execution model](#execution-model), and the active
+item first. The long implementation narratives and ledger are evidence to
+consult by item, not a queue of work to repeat.
+
+## Status
+
+Rewrite this table at each checkpoint; keep detailed provenance in the
+ledger and the [preserved host handoff](#preserved-host-handoff).
+
+| Field | Current state |
+| --- | --- |
+| Execution | **PAUSED** since the owner's 2026-11-13 stop; this is a campaign-document update, not a run |
+| Target | Native `aarch64-apple-darwin`; Linux is deferred, not a completion blocker |
+| Source epoch | `e891a9117985888df3e5d48145cf07ddda098335` (`3.16.0a1+dev`), as pinned in `rust-cpython/sources.lock.json` |
+| Correctness incumbent | The host handoff records runtime `cb1444fe`; inventory current `main` and its build reports before reuse |
+| Measured incumbent | **Unqualified current stack.** Historical e891 M0 was `S0 = 0.7748`; that is not the current integrated score |
+| J | Recover reference initialization's correctness/review evidence; qualify the integrated baseline, then measure that candidate before another optimization lands |
+| C | C3 feature-complete; cold-compilation performance and final combined qualification remain open |
+| R1 | Complete; reuse the pinned CinderX catalog, do not restart the study |
+| Next action on launch | Run preflight and H0; recover or explicitly park `campaign/jit-reference-init` (`e3cbf337`), keep it unmerged, then qualify the baseline before gating the candidate |
+| Performance debt | Existing OD14/OD16 landings need measured qualification; no new speculative feature landings while this debt is open |
+| Owner queue | Checked-load private ABI and prior routing/API reviews remain asynchronous; Carbon remains disabled (OD17) |
+| Stop counters | No new attempts in this update; recover prior counts from the ledger before starting, never reset them at a session boundary |
+
+Subsequent checkpoints also record the exact candidate and reference SHAs,
+build names/flags, phase, next command, attempt/design and 8+4 plateau
+counters, last valid measurement, pending reviews, evidence paths, and each
+blocker's reopening condition. Missing measurements are `unmeasured`, not
+zero; missing old evidence is `needs reconstruction`, not a pass.
 
 ## Goal and end state
 
-On current CPython 3.16, make the lane's tier-2 JIT four times faster than the
+On one pinned CPython 3.16 epoch, make the lane's tier-2 JIT four times faster than the
 lane's own interpreter on the training kernels, with optimizer passes written
-in Rust; and compile Python source in-process with a Rust compiler that is
-byte-identical to CPython's. Python semantics and the 3.15.1 product do not
-change.
+in Rust; and compile eligible Python source in-process with a Rust compiler
+that is byte-identical to CPython's. The explicit C routes in
+`rust-cpython/README.md` are part of the compiler contract, not Rust coverage.
+Python semantics and the 3.15.1 product do not change. M4 is the research
+target, not a prediction or a promise that this architecture can reach it.
 
 The campaign is **done** when all of these hold at one commit on `main`:
 
@@ -27,45 +68,199 @@ The campaign is **done** when all of these hold at one commit on `main`:
 2. On macOS arm64 the JIT incumbent meets **M4**: `S ≤ 0.25`, every training
    kernel ≤ 0.45, held-out geomean ≤ `S^0.5`, no guard regression, and the
    memory and code-size bars in **Targets**.
-3. Every accepted track J step passed **J acceptance**, and new optimizer passes
-   live in Rust under the **Rust rule**.
-4. Track C meets **C3** on the same epoch: `perf-rust-serc` compiles every
-   source-mode `exec`, `eval`, and `single` request through Serc in-process,
+3. Every new measured track J landing passed **J acceptance**, and new
+   optimizer passes live in Rust under the **Rust rule**. The historical
+   OD14/OD16 stack has its original correctness receipts plus aggregate
+   qualification as a documented baseline; do not claim an individual
+   speedup for a legacy step that was never measured separately.
+4. Track C meets **C3** on the same epoch: `perf-rust-serc` compiles eligible
+   source-mode `exec`, `eval`, and `single` requests through Serc in-process,
    byte-identical to upstream CPython on the corpus at `-O0`/`-O1`/`-O2`, with
-   full-suite parity and ACCEPT cold-import gates.
-5. The combined build `perf-rust-jit-serc` reproduces the M4 score within the
+   full-suite parity and ACCEPT cold-compilation gates. The census separately
+   counts direct Serc compilations, intentional C routes with reasons, and
+   oracle-refused inputs; unexpected refusals, crashes, and mismatches are
+   zero. No widening of fallback routes to make a candidate pass.
+5. The combined build `perf-final-jit-serc` reproduces the M4 score within the
    A/A spread, the C3 corpus parity, and the J targeted suites.
-6. On Linux x86-64, the combined build fails exactly its no-JIT, no-Serc
-   sibling's failed-test set, matches every kernel digest, and passes the
-   differential fuzzer and the C1 corpus. Linux timing is reported, not gated.
-7. The ledger has M4, C3, and closing rows.
+6. On native macOS arm64, the four same-revision variants (neither feature,
+   JIT only, Serc only, both) pass their complete applicable suites with no
+   unexplained difference from their matched controls. The combined build
+   matches every kernel digest and passes the differential fuzzer, C1/C3
+   corpus, and Serc verify suite. Account for known-red tests individually;
+   a failed-file count alone is not parity.
+7. The ledger has M4, C3, and closing rows, and every deliverable below is
+   complete at that revision. Linux evidence is explicitly **not collected**
+   for this closeout.
 
-The campaign **ends incomplete** when T4's backlog is empty without M4, or
-when track C exhausts its attempts without C3; the closing row records how
-far each track got and why. A stopped, blocked, or host-busy run is never a
-met goal.
+The campaign **ends incomplete** when the bounded J search exhausts T4
+without M4, or track C exhausts its attempts without C3. Preserve and deliver
+the best qualified result with the remaining gap and measured ceilings. A
+stopped, blocked, or host-busy run is never a met goal.
 
 Out of scope: any change to the production 3.15.1 build, a JIT- or
-Serc-enabled distribution, Linux arm64, free-threading, PGO, BOLT, the
+Serc-enabled distribution, all Linux execution/qualification, Intel macOS,
+free-threading, PGO, BOLT, the
 tail-call interpreter, and a method-based JIT frontend (PEP 836, parked).
+
+### Deliverables and outcomes
+
+The deliverable is a reproducible, opt-in macOS research interpreter and its
+evidence, not a production release or a claim that CPython is now all Rust.
+
+| Deliverable | Required contents |
+| --- | --- |
+| Source | One tested `main` revision; exact CPython/Serc/toolchain and Cargo identities; Rust optimizer and compiler integration; regression fixtures and license records |
+| Runnable variants | Clean local `perf-rust`, `perf-final-jit`, `perf-rust-serc`, and `perf-final-jit-serc` stages, their verified build reports, and exact commands to rebuild them |
+| Performance | Per-kernel training and held-out ratios and CI95, `S`, guard verdicts, RSS/physical-footprint and JIT-code bytes; JIT-only, Serc-only, and combined results with matching references; fresh A/A evidence |
+| Correctness | Full failed-test identities and attribution, targeted suites, JIT-active fuzz coverage and seeds, Serc route/mode/optimization-level census, independent reviews, and unsafe-code validation |
+| Portable closeout | `docs/RUST-CAMPAIGN-RESULTS.md`, created at closeout: outcome, tested source SHA, host/SDK identity, build flags, exact commands, measured gaps, limitations, owner queue, and evidence manifest |
+| Retained evidence | Raw harness JSON, build reports, logs and reviews in a named local evidence archive; its path, SHA-256, and per-receipt source/build identities in the closeout report; preserve inputs needed to regenerate it |
+
+Do not create empty reports to satisfy this table. Raw builds/logs remain
+ignored; commit the compact results and reproducible procedures. Closeout
+may be a documentation-only commit naming the exact tested parent when no
+runtime/input bytes change. A source change invalidates affected receipts.
+
+Use one of these explicit outcomes:
+
+- **COMPLETE_MACOS:** every macOS done criterion passes, with no performance
+  debt. This says nothing about Linux or production readiness.
+- **INCOMPLETE_PLATEAU:** the bounded search or C attempts are exhausted;
+  deliver the best measured incumbent and the unmet bars without lowering them.
+- **PERFORMANCE_DEFERRED:** valid quiet-host measurements are unavailable;
+  checkpoint and stop the session with exact resumption conditions.
+- **BLOCKED:** an identified prerequisite or semantic defect prevents the
+  remaining work; record the smallest unblock action and continue independent
+  work before stopping.
+- **PAUSED:** preserve an owner stop. Editing this document is not resuming it.
 
 ## Execution model
 
 ### Start here
 
-An agent resuming the campaign reads, in order: **Status** (which lanes are
-active, parked, or waiting), this section, the active item's section, and
-**Boundary**. It then continues every lane that is not parked. It never
-re-derives a decision recorded here.
+An agent explicitly launched on this campaign reads **Status**, this section,
+the active item's section, and **Boundary**. It then continues every unblocked
+lane without requesting approval at each iteration. It never repeats a closed
+experiment without new evidence or treats historical local paths as proof.
+
+Run from the repository root on the owner's Mac:
+
+```sh
+uname -s
+uname -m
+git status --short
+git rev-parse HEAD
+git worktree list --porcelain
+python3 rust-cpython/perf.py doctor
+python3 rust-cpython/perf.py status
+command -v perf-gate-ready
+```
+
+Require `Darwin`/`arm64` and the locked host/SDK/toolchain prerequisites;
+do not substitute Rosetta, a Linux VM, Docker, or this document editor's
+host. Preserve unrelated dirty work. Inventory the recorded refs, stages,
+logs and helpers before using them. Use `setup-worktree` in each new isolated
+worktree. Missing verified input caches can be fetched through the existing
+locked fetch commands; missing unpushed source or review evidence cannot be
+invented. Reconstruct receipts from available committed sources, and park
+only the candidate whose source is unavailable.
+
+`perf-gate-ready` is an external host prerequisite, not supplied by this
+repository. If missing, record BLOCKED for timing; do not replace it with a
+successful stub or disable the quietness checks. The old handoff's
+`codex-campaign-closeout.py cancel` is host-specific: inspect its availability
+and this campaign's actual scheduling state before using it on an explicit
+resume. Never cancel an unrelated campaign or assume any process still runs.
+
+### Phases and selection priority
+
+| Phase | Work | Exit / next action |
+| --- | --- | --- |
+| RECOVER | Inventory identities; finish reference initialization's pending correctness/review or park it; audit measurement prerequisites (H0) | Reproducible controls and exact pending state; candidate still unmerged |
+| QUALIFY | Measure the already integrated OD14/OD16 stack, isolate JIT/Serc costs, resolve regressions by bisection | A measured incumbent and finite debt list; no new performance feature lands beforehand |
+| CLIMB | Profile → rank → one hypothesis → explore → clean gate → accept/reject → checkpoint | Advance the best measured incumbent or consume the bounded attempt budget |
+| CLOSE | Run the final same-epoch matrix and write deliverables | COMPLETE_MACOS or INCOMPLETE_PLATEAU |
+| WAIT | A measurement prerequisite or quiet host is unavailable | Do bounded independent correctness/review work, then checkpoint PERFORMANCE_DEFERRED/BLOCKED |
+
+Priority is an incumbent correctness regression, then missing qualification
+evidence, then an eligible optimization. QUALIFY starts with fresh A/A and
+the integrated stack's training/held-out/guards against the frozen epoch
+reference. Compare accepted historical stages only to bisect a real
+regression; do not rebuild every old worktree speculatively. A historical
+`CORRECT` landing is retained as source but is not a measured win. Remove or
+fix a measured regression in its own reviewed commit before adding features.
+
+For a new launched run, timing is attempted whenever the existing readiness
+checks permit it; no additional owner message is needed for each quiet
+window. OD16 still explains old deferrals and forbids treating busy-host
+numbers as acceptance. It no longer authorizes an unbounded stack of new
+performance-only landings. During WAIT, finish at most one already-started
+candidate per lane through correctness/review, retain it unmerged as
+`CORRECT / PERF_DEFERRED`, and stop when no independent work remains. Proven
+incumbent correctness fixes may land with their correctness/resource/review
+receipts; their timing debt remains explicit and blocks completion.
+
+### H0: make the evidence path usable
+
+Before QUALIFY, verify the existing harness contract against its source and
+`--help`. No new autonomous runner is required. These are current traps:
+
+- `bench` prints a `LOG .../verdict.json` path but returns zero even for a
+  negative verdict. Read `decision.decision`, `decision.gate`,
+  `sampling_complete`, `incomplete_entities`, host samples, and all entity
+  ratios; shell success is not acceptance. Missing/malformed records fail
+  qualification. `WITHIN-BUDGET` is not an optimization win.
+- `climb-step --correctness` returns `CORRECT`, not `ACCEPT`.
+  `climb-step --screen` continues into the full gate when its screen passes;
+  it is not a screen-only command. An incremental build cannot enter that
+  gate. Use exploratory `bench --timing-only` before a committed clean build.
+- `climb-step` compares against the primary checkout's `@incumbent-jit`,
+  currently the build named `perf-rust-jit`. Verify its report before each
+  attempt; never overwrite the incumbent stage with an unqualified candidate.
+  Check commit ancestry, same epoch, JIT/Serc/pystats/compression flags and
+  toolchain identity yourself where the CLI does not enforce them.
+- `climb-step` does not certify independent review, a second clean rebuild,
+  all item-specific native tests, code-size limits, or the final milestone.
+  Its suite comparison includes candidate JIT-on/off runs; retain the
+  separate matched sibling/upstream attribution and item-specific controls.
+- OD15's Serc RSS exception is implemented for `--memory-only`, not the
+  current all-metrics timing verdict. Record both raw verdicts; do not
+  rename a timing REJECT to ACCEPT. If this prevents C qualification, fix
+  policy composition in an isolated harness commit so timing/guards still
+  pass their unchanged bars and the isolated Serc footprint stays within +8%.
+
+A necessary harness correctness repair is separate from an optimization:
+minimal reproducer, independent review, positive and negative decision
+controls, unchanged workloads/thresholds, then fresh A/A and affected
+baseline/candidate measurements under one harness identity. Never combine
+such a repair with a speedup claim. Rebuild/reidentify the incumbent at the
+H0 commit before its next challenger, so `climb-step` does not misattribute
+that already-landed frozen-file change to the challenger. Preserve the M0
+runtime reference and code-size denominator. A real remaining harness blocker
+parks only its affected gate and is written in Status.
+
+Self-calibrate before trusting the measured loop, in addition to comparing
+the fresh clean A/A twin for build/path reproducibility:
+
+```sh
+perf-gate-ready
+python3 rust-cpython/perf.py calibrate --ref @incumbent-jit --jit-set --gate --runs 5
+perf-gate-ready -1
+```
+
+Run the timing command only after a successful pre-check; require a
+successful post-check and `decision.decision == "CALIBRATION-OK"` in its
+exact JSON receipt. `calibrate`, like `bench`, can exit zero with a negative
+verdict. A calibration failure blocks timing claims, not semantic debugging.
 
 ### Lanes
 
 | Lane | Items, in order | Depends on |
 | --- | --- | --- |
 | J | R0 → T1 → M1 → T2 → M2 → T3 → M3 → T4 → M4 | T2 ceilings need R1's catalog |
-| R1 | CinderX study | nothing; starts now |
+| R1 | CinderX study (complete) | reuse catalog; rebuild only for a concrete missing receipt |
 | C | C0 → marshal parity; C1 → C2 → C3 | C1 needs R0's chosen SHA, not R0's exit |
-| Close | combined build, Linux confirmation | M4 and C3 on one epoch |
+| Close | combined build, native macOS qualification and deliverables | M4 and C3 on one epoch |
 
 Each lane works in its own worktree `.work/wt/<item>` on branch
 `campaign/<item>`, created with `perf.py setup-worktree` so caches are shared.
@@ -73,12 +268,16 @@ Each lane works in its own worktree `.work/wt/<item>` on branch
 
 ### Integration
 
-- A lane integrates an accepted change by rebasing onto `main`, rerunning the
-  narrowest check its change affects, and fast-forwarding `main`. Only one lane
+- A lane integrates an accepted change by rebasing onto `main`, rerunning
+  affected correctness and performance gates on the resulting bytes, and
+  fast-forwarding `main`. A textually clean rebase is not old evidence for a
+  changed runtime. Only one lane
   integrates at a time; the others rebase before their next gate.
 - Commits are Conventional Commits scoped `jit`, `serc`, `marshal`, `bench`,
   or `docs`; the body names the item and the commands with their results.
-  Accepted steps land on `main` without owner review (OD9). Nothing is pushed.
+  Accepted steps land on local `main` without owner review (OD9). Nothing is
+  pushed during a campaign run unless the owner explicitly asks. This does
+  not prevent an explicitly requested repository update to this campaign.
 - After every accepted step or milestone, the lane rewrites its **Status** row
   and adds its **Ledger** row in the same commit. Status is rewritten in
   place, never appended.
@@ -93,23 +292,31 @@ Each lane works in its own worktree `.work/wt/<item>` on branch
   builds and tests share the host and gives a measurement exclusive use across
   all worktrees. Work outside `perf.py` (CinderX and Serc test builds) never
   runs while `perf.py status` shows a measurement holding the lease.
-- During feature completion, performance gates are deferred (OD16): no step
-  waits for a quiet host or a `perf-gate-ready` window. Correctness, parity
-  and independent review still gate feature completion. Performance acceptance
-  stays open until the unchanged gates can run; a waiver is never a pass.
-  The rules below apply when **Close** resumes performance measurements.
+- Use the phases above: a busy host selects WAIT, not correctness-only
+  performance acceptance. Builds and correctness work can proceed under
+  their leases; measurements need a valid quiet window.
 - Gate evidence counts only when `perf-gate-ready` exits 0 immediately before
   and `perf-gate-ready -1` exits 0 immediately after. If the gate refuses
-  three times at least 20 minutes apart, record "perf gate deferred: host
-  busy" in Status, do other non-timing work, and retry at the next
-  checkpoint. A deferred gate is never a pass.
-- Delete a rejected candidate's build (`perf.py clean --name <build>`) and
-  worktree when its ledger row lands. Keep named builds in **Builds**.
+  three times at least 20 minutes apart in a session, record
+  PERFORMANCE_DEFERRED. Between checks do useful non-timing work, not a busy
+  polling loop. Stop earlier if none remains; do not spend over one hour
+  merely waiting. Persist the last check time across restarts. A failed
+  post-check invalidates that measurement. Never kill unrelated host work,
+  force a power-policy change, or reduce readiness thresholds.
+- Preserve the incumbent, epoch reference, A/A receipt, pending candidates,
+  and any stage needed for debt bisection. Delete a rejected candidate's
+  build (`perf.py clean --name <build>`) only after its evidence and source
+  ref are checkpointed and no recorded consumer needs it. Remove only its
+  clean worktree; never use broad cleanup or prune historical evidence.
 
 ### Attempts and parking
 
 - A failing item gets its root cause before any retry. An item gets at most
-  three root-caused attempts unless its section says otherwise.
+  three root-caused attempts and two design variants unless its section says
+  otherwise. Persist counts across sessions and branch renames. Do not
+  rerun identical code until noise happens to give a pass; one unchanged
+  INCONCLUSIVE timing retry is allowed with a documented noise cause, then
+  park or stack it under **J acceptance**.
 - To park an item: push nothing, keep its branch as `lane/<item>`, and record
   in Status the cause, the evidence path, and the condition that reopens it.
   The lane moves to its next unblocked item; if none exists, the lane is
@@ -152,13 +359,18 @@ and an LLVM incompatibility that patching `Tools/jit` cannot fix.
   `perf_verdict.py`, or the fuzzer's comparison logic is rejected
   (`climb-step` enforces this). R0 may repair the harness for 3.16 before M0.
   Track C may add new workloads outside the J training, held-out, and guard
-  sets, never edit existing ones. Thresholds never change.
+  sets, never edit existing ones. H0 permits a separately reviewed correction
+  to the evidence path or implementation of the already-approved policy;
+  it must land separately and requalify affected references before any J
+  candidate uses it. Do not alter thresholds, benchmark membership, digest
+  semantics, fuzzer coverage, or failure exclusions to pass a candidate.
 - **TLS stays out.** `_ssl_rs`, `_hashlib_rs`, RTLS/Graviola, and trust-store
   code are untouched. Serc's SipHash `.pyc` source hashing is unrelated.
-- **Hosts.** Performance runs on macOS arm64. Linux x86-64 correctness runs in
-  the local image `rust-cpython-linux:20260401` (see **Lane host**); no image
-  build, pull, or prune. Where the image is absent, Linux items park as "needs
-  environment" and the rest continues.
+- **Hosts.** All active correctness, performance, and closeout work runs
+  natively on macOS arm64. No Linux execution, container/image work, remote
+  Linux job, or emulation is part of this campaign. Preserve historical
+  Linux receipts as historical; reopen qualification only with a native
+  host and an explicit owner instruction.
 - **Network.** Allowed reads: lane `fetch` and `perf.py fetch` of locked
   inputs, `git ls-remote`/archive downloads of `python/cpython`, and clones of
   pinned CinderX and Serc commits into `.work/`. No pushes, PRs, issues, or
@@ -198,13 +410,15 @@ them goes to the **Owner queue**.
 | `perf-upstream` | `--empty-overlay` | semantic and compiler oracle |
 | `perf-upstream-jit` | `--empty-overlay --jit` | upstream JIT control |
 | `perf-rust` | — | no-JIT sibling, track C baseline |
-| `perf-rust-jit` | `--jit` | J incumbent (`@incumbent-jit`) |
-| `perf-rust-jit-aa` | `--jit` | A/A twin, built at M0 only |
+| `perf-rust-jit` | match Status: currently `--jit --serc` | historical name for the current J incumbent (`@incumbent-jit`) |
+| `perf-rust-jit-aa` | match the incumbent's feature flags | fresh A/A twin at recovery/milestones; preserve the original M0 receipt |
 | `perf-climb-ref` | — | frozen no-JIT reference for the epoch |
-| `perf-jit-<mechanism>` | `--jit` | J candidate or probe |
+| `perf-jit-<mechanism>` | match incumbent: currently `--jit --serc` | J candidate or probe |
 | `perf-rust-serc` | `--serc` | C incumbent |
 | `perf-serc-<item>` | `--serc` | C candidate |
-| `perf-rust-jit-serc` | `--jit --serc` | combined build at Close |
+| `perf-rust-jit-serc` | `--jit --serc` | historical combined-build name; preserve any retained receipts |
+| `perf-final-jit` | `--jit` | isolated JIT-only final measurement |
+| `perf-final-jit-serc` | `--jit --serc` | isolated combined final measurement |
 
 C2 added `--serc` to `perf.py build` and `rust-cpython/build.py build`.
 Serc is linked only into `--serc` builds.
@@ -216,6 +430,17 @@ use both `--jit` and `--serc`; paired J candidates must match both report flags.
 An OD15 footprint comparison uses the same overlay and JIT setting with Serc
 on and off. A combined build against `perf-climb-ref` changes both features
 and records their aggregate cost; it does not isolate the Serc footprint gate.
+
+The post-C3 `@incumbent-jit` name is historical: its report may describe a
+combined JIT+Serc build. During recovery keep that identity stable. For final
+qualification use distinct, explicit names for JIT-only and combined stages
+(here `perf-final-jit` and `perf-final-jit-serc`); do not mutate the
+incumbent's flags to obtain a comparison. Keep qualified stages at their
+measured paths with the original reports; no post-measurement renaming.
+Never rebuild `perf-climb-ref` from today's overlay under yesterday's name:
+reconstruct it from the exact M0 source/flags if necessary, or record missing
+reference evidence and follow **Source epochs**. A fresh A/A twin does not
+reset the M0 code-size denominator.
 
 ## Definitions
 
@@ -241,6 +466,15 @@ and records their aggregate cost; it does not isolate the Serc footprint gate.
 - **JIT code bytes:** per kernel, the summed executor code size in the
   `PYTHON_JIT_MAP` output of one registry-size run. R0 adds this to
   `perf.py` before M0 if no command reports it.
+
+`bench` has no top-level `S` field or milestone command. Compute `S` from
+`entities[kernel].metrics.cpu.pooled.median` in the exact emitted verdict
+JSON for **all 16** frozen training names: `exp(mean(log(ratio)))`. Apply
+the same formula to all eight held-out names and the declared subsets.
+Retain each kernel's CI95 and every raw verdict. Missing kernels, mismatched
+digests, incomplete sampling, changed references, or invalid host checks
+make the score invalid. Do not substitute wall time, the best run, a subset,
+or the ratio to the last candidate for the ratio to the frozen epoch reference.
 
 ## Targets
 
@@ -269,7 +503,28 @@ when all of these hold:
 - **Memory (OD4):** each kernel's peak RSS within +8% of `perf-climb-ref`;
   JIT code bytes per kernel within 2x the epoch's M0 incumbent.
 
+Record the build's actual feature flags beside the milestone. The final
+JIT-only result and the combined result must each meet M4 against the same
+frozen reference; matching flags are mandatory for per-step comparisons.
+The generic all-metrics verdict uses a 1% floor, so a JIT/no-JIT RSS REJECT
+can be an OD4 recorded cost while the separate +8% milestone bar still
+passes. Preserve that raw verdict and the metric-level attribution; no
+timing, guard, unexplained resource rejection, or +8%/2x miss is waived.
+OD15's isolated Serc physical-footprint check is additional, not a waiver
+of the combined milestone. `jit-stats --ref <build> --jit-set` supplies
+macOS `code_b` per kernel; Linux-only residency columns are not required.
+
+Re-run the milestone after four accepted optimization steps, at the end of
+a tier, and at Close. The same measured `S` is reported after every accepted
+step. Held-out workloads are never profiled or used to choose the next
+mechanism; a held-out miss invokes **Overfit review**, not tuning to that set.
+
 ## Track J
+
+The item specifications below define the mechanisms and their semantic
+obligations. Dated implementation narratives are historical receipts. Use
+the live Status and execution phases for current work; do not replay their
+old next-step instructions.
 
 ### R0: refresh to latest 3.16 and rebaseline
 
@@ -304,19 +559,27 @@ when all of these hold:
    then the **Milestone gate** commands to measure `S0` and the held-out and
    guard baselines.
 
-**Exit:** the lock change and M0 ledger row land on `main`. Linux x86-64 parity
-for step 4 runs where the image exists; otherwise it parks under Close and
-does not block M0.
+**Exit:** the lock change and M0 ledger row land on `main`, with native
+macOS evidence. R0 is already complete for e891; a restart reconstructs its
+references instead of chasing a new upstream pin. Linux parity is deferred
+outside this campaign.
 
 ### P1: ceilings (start of each tier)
 
-Re-profile all 16 kernels with `perf.py profile --tool sample --jit-map`. For
-each mechanism in the tier, build a throwaway probe `perf-jit-probe-<name>`
-that removes the cost unsafely while keeping training digests, and gate it
-against the incumbent with `climb-step --candidate`. Its ratio is the
-mechanism's ceiling; record it in the ledger with verdict PROBE. Rank the
-backlog by ceiling, and drop a mechanism under 1% unless it unblocks a later
-tier. Costs that the profile shows as newly dominant join the backlog.
+Re-profile all 16 training kernels with `perf.py profile --ref
+@incumbent-jit --workload <kernel> --tool sample --jit-map`. Rank a finite
+backlog by measured removable cost, confidence, and implementation cost.
+Record the hypothesis, affected workload/path, expected gain, semantic
+obligations, and a falsifying result before editing. Sample share is an upper
+bound, never proof of a speedup. Drop a mechanism below 1% unless a named
+later mechanism depends on it.
+
+When a ceiling needs a diagnostic probe, keep it in a throwaway source ref
+and build; compare through exploratory `bench --timing-only`. A probe that
+intentionally omits semantics is **PROBE**, cannot pass J acceptance, and
+never lands. Do not route such a probe through `climb-step` as if it were a
+safe optimization. Newly dominant training costs may enter only at the next
+reranking checkpoint, within the same tier budget; they never reset counters.
 
 | Tier | Mechanism | Probe or ceiling source |
 | --- | --- | --- |
@@ -1978,18 +2241,18 @@ and code at most 1.8792x M0. Nbody maps 45,692 bytes; raytrace remains
 
 ### J acceptance
 
-Under OD14 a candidate lands on steps 3-6 alone, plus the memory and
-code-size bars from **Targets** measured on any host. Steps 1, 2, and 7 and
-the **Milestone gate** run at **Close** for the stacked result.
+Historical OD14/OD16 landings used steps 3-6 plus resource checks and remain
+correctness-qualified only. New performance candidates require all seven
+steps; the bounded WAIT exception applies only to finishing an unmerged
+candidate or fixing a proven incumbent correctness defect.
 `perf.py climb-step --candidate C --correctness` runs steps 3-5 without
 waiting for a quiet host and prints verdict CORRECT; its one-run training
-point estimate goes in the ledger as advisory and never blocks. Mechanisms rank by
-sampled profile share from `perf.py profile`, not by P1 probes.
+point estimate goes in the ledger as advisory and never advances `S`.
 
-After OD14 lifts, a candidate replaces the incumbent only when all hold:
+A candidate replaces the measured incumbent only when all hold:
 
 1. **Gate:** `perf.py bench --baseline @incumbent-jit --candidate C --jit-set
-   --gate --runs 5` returns ACCEPT under the unchanged `perf_verdict.py`
+   --gate --runs 5` records ACCEPT under the unchanged `perf_verdict.py`
    policy (1% floor, 95% bootstrap), between `perf-gate-ready` checks.
 2. **No kernel regression:** no training kernel's pooled kernel-CPU CI95
    lower bound exceeds 1.02 against the incumbent.
@@ -1997,48 +2260,114 @@ After OD14 lifts, a candidate replaces the incumbent only when all hold:
 4. **Differential fuzz:** 2,000 programs from `rust-cpython/tests/jit_fuzz.py`
    give identical output, exceptions, and reference-tracer counts with the JIT
    on and off.
-5. **Targeted suites:** the same failed-test set as `perf-rust` for
+5. **Targeted suites:** no unexplained failed-test difference from the
+   candidate's same-revision no-JIT sibling (same Serc setting) for
    `test_capi.test_opt`, any `test_jit*` files present at the pin, `test_float`, `test_long`,
    `test_sys_settrace`, `test_monitoring`, `test_generators`, `test_frame`,
-   `test_gc`, `test_weakref`, plus any suites the item adds.
+   `test_gc`, `test_weakref`, plus any suites the item adds. Run the
+   item-specific Rust/native regressions and unsafe-code checks too; tests
+   skipped because JIT was disabled are not coverage of the changed path.
+   Keep reviewed opcode-shape exclusions explicit and unchanged.
 6. **Independent review:** a reviewer agent that did not write the change and
    has no access to the author's reasoning reads the diff. Its approval is
    required for any change to reference ownership, deopt, frame
    materialization, or executor invalidation; a demonstrated defect blocks.
-7. **Clean rebuild:** a clean build of C reproduces the gate direction in a
-   two-run check.
+7. **Clean rebuild and resources:** a second clean build of C reproduces
+   the gate direction in a two-run check, passes applicable memory/footprint
+   and code-size bars, and preserves stage/source identity. Resource evidence
+   may run on a busy Mac under its lease; timing evidence may not.
 
 `perf.py climb-step --candidate C` runs steps 1-5 and prints one JSON verdict;
 `--screen` first runs one training pass and gates only at a point estimate
 ≤ 0.99.
 
+The wrapper collapses a non-ACCEPT gate into top-level REJECT. Inspect its
+nested `gate.decision` and raw receipt to distinguish an actual regression
+from INCONCLUSIVE/WITHIN-BUDGET; never call either an accepted win.
+
 **Stacking.** An INCONCLUSIVE candidate with point estimate ≤ 0.995, no
 regressed kernel, and steps 3-6 passed is tagged `stack/<mechanism>`. Two or
-more stackable candidates that compose cleanly are gated as one candidate.
+three such candidates that compose cleanly may be gated once as one
+candidate, including combined correctness/review/resource checks and the
+clean rebuild. Keep at most three stackable candidates, discard obsolete
+ones after an incumbent change, and never land the components merely because
+their bundle is pending. A failed bundle consumes the same tier budget.
 
 ### J loop
 
-1. If the tier has no ceilings, run P1. T2 waits for R1's catalog.
-2. Take the top unparked mechanism. Write it in `.work/wt/<mechanism>`, at
-   most two design variants per mechanism.
-3. `perf.py build --name perf-jit-<mechanism> --jit --incremental`, then
-   `climb-step --screen`. No win: discard and record why.
-4. Run **J acceptance**.
-5. Accepted: integrate, rebuild `perf-rust-jit` and `perf-rust` clean, update
-   `S`. Rejected: ledger row, discard. Stackable: tag and ledger row.
-6. When the backlog is empty, run the **Milestone gate** and record it, met or
-   missed. Then consider a **Source epochs** refresh and move to the next
-   tier.
+1. Finish RECOVER/QUALIFY. Freeze the current tier's ranked backlog under P1
+   for a round of at most **12 candidate evaluations**. Record its starting
+   source revision, baseline score, and evaluation/failure counters. R1 is
+   already complete. Historical correctness-only landings are not measured
+   evaluations in this new round; their failed designs and item-attempt
+   limits still carry forward. A restart does not reset the round.
+2. Take the highest unparked mechanism, record its hypothesis and expected
+   application/kernel effect, and implement one variant in its isolated
+   worktree. At most two designs and three root-caused attempts per item.
+3. Build once clean to create the candidate stage. Reuse `--incremental`
+   only for development if its flags/build system have not changed. Run
+   narrow semantic checks, then an exploratory screen against the incumbent.
+   A quiet screen worse than 0.99 can reject a design; a noisy screen cannot
+   reject or accept it. A screen is never a milestone or landing receipt.
+4. A promising candidate is committed and rebuilt clean, then runs **J
+   acceptance**. Preserve all verdicts. An unavailable host selects WAIT;
+   it does not consume a performance-failure count or authorize a landing.
+5. ACCEPT: integrate serially, recheck affected gates after any rebase,
+   rebuild and identify the incumbent, and measure `S` against the unchanged
+   epoch reference. REJECT: record the cause and retire only unneeded build
+   data. INCONCLUSIVE: one justified retry or bounded stacking. Every result
+   updates Status and the ledger with before/after identities and next action.
+6. After four accepted changes, at a 12-evaluation checkpoint, or when the
+   backlog is exhausted, run the **Milestone gate** and record met/missed.
+   A checkpoint does not force a still-profitable tier to close. If measured
+   gains and profile-backed work remain, automatically open the next finite
+   round with a reranked backlog; preserve consecutive-failure and item
+   counters. Otherwise advance to the next tier, or enter Close after T4
+   even when M4 is missed. No invented tiers, upstream refreshes, or renamed
+   mechanisms to evade the plateau rule. Stop searching once M4 and C3 are
+   qualified and finish Close.
+
+Concrete commands below use the current post-C3 combined incumbent. Replace
+`perf-jit-candidate` with the recorded candidate name, and match the actual
+incumbent's feature flags; do not assume `--serc` on a JIT-only comparison.
+Run in the candidate checkout (and use a common, recorded checkout root for
+the final integration gate to avoid the known startup path-length bias):
+
+```sh
+python3 rust-cpython/perf.py setup-worktree
+python3 rust-cpython/perf.py build --name perf-jit-candidate --jit --serc
+# After edits, for development only:
+python3 rust-cpython/perf.py build --name perf-jit-candidate --jit --serc --incremental
+python3 rust-cpython/perf.py bench --baseline @incumbent-jit \
+  --candidate perf-jit-candidate --jit-set --timing-only --runs 1
+python3 rust-cpython/perf.py climb-step --candidate perf-jit-candidate \
+  --correctness --fuzz-programs 2000 --fuzz-seed 0
+# Commit the candidate source, then build clean before gating:
+python3 rust-cpython/perf.py clean --name perf-jit-candidate
+python3 rust-cpython/perf.py build --name perf-jit-candidate --jit --serc
+python3 rust-cpython/perf.py climb-step --candidate perf-jit-candidate --runs 5
+```
+
+The last command performs its own readiness checks; parse its JSON and
+complete steps 6-7 explicitly. Never overwrite a useful failed receipt with
+another attempt. Save the exact emitted result directory instead of selecting
+the newest glob. Incremental screening is optional when the prior evidence
+already justifies a full clean candidate; do not duplicate checks blindly.
 
 **J stop rules.**
 
-- After eight consecutive gated candidates fail, re-profile and re-rank once.
-  If the next four also fail, the tier closes with its milestone recorded as
-  missed, and the lane moves to the next tier. Closing T4 this way ends
-  track J incomplete.
+- After eight consecutive evaluable screens/gates fail to produce an
+  accepted candidate, re-profile and re-rank once. If the next four also
+  fail, close the tier as missed. A valid accepted gain resets consecutive
+  failures; starting a new round does not. Invalid host runs are deferrals,
+  not wins or failures. Persist all totals across restarts and do not count
+  a correctness-only legacy landing as a measured win or failure.
 - A correctness failure that reproduces on the incumbent becomes the lane's
   top item: root-cause it, fix it under **J acceptance** steps 3-7, and add a
   fuzzer seed or test that catches it. Three failed attempts park the lane.
+- A blocked item does not stop another independent lane. Stop the session
+  when all remaining work is done, parked, owner-blocked, or waiting for the
+  host. Do not create a scheduler or wakeup task to keep it alive.
 
 ## R1: CinderX reference study
 
@@ -2215,18 +2544,47 @@ overlay compile path. `eval`, `single`, and AST-object input go to the C
 compiler by mode. A Serc error raises; it is never retried on the C compiler.
 `PYTHONSERCVERIFY=1` compiles with both and raises on any difference.
 
-Add three registry workloads, `cold_python_startup`, `cold_import_django`, and
-`cold_import_app_stack`, that run with `-B` and a fresh empty
-`PYTHONPYCACHEPREFIX`, so every module, stdlib included, compiles from source.
+The cold-import workloads run with `-B`, `-X frozen_modules=off`, and a fresh
+empty `PYTHONPYCACHEPREFIX`, so source compilation is exercised. The active
+locked macOS acceptance set is **`cold_python_startup`, `cold_import_django`,
+and `compileall_source`**. `cold_import_app_stack` is registered but
+unavailable in `perf.py` because its 3.16 input closure is not locked. The
+existing C2 exception below defers it; do not invoke it, invent its inputs,
+count it as passed, or quietly remove another workload after seeing a loss.
+Adding that closure is separate future work in `docs/open-work.md`.
 
 **Exit:** `perf-rust-serc` fails exactly `perf-rust`'s `perf.py test --all`
 set; one full-suite run under `PYTHONSERCVERIFY=1` reports no difference; and
 `perf.py bench --baseline perf-rust --candidate perf-rust-serc --workload
 cold_python_startup --workload cold_import_django --workload
-cold_import_app_stack --workload compileall_source --gate --runs 5` is ACCEPT
+compileall_source --gate --runs 5` is ACCEPT
 under the unchanged verdict and memory policy. A REJECT gets profiling and
 three optimization attempts; if all fail, track C ends incomplete with the
 measured loss.
+
+Use same-commit no-JIT builds that differ only in Serc, and also isolate
+Serc's cost in the combined build with same-commit JIT-only/JIT+Serc
+siblings. Bracket each timing gate with `perf-gate-ready` and
+`perf-gate-ready -1`, and inspect its JSON as in H0. C2/C3 are performance
+accepted only after timing/guard acceptance and OD15's separate physical
+footprint check. H0 resolves the current all-metrics/RSS-policy mismatch;
+an uncomposed raw REJECT remains outstanding, not an implicit waiver.
+
+The OD15 resource receipt uses clean committed matched stages and at least
+two complete runs (five at Close):
+
+```sh
+python3 rust-cpython/perf.py bench --baseline perf-rust \
+  --candidate perf-rust-serc --gate --memory-only --matched-prefix \
+  --workload python_startup --workload cold_python_startup \
+  --workload cold_import_django --workload compileall_source --runs 5
+```
+
+Require `decision.acceptance_policy == "memory-only-serc-cost"`, complete
+sampling, equal outputs and all physical-footprint bounds within +8%.
+Report RSS as the recorded Serc cost and retain the raw decision; this
+resource-only receipt makes no speed claim. The same check on JIT-only
+versus combined stages holds the JIT setting fixed.
 
 The hook, the `--serc` flags, and the new workloads go to the **Owner queue**.
 
@@ -2662,30 +3020,101 @@ is `.work/tmp/c3-census-final.json` (release ThinLTO override recorded).
 
 ### C acceptance
 
-A track C change lands only when, on `perf-serc-<item>`: the C1 corpus has zero
-mismatches; `perf.py test --all` fails exactly `perf-rust`'s set; from C2 on,
+A track C change lands only when, on `perf-serc-<item>`: the C1/C3 corpus has zero
+mismatches or unexpected refusals; `perf.py test --all` has no unexplained
+failed-test difference from its same-revision sibling; from C2 on,
 the full-suite verify run reports no difference; and an independent reviewer
-approves any change to FFI, ownership, or the compile hook. Under OD16 the C2
-and C3 feature-completion exits do not wait for performance gates. Their
-performance acceptance remains deferred to **Close**.
+approves any change to FFI, ownership, or the compile hook. Historical C2/C3
+feature exits remain CORRECT with performance deferred. On the next run,
+qualify those features with the frozen three-workload C2 set before adding
+more compiler performance work; apply the bounded WAIT and attempt rules.
+
+Use the existing census and integration entry points, with concrete build
+paths from the current reports:
+
+```sh
+python3 rust-cpython/perf.py test --name perf-rust-serc --all
+python3 rust-cpython/perf.py test --name perf-rust-serc --all --serc-verify
+python3 rust-cpython/tests/serc_parity.py \
+  --oracle rust-cpython/stage-perf-upstream/bin/python3.16 \
+  --json .work/tmp/serc-census.json
+SERC_PYTHON="$PWD/rust-cpython/stage-perf-rust-serc/bin/python3.16" \
+  python3 rust-cpython/tests/test_serc_compile.py
+```
+
+The census defaults to all three modes and optimization levels. The CLI
+census alone does not certify the linked interpreter: retain in-process
+marshal comparison and the verify suite on both Serc-only and combined
+builds. Require the integration test to actually run (`SERC_PYTHON` unset
+would skip it). Serc's own tests remain required when its source changes.
 
 ## Close
 
-When performance acceptance resumes, Close first runs every deferred timing
-gate on a quiet host: the
-**Milestone gate** for the stacked J incumbent and the C2 and C3 cold-import
-gates. A J regression found here is bisected
-over the landed J steps and the offending steps reverted or fixed. Then, when
-M4 and C3 hold on one epoch: build `perf-rust-jit-serc`, gate it with the
-**Milestone gate** commands, rerun the C1 corpus and the J targeted suites on
-it, then run done-criterion 6 on Linux x86-64. Write the closing ledger row,
-rewrite **Status** with the final state, and clear resolved Owner queue
-entries.
+Close is a finite qualification and delivery phase on the native Mac. Enter
+it when M4/C3 appear met or the search budget is exhausted. If measurements
+are unavailable, checkpoint PERFORMANCE_DEFERRED instead of a fictitious
+closeout. Existing deferred gates are handled at QUALIFY, not postponed until
+after another unlimited optimization campaign.
+
+1. Freeze the release-candidate source revision and epoch. From that revision
+   build the four variants clean, plus the same-epoch pristine upstream
+   controls needed for attribution. Preserve the immutable M0 reference and
+   code-size receipt; refresh A/A at the actual final build/path/host setup.
+2. Run the **Milestone gate** on distinct JIT-only and combined stages. The
+   combined score must satisfy M4 and reproduce the JIT-only score within
+   the fresh A/A spread; neither a larger noise envelope nor a new reference
+   can hide a loss. Recheck training, held-out, application guards, RSS, and
+   code bytes. Run the C2 timing and isolated footprint gates for Serc-only
+   and combined variants with the proper matched controls.
+3. Run the complete native macOS suite matrix in done criterion 6, targeted
+   native/Rust/unsafe regressions, and 2,000 differential programs per seed
+   for seeds 0-2 on the final JIT-only and combined builds. Record JIT-active
+   coverage; skipped execution is not evidence. Run the C1/C3 census and
+   linked compiler verification in all modes/optimization levels. Classify
+   every failure/skip against exact control evidence, including frozen
+   reviewed shape exclusions. A new defect gets a bounded fix and affected
+   revalidation; it cannot be added to the known-red list to finish.
+4. An independent reviewer checks final source, emitted/native behavior,
+   evidence identities, all threshold calculations, and the claims in the
+   report. Reconcile provisional landings as measured, reverted, or still
+   incomplete; do not advertise individual speedups from one aggregate win.
+5. Write every **Deliverable**, a closing ledger row, and the final Status.
+   COMPLETE_MACOS requires all bars. Otherwise deliver INCOMPLETE_PLATEAU
+   with best measured builds and exact gaps. Mark Linux deferred with no
+   native host, and leave production promotion and unresolved owner reviews
+   explicit. No publishing a JIT/Serc product or reopening a completed tier.
+
+The comparison command family is below; substitute the recorded final stage
+for `perf-final-jit` and repeat for `perf-final-jit-serc`. Record both external
+readiness results for each timing command. These commands collect evidence;
+H0 and **Targets** decide whether it qualifies.
+
+```sh
+perf-gate-ready
+python3 rust-cpython/perf.py bench --baseline perf-climb-ref \
+  --candidate perf-final-jit --jit-set --gate --runs 5
+perf-gate-ready -1
+perf-gate-ready
+python3 rust-cpython/perf.py bench --baseline perf-climb-ref \
+  --candidate perf-final-jit --jit-heldout --gate --runs 5
+perf-gate-ready -1
+python3 rust-cpython/perf.py jit-stats --ref perf-final-jit --jit-set
+```
+
+Run the commands sequentially and only proceed with a timing command after
+its pre-check succeeds. Never interpret a block's last zero exit status as
+proof that its earlier commands or verdicts passed.
 
 ## Source epochs
 
 An epoch is one pinned 3.16 commit with its own `perf-climb-ref`, incumbents,
-A/A spread, and `S0`. Scores compare only within an epoch.
+A/A spread, and `S0`. Scores compare only within an epoch. **This resumed
+campaign stays on e891 through qualification and Close.** Record a newly
+observed prerelease for the next epoch. A failed tier or missing M4 is not a
+reason to reset the score, reference, search budget, or attempt counters.
+
+The following procedure applies after this frozen closeout, or when the
+owner explicitly requests an epoch change:
 
 - A refresh happens only at a J milestone boundary, when the owner asks or
   when upstream has tagged a 3.16 pre-release since the current pin.
@@ -2698,6 +3127,12 @@ A/A spread, and `S0`. Scores compare only within an epoch.
   were measured on.
 
 ## Owner decisions
+
+Historical decisions below explain their original receipts. The 2026-11-15
+operating contract above applies to the next explicitly launched run:
+macOS-only completion, measurement-first qualification, and bounded deferral.
+It leaves the execution pause, feature semantics, numeric targets, LLVM pins,
+production boundary, and OD17's reviewer restriction intact.
 
 - **OD1 (2026-11-01):** keep the pinned LLVM; see **Boundary**.
 - **OD4:** memory gates stay as written; JIT against no-JIT keeps its peak RSS
@@ -3167,18 +3602,17 @@ backlog:
 
 ## Lane host
 
-Linux x86-64 lane commands run in the local image `rust-cpython-linux:20260401`
-(Ubuntu 24.04, the exact `linux-toolchain.lock.json` packages, rustup
-`nightly-2026-09-15`):
+The active host is native macOS arm64 with the locked SDK, LLVM, and Rust
+toolchain. Builds and `test --all` can outlast a foreground session; preserve
+their process/log identity, use the existing host lease, and resume by
+observing them rather than starting duplicates. `TMPDIR` points inside
+`.work/tmp`. Only one measurement runs at a time; never overlap external
+compiler/CinderX/Serc work with a measurement lease.
 
-```sh
-docker run --rm --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
-  -v "$PWD:$PWD" -w "$PWD" -e TMPDIR="$PWD/.work/tmp" \
-  rust-cpython-linux:20260401 <command>
-```
-
-Builds and `test --all` outlast 10 minutes; run them in the background. The
-image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
+The former Linux image recipe and receipts are historical. No Linux host is
+available for this campaign, and no Linux command or image acquisition is a
+prerequisite. A future native Linux run needs a separately reopened scope
+and its own current source/build/host receipts; macOS results cannot certify it.
 
 ## Debugging methods
 
@@ -3220,9 +3654,19 @@ image is absent on the owner's macOS arm64 workstation (checked 2026-11-09).
     bare `make` in a perf build directory; `rc=2` right after a crash is
     usually leftover scratch.
 
-## Status
+## Preserved host handoff
 
-**Paused 2026-11-13 at the owner’s request.** Resume prompt: “Resume this campaign from Status and finish reference initialization before another slice.” First command from the integration checkout: `codex-campaign-closeout.py cancel`.
+Historical local state from **2026-11-13**, preserved for recovery rather
+than treated as current build evidence. The live Status is at the top of
+this document. On an explicit resume, use its preflight before invoking any
+machine-local helper or executing the old candidate. Any imperatives or
+present-tense status below describe the 2026-11-13 handoff; the operating
+contract above controls the next run.
+
+The owner's stop asked for reference initialization to be finished before
+another slice. The recorded host-specific closeout command was
+`codex-campaign-closeout.py cancel`; it is conditional on actual helper and
+campaign state as described in **Start here**.
 
 Main’s last accepted runtime is `cb1444fe`: checked instance-attribute loads. All 39 native integrations, 18 focused suites with 17 reviewed opcode-shape assertions, 2,000 fuzz programs, 31 equal digests, independent final review, five resource trials and 14 integrated smoke checks pass. Main remains green. Nothing is pushed.
 Parked candidate `campaign/jit-reference-init` is `e3cbf337` in `.work/wt/jit-reference-init`. Runtime `eb7f262e` moves the canonical initializer unchanged and preserves exports. Both clean matched stages verify 58 extensions. Nine source/configuration syntax checks, predecessor allocation/observer/failure controls and corrected source review pass.
@@ -3408,3 +3852,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-13 | e891 | J | T4 | guard exact old floats before list-item cleanup in numeric store sequences, retaining ownership and original fallback | accepted `perf-jit-null-local-cleanup` at main `605e155e` | performance deferred (OD16) | five interleaved resource trials pass: matched RSS <=1.0011x incumbent, isolated Serc footprint <=1.0303x no-Serc, code <=1.8792x M0; nbody 45,692 bytes, raytrace 659,248 | CORRECT: clean matched variants verify 58 extensions each; 101 Rust tests and targeted FFI AddressSanitizer; 38 native integrations; 18 suites retain the same 16 exclusions; 2,000 fuzz programs (1,949 JIT-active, 0 differences); 31 equal digests. Independent source/generated and leased native review approves both variants and predecessor. Six fixture traces require the new kernel, including cached negative indices; finalizer PCs, aliases, bounds, owner-list reference tracing and observers pass. Frozen nbody emits 6+3 guarded stores. Private map/input/step widths 84/6/8 | runtime `686f0e21`, fixtures through `4003630a`; `.work/wt/jit-list-float-cleanup/.work/tmp/list-float-cleanup-{feature-acceptance,resources}.json`; corpus `20261113T142544Z-perf-jit-null-local-cleanup-vs-perf-jit-list-float-cleanup`, `20261113T142834Z-...`; root `jit-list-float-cleanup-{independent-review,review-lease-audit,frozen-shapes}.json` and `{source-proof-rebase,native-rebase,asan-rebase,integrated-check}.log`; worktree `list-float-cleanup-rust-rebase-final.log` |
 | 2026-11-13 | e891 | J | correctness | keep the first local store generic when old-type hints describe end-of-trace state, preventing integer-entry side-trace churn | accepted `perf-jit-list-float-cleanup` at main `405d4184` | performance deferred (OD16) | five interleaved resource trials pass: matched RSS <=1.0044x incumbent, isolated Serc footprint <=1.0328x no-Serc, code <=1.8792x M0; nbody 45,604 bytes, raytrace 659,248 | CORRECT: clean matched variants verify 58 extensions each; 103 Rust tests and targeted FFI AddressSanitizer; 38 native integrations; 18 suites retain the same 16 exclusions; 2,000 fuzz programs (1,949 JIT-active, 0 differences); 31 equal digests. Independent source and leased native review approves both variants and predecessor. Initialized integer chaos reentry emits one trace versus 49; unset reentry remains zero. Later nbody stores retain 13+4 nullable and 6+3 guarded list kernels. No C, opcode or private ABI change | source `7c63da96`; `.work/wt/jit-store-entry-provenance/.work/tmp/store-entry-provenance-{feature-acceptance,resources}.json`; corpus `20261113T150931Z-perf-jit-list-float-cleanup-vs-perf-jit-store-entry-provenance`, `20261113T151219Z-...`; root `jit-store-entry-provenance-{independent-review,review-lease-audit,frozen-shapes}.json` and `{rust-tests,asan,before,native,source-proof,integrated-check}.log` |
 | 2026-11-13 | e891 | J | T3/T4 | fuse adjacent managed-value checks and instance loads with equal original targets while preserving type guards and owner cleanup | accepted `perf-jit-store-entry-provenance` at main `769431b8` | performance deferred (OD16) | five interleaved resource trials pass: matched RSS <=0.9997x incumbent, isolated Serc footprint <=1.0260x no-Serc, code <=1.8542x M0; nbody 45,604 bytes, raytrace 650,492 | CORRECT: clean matched variants verify 58 extensions each; 104 Rust tests and targeted FFI AddressSanitizer; 39 native integrations; 18 suites with 17 reviewed obsolete shape assertions; 2,000 fuzz programs (1,949 JIT-active, 0 differences); 31 equal digests. Independent source/generated and leased final native review approves both variants and predecessor. One additional upstream test passes with only its expected opcode changed. Repeated misses, exact PCs, owner finalization, aliases, dictionary and class mutation, weakrefs and observers pass. Nine frozen kernels emit checked loads in all five trials. New private map/input/output widths12/8/2; existing ABIs unchanged; virtual-call traces declined | runtime `e2702b93`, shape recognition `503cdb8e`; `.work/wt/jit-checked-attribute/.work/tmp/checked-attribute-{feature-acceptance,resources}.json`; corpus `20261113T154127Z-perf-jit-store-entry-provenance-vs-perf-jit-checked-attribute`, `20261113T154418Z-...`; root `jit-checked-attribute-{source-review,independent-review,review-lease-audit,emitted-counts}.json` and `{rust-tests,asan,before,native,noserc-native,source-proof,upstream-shape,serc-upstream-shape,integrated-check}.log` |
+| 2026-11-15 | e891 | J/C | operating contract | native macOS qualification, measured selection, bounded rounds/deferral, reproducible closeout | unchanged runtime | unmeasured; no campaign run | — | DOC_ONLY: existing pause retained; Linux deferred; historical CORRECT receipts unchanged; commands checked against actual CLI | this document, AGENTS.md, lane README/ENGINEERING, docs/open-work.md |
