@@ -10,7 +10,7 @@ The isolated CPython 3.15.1 distribution is fully OpenSSL-free. The native
 Docker run at `af1e789b87b5a6ae892910ca53c29e3b0ead6568` passes all 53 archive
 checks and the separate minimal-runtime check. The prerelease workflow uses
 this same build and qualification procedure. The native ARM64
-[CI run](https://github.com/joshuarli/python-build/actions/runs/40046301806)
+[CI run](https://github.com/laputa-systems/python-build/actions/runs/40046301806)
 also passes all 53 checks at source
 `86f0635020fc94ce75f3449b2efb817726adf623`.
 Production defaults, production
@@ -35,7 +35,7 @@ The qualification archive and reports are preserved under
 `.work/tmp/retained/linux-rc7/`.
 The [Docker procedure](LINUX.md) describes the report and receipt paths.
 
-The [verified prerelease](https://github.com/joshuarli/python-build/releases/tag/research-openssl-free-cp315-arm64-86f0635020fc94ce75f3449b2efb817726adf623)
+The [verified prerelease](https://github.com/laputa-systems/python-build/releases/tag/research-openssl-free-cp315-arm64-86f0635020fc94ce75f3449b2efb817726adf623)
 publishes `experimental-no-openssl-candidate.tar.gz` with SHA-256
 `33b2282a9aca7e163d0f8d3a06234d074cde5eec71b09a0f0ace8b38cae52f32`.
 The compressed archive is 13,047,754 bytes; its payload is 44,400,640 bytes.

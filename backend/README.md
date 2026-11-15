@@ -194,7 +194,7 @@ measured build-time claim. OpenSSL documents these configuration options in its
 
 ## Why the prototype uses RTLS
 
-The [`rust-cpython/overlay` experiment](https://github.com/joshuarli/python-build/tree/4752d8eda0cd3166bd042d994216b4f2a03137e9/rust-cpython/overlay)
+The [`rust-cpython/overlay` experiment](https://github.com/laputa-systems/python-build/tree/4752d8eda0cd3166bd042d994216b4f2a03137e9/rust-cpython/overlay)
 demonstrates Rust-backed CPython object implementations, but its `_ssl_rs`
 module delegates TLS operations to OpenSSL. Its `_hashlib_rs` and `_hmac_rs`
 modules cover only part of CPython's hashing surface and retain RustCrypto
