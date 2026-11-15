@@ -288,6 +288,7 @@ class DirectRunTests(unittest.TestCase):
             )
         return result, commands[0], environments[0], site_packages, output_dir
 
+    @unittest.skipIf("venv" in sys.executable.lower(), "benchmark harness must run on the built interpreter, not a venv")
     def test_timing_runs_script_directly_with_external_path_and_rigorous_pyperf(self):
         result, command, environment, site_packages, output_dir = self.run_fixture("timing")
 

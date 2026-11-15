@@ -21,6 +21,7 @@ from benchmarks.harness.baseline import (
     save_baseline_snapshot,
     update_baseline_snapshot,
 )
+from buildsys.generations import active_generation, publish_generation
 from buildsys.product import PRODUCT
 
 
@@ -200,10 +201,11 @@ class BaselineSnapshotTests(unittest.TestCase):
             root = Path(temp)
             candidate_directory = root / "dist" / "aarch64-apple-darwin"
             candidate_directory.mkdir(parents=True)
-            candidate = candidate_directory / PRODUCT.local_archive_name(
-                "aarch64-apple-darwin", "r2"
-            )
-            candidate.touch()
+            archive_name = PRODUCT.local_archive_name("aarch64-apple-darwin", "r2")
+            fixture = root / archive_name
+            fixture.touch()
+            publish_generation(candidate_directory, {archive_name: fixture})
+            candidate = active_generation(candidate_directory) / archive_name
             reference = root / "pbs-macos.tar.gz"
             args = SimpleNamespace(
                 preset="pbs",
