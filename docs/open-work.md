@@ -1,6 +1,6 @@
 # Open work
 
-Remaining work after the production closeout and Rust campaign were retired.
+Production follow-ups and research work outside the active Rust JIT campaign.
 Priorities: P1 blocks a production release, P2 is important, P3 is worth
 doing, P4 is optional. A debt entry is not success.
 
@@ -33,13 +33,21 @@ doing, P4 is optional. A debt entry is not success.
 
 ## Rust-for-CPython lane
 
-JIT work, the 3.16 source refresh, the Serc compiler port, and the
-`compileall_source` marshal mismatch belong to the
-[rust-cpython JIT campaign](CAMPAIGN-RUST-CPYTHON-JIT.md) and is not tracked
-here. None of it gates a production release.
+JIT work, 3.16 source epochs, the Serc compiler port, and compiler-parity fixes
+belong to the [rust-cpython JIT campaign](CAMPAIGN-RUST-CPYTHON-JIT.md) and
+are not tracked here. That campaign owns its execution pause and current
+macOS-only scope. None of it gates a production release.
 
-- [ ] **P3 — Linux timing pass.** The integrated Linux timing pass is parked.
-  Run it when the host is quiet, with the same matched control.
+- [ ] **P3 — deferred Linux qualification and timing.** Reopen only when the
+  owner supplies a native Linux host and explicitly requests this work.
+  Rebuild source-matched controls and qualify the selected epoch before
+  measuring it. Historical Linux receipts do not qualify the current stack;
+  Linux is not a completion gate for the macOS campaign.
+- [ ] **P3 — cold application-stack input closure.** Lock the unavailable
+  `cold_import_app_stack` / `import_app_stack` dependencies in a future
+  authorized benchmark-input change. The campaign's C2 exception excludes
+  this unavailable workload from its current locked macOS gate; it remains
+  unmeasured, not passed. Do not change the current gate while optimizing.
 - [ ] **P3 — S5 route comparison on macOS.** The private compression routes were
   kept on Linux evidence; re-run the private-versus-upstream-compression
   comparison on macOS if the route decision is revisited.

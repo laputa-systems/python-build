@@ -1,23 +1,27 @@
 # Rust-for-CPython research lane
 
 JIT work in this lane follows one campaign,
-[rust-cpython JIT](../docs/CAMPAIGN-RUST-CPYTHON-JIT.md). Its first step, R0,
-moves the source pin below to the latest upstream 3.16 `main`.
+[rust-cpython JIT](../docs/CAMPAIGN-RUST-CPYTHON-JIT.md). Resume from its
+Status and current source epoch; R0 has already opened epoch e891. Campaign
+execution remains paused until resumed by the owner. Current qualification
+is native macOS arm64 only. Linux research execution and qualification await
+a native Linux host and an explicit reopening; they do not gate this macOS
+campaign.
 
-This isolated lane builds upstream CPython **3.16.0a1** with a Rust overlay.
+This isolated lane builds upstream CPython **3.16.0a1+dev** with a Rust overlay.
 It is not the shipping 3.15.1 product. JIT experiments run only in this lane:
 the product build keeps the JIT disabled, and `--jit` here never changes the
-product configuration. All 71 named public-behavior coverage
-targets passed their complete relevant CPython suites on native macOS arm64
-and Linux x86-64; later parity runs keep the known-red set recorded in
-[ENGINEERING.md](ENGINEERING.md). Linux arm64 is not implemented here and is
-never described as qualified. The engineering contract, verdict policy, and
+product configuration. Historical 3.16.0a1 receipts cover all 71 named
+public-behavior targets on native macOS arm64 and Linux x86-64; they do not
+qualify the current epoch. Current same-epoch parity evidence and known-red
+attribution are recorded in the campaign. Linux arm64 is not implemented here
+and is never described as qualified. The engineering contract, verdict policy, and
 closed mechanisms are in [ENGINEERING.md](ENGINEERING.md); each route's suite
 contract is in [ROUTES.md](ROUTES.md); open work is in
 [../docs/open-work.md](../docs/open-work.md).
 
-The verified source is upstream `python/cpython` tag `v3.16.0a1`, commit
-`22d79d9840a275ed6ed36cd590dc74edc61765fb`, pinned with its archive digest in
+The current source is upstream `python/cpython` `main`, commit
+`e891a9117985888df3e5d48145cf07ddda098335`, pinned with its archive digest in
 [`sources.lock.json`](sources.lock.json). The overlay supplies the Cargo
 workspace and the `cpython-sys`/`cpython-build-helper` bridge crates; the
 overlay lockfile is the build lock, and its digest is pinned in the same
