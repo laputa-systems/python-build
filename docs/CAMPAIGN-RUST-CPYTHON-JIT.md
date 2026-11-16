@@ -54,7 +54,12 @@ remaining cause was sampling depth, addressed by `856c824` (per-workload
 third calibration is running. The third completed quiet with every metric
 bounded except fannkuch wall/cpu (one run breached by 0.0003), which got
 the same 120-round override (`f876f66`); a fourth calibration is running.
-Separately, source audit of
+The fourth completed quiet with **CALIBRATION-OK** — every metric on all 23
+jit-set workloads within the 1% floor across 5 runs
+(`20261116T183903Z-calibrate-perf-rust-jit`, pre/post `perf-gate-ready`
+clean). The fresh A/A twin `perf-rust-jit` vs `perf-rust-jit-aa` gate run is
+in progress; H0 exits only when it also bounds within budget. Separately,
+source audit of
 the parked unpack-fusion layer found a deopt stack-depth hazard (ledger,
 2026-11-16); that layer is parked pending rework regardless of H0.
 
