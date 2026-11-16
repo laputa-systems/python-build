@@ -30,17 +30,27 @@ consult by item, not a queue of work to repeat.
 Rewrite this table at each checkpoint; keep detailed provenance in the
 ledger and the [preserved host handoff](#preserved-host-handoff).
 
-**Paused 2026-11-16 at the owner's request, mid-CLIMB round 1.** Resume
-prompt: "Resume the rust-cpython JIT campaign from Status: finish
-evaluation 8, then continue CLIMB round 1." First command from the
-integration checkout: `codex-campaign-closeout.py cancel`, then continue
-per **Execution model**. Main's last accepted runtime is `3bd21f6`
-(reference-init); measured incumbent `perf-rust-jit` S = 0.7463, M4 ≤ 0.25
-unmet, integration branch green (docs-only commits since). Nothing is
-pushed. CLIMB round 1 consumed 8 of ≤12 evaluations; every gate attempt
-since eval 2 hit the same unexplained ~1% unrelated-workload /
-unbounded-`peak_rss` INCONCLUSIVE signature — recorded as a
-JIT-vs-frozen-reference property, not candidate guilt.
+**PAUSED — the owner's stop is preserved (recorded 2026-11-16 UTC).**
+Steering review on 2026-11-15 Pacific examined published `main 5515913`;
+it did not resume the Mac, run native benchmarks, or cancel a closeout helper.
+On an explicit resume: "Recover the rust-cpython campaign evidence, resolve
+H0's shared measurement blocker, then qualify a reduced candidate stack and
+C3 before returning to CLIMB." Follow **Start here** before any host helper.
+
+Main's last correctness-qualified runtime is `3bd21f6` (reference-init).
+The recorded `perf-rust-jit` score is **S = 0.7463** versus M0 0.7748,
+held-out 0.8366, RSS at most 1.073x reference and code at most 1.66x M0.
+These are recorded measurements, **not a qualified milestone**: the fresh
+A/A gate was INCONCLUSIVE and the frozen-reference guard gate REJECTED.
+M4 ≤ 0.25 remains unmet. No CLIMB round-1 candidate has been accepted.
+
+Round 1 has consumed **8 of ≤12 candidate evaluations**. Preserve that total,
+but audit the separate evaluable-failure counter; a shared measurement
+blocker is not evidence of an optimization plateau. Evals 2/5/6/7/8 repeatedly
+hit the same ~1% unrelated-workload / unbounded-RSS signature. Their contrast
+is **JIT candidate versus JIT incumbent**; the earlier **JIT versus frozen
+interpreter** attribution does not explain it. Cause remains unresolved.
+Do not retry eval 8 or implement evals 9–12 before **H0 recovery checkpoint**.
 
 - `campaign/jit-subscr-virtual` `da402d9` — stack tip, worktree
   `.work/wt/jit-subscr-virtual` (closeout-allowed). Evals 7+8: fused
@@ -48,8 +58,8 @@ JIT-vs-frozen-reference property, not candidate guilt.
   `_UNPACK_SEQUENCE_LIST_TO_FAST`, generic two-tuple). Eval 7 screen
   0.9756 / gate INCONCLUSIVE ×2 / CORRECT. Eval 8 screen 0.9743 / gate
   attempt 1 INCONCLUSIVE 0.9740; its one justified retry was interrupted
-  by this winddown — rerun `climb-step --candidate perf-jit-unpack-list`
-  (gate retry, then `--correctness` for `da402d9`) before eval 9.
+  by this winddown. Exact-tip correctness is still pending; retain the
+  partial receipt, but a retry is conditional on H0 and the stack/Rust audit.
 - `campaign/jit-list-read-unbox` `a27dec1` — eval 6 (unboxed list float
   reads + guard elision); screen 0.9736, gate INCONCLUSIVE ×2, CORRECT;
   ancestor of the stack tip.
@@ -64,12 +74,24 @@ JIT-vs-frozen-reference property, not candidate guilt.
   `campaign/jit-array-read-inline` `531a76e` (0.9966),
   `campaign/jit-checked-attr-store` `88bc548`.
 
-Next slice: complete eval 8's interrupted gate retry and correctness;
-then evals 9–12 from the frozen backlog (items 2–3 remainder, item 5) or
-the milestone gate (4 accepts / 12 evals / backlog exhaustion →
-INCOMPLETE_PLATEAU report). Retired worktrees' `results/` evidence is
-preserved under `.work/campaign-archive/winddown-20261116/<tree>/`.
-C3 remains feature-complete with cold-compilation acceptance open.
+The tip contains at least four unaccepted mechanisms (array stores, array
+index unboxing, list-read unboxing, unpack fusion), exceeding the three-item
+stack bound even if tuple/list unpack count as one. Its reported late C
+`fuse_unpack_stores` pass also needs the **Rust rule** audit before eligibility.
+Preserve the source, but freeze this stack; an old layer's speedup cannot
+qualify another layer. C3 remains feature-complete with cold-compilation
+acceptance open and can progress independently under the host lease.
+
+Next slice on resume is **RECOVER → H0 → QUALIFY**, not another optimization:
+verify the exact source/receipt inventory, establish calibrated comparisons,
+reduce and audit the stack, then remeasure the smallest useful bundle.
+Retired worktrees' results are recorded under
+`.work/campaign-archive/winddown-20261116/<tree>/`; verify that archive on the
+Mac. No `campaign/*`, `stack/*`, or `lane/*` refs were published at review,
+and their source/raw receipts were unavailable in this review checkout.
+Do not reconstruct claims from the ledger alone. Missing evidence parks the
+affected candidate; missing calibration selects BLOCKED/PERFORMANCE_DEFERRED,
+never INCOMPLETE_PLATEAU merely because attempts were spent.
 
 Subsequent checkpoints also record the exact candidate and reference SHAs,
 build names/flags, phase, next command, attempt/design and 8+4 plateau
@@ -202,7 +224,7 @@ resume. Never cancel an unrelated campaign or assume any process still runs.
 
 | Phase | Work | Exit / next action |
 | --- | --- | --- |
-| RECOVER | Inventory identities; finish reference initialization's pending correctness/review or park it; audit measurement prerequisites (H0) | Reproducible controls and exact pending state; candidate still unmerged |
+| RECOVER | Inventory candidate/control identities and pending evidence; audit measurement prerequisites (H0) | Reproducible controls and exact pending state; candidate still unmerged |
 | QUALIFY | Measure the already integrated OD14/OD16 stack, isolate JIT/Serc costs, resolve regressions by bisection | A measured incumbent and finite debt list; no new performance feature lands beforehand |
 | CLIMB | Profile → rank → one hypothesis → explore → clean gate → accept/reject → checkpoint | Advance the best measured incumbent or consume the bounded attempt budget |
 | CLOSE | Run the final same-epoch matrix and write deliverables | COMPLETE_MACOS or INCOMPLETE_PLATEAU |
@@ -279,6 +301,68 @@ successful post-check and `decision.decision == "CALIBRATION-OK"` in its
 exact JSON receipt. `calibrate`, like `bench`, can exit zero with a negative
 verdict. A calibration failure blocks timing claims, not semantic debugging.
 
+### H0 recovery checkpoint
+
+This is the next work item on an explicit resume. Two candidates blocked by
+the same unexplained measurement signature interrupt CLIMB; adding a third
+candidate or another layer is not a diagnosis. Use the existing bounded
+attempt rules for this H0 item. Preserve the eight spent candidate evaluations
+and all raw verdicts; harness diagnosis does not reset optimization budgets.
+
+1. **Recover identities and causes.** Inventory exact source refs, build
+   reports, flags, paths, host checks and emitted JSON directories. Read the
+   A/A and candidate receipts at entity/metric/per-run level, including actual
+   memory rounds, coverage, raw samples, intervals and sampling completion.
+   Group missing evidence, sampling defects, path effects, host variance and
+   real regressions separately. "The new opcode cannot execute here" does
+   not rule out a binary-layout, import-path or build regression.
+2. **Isolate paths before blaming code.** The lane README records 1–3%
+   startup/import bias from deep worktrees versus the primary checkout.
+   Establish fresh same-source A/A controls at the intended comparison paths;
+   gate both builds under one recorded checkout root with matched path lengths
+   and flags. If the difference persists, use a controlled path/build-order
+   crossover, rebuilding and reidentifying both stages rather than renaming
+   measured binaries. Inspect and record actual runtime prefixes. Current
+   `--matched-prefix`/Python-home aliases support memory-only sampling,
+   not timing; do not pass them to a timing gate or claim they solve it.
+3. **Diagnose RSS from raw rounds.** `PROFILE_ROUNDS['standard']` collects
+   three memory processes per workload per side (some noisy workloads use five).
+   `run_observation` currently stores one median RSS ratio per outer run;
+   `_memory_interval` uses the baseline noise allowance, not a bootstrap of
+   those process ratios. `entity_verdict` requires every run to bound the
+   metric. Thus the ledger's "single-sample RSS" is not proof of one memory
+   process, and more `--runs` need not narrow the relevant bound. `perf.py`
+   also maps workload `--profile rigorous` to standard. Equal synthetic RSS
+   samples `[99, 100, 101]` MB on both sides yield a 1.0 ratio but an interval
+   about `[0.956, 1.044]`, which remains inconclusive across repeated runs.
+   Reproduce the actual failure before changing sampling or estimators.
+4. **Repair only a demonstrated defect.** A minimal H0 change has source
+   review and positive/negative controls: stable identical input bounds
+   correctly, real timing/RSS regressions reject, missing/incomplete evidence
+   fails closed, and unstable evidence stays unresolved. Retain the 1% floor,
+   workloads, metrics and independent replication; do not pool away a bad
+   run, drop RSS, enlarge its allowance, or waive a guard to obtain ACCEPT.
+   An estimator/policy change beyond implementing the existing contract needs
+   an owner decision. If the host cannot resolve the declared floor, record
+   PERFORMANCE_DEFERRED and its reopening condition instead of tuning to pass.
+5. **Exit on evidence.** Require full all-metric CALIBRATION-OK and a fresh
+   clean A/A twin bounded within budget at the actual gate setup. Remeasure
+   the affected incumbent/feature-split controls under that one harness
+   identity. Retain inherited frozen-reference guard losses as explicit
+   qualification debt: attributing them to JIT does not waive them. Diagnose
+   or fix that debt under the bounded rules; without qualifying evidence do
+   not claim a milestone. Resume candidate qualification only after the
+   comparison itself is usable, and record any residual incumbent debt.
+   Diagnostic comparisons may proceed, but new performance landings wait for
+   the unresolved qualification debt under **Phases and selection priority**.
+
+After H0, audit and reduce the existing stack under **J acceptance** before
+spending evaluations 9–12. Exact-tip correctness, independent review, and the
+Rust placement/observer proofs still apply. Separately finish C3's existing
+cold-compilation qualification with matched Serc controls; no new compiler
+features are needed. A shared timing blocker affects that gate too, but does
+not prevent recoverable source review or semantic checks.
+
 ### Lanes
 
 | Lane | Items, in order | Depends on |
@@ -307,6 +391,16 @@ Each lane works in its own worktree `.work/wt/<item>` on branch
 - After every accepted step or milestone, the lane rewrites its **Status** row
   and adds its **Ledger** row in the same commit. Status is rewritten in
   place, never appended.
+- After each gate or park, retain its immutable receipts and update a compact
+  manifest of exact source/build/harness identities, commands, verdicts and
+  review paths. Before cleanup and at a pause, also preserve a verified Git
+  bundle containing unpushed candidate refs and their required history, and a
+  checksummed raw evidence archive. Verify these before retiring consumers;
+  do not repack unchanged bulk artifacts after every gate.
+  Record its absolute location and retention boundary in Status. A `.work`
+  archive survives only while that checkout survives; label host-only evidence
+  honestly and use an existing authorized durable destination if available.
+  This grants no new push/upload permission and changes no historical verdict.
 - Default-build changes from track C (marshal parity) land only at a J
   milestone boundary or before R0 step 5, so they never move a J measurement
   mid-tier. They get a ledger row; track J rebuilds its incumbent and
@@ -425,6 +519,18 @@ templates compiled by the locked clang, the existing hooks in
 `overlay/Python/optimizer.c` and `jit.c`, and the smallest glue between them
 and the crate. No handwritten assembly (ENGINEERING rule 9). T1's runtime
 fixes are changes to existing C paths and are exempt.
+
+The round-1 ledger describes evals 7–8 as a new late C pass
+`fuse_unpack_stores`. Inspect that unmerged source on recovery: recognition,
+eligibility and rewrite planning belong in Rust, with C applying the plan
+and implementing the runtime stencil. Port that planning or park the layer;
+do not grandfather it as glue. This is an audit of the recorded design,
+not a claim that the unavailable candidate source was reviewed here.
+For fusion across `_SET_IP`/`_CHECK_VALIDITY` and multiple local replacements,
+require exact-PC and partial-assignment tests with destructor/weakref frame
+observers, alias/duplicate targets, invalidation and mutable-list behavior.
+Prove callback/deopt continuation and original side-effect order with a
+matched predecessor control; an emitted-opcode assertion alone is insufficient.
 
 The crate and its hook are a contract change: the first candidate that adds
 them goes to the **Owner queue**.
@@ -599,6 +705,18 @@ Record the hypothesis, affected workload/path, expected gain, semantic
 obligations, and a falsifying result before editing. Sample share is an upper
 bound, never proof of a speedup. Drop a mechanism below 1% unless a named
 later mechanism depends on it.
+
+At the first reranking after H0, quantify the remaining whole-kernel ceiling
+before adding more fusions. The recorded S = 0.7463 needs roughly another
+66.5% CPU-time reduction to reach 0.25; a 2.6% bundle, if validated, would
+only bring it to about 0.727. Partition the dominant training costs without
+double-counting overlapping uops/descendants, identify the covered hot paths
+and untouched time, and rank one coherent mechanism by removable cost and
+implementation effort. Do not sum separate CinderX ablations as a joint gain.
+Use the existing bounded probes and 8+4 stop rule to test that headroom. A
+measurement blocker proves no architecture ceiling; a valid exhausted search
+produces the best qualified result and a concrete architectural follow-up,
+not an unapproved frontend/backend rewrite or a lower M4 target.
 
 When a ceiling needs a diagnostic probe, keep it in a throwaway source ref
 and build; compare through exploratory `bench --timing-only`. A probe that
@@ -2341,12 +2459,25 @@ nested `gate.decision` and raw receipt to distinguish an actual regression
 from INCONCLUSIVE/WITHIN-BUDGET; never call either an accepted win.
 
 **Stacking.** An INCONCLUSIVE candidate with point estimate ≤ 0.995, no
-regressed kernel, and steps 3-6 passed is tagged `stack/<mechanism>`. Two or
-three such candidates that compose cleanly may be gated once as one
-candidate, including combined correctness/review/resource checks and the
-clean rebuild. Keep at most three stackable candidates, discard obsolete
-ones after an incumbent change, and never land the components merely because
-their bundle is pending. A failed bundle consumes the same tier budget.
+regressed kernel, and steps 3-6 passed is tagged `stack/<mechanism>` only
+after H0 establishes a usable comparison. A shared unresolved measurement
+signature is an H0 blocker, not stacking eligibility. Two or three such
+mechanisms that compose cleanly may be gated once as one candidate, including
+combined correctness/review/resource checks and the clean rebuild.
+
+The cap is **three distinct unaccepted mechanisms in the complete ancestry**,
+not three branch names or the latest three commits. Record the component
+SHAs, dependencies and marginal evidence. Before adding a layer, compare it
+with its immediate parent under matched flags/paths, as well as comparing
+the bundle with the incumbent. Record per-kernel CPU/guard/resource changes;
+the inherited bundle's ≤0.99 screen cannot establish the new layer's value.
+A sub-floor enabling layer needs a named dependent mechanism and a measured
+combined effect, not indefinite credit. For the current oversized stack,
+use the smallest parent/child or remove-one comparisons needed to select a
+useful subset; no combinatorial search. Preserve parked source/evidence,
+discard obsolete active stacks after an incumbent change, and never land
+components merely because their bundle is pending. A failed evaluable bundle
+consumes the same tier budget; invalid evidence is a recorded deferral.
 
 ### J loop
 
@@ -2370,8 +2501,10 @@ their bundle is pending. A failed bundle consumes the same tier budget.
 5. ACCEPT: integrate serially, recheck affected gates after any rebase,
    rebuild and identify the incumbent, and measure `S` against the unchanged
    epoch reference. REJECT: record the cause and retire only unneeded build
-   data. INCONCLUSIVE: one justified retry or bounded stacking. Every result
-   updates Status and the ledger with before/after identities and next action.
+   data. INCONCLUSIVE: classify the cause before one justified retry or
+   eligible bounded stacking. A second candidate with the same unexplained
+   signature returns to **H0 recovery checkpoint**. Every result updates
+   Status and the ledger with before/after identities and next action.
 6. After four accepted changes, at a 12-evaluation checkpoint, or when the
    backlog is exhausted, run the **Milestone gate** and record met/missed.
    A checkpoint does not force a still-profitable tier to close. If measured
@@ -2414,9 +2547,15 @@ already justifies a full clean candidate; do not duplicate checks blindly.
 - After eight consecutive evaluable screens/gates fail to produce an
   accepted candidate, re-profile and re-rank once. If the next four also
   fail, close the tier as missed. A valid accepted gain resets consecutive
-  failures; starting a new round does not. Invalid host runs are deferrals,
-  not wins or failures. Persist all totals across restarts and do not count
-  a correctness-only legacy landing as a measured win or failure.
+  failures; starting a new round does not. Invalid host runs, uncalibrated
+  comparisons and a shared unresolved harness/path effect are deferrals,
+  not wins or performance failures. Keep total candidate evaluations and
+  evaluable consecutive failures as separate counters, with each receipt's
+  classification; do not refund the current eight attempts or count them
+  automatically as eight evaluable failures. Persist all totals across
+  restarts and do not count a correctness-only legacy landing as a measured
+  win or failure. Reaching a checkpoint with unusable evidence selects
+  BLOCKED/PERFORMANCE_DEFERRED, not an architectural plateau claim.
 - A correctness failure that reproduces on the incumbent becomes the lane's
   top item: root-cause it, fix it under **J acceptance** steps 3-7, and add a
   fuzzer seed or test that catches it. Three failed attempts park the lane.
@@ -3839,8 +3978,10 @@ frame observations are for stock frames; free-threaded-only passes
 elision assumes the GIL. A 3.16 port re-derives the builder, frame, and watcher
 contracts: these mechanisms are design references, not transplantable code.
 
-**Reading for the lane.** The three dominant mechanisms are the numeric path
-(specialized opcodes and simplify, together 38%) and attribute caches (19%).
+**Reading for the lane.** The strongest individual ablations are specialized
+opcodes (+21%), simplify/type specialization (+16.9%) and attribute caches
+(+18.9%). These separate disabled-versus-steady slowdowns can overlap and
+are neither additive contributions nor a measured combined speedup ceiling.
 Global caches add 6%; the inliner adds 1%; TLS and the backend passes are at or
 below the resolution. That ranks T2 unboxing and T3 attribute caches ahead of
 inlining and backend work on this reference, but CinderX's own steady mode is
@@ -3939,3 +4080,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-16 | e891 | J | T2 | subscript/unbox round, design 1/attempt 1 (bounded stack on `stack/array-index-unbox` `a51c17b`): unboxed list float reads — new tier-2 `_BINARY_OP_SUBSCR_LIST_INT_UNBOXED`/`_UNBOXED_INDEX` (exact-list + compact-int index, negative-index normalize, bounds exit, `PyFloat_CheckExact` item exit, unboxed float out); Rust planner gains `NodeKind::FloatListRead` reusing the side-aware index domain; planner-wide enablers: numeric type guards (`_GUARD_TOS/NOS_FLOAT/INT`) become transparent `Kind::Guard` (no longer block producer values; `verify()` drops the guard step when its operand is provably unboxed since the producer guarantees the type or exits), `_SPILL_OR_RELOAD` classifies as NOP so cleanup pops stay adjacent across spill markers, tier-2 unboxed ops carry no `Py_GIL_DISABLED` branch (its escaping calls tripped `HAS_ESCAPES_FLAG`→barrier and silently rejected every plan) | `perf-jit-list-read-unbox` at `campaign/jit-list-read-unbox` `a27dec1` | — | screen point 0.9736 (≤0.99); gate point 0.9744 then 0.9749, INCONCLUSIVE twice under unchanged policy | INCONCLUSIVE → `stack/list-read-unbox`: `climb-step --correctness` CORRECT (training+held-out digests equal, 2,000 fuzz programs 0 mismatches at 97.45% coverage, targeted suites match with 20 named superseded uop assertions); 114 `_jit_opt_rs` unit tests pass incl. 5 new planner tests; new `jit_list_read_unbox_integration.py` proves `_BINARY_OP_SUBSCR_LIST_INT_UNBOXED[_INDEX]` fire and fails on the incumbent; observed trace shows the full chain unbox (`SUBSCR_LIST_INT_UNBOXED` → `MULTIPLY_FLOAT_UNBOXED` → `ADD_FLOAT_UNBOXED`, guards elided); clean-build gate INCONCLUSIVE both attempts — target kernels improve (nbody cpu ~0.987, scimark_fft 0.815, sparse_mat_mult 0.914, lu 0.955, monte_carlo 0.949) but the same unexplained ~1% cpu/wall regression class on unrelated workloads (import_django ~1.009, gzip_extract_1m ~1.010, zlib_decode_1m ~1.008) plus unbounded single-sample peak_rss persists — third consecutive candidate blocked by this gate signature; candidate retained for bounded stacking, not landed | `.work/wt/jit-list-read-unbox/rust-cpython/results/perf-bench/20261116T03{2611,2716,3750}Z-perf-rust-jit-vs-perf-jit-list-read-unbox` |
 | 2026-11-16 | e891 | J | T2 | unpack-sequence round, design 1/attempt 1 (bounded stack on `stack/list-read-unbox` `a27dec1`): fused unpack-to-locals — new tier-2 `_UNPACK_SEQUENCE_TWO_TUPLE_TO_FAST` (oparg = first local index, operand0 low 16 = second; `oparg` is a u16 field so the pair cannot share it — first JIT build miscompiled the high lane to local 0 and was caught by a segfault before any timing) pops the tuple and writes both items directly into two fast locals with sequential store order, old-value destruction, and the size exit preserved; late C pass `fuse_unpack_stores` rewrites `_UNPACK_SEQUENCE_TWO_TUPLE` + two fast-local stores across transparent bookkeeping uops (`_CHECK_VALIDITY`/`_SET_IP`/`_SPILL_OR_RELOAD`/`_NOP`), accepting `_STORE_FAST_FUSED*` and `_SWAP_FAST[_N]` + single-value `POP_TOP*` forms and NOPing consumed ops; generic `_UNPACK_SEQUENCE_TUPLE` oparg==2 maps to the same fused op; four `test_capi.test_opt` uop-name assertions registered as superseded in `perf.py` | `perf-jit-unpack-store` at `campaign/jit-subscr-virtual` `3fd0e5c` + `ee3509e` | — | screen point 0.9756 (≤0.99); gate point 0.9745 then 0.9739, INCONCLUSIVE twice under unchanged policy | INCONCLUSIVE → `stack/unpack-store-fusion`: `climb-step --correctness` CORRECT on the second invocation (first invocation REJECTed only on the four new only-JIT uop-name assertions, registered superseded; training+held-out digests equal, 2,000 fuzz programs 0 mismatches at 97.45% coverage, targeted suites match); new `jit_unpack_store_integration.py` proves the fused op fires on tuple unpack+store patterns (enumerate/zip/pair-expr/overwrite), does not fire on 3-unpacks/subscript targets/dead-first-store, and fails on the eval-6 stage; clean-build gate INCONCLUSIVE both attempts — same signature as evals 5-6: scimark kernels improved (fft/lu/mc/sor/sparse in the improved set) but the unexplained ~1% cpu/wall regression class on unrelated workloads plus unbounded single-sample peak_rss persists — fourth consecutive candidate blocked by this gate signature; candidate retained for bounded stacking (it contains the full prior stack), not landed | `.work/wt/jit-subscr-virtual/rust-cpython/results/perf-bench/20261116T05{0148,0253,1310,2627,2731}Z-perf-rust-jit-vs-perf-jit-unpack-store` |
 | 2026-11-16 | e891 | J | T2 | unpack-sequence round, design 2/attempt 1 (bounded stack on `stack/unpack-store-fusion` `da402d9`): extend fused unpack-to-locals to `_UNPACK_SEQUENCE_LIST` oparg==2 (new tier-2 `_UNPACK_SEQUENCE_LIST_TO_FAST` — exact-list assert, `LOCK_OBJECT`, length==2 check with unlock+deopt, both items loaded before unlock, sequential local replacement) and generic `_UNPACK_SEQUENCE_TUPLE` oparg==2 mapped to the same fused op; same oparg/operand0 local-index encoding; consumed stores NOPed across transparent markers | `perf-jit-unpack-list` at `campaign/jit-subscr-virtual` `da402d9` | — | screen point 0.9743 (≤0.99); gate point 0.9740 INCONCLUSIVE under unchanged policy | INTERRUPTED → parked stack candidate: integration test `jit_unpack_store_integration.py` passes in candidate mode (fused ops fire for tuple/list/generic-two unpacks, absent for three-unpacks/subscript targets/dup-target; JIT/no-JIT/no-optimizer semantics equal; fails on eval-7 stage); gate attempt 1 INCONCLUSIVE with the same signature as evals 5-7 (scimark fft/lu/mc/sparse improved, no listed regression, broad unbounded peak_rss/~1% unrelated-workload class); the one justified gate retry was launched and then interrupted by the owner-directed campaign winddown before completing — no second gate verdict exists; climb-step `--correctness` for this exact commit had not yet run when the winddown froze the campaign (eval-7 correctness CORRECT does not transfer across the new ops); 8 of ≤12 evaluations consumed | `.work/wt/jit-subscr-virtual/rust-cpython/results/perf-bench/20261116T053540Z-perf-rust-jit-vs-perf-jit-unpack-list` (screen), `20261116T053646Z-perf-rust-jit-vs-perf-jit-unpack-list` (gate attempt 1), `20261116T054653Z-perf-rust-jit-vs-perf-jit-unpack-list` (retry, partial run-1 evidence only) |
+| 2026-11-15 Pacific | e891 | J/C | steering review | stop shared-blocker retries; recover/calibrate H0, isolate path/RSS causes, audit Rust placement and reduce the cumulative stack with marginal evidence; qualify C3 and quantify remaining headroom | published `main 5515913`, runtime `3bd21f6` | unchanged; no native run | synthetic RSS policy illustration only | DOC_ONLY: owner PAUSED state preserved; eight spent evaluations retained, evaluable failures require audit; historical verdicts unchanged, frozen-reference attribution does not explain candidate/incumbent deltas; no runtime, harness, thresholds, pins or production changes | this document and lane README; raw candidate source/receipts unavailable in review checkout |

@@ -3,10 +3,13 @@
 JIT work in this lane follows one campaign,
 [rust-cpython JIT](../docs/CAMPAIGN-RUST-CPYTHON-JIT.md). Resume from its
 Status and current source epoch; R0 has already opened epoch e891. Campaign
-execution remains paused until resumed by the owner. Current qualification
-is native macOS arm64 only. Linux research execution and qualification await
-a native Linux host and an explicit reopening; they do not gate this macOS
-campaign.
+execution remains paused until resumed by the owner. The next resume starts
+with the campaign's H0 recovery checkpoint: calibrate the evidence path and
+audit the pending stack before another optimization or eval-8 timing retry.
+The recorded S = 0.7463 is not a qualified milestone; A/A and guard debt
+remain open. Current qualification is native macOS arm64 only. Linux research
+execution and qualification await a native Linux host and an explicit
+reopening; they do not gate this macOS campaign.
 
 This isolated lane builds upstream CPython **3.16.0a1+dev** with a Rust overlay.
 It is not the shipping 3.15.1 product. JIT experiments run only in this lane:
