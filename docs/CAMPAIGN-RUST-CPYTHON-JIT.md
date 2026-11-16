@@ -46,7 +46,12 @@ showed the verdict layer discarded paired RSS samples, fixed by `f750e0a`
 CALIBRATION-OK plus a bounded fresh A/A twin is still required before any
 candidate work. The first resumed calibration collected all five runs but
 aborted at aggregation when a mid-run harness commit tripped the
-harness-identity guard; it was rerun unchanged. Separately, source audit of
+harness-identity guard; it was rerun unchanged. The second completed quiet
+but stayed CALIBRATION-INCONCLUSIVE on seven marginal single-run metrics
+(python_startup/richards timing, four peak_rss); raw rounds showed the
+remaining cause was sampling depth, addressed by `856c824` (per-workload
+`timing_rounds` override, standard 30 timing / 13 memory rounds) and a
+third calibration is running. Separately, source audit of
 the parked unpack-fusion layer found a deopt stack-depth hazard (ledger,
 2026-11-16); that layer is parked pending rework regardless of H0.
 
