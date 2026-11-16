@@ -61,8 +61,7 @@ and defaults to the host. Releases come from `.github/workflows/release.yml`; th
   license, and add no production dependency or platform.
 - Never relax suite or benchmark thresholds to hit a score.
 - Do not run formatters, linters, pre-commit hooks, or CI-only changes for
-  unrelated work. Do not push unless asked. Commits use Conventional Commit
-  format.
+  unrelated work. Commits use Conventional Commit format.
 
 ## Documentation
 
