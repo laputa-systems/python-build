@@ -51,9 +51,31 @@ django_wsgi 1.020, generators wall/cpu 1.022; `20261116T201817Z`), and
 `perf-guard-serc` adds bounded Serc-attributed regressions previously hidden
 by sparse sampling (gzip_extract_1m cpu 1.032, import_django wall/cpu
 1.012/1.018; `20261116T203003Z`). Both stay exploratory, not acceptance
-evidence; the frozen-reference losses remain qualification debt. Next is
-QUALIFY: audit/reduce the stack, then remeasure the smallest useful bundle
-against `perf-climb-ref`.
+evidence; the frozen-reference losses remain qualification debt.
+
+**QUALIFY in progress (2026-11-16).** The incumbent `perf-rust-jit` was
+rebuilt clean at `f19fb2f` (`--jit`, overlay byte-identical to `3bd21f6`),
+and the reduced three-layer stack — `STORE_SUBSCR_ARRAY_D`, array index
+unboxing, list-read unboxing — was rebased to `17ade05` on
+`campaign/jit-list-read-unbox` and rebuilt `--jit`-only as
+`perf-jit-list-read-unbox`. Evaluation 9 consumed: screen point 0.9751,
+gate **INCONCLUSIVE** (point 0.9752, quiet, `perf-gate-ready` clean both
+sides; `20261116T213216Z-perf-rust-jit-vs-perf-jit-list-read-unbox`).
+Eight entity-metrics stayed unbounded — fannkuch wall/cpu, import_django
+wall/cpu, nqueens wall/cpu, python_startup cpu, zlib_decode_1m cpu — with
+pooled medians showing real sub-floor regressions of roughly 0.4–0.9%;
+no entity regressed and no kernel's CI95 lower bound exceeds the 1.02
+bar. Correctness is **CORRECT** (training and held-out digests equal,
+2,000 fuzz programs with 0 mismatches at 97.4% JIT coverage, targeted
+suites match with only the 17 named superseded uop assertions) and the
+combined diff earned an independent **APPROVE**. JIT code bytes versus
+the incumbent grow at most ~25% (scimark_fft 54,328 vs 43,348; nbody
+54,900 vs 45,604). A fresh same-commit A/A twin at `f19fb2f`
+(`20261116T223944Z-perf-rust-jit-vs-perf-rust-jit-aa`) is
+**WITHIN-BUDGET** on every entity, so the sub-floor regressions are real
+candidate effects rather than rebuild noise. Round 1 has now consumed
+**9 of ≤12 candidate evaluations**; next is a remove-one subset
+evaluation (drop the list-read-unbox layer) before any further mechanism.
 
 Main's last correctness-qualified runtime is `3bd21f6` (reference-init).
 The recorded `perf-rust-jit` score is **S = 0.7463** versus M0 0.7748,
@@ -62,13 +84,16 @@ These are recorded measurements, **not a qualified milestone**: the fresh
 A/A gate was INCONCLUSIVE and the frozen-reference guard gate REJECTED.
 M4 ≤ 0.25 remains unmet. No CLIMB round-1 candidate has been accepted.
 
-Round 1 has consumed **8 of ≤12 candidate evaluations**. Preserve that total,
+Round 1 has consumed **9 of ≤12 candidate evaluations**. Preserve that total,
 but audit the separate evaluable-failure counter; a shared measurement
 blocker is not evidence of an optimization plateau. Evals 2/5/6/7/8 repeatedly
 hit the same ~1% unrelated-workload / unbounded-RSS signature. Their contrast
 is **JIT candidate versus JIT incumbent**; the earlier **JIT versus frozen
-interpreter** attribution does not explain it. Cause remains unresolved.
-Do not retry eval 8 or implement evals 9–12 before **H0 recovery checkpoint**.
+interpreter** attribution does not explain it. H0 resolved the shared
+harness cause (paired-RSS loss plus shallow sampling); eval 9 shows the
+residual signature is now candidate-specific real sub-floor effects, not a
+shared blocker. Do not retry eval 8; evals 10–12 remain for the reduced
+stack and bounded backlog work.
 
 - `campaign/jit-subscr-virtual` `da402d9` — stack tip, worktree
   `.work/wt/jit-subscr-virtual` (closeout-allowed). Evals 7+8: fused
@@ -78,9 +103,11 @@ Do not retry eval 8 or implement evals 9–12 before **H0 recovery checkpoint**.
   attempt 1 INCONCLUSIVE 0.9740; its one justified retry was interrupted
   by this winddown. Exact-tip correctness is still pending; retain the
   partial receipt, but a retry is conditional on H0 and the stack/Rust audit.
-- `campaign/jit-list-read-unbox` `a27dec1` — eval 6 (unboxed list float
-  reads + guard elision); screen 0.9736, gate INCONCLUSIVE ×2, CORRECT;
-  ancestor of the stack tip.
+- `campaign/jit-list-read-unbox` `17ade05` — eval 6 (unboxed list float
+  reads + guard elision) plus the QUALIFY three-layer bundle re-gate
+  (eval 9, INCONCLUSIVE gate / CORRECT / APPROVE, see above); rebased
+  onto `f19fb2f`, overlay identical to `a27dec1`. The pre-rebase
+  `a27dec1` remains the eval-6 record; ancestor of the stack tip.
 - `campaign/jit-array-index-unbox` `a51c17b` — eval 5 (unboxed array
   reads); screen 0.9765, gate INCONCLUSIVE ×2, CORRECT; ancestor.
 - `campaign/jit-store-subscr-array` `8c7136f` — eval 2
