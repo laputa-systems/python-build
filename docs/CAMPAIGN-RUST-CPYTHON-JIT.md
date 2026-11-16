@@ -37,41 +37,23 @@ On an explicit resume: "Recover the rust-cpython campaign evidence, resolve
 H0's shared measurement blocker, then qualify a reduced candidate stack and
 C3 before returning to CLIMB." Follow **Start here** before any host helper.
 
-Resumed 2026-11-16. H0 evidence recovery is in progress: raw memory rounds
-showed the verdict layer discarded paired RSS samples, fixed by `f750e0a`
-(paired-round bootstrap interval, sparse evidence still inconclusive),
-`67606dc` (index-aligned pairing after independent review), and `14e3af6`
-(standard profile 30 timing / 5 memory rounds). A full
-`calibrate --runs 5` under the repaired harness is the current gate;
-CALIBRATION-OK plus a bounded fresh A/A twin is still required before any
-candidate work. The first resumed calibration collected all five runs but
-aborted at aggregation when a mid-run harness commit tripped the
-harness-identity guard; it was rerun unchanged. The second completed quiet
-but stayed CALIBRATION-INCONCLUSIVE on seven marginal single-run metrics
-(python_startup/richards timing, four peak_rss); raw rounds showed the
-remaining cause was sampling depth, addressed by `856c824` (per-workload
-`timing_rounds` override, standard 30 timing / 13 memory rounds) and a
-third calibration is running. The third completed quiet with every metric
-bounded except fannkuch wall/cpu (one run breached by 0.0003), which got
-the same 120-round override (`f876f66`); a fourth calibration is running.
-The fourth completed quiet with **CALIBRATION-OK** — every metric on all 23
-jit-set workloads within the 1% floor across 5 runs
+**H0 RECOVERED (2026-11-16).** The shared measurement blocker is resolved:
+raw memory rounds showed the verdict layer discarded paired RSS samples
+(`f750e0a`, index-aligned `67606dc`), and sampling depth could not resolve
+the 1% floor (`14e3af6`, `856c824`, `f876f66`). Full all-metric
+**CALIBRATION-OK** on a quiet host
 (`20261116T183903Z-calibrate-perf-rust-jit`, pre/post `perf-gate-ready`
-clean). The fresh A/A twin `perf-rust-jit` vs `perf-rust-jit-aa` gate run is
-in progress; H0 exits only when it also bounds within budget. The A/A twin
-completed **WITHIN-BUDGET** — all metrics on all 23 workloads within the 1%
-floor across 5 runs, quiet host
-(`20261116T192836Z-perf-rust-jit-vs-perf-rust-jit-aa`). The affected
-feature-split controls (`perf-guard-jit`, `perf-guard-serc` vs
-`perf-climb-ref`, same six workloads) are being remeasured under this one
-harness identity. `perf-guard-jit` completed: the frozen-reference wall
-regressions are now bounded, not noise — coroutines wall 1.014, django_wsgi
-wall 1.020, generators wall/cpu 1.022 all REJECT-regressed in all 5 runs
-(`20261116T201817Z-perf-climb-ref-vs-perf-guard-jit`); `perf-guard-serc`
-remeasure is running. Separately,
-source audit of
-the parked unpack-fusion layer found a deopt stack-depth hazard (ledger,
-2026-11-16); that layer is parked pending rework regardless of H0.
+clean) and a fresh A/A twin **WITHIN-BUDGET** on all 23 workloads
+(`20261116T192836Z-perf-rust-jit-vs-perf-rust-jit-aa`). Feature-split
+controls remeasured under this one harness identity: `perf-guard-jit`
+confirms bounded frozen-reference wall regressions (coroutines 1.014,
+django_wsgi 1.020, generators wall/cpu 1.022; `20261116T201817Z`), and
+`perf-guard-serc` adds bounded Serc-attributed regressions previously hidden
+by sparse sampling (gzip_extract_1m cpu 1.032, import_django wall/cpu
+1.012/1.018; `20261116T203003Z`). Both stay exploratory, not acceptance
+evidence; the frozen-reference losses remain qualification debt. Next is
+QUALIFY: audit/reduce the stack, then remeasure the smallest useful bundle
+against `perf-climb-ref`.
 
 Main's last correctness-qualified runtime is `3bd21f6` (reference-init).
 The recorded `perf-rust-jit` score is **S = 0.7463** versus M0 0.7748,
@@ -4123,3 +4105,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-16 | e891 | J | T2 | unpack-sequence round, design 2/attempt 1 (bounded stack on `stack/unpack-store-fusion` `da402d9`): extend fused unpack-to-locals to `_UNPACK_SEQUENCE_LIST` oparg==2 (new tier-2 `_UNPACK_SEQUENCE_LIST_TO_FAST` — exact-list assert, `LOCK_OBJECT`, length==2 check with unlock+deopt, both items loaded before unlock, sequential local replacement) and generic `_UNPACK_SEQUENCE_TUPLE` oparg==2 mapped to the same fused op; same oparg/operand0 local-index encoding; consumed stores NOPed across transparent markers | `perf-jit-unpack-list` at `campaign/jit-subscr-virtual` `da402d9` | — | screen point 0.9743 (≤0.99); gate point 0.9740 INCONCLUSIVE under unchanged policy | INTERRUPTED → parked stack candidate: integration test `jit_unpack_store_integration.py` passes in candidate mode (fused ops fire for tuple/list/generic-two unpacks, absent for three-unpacks/subscript targets/dup-target; JIT/no-JIT/no-optimizer semantics equal; fails on eval-7 stage); gate attempt 1 INCONCLUSIVE with the same signature as evals 5-7 (scimark fft/lu/mc/sparse improved, no listed regression, broad unbounded peak_rss/~1% unrelated-workload class); the one justified gate retry was launched and then interrupted by the owner-directed campaign winddown before completing — no second gate verdict exists; climb-step `--correctness` for this exact commit had not yet run when the winddown froze the campaign (eval-7 correctness CORRECT does not transfer across the new ops); 8 of ≤12 evaluations consumed | `.work/wt/jit-subscr-virtual/rust-cpython/results/perf-bench/20261116T053540Z-perf-rust-jit-vs-perf-jit-unpack-list` (screen), `20261116T053646Z-perf-rust-jit-vs-perf-jit-unpack-list` (gate attempt 1), `20261116T054653Z-perf-rust-jit-vs-perf-jit-unpack-list` (retry, partial run-1 evidence only) |
 | 2026-11-15 Pacific | e891 | J/C | steering review | stop shared-blocker retries; recover/calibrate H0, isolate path/RSS causes, audit Rust placement and reduce the cumulative stack with marginal evidence; qualify C3 and quantify remaining headroom | published `main 5515913`, runtime `3bd21f6` | unchanged; no native run | synthetic RSS policy illustration only | DOC_ONLY: owner PAUSED state preserved; eight spent evaluations retained, evaluable failures require audit; historical verdicts unchanged, frozen-reference attribution does not explain candidate/incumbent deltas; no runtime, harness, thresholds, pins or production changes | this document and lane README; raw candidate source/receipts unavailable in review checkout |
 | 2026-11-16 | e891 | J | stack audit | source review of parked `campaign/jit-subscr-virtual` `da402d9` `fuse_unpack_stores` + `_UNPACK_SEQUENCE_{TWO_TUPLE,LIST}_TO_FAST` against the Rust-rule fusion requirements | parked stack tip; no runtime change | unmeasured | — | AUDIT FINDING: the late C pass preserves intervening `_CHECK_VALIDITY`/`_SET_IP`/`_SPILL_OR_RELOAD`/`_NOP` markers after the fused op, but the tier-2 translator emits `_CHECK_VALIDITY`+`_SET_IP` before every bytecode (`optimizer.c` trace translation), so real traces always carry deopt-capable `_CHECK_VALIDITY` markers between the unpack and both stores; each marker's `target` is its following bytecode offset, and `DEOPT_IF`/`GOTO_TIER_ONE` resumes tier-1 there with the live synced stack — the fused op leaves that stack empty (seq consumed, both items in locals), so a validity deopt at a preserved marker resumes tier-1 at a `STORE_FAST` expecting unpacked items that are not on the stack: demonstrated stack-depth mismatch on the invalidation/tracemalloc path, not yet runtime-reproduced. `_SET_IP` markers also run after both stores, leaving `frame->instr_ptr` at store offsets during/after fused old-value decrefs (destructor/weakref observers see the unpack PC instead of the store PC). Sequential store order, duplicate-target overwrite, increfs and list lock/unlock otherwise match the unfused semantics. Layer is parked pending rework: NOP the mid-sequence markers (next bytecode's `_CHECK_VALIDITY` still bounds invalidation) or restrict fusion, port recognition/eligibility to `_jit_opt_rs` per the Rust rule, and add the required exact-PC/destructor-observer/deopt-continuation proofs before any retry | this document; `rust-cpython/overlay/Python/{optimizer.c,bytecodes.c}` at `da402d9` |
+| 2026-11-16 | e891 | J/C | H0 recovery | repaired the shared measurement blocker: verdict now pairs raw memory rounds by index into a bootstrap interval (`f750e0a`, `67606dc`); standard sampling deepened to 30 timing / 13 memory rounds with per-workload `timing_rounds` overrides for demonstrated-noise workloads (`14e3af6`, `856c824`, `f876f66`); independent review of the harness diff required one pairing fix, applied | `perf-rust-jit` @ `3bd21f6332` | self-compare A/A | — | CALIBRATION-OK: full all-metric `calibrate --runs 5` quiet, every workload within the 1% floor (`20261116T183903Z`); fresh A/A twin `perf-rust-jit` vs `perf-rust-jit-aa` WITHIN-BUDGET all 23 workloads (`20261116T192836Z`); feature-split controls remeasured under one harness identity — `perf-guard-jit` bounded wall regressions coroutines 1.014 / django_wsgi 1.020 / generators 1.022 (`20261116T201817Z`), `perf-guard-serc` bounded gzip cpu 1.032 / import_django 1.012-1.018 (`20261116T203003Z`), both exploratory; frozen-reference losses retained as qualification debt | this document; verdicts under `rust-cpython/results/perf-bench/20261116T{183903,192836,201817,203003}*` |
