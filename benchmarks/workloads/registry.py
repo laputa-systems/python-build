@@ -22,6 +22,7 @@ class Workload:
     noise_class: str = "stable"
     timing_boundary: Literal["internal", "process"] = "internal"
     cpu_boundary: Literal["internal", "process"] = "process"
+    timing_rounds: int = 0
 
 
 WORKLOADS: tuple[Workload, ...] = (
@@ -35,7 +36,7 @@ WORKLOADS: tuple[Workload, ...] = (
     Workload("pycparser_source", "parsing", "tooling", "parse pass", 1, 1, ("pycparser",)),
     Workload("compileall_source", "tooling", "tooling", "compiled source tree", 1, 1),
     Workload("python_startup", "startup", "extra", "process", 1, 1,
-             timing_boundary="process"),
+             timing_boundary="process", timing_rounds=150),
     Workload("import_django", "startup", "extra", "import process", 1, 1, ("Django",)),
     Workload("import_app_stack", "startup", "extra", "import process", 1, 1,
              ("Django", "FastAPI", "Pydantic", "SQLAlchemy")),
@@ -67,7 +68,8 @@ WORKLOADS: tuple[Workload, ...] = (
     Workload("nbody", "interpreter", "jit_kernels", "20,000-step n-body advance", 1, 1, cpu_boundary="internal"),
     Workload("spectral_norm", "interpreter", "jit_kernels", "spectral-norm solve", 1, 1, cpu_boundary="internal"),
     Workload("float", "interpreter", "jit_kernels", "100,000-point normalize and maximize", 1, 1, cpu_boundary="internal"),
-    Workload("richards", "interpreter", "jit_kernels", "scheduler run", 1, 1, cpu_boundary="internal"),
+    Workload("richards", "interpreter", "jit_kernels", "scheduler run", 1, 1, cpu_boundary="internal",
+             timing_rounds=120),
     Workload("raytrace", "interpreter", "jit_kernels", "100x100 frame", 1, 1, cpu_boundary="internal"),
     Workload("fannkuch", "interpreter", "jit_kernels", "9-element fannkuch solve", 1, 1, cpu_boundary="internal"),
     Workload("deltablue", "interpreter", "jit_kernels", "constraint plan execution", 20, 1, cpu_boundary="internal"),

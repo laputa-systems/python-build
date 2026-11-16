@@ -27,7 +27,7 @@ from benchmarks.workloads.registry import Workload
 
 PROFILE_ROUNDS = {
     "quick": (2, 2),
-    "standard": (30, 5),
+    "standard": (30, 13),
     "rigorous": (10, 5),
 }
 
@@ -302,6 +302,8 @@ def run_workload(
                 raise ValueError("Python home must alias the selected interpreter installation")
     output_dir.mkdir(parents=True, exist_ok=True)
     timing_rounds, memory_rounds = PROFILE_ROUNDS[profile]
+    if workload.timing_rounds:
+        timing_rounds = workload.timing_rounds
     if memory_only:
         timing_rounds = 0
     if not measure_memory:
