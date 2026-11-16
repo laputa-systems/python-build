@@ -7,9 +7,16 @@ pub const KIND_INT_ARITH: u8 = 5;
 pub const KIND_INT_COMPARE: u8 = 6;
 pub const KIND_FLOAT_ARRAY_READ: u8 = 7;
 pub const KIND_INT_ARRAY_READ: u8 = 8;
+pub const KIND_FLOAT_LIST_READ: u8 = 9;
+pub const KIND_GUARD: u8 = 10;
 pub const POP_OTHER: u8 = 0;
 pub const POP_BORROWED: u8 = 1;
 pub const POP_INT: u8 = 2;
+
+pub const GUARD_FLOAT_TOS: u8 = 0;
+pub const GUARD_FLOAT_NOS: u8 = 1;
+pub const GUARD_INT_TOS: u8 = 2;
+pub const GUARD_INT_NOS: u8 = 3;
 
 pub const ARITH_ADD: u8 = 0;
 pub const ARITH_SUBTRACT: u8 = 1;
@@ -25,7 +32,7 @@ pub const EFFECT_ERROR: u8 = 4;
 pub const EFFECT_ERROR_NO_POP: u8 = 8;
 
 pub const ACTION_COPY: u8 = 0;
-pub const SYNTHETIC_ACTIONS: usize = 18;
+pub const SYNTHETIC_ACTIONS: usize = 20;
 
 pub const MAX_UNBOXED_DEPTH: usize = 32;
 
@@ -89,6 +96,7 @@ enum NodeKind {
     Compare { domain: Domain },
     FloatArrayRead,
     IntArrayRead,
+    FloatListRead,
 }
 
 impl NodeKind {
@@ -98,7 +106,7 @@ impl NodeKind {
     fn input_domain(self, side: Side) -> Option<Domain> {
         match (self, side) {
             (Self::Arith { domain, .. } | Self::Compare { domain }, _) => Some(domain),
-            (Self::FloatArrayRead, Side::Right) => Some(Domain::Int),
+            (Self::FloatArrayRead | Self::FloatListRead, Side::Right) => Some(Domain::Int),
             _ => None,
         }
     }
@@ -106,7 +114,7 @@ impl NodeKind {
     fn domain(self) -> Domain {
         match self {
             NodeKind::Arith { domain, .. } | NodeKind::Compare { domain } => domain,
-            NodeKind::FloatArrayRead => Domain::Float,
+            NodeKind::FloatArrayRead | NodeKind::FloatListRead => Domain::Float,
             NodeKind::IntArrayRead => Domain::Int,
         }
     }
@@ -121,6 +129,7 @@ enum Kind {
     Nop,
     Pop(PopKind),
     Node(NodeKind),
+    Guard { domain: Domain, side: Side },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -173,10 +182,15 @@ fn decode(raw: &JitOptUop) -> Result<Uop, Inconsistent> {
         (KIND_POP, POP_INT) => Kind::Pop(PopKind::Int),
         (KIND_FLOAT_ARRAY_READ, 0) => Kind::Node(NodeKind::FloatArrayRead),
         (KIND_INT_ARRAY_READ, 0) => Kind::Node(NodeKind::IntArrayRead),
+        (KIND_FLOAT_LIST_READ, 0) => Kind::Node(NodeKind::FloatListRead),
         (KIND_FLOAT_COMPARE, 0) => Kind::Node(NodeKind::Compare { domain: Domain::Float }),
         (KIND_INT_COMPARE, 0) => Kind::Node(NodeKind::Compare { domain: Domain::Int }),
         (KIND_FLOAT_ARITH, detail) => Kind::Node(decode_arith(Domain::Float, detail)?),
         (KIND_INT_ARITH, detail) => Kind::Node(decode_arith(Domain::Int, detail)?),
+        (KIND_GUARD, GUARD_FLOAT_TOS) => Kind::Guard { domain: Domain::Float, side: Side::Right },
+        (KIND_GUARD, GUARD_FLOAT_NOS) => Kind::Guard { domain: Domain::Float, side: Side::Left },
+        (KIND_GUARD, GUARD_INT_TOS) => Kind::Guard { domain: Domain::Int, side: Side::Right },
+        (KIND_GUARD, GUARD_INT_NOS) => Kind::Guard { domain: Domain::Int, side: Side::Left },
         _ => return Err(Inconsistent),
     };
     let shape = match (raw.inputs, raw.popped, raw.pushed) {
@@ -195,6 +209,10 @@ fn decode(raw: &JitOptUop) -> Result<Uop, Inconsistent> {
         Kind::Nop => Some((0, 0, 0)),
         Kind::Pop(_) => Some((1, 1, 0)),
         Kind::Node(_) => Some((2, 2, 3)),
+        Kind::Guard { side, .. } => Some(match side {
+            Side::Right => (1, 0, 0),
+            Side::Left => (2, 0, 0),
+        }),
         Kind::Other => None,
     };
     if let Some((inputs, popped, pushed)) = expected {
@@ -235,6 +253,8 @@ enum Action {
     FloatArrayRead,
     IntArrayRead,
     FloatArrayReadIntIndex,
+    FloatListRead,
+    FloatListReadIntIndex,
 }
 
 struct Contract {
@@ -263,6 +283,8 @@ impl Action {
         Action::FloatArrayRead,
         Action::IntArrayRead,
         Action::FloatArrayReadIntIndex,
+        Action::FloatListRead,
+        Action::FloatListReadIntIndex,
     ];
 
     fn code(self) -> u8 {
@@ -293,9 +315,8 @@ impl Action {
             Action::Arith(Domain::Float, ArithOp::TrueDivide) | Action::Arith(Domain::Int, _) => ((2, 2, 1), true, None),
             Action::Arith(Domain::Float, _) | Action::Compare(_) => ((2, 2, 1), false, None),
             Action::Box(_) => ((1, 1, 1), false, Some(ErrorStack::PopsInputs)),
-            Action::FloatArrayRead | Action::IntArrayRead | Action::FloatArrayReadIntIndex => {
-                ((2, 2, 1), true, None)
-            }
+            Action::FloatArrayRead | Action::IntArrayRead | Action::FloatArrayReadIntIndex
+            | Action::FloatListRead | Action::FloatListReadIntIndex => ((2, 2, 1), true, None),
         };
         Contract { shape, exits, error }
     }
@@ -403,7 +424,7 @@ fn consumes_in_place(kind: Kind, producer: Producer, depth: usize) -> bool {
             kind.input_domain(side).is_some() && depth < 2
         }
         Kind::Pop(_) => matches!(producer, Producer::Operand(_)),
-        Kind::Other | Kind::Nop => false,
+        Kind::Other | Kind::Nop | Kind::Guard { .. } => false,
     }
 }
 
@@ -439,7 +460,7 @@ fn dataflow(uops: &[Uop]) -> Dataflow {
                 if !consumes_in_place(uop.kind, values[value].producer, depth) {
                     values[value].blocked = true;
                 }
-            } else if shape.read & (1 << depth) != 0 {
+            } else if shape.read & (1 << depth) != 0 && !matches!(uop.kind, Kind::Guard { .. }) {
                 values[value].blocked = true;
             }
         }
@@ -448,7 +469,7 @@ fn dataflow(uops: &[Uop]) -> Dataflow {
             Kind::Node(kind) => {
                 let node = nodes.len();
                 let result = match kind {
-                    NodeKind::Arith { .. } | NodeKind::FloatArrayRead | NodeKind::IntArrayRead => {
+                    NodeKind::Arith { .. } | NodeKind::FloatArrayRead | NodeKind::IntArrayRead | NodeKind::FloatListRead => {
                         fresh(&mut values, Producer::Result(node))
                     }
                     NodeKind::Compare { .. } => fresh(&mut values, Producer::Other),
@@ -460,7 +481,7 @@ fn dataflow(uops: &[Uop]) -> Dataflow {
                     kind,
                     left: kind.input_domain(Side::Left).and(window[1]),
                     right: kind.input_domain(Side::Right).and(window[0]),
-                    result: matches!(kind, NodeKind::Arith { .. } | NodeKind::FloatArrayRead | NodeKind::IntArrayRead).then_some(result),
+                    result: matches!(kind, NodeKind::Arith { .. } | NodeKind::FloatArrayRead | NodeKind::IntArrayRead | NodeKind::FloatListRead).then_some(result),
                     operands: [left, right],
                 });
                 node_at[index] = Some(node);
@@ -491,7 +512,7 @@ fn operand_pops(uops: &[Uop], flow: &Dataflow, node: &Node) -> Option<[usize; 2]
     if !matches!(uops[right_pop].kind, Kind::Pop(_)) || !matches!(uops[left_pop].kind, Kind::Pop(_)) || right_pop >= left_pop {
         return None;
     }
-    if matches!(node.kind, NodeKind::FloatArrayRead | NodeKind::IntArrayRead) &&
+    if matches!(node.kind, NodeKind::FloatArrayRead | NodeKind::IntArrayRead | NodeKind::FloatListRead) &&
         (!matches!(uops[right_pop].kind, Kind::Pop(PopKind::Borrowed | PopKind::Int)) ||
          uops[left_pop].kind != Kind::Pop(PopKind::Borrowed) ||
          uops[right_pop].barrier || uops[left_pop].barrier) {
@@ -562,7 +583,7 @@ pub fn plan_unboxing(raw: &[JitOptUop], synthetic: &[JitOptUop]) -> Result<Plan,
             continue;
         }
         let root = find(&mut parent, index);
-        if matches!(node.kind, NodeKind::Arith { reuses: None, .. } | NodeKind::FloatArrayRead | NodeKind::IntArrayRead) {
+        if matches!(node.kind, NodeKind::Arith { reuses: None, .. } | NodeKind::FloatArrayRead | NodeKind::IntArrayRead | NodeKind::FloatListRead) {
             boxed_cost[root] += 1;
         }
         let result_feeds_unboxed = node.result.is_some_and(|result| {
@@ -669,6 +690,17 @@ pub fn plan_unboxing(raw: &[JitOptUop], synthetic: &[JitOptUop]) -> Result<Plan,
                     emit(index, Action::Box(domain));
                 }
             }
+            NodeKind::FloatListRead => {
+                if raw_edge(node.right, node_id, Side::Right) {
+                    emit(index, Action::FloatListReadIntIndex);
+                }
+                else {
+                    emit(index, Action::FloatListRead);
+                }
+                if !feeds_unboxed {
+                    emit(index, Action::Box(domain));
+                }
+            }
             NodeKind::Compare { .. } => emit(index, Action::Compare(domain)),
         }
     }
@@ -709,20 +741,31 @@ fn unboxed_masks(stack: &[Slot]) -> Result<Masks, Inconsistent> {
     Ok(masks)
 }
 
-fn verify(uops: &[Uop], synthetic: &[Uop; SYNTHETIC_ACTIONS], steps: &mut [JitOptStep]) -> Result<(), Inconsistent> {
+fn verify(uops: &[Uop], synthetic: &[Uop; SYNTHETIC_ACTIONS], steps: &mut Vec<JitOptStep>) -> Result<(), Inconsistent> {
     let mut stack: Vec<Slot> = Vec::new();
-    for step in steps.iter_mut() {
+    let mut kept: Vec<JitOptStep> = Vec::with_capacity(steps.len());
+    for mut step in steps.drain(..) {
         let action = Action::from_code(step.action).ok_or(Inconsistent)?;
         let uop = match action {
             Action::Copy => *uops.get(usize::from(step.source)).ok_or(Inconsistent)?,
             _ => synthetic[usize::from(step.action) - 1],
         };
+        if action == Action::Copy {
+            if let Kind::Guard { domain, side } = uop.kind {
+                let depth = if side == Side::Right { 0 } else { 1 };
+                let slot = stack.len().checked_sub(depth + 1).map_or(Slot::Boxed, |index| stack[index]);
+                if slot == Slot::Unboxed(domain) {
+                    continue;
+                }
+            }
+        }
         let has_unboxed = stack.iter().any(|slot| *slot != Slot::Boxed);
         let Some(shape) = uop.shape else {
             if has_unboxed {
                 return Err(Inconsistent);
             }
             stack.clear();
+            kept.push(step);
             continue;
         };
         if uop.barrier && has_unboxed {
@@ -772,6 +815,16 @@ fn verify(uops: &[Uop], synthetic: &[Uop; SYNTHETIC_ACTIONS], steps: &mut [JitOp
                 expect(1, Slot::Boxed)?;
                 vec![Slot::Unboxed(Domain::Float)]
             }
+            Action::FloatListRead => {
+                expect(0, Slot::Boxed)?;
+                expect(1, Slot::Boxed)?;
+                vec![Slot::Unboxed(Domain::Float)]
+            }
+            Action::FloatListReadIntIndex => {
+                expect(0, Slot::Unboxed(Domain::Int))?;
+                expect(1, Slot::Boxed)?;
+                vec![Slot::Unboxed(Domain::Float)]
+            }
             Action::Box(domain) => {
                 expect(0, Slot::Unboxed(domain))?;
                 vec![Slot::Boxed]
@@ -798,7 +851,9 @@ fn verify(uops: &[Uop], synthetic: &[Uop; SYNTHETIC_ACTIONS], steps: &mut [JitOp
             let masks = unboxed_masks(&stack)?;
             (step.exit_floats, step.exit_ints) = (masks.floats, masks.ints);
         }
+        kept.push(step);
     }
+    *steps = kept;
     if stack.iter().any(|slot| *slot != Slot::Boxed) {
         return Err(Inconsistent);
     }
@@ -1078,6 +1133,117 @@ mod tests {
         let mut wrong = synthetic();
         wrong[17].effects = 0;
         assert_eq!(plan_unboxing(&int_indexed_float_read(), &wrong), Err(Inconsistent));
+    }
+
+    fn list_float_read_trace(unboxed_index: bool) -> Vec<JitOptUop> {
+        let read = uop(KIND_FLOAT_LIST_READ, 0, (2, 2, 3), 3, EFFECT_EXIT | EFFECT_ERROR | EFFECT_ERROR_NO_POP);
+        let cleanup = |detail| uop(KIND_POP, detail, (1, 1, 0), 1, 0);
+        if unboxed_index {
+            vec![
+                load(),
+                load(),
+                load(),
+                int_arith(ARITH_ADD, REUSE_NONE),
+                pop(),
+                pop(),
+                read,
+                cleanup(POP_INT),
+                cleanup(POP_BORROWED),
+                consume(0),
+            ]
+        }
+        else {
+            vec![
+                load(),
+                load(),
+                read,
+                cleanup(POP_INT),
+                cleanup(POP_BORROWED),
+                load(),
+                arith(ARITH_ADD, REUSE_NONE),
+                pop(),
+                pop(),
+                consume(0),
+            ]
+        }
+    }
+
+    #[test]
+    fn a_list_float_read_unboxes_for_float_arithmetic() {
+        let plan = rewrite(&list_float_read_trace(false));
+        assert!(plan.iter().any(|step| step.action == Action::FloatListRead.code()));
+        assert!(!plan.iter().any(|step| step.action == Action::FloatListReadIntIndex.code()));
+    }
+
+    #[test]
+    fn an_unboxed_int_index_reads_a_float_list_without_boxing() {
+        let plan = rewrite(&list_float_read_trace(true));
+        assert!(plan.iter().any(|step| step.action == Action::FloatListReadIntIndex.code()));
+        assert!(!plan.iter().any(|step| step.action == BoxValue(Int).code()));
+    }
+
+    #[test]
+    fn malformed_list_read_descriptors_refuse_the_plan() {
+        let mut trace = list_float_read_trace(false);
+        trace[2].detail = 1;
+        assert_eq!(plan_unboxing(&trace, &synthetic()), Err(Inconsistent));
+        trace[2].detail = 0;
+        trace[3].detail = 3;
+        assert_eq!(plan_unboxing(&trace, &synthetic()), Err(Inconsistent));
+        let mut wrong = synthetic();
+        wrong[18].effects = 0;
+        assert_eq!(plan_unboxing(&list_float_read_trace(false), &wrong), Err(Inconsistent));
+        let mut wrong = synthetic();
+        wrong[19].effects = 0;
+        assert_eq!(plan_unboxing(&list_float_read_trace(true), &wrong), Err(Inconsistent));
+    }
+
+    fn guard_float_tos() -> JitOptUop {
+        uop(KIND_GUARD, GUARD_FLOAT_TOS, (1, 0, 0), 1, EFFECT_EXIT)
+    }
+
+    #[test]
+    fn a_float_guard_on_an_unboxed_read_is_elided() {
+        let read = uop(KIND_FLOAT_LIST_READ, 0, (2, 2, 3), 3, EFFECT_EXIT | EFFECT_ERROR | EFFECT_ERROR_NO_POP);
+        let cleanup = |detail| uop(KIND_POP, detail, (1, 1, 0), 1, 0);
+        let trace = vec![
+            load(),
+            load(),
+            read,
+            cleanup(POP_INT),
+            cleanup(POP_BORROWED),
+            guard_float_tos(),
+            load(),
+            arith(ARITH_ADD, REUSE_NONE),
+            pop(),
+            pop(),
+            consume(0),
+        ];
+        let plan = rewrite(&trace);
+        assert!(plan.iter().any(|step| step.action == Action::FloatListRead.code()));
+        assert!(plan.iter().any(|step| step.action == Arith(Float, ArithOp::Add).code()));
+        assert!(!plan.iter().any(|step| step.source == 5));
+    }
+
+    #[test]
+    fn a_float_guard_on_a_boxed_value_is_kept() {
+        let read = uop(KIND_FLOAT_LIST_READ, 0, (2, 2, 3), 3, EFFECT_EXIT | EFFECT_ERROR | EFFECT_ERROR_NO_POP);
+        let cleanup = |detail| uop(KIND_POP, detail, (1, 1, 0), 1, 0);
+        let trace = vec![
+            load(),
+            load(),
+            read,
+            cleanup(POP_INT),
+            cleanup(POP_BORROWED),
+            load(),
+            guard_float_tos(),
+            arith(ARITH_ADD, REUSE_NONE),
+            pop(),
+            pop(),
+            consume(0),
+        ];
+        let plan = rewrite(&trace);
+        assert!(plan.iter().any(|step| step.source == 6 && step.action == ACTION_COPY));
     }
 
     #[test]

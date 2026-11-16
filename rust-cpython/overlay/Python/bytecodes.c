@@ -1366,6 +1366,46 @@ dummy_func(
             INPUTS_DEAD();
         }
 
+        tier2 op(_BINARY_OP_SUBSCR_LIST_INT_UNBOXED, (list_st, sub_st -- res)) {
+            PyObject *sub = PyStackRef_AsPyObjectBorrow(sub_st);
+            PyObject *list = PyStackRef_AsPyObjectBorrow(list_st);
+            assert(PyLong_CheckExact(sub));
+            assert(_PyLong_IsCompact((PyLongObject *)sub));
+            assert(PyList_CheckExact(list));
+            EXIT_IF(PyStackRef_RefcountOnObject(list_st) && !_Py_IsImmortal(list));
+            Py_ssize_t index = _PyLong_CompactValue((PyLongObject *)sub);
+            if (index < 0) {
+                index += PyList_GET_SIZE(list);
+            }
+            EXIT_IF(index < 0 || index >= PyList_GET_SIZE(list));
+            PyObject *item = PyList_GET_ITEM(list, index);
+            assert(item != NULL);
+            EXIT_IF(!PyFloat_CheckExact(item));
+            double value = PyFloat_AS_DOUBLE(item);
+            PyStackRef_CLOSE_SPECIALIZED_TSTATE(tstate, sub_st, _PyLong_ExactDeallocTstate);
+            DEAD(list_st);
+            res = PyStackRef_FromUnboxedFloat(value);
+            STAT_INC(BINARY_OP, hit);
+        }
+
+        tier2 op(_BINARY_OP_SUBSCR_LIST_INT_UNBOXED_INDEX, (list_st, sub_st -- res)) {
+            PyObject *list = PyStackRef_AsPyObjectBorrow(list_st);
+            assert(PyList_CheckExact(list));
+            EXIT_IF(PyStackRef_RefcountOnObject(list_st) && !_Py_IsImmortal(list));
+            Py_ssize_t index = PyStackRef_AsUnboxedInt(sub_st);
+            if (index < 0) {
+                index += PyList_GET_SIZE(list);
+            }
+            EXIT_IF(index < 0 || index >= PyList_GET_SIZE(list));
+            PyObject *item = PyList_GET_ITEM(list, index);
+            assert(item != NULL);
+            EXIT_IF(!PyFloat_CheckExact(item));
+            double value = PyFloat_AS_DOUBLE(item);
+            INPUTS_DEAD();
+            res = PyStackRef_FromUnboxedFloat(value);
+            STAT_INC(BINARY_OP, hit);
+        }
+
         macro(BINARY_OP_SUBSCR_ARRAY_D) =
             _GUARD_TOS_INT + unused/1 + _GUARD_NOS_OBJECT_TYPE_VERSION + unused/2 +
             _BINARY_OP_SUBSCR_ARRAY_D + _POP_TOP_INT + POP_TOP;
