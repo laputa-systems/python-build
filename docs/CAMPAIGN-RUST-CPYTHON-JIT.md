@@ -30,22 +30,46 @@ consult by item, not a queue of work to repeat.
 Rewrite this table at each checkpoint; keep detailed provenance in the
 ledger and the [preserved host handoff](#preserved-host-handoff).
 
-| Field | Current state |
-| --- | --- |
-| Execution | **WINDING DOWN** 2026-11-16 by owner direction — campaign paused mid-CLIMB; no new evaluations launch; resumable handoff recorded in this section at closeout |
-| Host | **Fresh clone on the owner's Mac (2026-11-15)** — this is not the 2026-11-13 checkout. Its machine-local state is absent here, verified 2026-11-15: `e3cbf337` and `eb7f262e` are not valid objects; no `campaign/*` or `lane/*` refs exist on the remote (they were never pushed); `.work/wt/*` (the 26 deferred-qualification trees, the 10 compiler/epoch trees, the 2 review-snapshot trees, and `jit-reference-init`) and `.work/campaign-archive/winddown-20261113/` do not exist; `rust-cpython/results/` from before 2026-11-15 is absent; `codex-campaign-closeout.py` is not in the repository; `mdfind` finds no helper under `.work/tmp` |
-| Preflight (2026-11-15) | `Darwin`/`arm64`, clean tree. `perf.py doctor`: lane and production archives cached and verified, Xcode 27.0 matches the lock. `perf.py status`: builds as named below, host lease free. `perf-gate-ready` exits 0. `git worktree list`: primary plus this lane's worktrees |
-| Target | Native `aarch64-apple-darwin`; Linux is deferred, not a completion blocker |
-| Source epoch | `e891a9117985888df3e5d48145cf07ddda098335` (`3.16.0a1+dev`), as pinned in `rust-cpython/sources.lock.json` |
-| Correctness incumbent | `cb1444fe` on `main` (ancestor of `29c136a`, verified). `perf-rust-jit` at `00ca352` (58 release Rust extensions verified) is the standing incumbent; QUALIFY identifies the incumbent at the qualification commit before gating |
-| Measured incumbent | **Measured 2026-11-15 (this host).** Integrated stack at `main 3bd21f6`, epoch e891, vs `perf-climb-ref` (fresh A/A twins built and identified at that commit): **S = 0.7463** (CPU geomean, OD8 kernel CPU); held-out geomean **0.8366** (≤ S^0.5 = 0.864); A/A spread ≤ 0.98% (richards wall; geomean wall 0.9994 / cpu 1.0006); max peak RSS 1.073 (inside the +8% OD4 bar); JIT code bytes ≤ 1.66x epoch-M0 (raytrace; all kernels ≤ 1.66x). Historical M0 `S0 = 0.7748` is superseded on this host. Guard set shows systematic wall regressions under the unchanged policy (django_template_realistic 1.014, django_wsgi_request 1.020, gzip_extract_1m 1.005; CPU 0.981/0.981/1.006), so the unchanged gate policy REJECTS the current stack vs the frozen reference. `coroutines`/`generators` held-out wall 1.017/1.025 regressed. RSS regressions vs no-JIT are the OD4 recorded cost. Not a milestone claim; M4 stays ≤ 0.25 |
-| J | Reference-init **rederived on this host and accepted** (`campaign/jit-reference-init`): verbatim move of `_PyFrame_Initialize` to an out-of-line private export; CORRECT under `climb-step --correctness`; independently reviewed (approve, nothing above low); merged at this commit. Then QUALIFY the integrated baseline with fresh A/A and training/held-out/guards; no new optimization lands before measurement |
-| C | C3 feature-complete; cold-compilation performance and final combined qualification remain open |
-| R1 | Complete; reuse the pinned CinderX catalog, do not restart the study |
-| Next action on launch | QUALIFY done (S = 0.7463 receipt recorded). Guard attribution done: recorded as a property of JIT-vs-frozen-reference. CLIMB round 1 in progress, 7 of ≤12 evaluations consumed: item 1 design 1 SCREEN-REJECTED (1.0043); item 2 design 1 (`STORE_SUBSCR_ARRAY_D`) screened 0.983, CORRECT, review APPROVE, gate INCONCLUSIVE twice — tagged `stack/store-subscr-array`; item 2 design 2 (inline array item readers) SCREEN-REJECTED at 0.9966; item 1 design 2 (checked-load fusion in virtual-call-containing traces) SCREEN-REJECTED at 1.0030 — item 1's two designs are exhausted; item 2 design 3 stacked on `stack/store-subscr-array` (unboxed array reads) screened 0.9765, CORRECT, gate INCONCLUSIVE twice — tagged `stack/array-index-unbox`; item 2 design 4 stacked on `stack/array-index-unbox` (unboxed list float reads + numeric-guard elision + spill-as-NOP) screened 0.9736, CORRECT, gate INCONCLUSIVE twice — tagged `stack/list-read-unbox`; item 4 design 1 stacked on `stack/list-read-unbox` (fused `_UNPACK_SEQUENCE_TWO_TUPLE_TO_FAST` unpack-to-locals) screened 0.9756, CORRECT, gate INCONCLUSIVE twice — tagged `stack/unpack-store-fusion`, now the stack tip at `campaign/jit-subscr-virtual` `ee3509e`; the same unexplained ~1% unrelated-workload regression class now blocks four consecutive gate attempts; next is eval 8: bounded stack on `stack/unpack-store-fusion` (list/generic-tuple unpack variants already staged) or items 2-3 remainder / item 5 per the frozen backlog; milestone gate after 4 accepts / 12 evaluations / backlog exhaustion |
-| Performance debt | Existing OD14/OD16 landings now carry a measured receipt (S = 0.7463). Guard-wall regressions vs the frozen reference are ATTRIBUTED 2026-11-15 as a property of JIT-vs-frozen-reference: `--jit`-only `perf-guard-jit` reproduces them (django_template_realistic wall 1.018, django_wsgi_request 1.031, generators cpu 1.030 regressed in all 3 runs), `--serc`-only `perf-guard-serc` shows none, and the epoch-start pair at `ded7f30` shows the same pattern before any landed slice (django_wsgi wall 1.018, generators wall/cpu 1.015, coroutines wall 1.011). No single slice is guilty; the guard clause vs the frozen reference is a recorded cost under the unchanged policy. No new speculative feature landings while this debt is open |
-| Owner queue | Checked-load private ABI and prior routing/API reviews remain asynchronous; Carbon remains disabled (OD17) |
-| Stop counters | No attempts recorded on this host; recover prior counts from the ledger before starting, never reset them at a session boundary |
+**Paused 2026-11-16 at the owner's request, mid-CLIMB round 1.** Resume
+prompt: "Resume the rust-cpython JIT campaign from Status: finish
+evaluation 8, then continue CLIMB round 1." First command from the
+integration checkout: `codex-campaign-closeout.py cancel`, then continue
+per **Execution model**. Main's last accepted runtime is `3bd21f6`
+(reference-init); measured incumbent `perf-rust-jit` S = 0.7463, M4 ≤ 0.25
+unmet, integration branch green (docs-only commits since). Nothing is
+pushed. CLIMB round 1 consumed 8 of ≤12 evaluations; every gate attempt
+since eval 2 hit the same unexplained ~1% unrelated-workload /
+unbounded-`peak_rss` INCONCLUSIVE signature — recorded as a
+JIT-vs-frozen-reference property, not candidate guilt.
+
+- `campaign/jit-subscr-virtual` `da402d9` — stack tip, worktree
+  `.work/wt/jit-subscr-virtual` (closeout-allowed). Evals 7+8: fused
+  unpack-to-locals (`_UNPACK_SEQUENCE_TWO_TUPLE_TO_FAST`,
+  `_UNPACK_SEQUENCE_LIST_TO_FAST`, generic two-tuple). Eval 7 screen
+  0.9756 / gate INCONCLUSIVE ×2 / CORRECT. Eval 8 screen 0.9743 / gate
+  attempt 1 INCONCLUSIVE 0.9740; its one justified retry was interrupted
+  by this winddown — rerun `climb-step --candidate perf-jit-unpack-list`
+  (gate retry, then `--correctness` for `da402d9`) before eval 9.
+- `campaign/jit-list-read-unbox` `a27dec1` — eval 6 (unboxed list float
+  reads + guard elision); screen 0.9736, gate INCONCLUSIVE ×2, CORRECT;
+  ancestor of the stack tip.
+- `campaign/jit-array-index-unbox` `a51c17b` — eval 5 (unboxed array
+  reads); screen 0.9765, gate INCONCLUSIVE ×2, CORRECT; ancestor.
+- `campaign/jit-store-subscr-array` `8c7136f` — eval 2
+  (`STORE_SUBSCR_ARRAY_D`); screen 0.983, gate INCONCLUSIVE ×2,
+  CORRECT; ancestor. `campaign/jit-checked-attr-store` `88bc548` is its
+  pre-rebase twin.
+- Screen-rejected, do not resume without new evidence:
+  `campaign/jit-attr-virtual` `e01a4f0` (1.0030),
+  `campaign/jit-array-read-inline` `531a76e` (0.9966),
+  `campaign/jit-checked-attr-store` `88bc548`.
+
+Next slice: complete eval 8's interrupted gate retry and correctness;
+then evals 9–12 from the frozen backlog (items 2–3 remainder, item 5) or
+the milestone gate (4 accepts / 12 evals / backlog exhaustion →
+INCOMPLETE_PLATEAU report). Retired worktrees' `results/` evidence is
+preserved under `.work/campaign-archive/winddown-20261116/<tree>/`.
+C3 remains feature-complete with cold-compilation acceptance open.
 
 Subsequent checkpoints also record the exact candidate and reference SHAs,
 build names/flags, phase, next command, attempt/design and 8+4 plateau
