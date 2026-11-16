@@ -155,7 +155,8 @@ class MemoryOnlyTests(unittest.TestCase):
             self.assertEqual(run.call_count, 2 + 2 * runner.PROFILE_ROUNDS["standard"][1])
             self.assertEqual(len(list(Path(temp).glob("timing-*.json"))), 0)
             for side in ("baseline", "candidate"):
-                self.assertEqual(len(result[side]["memory"]["rounds"]), 3)
+                self.assertEqual(len(result[side]["memory"]["rounds"]),
+                                 runner.PROFILE_ROUNDS["standard"][1])
                 self.assertNotIn("cpu", result[side]["memory"]["rounds"][0])
             models.validate_workload_result(result)
 

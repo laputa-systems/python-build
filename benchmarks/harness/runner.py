@@ -27,7 +27,7 @@ from benchmarks.workloads.registry import Workload
 
 PROFILE_ROUNDS = {
     "quick": (2, 2),
-    "standard": (5, 3),
+    "standard": (30, 5),
     "rigorous": (10, 5),
 }
 
