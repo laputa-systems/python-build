@@ -51,7 +51,10 @@ but stayed CALIBRATION-INCONCLUSIVE on seven marginal single-run metrics
 (python_startup/richards timing, four peak_rss); raw rounds showed the
 remaining cause was sampling depth, addressed by `856c824` (per-workload
 `timing_rounds` override, standard 30 timing / 13 memory rounds) and a
-third calibration is running. Separately, source audit of
+third calibration is running. The third completed quiet with every metric
+bounded except fannkuch wall/cpu (one run breached by 0.0003), which got
+the same 120-round override (`f876f66`); a fourth calibration is running.
+Separately, source audit of
 the parked unpack-fusion layer found a deopt stack-depth hazard (ledger,
 2026-11-16); that layer is parked pending rework regardless of H0.
 
