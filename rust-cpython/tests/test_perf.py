@@ -632,6 +632,26 @@ class VerdictPolicyTests(unittest.TestCase):
         self.assertEqual(reads(-2e6, 5e5), "improved")
         self.assertEqual(reads(3e6, 5e5), "regressed")
 
+    def test_memory_rounds_pair_into_a_bootstrap_interval(self):
+        def with_rounds(baseline, candidate):
+            run = summary([0.99, 1.0])
+            run["comparison"]["memory"]["metrics"] = {"peak_rss": {
+                "ratio_candidate_over_baseline": 1.0, "absolute_change": 0.0,
+                "noise_allowance": 5e6, "baseline": {"median": 1e8}, "status": "pass"}}
+            run["baseline"] = {"memory": {"rounds": [{"peak_rss": v} for v in baseline]}}
+            run["candidate"] = {"memory": {"rounds": [{"peak_rss": v} for v in candidate]}}
+            return run
+
+        stable = with_rounds([1e8, 1.01e8, 0.99e8], [1e8, 1.01e8, 0.99e8])
+        self.assertEqual(pv.run_observation(stable)["metrics"]["peak_rss"]["class"],
+                         "within budget")
+        grown = with_rounds([1e8, 1.01e8, 0.99e8], [1.05e8, 1.0605e8, 1.0395e8])
+        self.assertEqual(pv.run_observation(grown)["metrics"]["peak_rss"]["class"],
+                         "regressed")
+        sparse = with_rounds([1e8], [1e8])
+        self.assertEqual(pv.run_observation(sparse)["metrics"]["peak_rss"]["class"],
+                         "inconclusive")
+
 
 class DecideTests(unittest.TestCase):
     def test_replicated_workload_rss_win_is_accepted_with_neutral_timing(self):

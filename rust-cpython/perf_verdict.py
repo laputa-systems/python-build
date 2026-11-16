@@ -34,6 +34,7 @@ from typing import Any
 
 PRACTICAL_FLOOR = 0.01
 BOOTSTRAP_CONFIDENCE = 0.95
+MIN_MEMORY_PAIRS = 3
 BENCH_MEMORY_METRICS = ("peak_rss", "peak_private", "peak_pss")
 PHYSICAL_FOOTPRINT = "peak_phys_footprint"
 SERC_MEMORY_ALLOWANCE = 0.08
@@ -137,6 +138,26 @@ def _memory_interval(metric: Mapping[str, Any]) -> list[float] | None:
     return [1.0 + (change - noise) / median, 1.0 + (change + noise) / median]
 
 
+def _memory_round_samples(workload: Mapping[str, Any], name: str) -> tuple[list[float], list[float]]:
+    sides = {}
+    for side in ("baseline", "candidate"):
+        entry = workload.get(side)
+        rounds = entry.get("memory", {}).get("rounds", ()) if isinstance(entry, Mapping) else ()
+        sides[side] = [float(record[name]) for record in rounds
+                       if isinstance(record, Mapping)
+                       and isinstance(record.get(name), (int, float))
+                       and not isinstance(record.get(name), bool)]
+    return sides["baseline"], sides["candidate"]
+
+
+def _paired_memory_interval(workload: Mapping[str, Any], name: str) -> tuple[list[float], list[float] | None] | None:
+    baseline_samples, candidate_samples = _memory_round_samples(workload, name)
+    ratios = _paired(baseline_samples, candidate_samples)
+    if len(ratios) < MIN_MEMORY_PAIRS:
+        return None
+    return ratios, _bootstrap(ratios)
+
+
 def _physical_footprint_samples(workload: Mapping[str, Any]) -> tuple[list[float], list[float]]:
     sides = {}
     for side in ("baseline", "candidate"):
@@ -173,9 +194,14 @@ def run_observation(workload: Mapping[str, Any], *, floor: float = PRACTICAL_FLO
         metric = memory.get("metrics", {}).get(name) if isinstance(memory, Mapping) else None
         if isinstance(metric, Mapping):
             ratio = metric.get("ratio_candidate_over_baseline")
-            interval = _memory_interval(metric)
-            metrics[name] = {"ratios": [ratio] if isinstance(ratio, (int, float)) else [],
-                             "ci95": interval, "class": classify(interval, floor=floor)}
+            paired = _paired_memory_interval(workload, name)
+            if paired is not None:
+                ratios, interval = paired
+            else:
+                ratios = [ratio] if isinstance(ratio, (int, float)) else []
+                interval = _memory_interval(metric)
+            metrics[name] = {"ratios": ratios, "ci95": interval,
+                             "class": classify(interval, floor=floor)}
     if memory_only and serc_pair:
         baseline_footprint, candidate_footprint = _physical_footprint_samples(workload)
         if baseline_footprint and candidate_footprint:
