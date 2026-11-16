@@ -138,36 +138,31 @@ def _memory_interval(metric: Mapping[str, Any]) -> list[float] | None:
     return [1.0 + (change - noise) / median, 1.0 + (change + noise) / median]
 
 
-def _memory_round_samples(workload: Mapping[str, Any], name: str) -> tuple[list[float], list[float]]:
-    sides = {}
+def _memory_round_pairs(workload: Mapping[str, Any], name: str) -> list[tuple[float, float]]:
+    columns = []
     for side in ("baseline", "candidate"):
         entry = workload.get(side)
         rounds = entry.get("memory", {}).get("rounds", ()) if isinstance(entry, Mapping) else ()
-        sides[side] = [float(record[name]) for record in rounds
-                       if isinstance(record, Mapping)
-                       and isinstance(record.get(name), (int, float))
-                       and not isinstance(record.get(name), bool)]
-    return sides["baseline"], sides["candidate"]
+        columns.append([record.get(name) if isinstance(record, Mapping) else None
+                        for record in rounds])
+    pairs = []
+    for base, cand in zip(columns[0], columns[1]):
+        if all(isinstance(value, (int, float)) and not isinstance(value, bool)
+               for value in (base, cand)):
+            pairs.append((float(base), float(cand)))
+    return pairs
 
 
 def _paired_memory_interval(workload: Mapping[str, Any], name: str) -> tuple[list[float], list[float] | None] | None:
-    baseline_samples, candidate_samples = _memory_round_samples(workload, name)
-    ratios = _paired(baseline_samples, candidate_samples)
+    pairs = _memory_round_pairs(workload, name)
+    ratios = _paired([pair[0] for pair in pairs], [pair[1] for pair in pairs])
     if len(ratios) < MIN_MEMORY_PAIRS:
         return None
     return ratios, _bootstrap(ratios)
 
 
-def _physical_footprint_samples(workload: Mapping[str, Any]) -> tuple[list[float], list[float]]:
-    sides = {}
-    for side in ("baseline", "candidate"):
-        memory = workload.get(side)
-        rounds = memory.get("memory", {}).get("rounds", ()) if isinstance(memory, Mapping) else ()
-        sides[side] = [float(record[PHYSICAL_FOOTPRINT]) for record in rounds
-                       if isinstance(record, Mapping)
-                       and isinstance(record.get(PHYSICAL_FOOTPRINT), (int, float))
-                       and not isinstance(record.get(PHYSICAL_FOOTPRINT), bool)]
-    return sides["baseline"], sides["candidate"]
+def _physical_footprint_pairs(workload: Mapping[str, Any]) -> list[tuple[float, float]]:
+    return _memory_round_pairs(workload, PHYSICAL_FOOTPRINT)
 
 
 def run_observation(workload: Mapping[str, Any], *, floor: float = PRACTICAL_FLOOR,
@@ -203,9 +198,10 @@ def run_observation(workload: Mapping[str, Any], *, floor: float = PRACTICAL_FLO
             metrics[name] = {"ratios": ratios, "ci95": interval,
                              "class": classify(interval, floor=floor)}
     if memory_only and serc_pair:
-        baseline_footprint, candidate_footprint = _physical_footprint_samples(workload)
-        if baseline_footprint and candidate_footprint:
-            detail = _metric(_paired(baseline_footprint, candidate_footprint))
+        footprint_pairs = _physical_footprint_pairs(workload)
+        if footprint_pairs:
+            detail = _metric(_paired([pair[0] for pair in footprint_pairs],
+                                      [pair[1] for pair in footprint_pairs]))
             detail["class"] = classify(detail["ci95"], floor=SERC_MEMORY_ALLOWANCE)
             metrics[PHYSICAL_FOOTPRINT] = detail
     return {"kind": "workload", "metrics": metrics, "mismatch": False}

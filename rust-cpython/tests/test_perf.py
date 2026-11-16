@@ -652,6 +652,27 @@ class VerdictPolicyTests(unittest.TestCase):
         self.assertEqual(pv.run_observation(sparse)["metrics"]["peak_rss"]["class"],
                          "inconclusive")
 
+    def test_memory_round_pairs_stay_index_aligned(self):
+        def with_records(baseline, candidate):
+            run = summary([0.99, 1.0])
+            run["comparison"]["memory"]["metrics"] = {"peak_rss": {
+                "ratio_candidate_over_baseline": 1.0, "absolute_change": 0.0,
+                "noise_allowance": 5e6, "baseline": {"median": 1e8}, "status": "pass"}}
+            run["baseline"] = {"memory": {"rounds": baseline}}
+            run["candidate"] = {"memory": {"rounds": candidate}}
+            return run
+
+        gapped = with_records(
+            [{"peak_rss": v} for v in (1e8, 2e8, 1e8, 1e8, 1e8)],
+            [{"peak_rss": 1e8}, {}, {"peak_rss": 1e8}, {"peak_rss": 1e8}, {"peak_rss": 1e8}])
+        self.assertEqual(pv.run_observation(gapped)["metrics"]["peak_rss"]["class"],
+                         "within budget")
+        short = with_records(
+            [{"peak_rss": 1e8}] * 5,
+            [{"peak_rss": 1e8}] * 3)
+        self.assertEqual(pv.run_observation(short)["metrics"]["peak_rss"]["class"],
+                         "within budget")
+
 
 class DecideTests(unittest.TestCase):
     def test_replicated_workload_rss_win_is_accepted_with_neutral_timing(self):
