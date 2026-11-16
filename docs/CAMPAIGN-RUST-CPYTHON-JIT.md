@@ -333,10 +333,10 @@ and all raw verdicts; harness diagnosis does not reset optimization budgets.
    measured binaries. Inspect and record actual runtime prefixes. Current
    `--matched-prefix`/Python-home aliases support memory-only sampling,
    not timing; do not pass them to a timing gate or claim they solve it.
-3. **Diagnose RSS from raw rounds.** `PROFILE_ROUNDS['standard']` collects
-   three memory processes per workload per side (some noisy workloads use five).
-   `run_observation` currently stores one median RSS ratio per outer run;
-   `_memory_interval` uses the baseline noise allowance, not a bootstrap of
+3. **Diagnose RSS from raw rounds.** `PROFILE_ROUNDS['standard']` collected
+   three memory processes per workload per side (some noisy workloads used
+   five). `run_observation` stored one median RSS ratio per outer run;
+   `_memory_interval` used the baseline noise allowance, not a bootstrap of
    those process ratios. `entity_verdict` requires every run to bound the
    metric. Thus the ledger's "single-sample RSS" is not proof of one memory
    process, and more `--runs` need not narrow the relevant bound. `perf.py`
@@ -344,6 +344,11 @@ and all raw verdicts; harness diagnosis does not reset optimization budgets.
    samples `[99, 100, 101]` MB on both sides yield a 1.0 ratio but an interval
    about `[0.956, 1.044]`, which remains inconclusive across repeated runs.
    Reproduce the actual failure before changing sampling or estimators.
+   Repaired on resume: `run_observation` now pairs raw memory rounds by
+   index and bootstraps the paired-ratio interval when at least three pairs
+   exist (`f750e0a`, index-alignment fix `67606dc`); sparse evidence keeps
+   the summarized fallback and stays inconclusive. Standard sampling is now
+   30 timing / 5 memory rounds (`14e3af6`).
 4. **Repair only a demonstrated defect.** A minimal H0 change has source
    review and positive/negative controls: stable identical input bounds
    correctly, real timing/RSS regressions reject, missing/incomplete evidence
