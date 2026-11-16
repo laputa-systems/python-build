@@ -58,7 +58,13 @@ The fourth completed quiet with **CALIBRATION-OK** — every metric on all 23
 jit-set workloads within the 1% floor across 5 runs
 (`20261116T183903Z-calibrate-perf-rust-jit`, pre/post `perf-gate-ready`
 clean). The fresh A/A twin `perf-rust-jit` vs `perf-rust-jit-aa` gate run is
-in progress; H0 exits only when it also bounds within budget. Separately,
+in progress; H0 exits only when it also bounds within budget. The A/A twin
+completed **WITHIN-BUDGET** — all metrics on all 23 workloads within the 1%
+floor across 5 runs, quiet host
+(`20261116T192836Z-perf-rust-jit-vs-perf-rust-jit-aa`). The affected
+feature-split controls (`perf-guard-jit`, `perf-guard-serc` vs
+`perf-climb-ref`, same six workloads) are being remeasured under this one
+harness identity. Separately,
 source audit of
 the parked unpack-fusion layer found a deopt stack-depth hazard (ledger,
 2026-11-16); that layer is parked pending rework regardless of H0.
