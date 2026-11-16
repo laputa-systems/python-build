@@ -64,7 +64,11 @@ floor across 5 runs, quiet host
 (`20261116T192836Z-perf-rust-jit-vs-perf-rust-jit-aa`). The affected
 feature-split controls (`perf-guard-jit`, `perf-guard-serc` vs
 `perf-climb-ref`, same six workloads) are being remeasured under this one
-harness identity. Separately,
+harness identity. `perf-guard-jit` completed: the frozen-reference wall
+regressions are now bounded, not noise — coroutines wall 1.014, django_wsgi
+wall 1.020, generators wall/cpu 1.022 all REJECT-regressed in all 5 runs
+(`20261116T201817Z-perf-climb-ref-vs-perf-guard-jit`); `perf-guard-serc`
+remeasure is running. Separately,
 source audit of
 the parked unpack-fusion layer found a deopt stack-depth hazard (ledger,
 2026-11-16); that layer is parked pending rework regardless of H0.
