@@ -37,6 +37,14 @@ On an explicit resume: "Recover the rust-cpython campaign evidence, resolve
 H0's shared measurement blocker, then qualify a reduced candidate stack and
 C3 before returning to CLIMB." Follow **Start here** before any host helper.
 
+Resumed 2026-11-16. H0 evidence recovery is in progress: raw memory rounds
+showed the verdict layer discarded paired RSS samples, fixed by `f750e0a`
+(paired-round bootstrap interval, sparse evidence still inconclusive) and
+`14e3af6` (standard profile 30 timing / 5 memory rounds). A full
+`calibrate --runs 5` under the repaired harness is the current gate;
+CALIBRATION-OK plus a bounded fresh A/A twin is still required before any
+candidate work.
+
 Main's last correctness-qualified runtime is `3bd21f6` (reference-init).
 The recorded `perf-rust-jit` score is **S = 0.7463** versus M0 0.7748,
 held-out 0.8366, RSS at most 1.073x reference and code at most 1.66x M0.
