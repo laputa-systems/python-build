@@ -138,6 +138,25 @@ Full account, gaps, owner queue, and evidence manifest:
 [docs/RUST-CAMPAIGN-RESULTS.md](RUST-CAMPAIGN-RESULTS.md). Linux evidence
 was not collected.
 
+**Closeout evidence completed (2026-11-17).** The four same-epoch
+variants ran their complete applicable suites on the repaired harness:
+`perf-rust`, `perf-rust-jit`, `perf-rust-serc`, `perf-final-jit-serc`,
+each `--all` (52,102 tests) plus `--serc-verify` on both Serc builds.
+Non-JIT builds fail exactly `test_asyncio.test_sendfile`,
+`test_asyncio.test_sslproto`, `test_ssl`, `test_support` — the historical
+`test_multiprocessing_forkserver.test_misc` known-red passed this epoch.
+JIT builds add only `test_capi` (19 failures, all `test_opt` uop-shape
+assertions; the two `test_jitted_code_sees_changed_copied_globals`
+subtests were verified semantically correct — copied-dict globals are
+seen properly under `_GUARD_LOOP_GLOBALS_VERSION` — and catalogued in
+`CLIMB_SUPERSEDED_UOP_ASSERTIONS` at `912ed8c`). Serc verify introduces
+no failed-test difference. Combined-build correctness: 2,000-program
+differential fuzz at 97.45% JIT coverage, 0 mismatches; targeted
+JIT suites differ only by the same superseded assertions; all eight
+held-out kernel digests match the incumbent
+(`20261117T041840Z-perf-rust-jit-vs-perf-final-jit-serc`, exploratory
+single-run timing ignored — digests only).
+
 Main's last correctness-qualified runtime is `3bd21f6` (reference-init).
 The recorded `perf-rust-jit` score is **S = 0.7463** versus M0 0.7748,
 held-out 0.8366, RSS at most 1.073x reference and code at most 1.66x M0.
@@ -4198,3 +4217,4 @@ Track C and R1 rows use the same columns, with the gate's headline ratio in
 | 2026-11-17 | e891 | J | diagnostic | two semantically-null layout probes to isolate the residual gate signature: `campaign/probe-layout` adds one file-scope global to `optimizer.c` (`perf-probe-layout`); `campaign/probe-rust` adds a `_PyJitOpt_PlanAttributeLoads` export to `_jit_opt_rs` (`perf-probe-rust` @ `b169e96`) | incumbents `perf-rust-jit` @ `f19fb2f`; probes on `campaign/probe-*` | gate `--runs 5`, quiet both sides | — | both INCONCLUSIVE: probe-layout ~10 straddling entities incl. import_django ~1.009 (`20261117T004023Z`); probe-rust only import_django wall 1.007 + zlib_decode_1m cpu 1.004 (`20261117T015234Z`); same-source A/A stays WITHIN-BUDGET, so offsets are real paired binary-layout sensitivity (~0.4–1% on import/startup/compression workloads), not candidate defects; deepening probe `fdf0c89` resolved nqueens at 200 rounds but showed import_django wall ~1.009 is a stable runner-fail→regressed promotion; conclusion: no different-binary candidate can ACCEPT on this host/policy; evals 11–12 preserved unspent | `rust-cpython/results/perf-bench/20261117T{004023,015234}*-perf-rust-jit-vs-perf-probe-*` |
 | 2026-11-17 | e891 | C | C3 | first same-epoch C3 cold-compilation gate on the repaired harness: fresh `perf-rust` and `perf-rust-serc` (source `e891a911`, `--serc` only difference) vs the locked set `cold_python_startup`, `cold_import_django`, `compileall_source`, `--gate --runs 5` | `perf-rust` vs `perf-rust-serc` @ main `a009bf1` | gate `--runs 5`, `perf-gate-ready` clean both sides | — | REJECT: cold_python_startup wall/cpu 1.157/1.082, cold_import_django 1.122/1.115, compileall_source 1.164/1.060 — regressed in all 5 runs; peak_rss 1.19–1.37× across workloads; Serc cold compilation is a real large cost, consistent with bounded `perf-guard-serc` warm regressions; OD15 `--memory-only --matched-prefix` (`memory-only-serc-cost`) INCONCLUSIVE — phys_footprint within budget on most (1.007–1.063×) but cold_python_startup 1.073 and gzip_extract_1m unbounded; C3 performance acceptance not met | `rust-cpython/results/perf-bench/20261117T025435Z-perf-rust-vs-perf-rust-serc`, `20261117T033603Z-perf-rust-vs-perf-rust-serc`; reports `rust-cpython/results/perf-rust{,-serc}.json` |
 | 2026-11-17 | e891 | J/C | CLOSE | campaign closeout: `perf-final-jit-serc` (`--jit --serc`) built at the same epoch for the runnable-variants deliverable; `docs/RUST-CAMPAIGN-RESULTS.md` written; final status BLOCKED — J gate cannot accept different-binary candidates (null-probe proven), C3 cold gate REJECTED + footprint INCONCLUSIVE; evals 11–12 unspent; M4 and combined-qualification unmet; Linux evidence not collected | `perf-final-jit-serc` @ main; tested parent `a009bf1` | unmeasured (documentation-only closeout) | — | BLOCKED: smallest unblock actions recorded — owner decision on J gate statistic/host for track J; Serc compiler-side cold-performance work or scope decision for track C; parked stack and probes preserved under `.work/wt/jit-subscr-virtual` and `campaign/probe-*` | `docs/RUST-CAMPAIGN-RESULTS.md`; this document |
+| 2026-11-17 | e891 | J/C | CLOSE | closeout evidence completed post-BLOCKED: four-variant same-epoch suite matrix (`perf-rust`, `perf-rust-jit`, `perf-rust-serc`, `perf-final-jit-serc`; `--all` 52,102 tests each plus `--serc-verify` on both Serc builds) — non-JIT builds fail exactly sendfile/sslproto/ssl/support (historical forkserver known-red passed this epoch); JIT builds add only `test_capi`'s 19 explained `test_opt` uop assertions (2 copied-globals subtests semantics-verified and catalogued at `912ed8c`); Serc verify introduces no difference; combined build: 2,000-program fuzz 97.45% coverage 0 mismatches, targeted JIT suites match modulo superseded assertions, all 8 held-out kernel digests equal incumbent | same-epoch stages; logs `rust-cpython/logs/perf-{rust,rust-jit,rust-serc,rust-serc-all-serc-verify,final-jit-serc,final-jit-serc-all-serc-verify}-all*.log` | unmeasured (correctness evidence) | — | CORRECT (parity evidence, not acceptance): suite failure sets explained per variant; fuzz/digest/targeted-suite checks clean on `perf-final-jit-serc` | `rust-cpython/results/perf-bench/20261117T041840Z-perf-rust-jit-vs-perf-final-jit-serc` |

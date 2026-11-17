@@ -77,15 +77,32 @@ the incumbent `perf-rust-jit` itself.
   CORRECT from `campaign/c3` `fb131e1` (30,318-case census, zero
   mismatches).
 
+## Correctness (same epoch, completed at closeout)
+
+- **Suite matrix**: all four variants ran `--all` (52,102 tests) plus
+  `--serc-verify` on both Serc builds. Non-JIT builds fail exactly
+  `test_asyncio.test_sendfile`, `test_asyncio.test_sslproto`, `test_ssl`,
+  `test_support` (the historical `test_multiprocessing_forkserver.
+  test_misc` known-red passed this epoch). JIT builds add only
+  `test_capi` — 19 `test_opt` uop-shape assertions, all explained
+  (semantics verified; catalogued in `CLIMB_SUPERSEDED_UOP_ASSERTIONS`).
+  Serc verify introduces no failed-test difference.
+- **Combined build** (`perf-final-jit-serc`): 2,000-program differential
+  fuzz, 97.45% JIT coverage, 0 mismatches; targeted JIT suites differ
+  only by the superseded assertions; all 8 held-out kernel digests equal
+  the incumbent (`20261117T041840Z`).
+- **C3 feature correctness** remains CORRECT from `campaign/c3` `fb131e1`
+  (30,318-case census, zero mismatches).
+
 ## Measured gaps to the done criteria
 
 - **M4 unmet**: no candidate ever passed the acceptance gate; the
   recorded incumbent score does not qualify.
 - **C3 performance unmet**: cold-compilation ACCEPT and OD15 footprint
   ACCEPT both failed on the locked set.
-- **Combined qualification unmet**: `perf-final-jit-serc` is built and
-  runnable but the same-epoch final matrix was not run to acceptance
-  because neither constituent track produced an accepted result.
+- **Combined performance qualification unmet**: `perf-final-jit-serc`
+  correctness is fully evidenced, but no accepted JIT or Serc result
+  exists to qualify a combined score against.
 - **Parked work**: `campaign/jit-subscr-virtual` worktree holds the
   unaccepted three-layer bundle (`17ade05`), subset (`25da18e`), and
   probe branches; unpack-fusion remains parked with a documented
