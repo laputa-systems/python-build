@@ -260,12 +260,15 @@ impl CompiledModule {
         header[..4].copy_from_slice(&self.target().magic_number);
         header[4..8].copy_from_slice(&flags.to_le_bytes());
         header[8..].copy_from_slice(&metadata);
-        marshal::encode_pyc_code_with_options(
+        let mut profile = phase_profile::Profiler::start();
+        let bytes = marshal::encode_pyc_code_with_options(
             &self.code,
             self.python_version,
             &self.initial_intern_state,
             &header,
-        )
+        );
+        profile.lap("pyc-encode");
+        bytes
     }
 }
 
@@ -1481,7 +1484,7 @@ fn compile_normalized(
         .as_ref()
         .map_or_else(|| parsed.suite(), |optimized| &optimized.body);
     let tokens = owned_tokens.as_ref().unwrap_or_else(|| parsed.tokens());
-    let code = Compiler::module_with_scopes(
+    let compiler = Compiler::module_with_scopes(
         filename,
         source,
         tokens,
@@ -1491,9 +1494,10 @@ fn compile_normalized(
         options.native_build_profile,
         options.mode,
         optimized_body.as_ref(),
-    )
-    .compile_module(body)?;
-    profile.lap("codegen");
+    );
+    profile.lap("context");
+    let code = compiler.compile_module(body)?;
+    profile.lap("emit");
     marshal::validate_initial_intern_state(
         &code,
         options.python_version,
