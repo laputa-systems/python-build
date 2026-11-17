@@ -830,6 +830,20 @@ impl Assembler {
     }
 }
 
+fn timed_retain_owners(
+    owners: &mut FusionOwnerCertificates,
+    pipeline: &OptimizationPipeline,
+) {
+    let started = crate::phase_profile::enabled().then(std::time::Instant::now);
+    owners.retain_pipeline(pipeline);
+    if let Some(started) = started {
+        crate::phase_profile::add(
+            "owners-retain",
+            started.elapsed().as_nanos() as u64,
+        );
+    }
+}
+
 impl OptimizationPipeline {
     fn label(&mut self) -> Label {
         let label = Label::from_u32(self.next_label);
@@ -862,9 +876,9 @@ impl OptimizationPipeline {
         let setup_finally_origins = self.record_borrow_cleanup_calls_with_setups();
         // Retain immediately after any pass that edits fusion-view inputs. A skipped pass or
         // one that reports no edits can reuse the checkpoint without hiding an invalidation.
-        original_owners.retain_pipeline(&self);
+        timed_retain_owners(&mut original_owners, &self);
         if self.record_borrow_empty_jump_heads() {
-            original_owners.retain_pipeline(&self);
+            timed_retain_owners(&mut original_owners, &self);
         }
         if !self.borrow_jump_entry_labels.is_empty() {
             // Filtering this separate borrowing index changes no fusion-view input.
@@ -894,14 +908,14 @@ impl OptimizationPipeline {
             } else {
                 self.borrow_threaded_jump_targets = routes;
             }
-            original_owners.retain_pipeline(&self);
+            timed_retain_owners(&mut original_owners, &self);
         }
         let handler_return_bridges = self.original_handler_return_bridges();
         self.record_original_jump_heads();
         self.capture_normal_try_break_pop_owners();
-        original_owners.retain_pipeline(&self);
+        timed_retain_owners(&mut original_owners, &self);
         self.prepare_original_conditional_jump_targets();
-        original_owners.retain_pipeline(&self);
+        timed_retain_owners(&mut original_owners, &self);
         self.preserve_folded_pop_block_locations();
         let assertion_side_exits = self.has_only_assertion_side_exits();
         let mut removed_max_depth = if assertion_side_exits {
@@ -909,14 +923,14 @@ impl OptimizationPipeline {
         } else {
             self.remove_unreachable_instructions()
         };
-        original_owners.retain_pipeline(&self);
+        timed_retain_owners(&mut original_owners, &self);
         #[cfg(any(test, debug_assertions))]
         self.validate_structure(AssemblerStage::RemoveUnreachableInitial)?;
         let nested_try_returns = self.nested_try_branch_returns();
         self.prepare_normal_try_copy_plan();
         self.prepare_plain_tuple_copy_plan();
         self.prepare_conditional_normal_try_joins();
-        original_owners.retain_pipeline(&self);
+        timed_retain_owners(&mut original_owners, &self);
         let original_location_absence = if assertion_side_exits {
             rustc_hash::FxHashSet::default()
         } else {
@@ -924,22 +938,22 @@ impl OptimizationPipeline {
         };
         let synthesized_predecessor_locations = if self.has_synthesized_percent_target_locations {
             self.resolve_synthesized_percent_locations();
-            original_owners.retain_pipeline(&self);
+            timed_retain_owners(&mut original_owners, &self);
             let locations = self.defer_synthesized_predecessor_locations();
-            original_owners.retain_pipeline(&self);
+            timed_retain_owners(&mut original_owners, &self);
             locations
         } else {
             Vec::new()
         };
         self.optimize_boolean_conversions(constants.as_deref());
-        original_owners.retain_pipeline(&self);
+        timed_retain_owners(&mut original_owners, &self);
         #[cfg(any(test, debug_assertions))]
         self.validate_structure(AssemblerStage::OptimizeBooleanConversions)?;
         let threaded_normal_try_joins =
             self.capture_threaded_normal_try_joins(handler_return_bridges);
         let threaded_jumps = !assertion_side_exits && self.thread_forward_jumps();
         self.borrow_threaded_jump_targets.clear();
-        original_owners.retain_pipeline(&self);
+        timed_retain_owners(&mut original_owners, &self);
         #[cfg(any(test, debug_assertions))]
         self.validate_structure(AssemblerStage::ThreadForwardJumps)?;
         if threaded_jumps {
@@ -947,31 +961,31 @@ impl OptimizationPipeline {
                 removed_max_depth =
                     Some(removed_max_depth.map_or(depth, |current| current.max(depth)));
             }
-            original_owners.retain_pipeline(&self);
+            timed_retain_owners(&mut original_owners, &self);
         }
         #[cfg(any(test, debug_assertions))]
         self.validate_structure(AssemblerStage::RemoveUnreachableAfterThreading)?;
         if !assertion_side_exits {
             self.remove_redundant_forward_jumps(false);
-            original_owners.retain_pipeline(&self);
+            timed_retain_owners(&mut original_owners, &self);
         }
         #[cfg(any(test, debug_assertions))]
         self.validate_structure(AssemblerStage::RemoveRedundantForwardJumpsEarly)?;
         if self.optimize_redundant_store_fast() {
-            original_owners.retain_pipeline(&self);
+            timed_retain_owners(&mut original_owners, &self);
         }
         #[cfg(any(test, debug_assertions))]
         self.validate_structure(AssemblerStage::OptimizeRedundantStoreFast)?;
         let copied_comprehension_swaps = self.capture_copied_comprehension_swaps();
         let (swap_blocks, capture_cleanup_swaps, swaps_changed) = self.optimize_swap_runs();
         if swaps_changed {
-            original_owners.retain_pipeline(&self);
+            timed_retain_owners(&mut original_owners, &self);
         }
         #[cfg(any(test, debug_assertions))]
         self.validate_structure(AssemblerStage::OptimizeSwapRuns)?;
         let mut static_swap_store_gaps =
             self.apply_static_swaps((swap_blocks, capture_cleanup_swaps));
-        original_owners.retain_pipeline(&self);
+        timed_retain_owners(&mut original_owners, &self);
         #[cfg(any(test, debug_assertions))]
         self.validate_structure(AssemblerStage::ApplyStaticSwaps)?;
         let mut copied_exit_owner_retargets = Vec::new();
@@ -1263,13 +1277,13 @@ impl OptimizationPipeline {
         // small-exit copying followed by conditional threading, before checking local loads.
         // A terminating match arm can leave its original case jump newly unreachable here.
         let threaded_original = self.thread_original_conditional_jump_targets();
-        original_owners.retain_pipeline(&self);
+        timed_retain_owners(&mut original_owners, &self);
         if threaded_original {
             if let Some(depth) = self.remove_unreachable_instructions() {
                 removed_max_depth =
                     Some(removed_max_depth.map_or(depth, |current| current.max(depth)));
             }
-            original_owners.retain_pipeline(&self);
+            timed_retain_owners(&mut original_owners, &self);
         }
         if let Some(constants) = constants {
             let sequence_depth = if self.python_version >= crate::PythonVersion::Py315 {
@@ -1280,7 +1294,7 @@ impl OptimizationPipeline {
             if let Some(depth) = sequence_depth {
                 removed_max_depth =
                     Some(removed_max_depth.map_or(depth, |current| current.max(depth)));
-                original_owners.retain_pipeline(&self);
+                timed_retain_owners(&mut original_owners, &self);
             }
             if sequence_depth.is_some()
                 || !copied_entry_labels.is_empty()
@@ -1292,25 +1306,25 @@ impl OptimizationPipeline {
                     &copied_entry_labels,
                     early_booleans.as_deref().unwrap_or_default(),
                 )?;
-                original_owners.retain_pipeline(&self);
+                timed_retain_owners(&mut original_owners, &self);
             }
             if matches!(
                 self.python_version,
                 crate::PythonVersion::Py315 | crate::PythonVersion::Py316
             ) {
                 self.lower_common_constants(constants);
-                original_owners.retain_pipeline(&self);
+                timed_retain_owners(&mut original_owners, &self);
             }
             if self.python_version >= crate::PythonVersion::Py316
                 && self.fold_empty_iterated_lists(constants)?
             {
-                original_owners.retain_pipeline(&self);
+                timed_retain_owners(&mut original_owners, &self);
             }
         }
         if let Some(depth) = self.remove_redundant_copy_pop_pairs() {
             removed_max_depth = Some(removed_max_depth.map_or(depth, |current| current.max(depth)));
         }
-        original_owners.retain_pipeline(&self);
+        timed_retain_owners(&mut original_owners, &self);
         if assertion_side_exits {
             self.add_checks_for_assertion_side_exits(local_count, parameter_count);
         } else {
@@ -1320,11 +1334,11 @@ impl OptimizationPipeline {
                 &local_nop_donors,
             );
         }
-        original_owners.retain_pipeline(&self);
+        timed_retain_owners(&mut original_owners, &self);
         #[cfg(any(test, debug_assertions))]
         self.validate_structure(AssemblerStage::AddChecksForUninitializedLoads)?;
         if self.compact_static_swap_store_gaps(static_swap_store_gaps) {
-            original_owners.retain_pipeline(&self);
+            timed_retain_owners(&mut original_owners, &self);
         }
         let before_fusion = FusionOwnerCertificates::snapshot(&self);
         let fusion_changed = self.fuse_superinstructions();
@@ -1346,7 +1360,7 @@ impl OptimizationPipeline {
         #[cfg(any(test, debug_assertions))]
         self.validate_structure(AssemblerStage::PushColdBlocksToEnd)?;
         if !assertion_side_exits && self.remove_redundant_checked_loads() {
-            fusion_owners.retain_pipeline(&self);
+            timed_retain_owners(&mut fusion_owners, &self);
         }
         #[cfg(any(test, debug_assertions))]
         self.validate_structure(AssemblerStage::RemoveRedundantCheckedLoads)?;
@@ -1354,35 +1368,35 @@ impl OptimizationPipeline {
         locations_changed |= self.propagate_locations_within_blocks();
         // Assertion-only paths skip cold-block retention and still need this checkpoint.
         if assertion_side_exits || locations_changed {
-            fusion_owners.retain_pipeline(&self);
+            timed_retain_owners(&mut fusion_owners, &self);
         }
         #[cfg(any(test, debug_assertions))]
         self.validate_structure(AssemblerStage::PropagateLocationsWithinBlocks)?;
         if self.remove_redundant_swaps_before_pops() {
-            fusion_owners.retain_pipeline(&self);
+            timed_retain_owners(&mut fusion_owners, &self);
         }
         #[cfg(any(test, debug_assertions))]
         self.validate_structure(AssemblerStage::RemoveRedundantSwapsBeforePops)?;
         let nop_cleanup = self.remove_redundant_nops();
         if nop_cleanup.may_have_changed {
-            fusion_owners.retain_pipeline(&self);
+            timed_retain_owners(&mut fusion_owners, &self);
         }
         #[cfg(any(test, debug_assertions))]
         self.validate_structure(AssemblerStage::RemoveRedundantNops)?;
         if !assertion_side_exits {
             if nop_cleanup.has_forward_jump {
                 self.remove_redundant_forward_jumps(true);
-                fusion_owners.retain_pipeline(&self);
+                timed_retain_owners(&mut fusion_owners, &self);
             }
             // Manager exits can expose a redundant POP_BLOCK after their jump disappears.
             if self.remove_redundant_with_exit_nops() {
-                fusion_owners.retain_pipeline(&self);
+                timed_retain_owners(&mut fusion_owners, &self);
             }
         }
         #[cfg(any(test, debug_assertions))]
         self.validate_structure(AssemblerStage::RemoveRedundantForwardJumpsLate)?;
         if self.normalize_backward_conditionals()? {
-            fusion_owners.retain_pipeline(&self);
+            timed_retain_owners(&mut fusion_owners, &self);
         }
         let mut retained_finally_entries = self.retained_finally_entries(&retained_finally_origins);
         let module_annotation_borrow_markers =

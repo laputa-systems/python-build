@@ -1300,6 +1300,8 @@ impl<'source> Compiler<'source> {
         mut self: Box<Self>,
         add_implicit_return: bool,
     ) -> Result<Box<CodeObject>, CompileError> {
+        let __fin_started = crate::phase_profile::enabled()
+            .then(std::time::Instant::now);
         for (instruction, constant) in
             std::mem::take(&mut self.output.deferred_constants_before_return)
         {
@@ -1526,6 +1528,12 @@ impl<'source> Compiler<'source> {
             output: &mut self.output,
             context: &self.context,
         };
+        if let Some(started) = __fin_started {
+            crate::phase_profile::add(
+                "preasm-finish",
+                started.elapsed().as_nanos() as u64,
+            );
+        }
         let __asm_started = crate::phase_profile::enabled()
             .then(std::time::Instant::now);
         let AssembledCode {
