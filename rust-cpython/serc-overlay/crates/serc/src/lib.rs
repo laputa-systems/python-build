@@ -89,7 +89,7 @@ mod phase_profile {
     use std::sync::OnceLock;
     use std::time::Instant;
 
-    fn enabled() -> bool {
+    pub(crate) fn enabled() -> bool {
         static ENABLED: OnceLock<bool> = OnceLock::new();
         *ENABLED.get_or_init(|| std::env::var_os("SERC_PROFILE").is_some())
     }
@@ -119,6 +119,31 @@ mod phase_profile {
         }
     }
 
+    thread_local! {
+        static SUB_TOTALS: std::cell::RefCell<Vec<(&'static str, u64)>> =
+            const { std::cell::RefCell::new(Vec::new()) };
+    }
+
+    pub(crate) fn add(bucket: &'static str, nanos: u64) {
+        if enabled() {
+            SUB_TOTALS.with(|totals| {
+                let mut totals = totals.borrow_mut();
+                match totals.iter_mut().find(|(name, _)| *name == bucket) {
+                    Some((_, total)) => *total += nanos,
+                    None => totals.push((bucket, nanos)),
+                }
+            });
+        }
+    }
+
+    pub(crate) fn sub_totals() -> Vec<(&'static str, u64)> {
+        SUB_TOTALS.with(|totals| totals.borrow().clone())
+    }
+
+    pub(crate) fn clear_sub_totals() {
+        SUB_TOTALS.with(|totals| totals.borrow_mut().clear());
+    }
+
     #[allow(clippy::print_stderr)]
     impl Drop for Profiler {
         fn drop(&mut self) {
@@ -130,7 +155,13 @@ mod phase_profile {
                     .map(|(name, t)| format!("{name}={t}"))
                     .collect::<Vec<_>>()
                     .join(" ");
-                eprintln!("SERC-PHASE total={total} {phases}");
+                let sub = sub_totals()
+                    .iter()
+                    .map(|(name, t)| format!("{name}={t}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                eprintln!("SERC-PHASE total={total} {phases} | {sub}");
+                clear_sub_totals();
             }
         }
     }

@@ -308,17 +308,36 @@ impl Assembler {
                     && (self.has_only_linear_instructions(local_count)
                         || self.has_only_linear_terminal_guards())))
         {
-            return self
+            let started = crate::phase_profile::enabled()
+                .then(std::time::Instant::now);
+            let result = self
                 .optimize_linear_assertion_side_exits(
                     local_count,
                     parameter_count,
                     constants.as_deref(),
                 )?
                 .finish(first_line_number);
+            if let Some(started) = started {
+                crate::phase_profile::add(
+                    "asm-linear",
+                    started.elapsed().as_nanos() as u64,
+                );
+            }
+            return result;
         }
-        self.into_optimization_pipeline()
-            .optimize(first_line_number, local_count, parameter_count, constants)?
-            .finish(first_line_number)
+        let started = crate::phase_profile::enabled()
+            .then(std::time::Instant::now);
+        let pipeline = self.into_optimization_pipeline();
+        if let Some(started) = started {
+            crate::phase_profile::add("pipeline-build", started.elapsed().as_nanos() as u64);
+        }
+        let started = crate::phase_profile::enabled()
+            .then(std::time::Instant::now);
+        let result = pipeline.optimize(first_line_number, local_count, parameter_count, constants)?;
+        if let Some(started) = started {
+            crate::phase_profile::add("pipeline-optimize", started.elapsed().as_nanos() as u64);
+        }
+        result.finish(first_line_number)
     }
 
     pub(in crate::assembler) fn into_optimization_pipeline(mut self) -> OptimizationPipeline {

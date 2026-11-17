@@ -1526,6 +1526,8 @@ impl<'source> Compiler<'source> {
             output: &mut self.output,
             context: &self.context,
         };
+        let __asm_started = crate::phase_profile::enabled()
+            .then(std::time::Instant::now);
         let AssembledCode {
             bytecode,
             line_table,
@@ -1538,6 +1540,12 @@ impl<'source> Compiler<'source> {
             parameter_count,
             Some(&mut constants),
         )?;
+        if let Some(started) = __asm_started {
+            crate::phase_profile::add(
+                "asm-finish",
+                started.elapsed().as_nanos() as u64,
+            );
+        }
         if exception_table.is_empty() || line_table.is_empty() {
             self.context.record_empty_bytes_origin(false);
         }
