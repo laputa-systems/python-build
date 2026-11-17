@@ -572,8 +572,12 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual(pv.replicate(["improved", "regressed"]), "inconclusive")
         self.assertEqual(pv.replicate(["improved", "inconclusive"]), "inconclusive")
 
-    def test_harness_timing_failure_counts_as_worse(self):
+    def test_harness_timing_failure_does_not_override_the_floor_interval(self):
         observation = pv.run_observation(summary([0.99, 1.009], status="fail"))
+        self.assertEqual(observation["metrics"]["wall"]["class"], "within budget")
+        observation = pv.run_observation(summary([0.98, 1.05], status="fail"))
+        self.assertEqual(observation["metrics"]["wall"]["class"], "inconclusive")
+        observation = pv.run_observation(summary([1.02, 1.05], status="pass"))
         self.assertEqual(observation["metrics"]["wall"]["class"], "regressed")
 
     def test_cpu_uses_paired_bootstrap(self):
@@ -610,6 +614,34 @@ class VerdictPolicyTests(unittest.TestCase):
         self.assertEqual(entity["metrics"]["wall"]["verdict"], "inconclusive")
         decision = pv.decide({"w": entity}, targets=["w"], runs=2, quiet=True, gate=True)
         self.assertEqual(decision["decision"], pv.INCONCLUSIVE)
+
+    def test_cluster_bound_resolves_runs_the_floor_already_bounds(self):
+        runs = [summary([1.004, 1.008]) for _ in range(4)] + [summary([1.0, 1.02])]
+        entity = verdict(*runs)
+        wall = entity["metrics"]["wall"]
+        self.assertEqual(wall["per_run"], ["within budget"] * 4 + ["inconclusive"])
+        self.assertEqual(wall["verdict"], "within budget")
+        self.assertIsNotNone(wall["cluster_ci95"])
+
+    def test_cluster_bound_cannot_clear_a_demonstrated_run_regression(self):
+        runs = [summary([1.004, 1.008]) for _ in range(4)] + [summary([1.02, 1.05])]
+        entity = verdict(*runs)
+        wall = entity["metrics"]["wall"]
+        self.assertEqual(wall["per_run"], ["within budget"] * 4 + ["regressed"])
+        self.assertEqual(wall["verdict"], "inconclusive")
+
+    def test_cluster_bound_needs_pairs_in_every_run(self):
+        sparse = summary([0.99, 1.02], wall_ratios=[1.005])
+        entity = verdict(sparse, sparse, sparse)
+        self.assertEqual(entity["metrics"]["wall"]["verdict"], "inconclusive")
+        self.assertIsNone(entity["metrics"]["wall"]["cluster_ci95"])
+
+    def test_cluster_bound_stays_inconclusive_above_the_floor(self):
+        runs = [summary([0.99, 1.03], wall_ratios=[1.02] * 6) for _ in range(5)]
+        entity = verdict(*runs)
+        wall = entity["metrics"]["wall"]
+        self.assertEqual(wall["per_run"], ["inconclusive"] * 5)
+        self.assertEqual(wall["verdict"], "inconclusive")
 
     def test_wide_intervals_around_parity_are_unclear_not_met(self):
         def observed(interval, ratios):
@@ -733,7 +765,8 @@ class DecideTests(unittest.TestCase):
                          "CALIBRATION-INCONCLUSIVE")
 
     def test_calibration_needs_every_metric_within_budget(self):
-        wide = {"w": verdict(summary([0.97, 1.03]), summary([0.98, 1.02]))}
+        wide = {"w": verdict(summary([0.9, 1.1], wall_ratios=[1.02] * 6),
+                             summary([0.9, 1.1], wall_ratios=[0.98] * 6))}
         self.assertEqual(pv.calibration(wide, runs=2, quiet=True, gate=True)["decision"],
                          "CALIBRATION-INCONCLUSIVE")
         split = {"w": verdict(summary([0.95, 0.98]), summary([1.03, 1.05]))}
@@ -743,7 +776,8 @@ class DecideTests(unittest.TestCase):
 
     def test_inconclusive_guard_blocks_a_target_win(self):
         workloads = {"zlib_decode_1m": verdict(summary([0.90, 0.95]), summary([0.91, 0.96])),
-                     "python_startup": verdict(summary([0.9, 1.3]), summary([0.99, 1.005]))}
+                     "python_startup": verdict(summary([0.9, 1.3], wall_ratios=[1.05] * 6),
+                                               summary([0.9, 1.3], wall_ratios=[0.95] * 6))}
         decision = pv.decide(workloads, targets=["zlib_decode_1m"], runs=2, quiet=True, gate=True)
         self.assertEqual(decision["decision"], pv.INCONCLUSIVE)
         self.assertEqual(decision["inconclusive"], ["python_startup wall"])

@@ -18,6 +18,14 @@ that cannot bound the ratio, leave it `inconclusive`. The allowance is
 `PRACTICAL_FLOOR`. Ratios are candidate over baseline everywhere, so below 1
 is faster or smaller.
 
+bench.py's own timing verdict fails on any shift larger than the run's
+observed noise, with no magnitude floor, so it cannot decide acceptance: the
+practical floor does. When per-run replication leaves a metric inconclusive,
+a cluster bootstrap over the independent runs (resampling whole runs and
+pooling their paired observations) supplies the neutral bound: the metric is
+within budget only when that interval clears the floor and no run
+demonstrated a regression.
+
 Memory-only acceptance evaluates module load footprint and working peak,
 and supported workload peak memory, with peak RSS required. A candidate that
 links Serc over a non-Serc baseline records peak RSS as a known cost and
@@ -28,6 +36,7 @@ time, and host quietness cannot qualify or block acceptance.
 
 from __future__ import annotations
 
+import random
 import statistics
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -101,6 +110,26 @@ def replicate(run_classes: Sequence[str]) -> str:
 
 def directions_disagree(run_classes: Sequence[str]) -> bool:
     return RUN_IMPROVED in run_classes and RUN_REGRESSED in run_classes
+
+
+def _cluster_bound(run_ratios: Sequence[Sequence[float]], *, resamples: int = 1000) -> list[float] | None:
+    """Bootstrap the pooled median ratio resampling whole runs.
+
+    Runs are the independent blocks: resampling them preserves between-run
+    variance that pooling every pair would discard. Every run must contribute
+    ratios, or there is no between-run evidence to bound.
+    """
+    if len(run_ratios) < 2 or any(len(ratios) < 2 for ratios in run_ratios):
+        return None
+    generator = random.Random(0)
+    medians = []
+    for _ in range(resamples):
+        pooled = [value for _ in run_ratios
+                  for value in run_ratios[generator.randrange(len(run_ratios))]]
+        medians.append(float(statistics.median(pooled)))
+    medians.sort()
+    tail = (1.0 - BOOTSTRAP_CONFIDENCE) / 2.0
+    return [medians[int(tail * resamples)], medians[int((1.0 - tail) * resamples) - 1]]
 
 
 def _paired(baseline: Sequence[float], candidate: Sequence[float], floor: float = 0.0) -> list[float]:
@@ -181,9 +210,6 @@ def run_observation(workload: Mapping[str, Any], *, floor: float = PRACTICAL_FLO
         if isinstance(cpu_metric, Mapping):
             metrics["cpu"] = _metric(_paired(cpu_metric.get("baseline_samples") or [],
                                              cpu_metric.get("candidate_samples") or []))
-        if (timing.get("status") == "fail" and metrics["wall"]["ci95"] is not None
-                and metrics["wall"]["class"] in {RUN_WITHIN_BUDGET, RUN_INCONCLUSIVE}):
-            metrics["wall"]["class"] = RUN_REGRESSED
     memory = workload["comparison"].get("memory", {})
     for name in BENCH_MEMORY_METRICS:
         metric = memory.get("metrics", {}).get(name) if isinstance(memory, Mapping) else None
@@ -237,13 +263,22 @@ def entity_verdict(runs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     for name in names:
         classes = [run["metrics"].get(name, {}).get("class", RUN_INCONCLUSIVE) for run in runs]
         ratios = [value for run in runs for value in run["metrics"].get(name, {}).get("ratios", [])]
+        run_ratios = [run["metrics"].get(name, {}).get("ratios") or [] for run in runs]
         values = {side: [value for run in runs
                          for value in run["metrics"].get(name, {}).get("values", {}).get(side, [])]
                   for side in ("baseline", "candidate")}
+        verdict = replicate(classes)
+        cluster_ci95 = None
+        if verdict == RUN_INCONCLUSIVE and name != PHYSICAL_FOOTPRINT:
+            cluster_ci95 = _cluster_bound(run_ratios)
+            if (cluster_ci95 is not None and RUN_REGRESSED not in classes
+                    and classify(cluster_ci95) in {RUN_IMPROVED, RUN_WITHIN_BUDGET}):
+                verdict = RUN_WITHIN_BUDGET
         metrics[name] = {
-            "verdict": replicate(classes),
+            "verdict": verdict,
             "per_run": classes,
             "per_run_ci95": [run["metrics"].get(name, {}).get("ci95") for run in runs],
+            "cluster_ci95": cluster_ci95,
             "pooled": {
                 "median": float(statistics.median(ratios)) if ratios else None,
                 "ci95": _bootstrap(ratios) if len(ratios) >= 2 else None,
@@ -488,7 +523,7 @@ def calibration(entities: Mapping[str, Mapping[str, Any]], *, runs: int, quiet: 
 
 def _format_metric(name: str, detail: Mapping[str, Any]) -> str:
     median = detail["pooled"]["median"]
-    interval = detail["pooled"]["ci95"]
+    interval = detail.get("cluster_ci95") or detail["pooled"]["ci95"]
     if median is None:
         value = "n/a"
     elif interval:
