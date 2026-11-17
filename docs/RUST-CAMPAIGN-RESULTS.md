@@ -92,7 +92,9 @@ the incumbent `perf-rust-jit` itself.
   only by the superseded assertions; all 8 held-out kernel digests equal
   the incumbent (`20261117T041840Z`).
 - **C3 feature correctness** remains CORRECT from `campaign/c3` `fb131e1`
-  (30,318-case census, zero mismatches).
+  (30,318-case census, zero mismatches). Verified at closeout that
+  `serc-overlay/crates/serc/src` is unchanged since `fb131e1` except a
+  doc comment in `config.rs`, so the census carries to this epoch.
 
 ## Measured gaps to the done criteria
 
