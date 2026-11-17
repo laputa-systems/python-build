@@ -11,6 +11,8 @@ extern "C" {
 PyAPI_FUNC(int) _PyArray_GetSpecializationKind(PyObject *op);
 PyAPI_FUNC(int) _PyArray_ReadDoubleItem(PyObject *op, Py_ssize_t index, double *value);
 PyAPI_FUNC(int) _PyArray_ReadIntItem(PyObject *op, Py_ssize_t index, int *value);
+PyAPI_FUNC(int) _PyArray_WriteDoubleItem(PyObject *op, Py_ssize_t index, double value);
+PyAPI_FUNC(PyTypeObject *) _PyArray_DStoreType(void);
 
 #ifdef __cplusplus
 }

@@ -1366,6 +1366,46 @@ dummy_func(
             INPUTS_DEAD();
         }
 
+        tier2 op(_BINARY_OP_SUBSCR_LIST_INT_UNBOXED, (list_st, sub_st -- res)) {
+            PyObject *sub = PyStackRef_AsPyObjectBorrow(sub_st);
+            PyObject *list = PyStackRef_AsPyObjectBorrow(list_st);
+            assert(PyLong_CheckExact(sub));
+            assert(_PyLong_IsCompact((PyLongObject *)sub));
+            assert(PyList_CheckExact(list));
+            EXIT_IF(PyStackRef_RefcountOnObject(list_st) && !_Py_IsImmortal(list));
+            Py_ssize_t index = _PyLong_CompactValue((PyLongObject *)sub);
+            if (index < 0) {
+                index += PyList_GET_SIZE(list);
+            }
+            EXIT_IF(index < 0 || index >= PyList_GET_SIZE(list));
+            PyObject *item = PyList_GET_ITEM(list, index);
+            assert(item != NULL);
+            EXIT_IF(!PyFloat_CheckExact(item));
+            double value = PyFloat_AS_DOUBLE(item);
+            PyStackRef_CLOSE_SPECIALIZED_TSTATE(tstate, sub_st, _PyLong_ExactDeallocTstate);
+            DEAD(list_st);
+            res = PyStackRef_FromUnboxedFloat(value);
+            STAT_INC(BINARY_OP, hit);
+        }
+
+        tier2 op(_BINARY_OP_SUBSCR_LIST_INT_UNBOXED_INDEX, (list_st, sub_st -- res)) {
+            PyObject *list = PyStackRef_AsPyObjectBorrow(list_st);
+            assert(PyList_CheckExact(list));
+            EXIT_IF(PyStackRef_RefcountOnObject(list_st) && !_Py_IsImmortal(list));
+            Py_ssize_t index = PyStackRef_AsUnboxedInt(sub_st);
+            if (index < 0) {
+                index += PyList_GET_SIZE(list);
+            }
+            EXIT_IF(index < 0 || index >= PyList_GET_SIZE(list));
+            PyObject *item = PyList_GET_ITEM(list, index);
+            assert(item != NULL);
+            EXIT_IF(!PyFloat_CheckExact(item));
+            double value = PyFloat_AS_DOUBLE(item);
+            INPUTS_DEAD();
+            res = PyStackRef_FromUnboxedFloat(value);
+            STAT_INC(BINARY_OP, hit);
+        }
+
         macro(BINARY_OP_SUBSCR_ARRAY_D) =
             _GUARD_TOS_INT + unused/1 + _GUARD_NOS_OBJECT_TYPE_VERSION + unused/2 +
             _BINARY_OP_SUBSCR_ARRAY_D + _POP_TOP_INT + POP_TOP;
@@ -1408,6 +1448,18 @@ dummy_func(
             STAT_INC(BINARY_OP, hit);
         }
 
+        tier2 op(_BINARY_OP_SUBSCR_ARRAY_D_UNBOXED_INDEX, (array_st, sub_st -- res)) {
+            PyObject *array = PyStackRef_AsPyObjectBorrow(array_st);
+            EXIT_IF(PyStackRef_RefcountOnObject(array_st) && !_Py_IsImmortal(array));
+            Py_ssize_t index = PyStackRef_AsUnboxedInt(sub_st);
+            double value;
+            int found = _PyArray_ReadDoubleItem(array, index, &value);
+            EXIT_IF(!found);
+            INPUTS_DEAD();
+            res = PyStackRef_FromUnboxedFloat(value);
+            STAT_INC(BINARY_OP, hit);
+        }
+
         macro(BINARY_OP_SUBSCR_ARRAY_I) =
             _GUARD_TOS_INT + unused/1 + _GUARD_NOS_OBJECT_TYPE_VERSION + unused/2 +
             _BINARY_OP_SUBSCR_ARRAY_I + _POP_TOP_INT + POP_TOP;
@@ -1434,6 +1486,24 @@ dummy_func(
             ls = array_st;
             ss = sub_st;
             INPUTS_DEAD();
+        }
+
+        tier2 op(_BINARY_OP_SUBSCR_ARRAY_I_UNBOXED, (array_st, sub_st -- res)) {
+            PyObject *sub = PyStackRef_AsPyObjectBorrow(sub_st);
+            PyObject *array = PyStackRef_AsPyObjectBorrow(array_st);
+            assert(PyLong_CheckExact(sub));
+            assert(_PyLong_IsCompact((PyLongObject *)sub));
+            EXIT_IF(PyStackRef_RefcountOnObject(array_st) && !_Py_IsImmortal(array));
+            Py_ssize_t index = _PyLong_CompactValue((PyLongObject *)sub);
+            int value;
+            int found = _PyArray_ReadIntItem(array, index, &value);
+            EXIT_IF(!found);
+            /* A C int can exceed the compact range; exit those generically. */
+            EXIT_IF(!_PyLong_FitsCompact(value));
+            PyStackRef_CLOSE_SPECIALIZED_TSTATE(tstate, sub_st, _PyLong_ExactDeallocTstate);
+            DEAD(array_st);
+            res = PyStackRef_FromUnboxedInt((Py_ssize_t)value);
+            STAT_INC(BINARY_OP, hit);
         }
 
         macro(BINARY_OP_SUBSCR_LIST_SLICE) =
@@ -1661,6 +1731,7 @@ dummy_func(
         family(STORE_SUBSCR, INLINE_CACHE_ENTRIES_STORE_SUBSCR) = {
             STORE_SUBSCR_DICT,
             STORE_SUBSCR_LIST_INT,
+            STORE_SUBSCR_ARRAY_D,
         };
 
         specializing op(_SPECIALIZE_STORE_SUBSCR, (counter/1, container, sub -- container, sub)) {
@@ -1749,6 +1820,36 @@ dummy_func(
             _PyStackRef old = PyStackRef_FromPyObjectSteal(old_value);
             PyStackRef_CLOSE_SPECIALIZED_TSTATE(tstate, old, _PyFloat_ExactDeallocTstate);
         }
+
+        op(_STORE_SUBSCR_ARRAY_D, (value, container, sub -- )) {
+            PyObject *sub_o = PyStackRef_AsPyObjectBorrow(sub);
+            PyObject *container_o = PyStackRef_AsPyObjectBorrow(container);
+            PyObject *value_o = PyStackRef_AsPyObjectBorrow(value);
+
+            DEOPT_IF(!PyLong_CheckExact(sub_o) ||
+                     !_PyLong_IsCompact((PyLongObject *)sub_o));
+            Py_ssize_t index = _PyLong_CompactValue((PyLongObject *)sub_o);
+            double d;
+            if (PyFloat_CheckExact(value_o)) {
+                d = PyFloat_AS_DOUBLE(value_o);
+            }
+            else if (PyLong_CheckExact(value_o) &&
+                     _PyLong_IsCompact((PyLongObject *)value_o)) {
+                d = (double)_PyLong_CompactValue((PyLongObject *)value_o);
+            }
+            else {
+                DEOPT_IF(true);
+            }
+            PyTypeObject *array_d_type = _PyArray_DStoreType();
+            DEOPT_IF(Py_TYPE(container_o) != array_d_type);
+            int writable = _PyArray_WriteDoubleItem(container_o, index, d);
+            DEOPT_IF(!writable);
+            STAT_INC(STORE_SUBSCR, hit);
+            DECREF_INPUTS();
+        }
+
+        macro(STORE_SUBSCR_ARRAY_D) =
+            unused/1 + _STORE_SUBSCR_ARRAY_D;
 
         macro(STORE_SUBSCR_DICT) =
             _RECORD_NOS_TYPE +

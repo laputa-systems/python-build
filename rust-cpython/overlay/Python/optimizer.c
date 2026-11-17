@@ -1980,6 +1980,9 @@ enum {
     JIT_OPT_KIND_INT_ARITH = 5,
     JIT_OPT_KIND_INT_COMPARE = 6,
     JIT_OPT_KIND_FLOAT_ARRAY_READ = 7,
+    JIT_OPT_KIND_INT_ARRAY_READ = 8,
+    JIT_OPT_KIND_FLOAT_LIST_READ = 9,
+    JIT_OPT_KIND_GUARD = 10,
 };
 
 enum {
@@ -2006,7 +2009,7 @@ enum {
 
 enum {
     JIT_OPT_ACTION_COPY = 0,
-    JIT_OPT_SYNTHETIC_ACTIONS = 16,
+    JIT_OPT_SYNTHETIC_ACTIONS = 20,
 };
 
 extern Py_ssize_t _PyJitOpt_PlanUnboxing(
@@ -2030,6 +2033,10 @@ static const uint16_t unboxed_action_uops[JIT_OPT_SYNTHETIC_ACTIONS] = {
     _COMPARE_OP_INT_UNBOXED,
     _BOX_INT,
     _BINARY_OP_SUBSCR_ARRAY_D_UNBOXED,
+    _BINARY_OP_SUBSCR_ARRAY_I_UNBOXED,
+    _BINARY_OP_SUBSCR_ARRAY_D_UNBOXED_INDEX,
+    _BINARY_OP_SUBSCR_LIST_INT_UNBOXED,
+    _BINARY_OP_SUBSCR_LIST_INT_UNBOXED_INDEX,
 };
 
 static bool
@@ -2047,6 +2054,7 @@ int_node(int opcode, uint8_t *kind, uint8_t *detail)
         case _BINARY_OP_MULTIPLY_INT_INPLACE: *detail = JIT_OPT_ARITH_MULTIPLY | JIT_OPT_REUSE_LEFT; return true;
         case _BINARY_OP_MULTIPLY_INT_INPLACE_RIGHT: *detail = JIT_OPT_ARITH_MULTIPLY | JIT_OPT_REUSE_RIGHT; return true;
         case _COMPARE_OP_INT: *kind = JIT_OPT_KIND_INT_COMPARE; *detail = 0; return true;
+        case _BINARY_OP_SUBSCR_ARRAY_I: *kind = JIT_OPT_KIND_INT_ARRAY_READ; *detail = 0; return true;
         default: return false;
     }
 }
@@ -2069,6 +2077,7 @@ float_node(int opcode, uint8_t *kind, uint8_t *detail)
         case _BINARY_OP_TRUEDIV_FLOAT_INPLACE: *detail = JIT_OPT_ARITH_TRUE_DIVIDE | JIT_OPT_REUSE_LEFT; return true;
         case _BINARY_OP_TRUEDIV_FLOAT_INPLACE_RIGHT: *detail = JIT_OPT_ARITH_TRUE_DIVIDE | JIT_OPT_REUSE_RIGHT; return true;
         case _BINARY_OP_SUBSCR_ARRAY_D: *kind = JIT_OPT_KIND_FLOAT_ARRAY_READ; *detail = 0; return true;
+        case _BINARY_OP_SUBSCR_LIST_INT: *kind = JIT_OPT_KIND_FLOAT_LIST_READ; *detail = 0; return true;
         case _COMPARE_OP_FLOAT: *kind = JIT_OPT_KIND_FLOAT_COMPARE; *detail = 0; return true;
         default: return false;
     }
@@ -2093,7 +2102,7 @@ describe_uop(int opcode)
                 int_node(opcode, &uop.kind, &uop.detail);
     if (!node) {
         uop.kind = JIT_OPT_KIND_OTHER;
-        if (opcode == _NOP) {
+        if (opcode == _NOP || opcode == _SPILL_OR_RELOAD) {
             uop.kind = JIT_OPT_KIND_NOP;
         }
         else if (opcode == _POP_TOP || opcode == _POP_TOP_NOP || opcode == _POP_TOP_INT ||
@@ -2101,6 +2110,12 @@ describe_uop(int opcode)
             uop.kind = JIT_OPT_KIND_POP;
             uop.detail = opcode == _POP_TOP_NOP ? JIT_OPT_POP_BORROWED :
                 opcode == _POP_TOP_INT ? JIT_OPT_POP_INT : JIT_OPT_POP_OTHER;
+        }
+        else if (opcode == _GUARD_TOS_FLOAT || opcode == _GUARD_NOS_FLOAT ||
+                 opcode == _GUARD_TOS_INT || opcode == _GUARD_NOS_INT) {
+            uop.kind = JIT_OPT_KIND_GUARD;
+            uop.detail = (opcode == _GUARD_NOS_FLOAT || opcode == _GUARD_NOS_INT ? 1 : 0) |
+                (opcode == _GUARD_TOS_FLOAT || opcode == _GUARD_NOS_FLOAT ? 0 : 2);
         }
     }
     bool known_error_stack = node || opcode == _BOX_FLOAT || opcode == _BOX_INT;
