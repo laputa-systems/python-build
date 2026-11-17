@@ -74,8 +74,36 @@ the incumbent grow at most ~25% (scimark_fft 54,328 vs 43,348; nbody
 (`20261116T223944Z-perf-rust-jit-vs-perf-rust-jit-aa`) is
 **WITHIN-BUDGET** on every entity, so the sub-floor regressions are real
 candidate effects rather than rebuild noise. Round 1 has now consumed
-**9 of ≤12 candidate evaluations**; next is a remove-one subset
-evaluation (drop the list-read-unbox layer) before any further mechanism.
+**9 of ≤12 candidate evaluations**.
+
+Evaluation 10 (remove-one subset: store-subscript + array-index unbox,
+`25da18e`, `perf-jit-array-index-unbox`) gated **INCONCLUSIVE** at point
+0.9755 (`20261116T234252Z`): fannkuch, gzip_extract_1m, import_django,
+nqueens, and zlib_decode_1m wall/cpu stayed unbounded — the list-read
+layer was not the cause. JIT code bytes are identical to the three-layer
+build except nbody (45,604 vs 54,900).
+
+Two diagnostic probes then isolated the residual signature. A semantically
+null C change (`campaign/probe-layout`, one file-scope global in
+`optimizer.c`, `perf-probe-layout`) gated **INCONCLUSIVE** with the same
+shape — import_django ~1.009, nqueens ~1.005, gzip/django_*/richards
+wall/cpu straddles (`20261117T004023Z`). A null Rust-export change
+(`campaign/probe-rust`, `perf-probe-rust`) gated **INCONCLUSIVE** with
+only import_django wall (1.007) and zlib_decode_1m cpu (1.004) unbounded
+(`20261117T015234Z`). Same-source A/A stays WITHIN-BUDGET, so the offsets
+are real paired binary differences — code-layout sensitivity of roughly
+0.4–1% on import/startup/compression workloads — not candidate defects
+and not rebuild noise. A deepening probe (`fdf0c89`: import_django 300,
+nqueens 200 timing rounds; exploratory `20261117T013242Z`) resolved
+nqueens to within-budget but showed import_django wall's ~1.009 offset is
+a stable detected regression under the runner's noise-relative fail
+check, which `perf_verdict` promotes to per-run regressed regardless of
+the 1% floor. Conclusion: the all-metrics gate cannot ACCEPT any
+candidate whose binary perturbs these layout-sensitive workloads, which
+is every real source change; evals 11–12 are preserved unspent rather
+than spent reproducing the same signature. This is a shared unresolved
+measurement signature — the stacking rule's H0-blocker clause applies,
+so the CORRECT bundle and subset are not stack-tagged.
 
 Main's last correctness-qualified runtime is `3bd21f6` (reference-init).
 The recorded `perf-rust-jit` score is **S = 0.7463** versus M0 0.7748,
@@ -84,7 +112,7 @@ These are recorded measurements, **not a qualified milestone**: the fresh
 A/A gate was INCONCLUSIVE and the frozen-reference guard gate REJECTED.
 M4 ≤ 0.25 remains unmet. No CLIMB round-1 candidate has been accepted.
 
-Round 1 has consumed **9 of ≤12 candidate evaluations**. Preserve that total,
+Round 1 has consumed **10 of ≤12 candidate evaluations**. Preserve that total,
 but audit the separate evaluable-failure counter; a shared measurement
 blocker is not evidence of an optimization plateau. Evals 2/5/6/7/8 repeatedly
 hit the same ~1% unrelated-workload / unbounded-RSS signature. Their contrast
