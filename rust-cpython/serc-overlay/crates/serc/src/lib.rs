@@ -85,6 +85,57 @@ impl CpythonTarget {
     }
 }
 
+mod phase_profile {
+    use std::sync::OnceLock;
+    use std::time::Instant;
+
+    fn enabled() -> bool {
+        static ENABLED: OnceLock<bool> = OnceLock::new();
+        *ENABLED.get_or_init(|| std::env::var_os("SERC_PROFILE").is_some())
+    }
+
+    pub(crate) struct Profiler {
+        enabled: bool,
+        lap: Instant,
+        totals: Vec<(&'static str, u64)>,
+    }
+
+    impl Profiler {
+        pub(crate) fn start() -> Self {
+            Self {
+                enabled: enabled(),
+                lap: Instant::now(),
+                totals: Vec::new(),
+            }
+        }
+
+        pub(crate) fn lap(&mut self, name: &'static str) {
+            if self.enabled {
+                let now = Instant::now();
+                self.totals
+                    .push((name, now.duration_since(self.lap).as_nanos() as u64));
+                self.lap = now;
+            }
+        }
+    }
+
+    #[allow(clippy::print_stderr)]
+    impl Drop for Profiler {
+        fn drop(&mut self) {
+            if self.enabled {
+                let total: u64 = self.totals.iter().map(|(_, t)| *t).sum();
+                let phases = self
+                    .totals
+                    .iter()
+                    .map(|(name, t)| format!("{name}={t}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                eprintln!("SERC-PHASE total={total} {phases}");
+            }
+        }
+    }
+}
+
 /// The default CPython target. See [`PythonVersion::target`] for other supported versions.
 pub const CPYTHON_TARGET: CpythonTarget = CpythonTarget {
     implementation: target::TARGET_IMPLEMENTATION,
@@ -129,11 +180,14 @@ impl CompiledModule {
 
     /// Marshal the module code object using its selected CPython target's format.
     pub fn marshal(&self) -> Vec<u8> {
-        marshal::encode_code_with_options(
+        let mut profile = phase_profile::Profiler::start();
+        let bytes = marshal::encode_code_with_options(
             &self.code,
             self.python_version,
             &self.initial_intern_state,
-        )
+        );
+        profile.lap("marshal-encode");
+        bytes
     }
 
     /// Build a timestamp-invalidated `.pyc` file for the selected CPython target.
@@ -1110,6 +1164,7 @@ fn compile_normalized(
     options
         .native_build_profile
         .validate(options.python_version)?;
+    let mut profile = phase_profile::Profiler::start();
     // The interactive and expression grammars track CPython 3.16's code object shape and
     // interactive displayhook. Earlier targets retain their existing exec-only contract.
     if options.mode != CompileMode::Exec && options.python_version != PythonVersion::Py316 {
@@ -1158,6 +1213,7 @@ fn compile_normalized(
             .ok_or_else(|| CompileError::Internal("parser did not return a module".to_string()))?;
         ParsedModule::new(parsed)
     };
+    profile.lap("parse");
     let unsupported = if options.mode == CompileMode::Eval {
         &eval_unsupported
     } else {
@@ -1331,6 +1387,7 @@ fn compile_normalized(
         )));
     }
     parsed_module.recover_bare_raises(&bare_raises);
+    profile.lap("validate");
     let parsed = &parsed_module;
     let may_warn = syntax_warning::may_warn(source, parsed.tokens(), parsed.suite());
     if source.len() > 640
@@ -1358,6 +1415,7 @@ fn compile_normalized(
     {
         return Err(CompileError::RequiresCpythonCompiler(reason));
     }
+    profile.lap("rules");
     let mut owned_tokens = None;
     let (optimized_body, original_scopes) = if compiler::optimization::requires_optimization(
         parsed.suite(),
@@ -1386,6 +1444,7 @@ fn compile_normalized(
     } else {
         (None, None)
     };
+    profile.lap("frontend");
     let parsed = &parsed_module;
     let body = optimized_body
         .as_ref()
@@ -1403,11 +1462,13 @@ fn compile_normalized(
         optimized_body.as_ref(),
     )
     .compile_module(body)?;
+    profile.lap("codegen");
     marshal::validate_initial_intern_state(
         &code,
         options.python_version,
         &options.initial_intern_state,
     )?;
+    profile.lap("marshal-check");
     Ok(CompiledModule {
         code,
         python_version: options.python_version,
