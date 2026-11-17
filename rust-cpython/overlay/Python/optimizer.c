@@ -2926,6 +2926,35 @@ done:
     return length;
 }
 
+static void
+prune_validity_checks(_PyUOpInstruction *buffer, int length)
+{
+    bool may_have_escaped = true;
+    for (int pc = 0; pc < length; pc++) {
+        int opcode = buffer[pc].opcode;
+        if (opcode == _START_EXECUTOR) {
+            may_have_escaped = false;
+            continue;
+        }
+        if (opcode == _CHECK_VALIDITY) {
+            if (may_have_escaped) {
+                may_have_escaped = false;
+            }
+            else {
+                buffer[pc].opcode = _NOP;
+            }
+            continue;
+        }
+        if (opcode == _EXIT_TRACE || opcode == _DEOPT ||
+            opcode == _JUMP_TO_TOP || opcode == _DYNAMIC_EXIT) {
+            break;
+        }
+        if (_PyUop_Flags[opcode] & HAS_ESCAPES_FLAG) {
+            may_have_escaped = true;
+        }
+    }
+}
+
 static int
 uop_optimize(
     _PyInterpreterFrame *frame,
@@ -3005,6 +3034,7 @@ uop_optimize(
         if (length < 0) {
             return -1;
         }
+        prune_validity_checks(buffer, length);
     }
     int prepared = prepare_for_execution(
         output,
