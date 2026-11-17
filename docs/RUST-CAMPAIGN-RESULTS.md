@@ -120,18 +120,21 @@ the incumbent `perf-rust-jit` itself.
 
 ## Owner queue / smallest unblock actions
 
-1. **J track**: decide whether the acceptance gate may use a different
-   statistic (e.g., pooled-ratio bound without per-run replication) or
-   whether qualification requires different hardware. Until then no JIT
-   candidate can be accepted; evals 11–12 remain unspent.
-2. **C track**: Serc cold compilation needs a real performance effort
-   (compiler-side) or an owner scope decision; the locked three-workload
-   gate cannot pass at current costs.
-3. Resume condition: owner supplies a native Linux host (deferred scope)
-   or amends the gate policy; then rerun H0 calibration and the bounded
-   CLIMB backlog (attribution specialization r2, subscript specialization
-   r2, virtual-call overhead, unpack-sequence specialization, call/frame
-   overhead).
+**Resolved 2026-11-17:** the owner resumed the campaign — Linux is
+indefinitely out of scope (deferred, not a blocker); J measurement-gate
+repair is authorized (principled statistic correction, 1% floor and M4
+preserved); Serc cold-compile optimization is authorized as a dedicated
+profile-backed effort. Campaign resumed toward COMPLETE_MACOS on macOS
+arm64 only.
+
+Historical blockers, for the record:
+
+1. **J track**: the all-metrics gate could not ACCEPT any
+   different-binary candidate (layout-sensitive ~0.4–1% offsets,
+   null-probe proven).
+2. **C track**: Serc cold compilation ran 6–16% slower wall / up to
+   +37% peak RSS than the C compiler path on the locked workloads.
+3. **Linux**: deferred until a native Linux host is supplied.
 
 ## Evidence manifest
 

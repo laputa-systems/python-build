@@ -157,6 +157,29 @@ held-out kernel digests match the incumbent
 (`20261117T041840Z-perf-rust-jit-vs-perf-final-jit-serc`, exploratory
 single-run timing ignored — digests only).
 
+**RESUMED — owner scope decisions (2026-11-17).** The owner resumed the
+campaign with four decisions: (1) **Linux is indefinitely out of scope** —
+no Linux builds, CI, containers, emulation, or qualification; COMPLETE_MACOS
+must be achievable on native macOS arm64 alone and Linux stays explicitly
+deferred future work, not a blocker. (2) **J measurement-gate repair is
+authorized** — a principled correction or redesign of the acceptance
+statistic, not a relaxation of the 1% practical floor, workloads,
+correctness requirements, or M4 targets; first investigate the
+`run_observation` promotion of `timing.status == "fail"` to
+RUN_REGRESSED even when the bootstrap interval is within budget or
+inconclusive, then validate any fix against A/A, null-probe, injected
+regression, and injected improvement controls under a single harness
+identity before resuming the hillclimb toward M4 (S ≤ 0.25). (3)
+**Serc compiler optimization is authorized** — a dedicated profile-backed
+attribution and structural-optimization campaign toward the locked
+three-workload cold set and OD15 footprint, preserving exact semantics,
+coverage, parity, and tests; a demonstrated architectural ceiling must be
+documented with a specific redesign proposal, not assumed. (4) The
+campaign runs unattended and evidence-driven toward substantial measured
+progress; `INCOMPLETE_PLATEAU` remains acceptable only after meaningful
+architectural investigation. Prior ledger rows, eval counts, source
+epoch, and negative results are preserved.
+
 Main's last correctness-qualified runtime is `3bd21f6` (reference-init).
 The recorded `perf-rust-jit` score is **S = 0.7463** versus M0 0.7748,
 held-out 0.8366, RSS at most 1.073x reference and code at most 1.66x M0.
