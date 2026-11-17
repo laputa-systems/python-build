@@ -1,3 +1,4 @@
+import _opcode
 import argparse
 import dis
 import gc
@@ -7,8 +8,6 @@ import struct
 import subprocess
 import sys
 from array import array
-
-import _opcode
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--expect', choices=('baseline', 'candidate', 'interpreter'), default='candidate')
@@ -131,12 +130,11 @@ for label, row in runs[0].items():
     if args.expect != 'interpreter':
         assert row['active'], (label, row)
     names = [entry[0] for entry in row['trace']]
-    if args.expect == 'candidate':
-        if not label.endswith(('wrong-typecode', 'list')):
-            if label.startswith('int-'):
-                assert '_BINARY_OP_SUBSCR_ARRAY_I_UNBOXED' in names, (label, names)
-            elif label.startswith('float-'):
-                assert '_BINARY_OP_SUBSCR_ARRAY_D_UNBOXED_INDEX' in names, (label, names)
+    if args.expect == 'candidate' and not label.endswith(('wrong-typecode', 'list')):
+        if label.startswith('int-'):
+            assert '_BINARY_OP_SUBSCR_ARRAY_I_UNBOXED' in names, (label, names)
+        elif label.startswith('float-'):
+            assert '_BINARY_OP_SUBSCR_ARRAY_D_UNBOXED_INDEX' in names, (label, names)
 
 assert runs[0]['float-normal']['value'] == bits(20.0)
 assert runs[0]['float-negative']['value'] == bits(13.75)

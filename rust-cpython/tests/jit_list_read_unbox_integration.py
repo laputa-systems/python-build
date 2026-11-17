@@ -1,3 +1,4 @@
+import _opcode
 import argparse
 import dis
 import gc
@@ -6,8 +7,6 @@ import os
 import struct
 import subprocess
 import sys
-
-import _opcode
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--expect', choices=('baseline', 'candidate', 'interpreter'), default='candidate')
