@@ -140,6 +140,20 @@ Key receipts: `20261116T183903Z` (CALIBRATION-OK),
 `20261116T192836Z` and `20261116T223944Z` (A/A), `20261116T213216Z` and
 `20261116T234252Z` (evals 9–10), `20261117T004023Z` and
 `20261117T015234Z` (null probes), `20261117T025435Z` (C3 REJECT),
-`20261117T033603Z` (OD15). The campaign ledger
+`20261117T033603Z` (OD15), `20261117T041840Z` (combined digests).
+The campaign ledger
 `docs/CAMPAIGN-RUST-CPYTHON-JIT.md` carries the full row-level history
 and per-candidate correctness/review evidence.
+
+Named closeout evidence archive:
+`.work/campaign-archive/closeout-20261117.tar.gz`
+(SHA-256 `ed1dacc13ff903e871323cb7bfde56ff1abd708f1fd3e1043c6bf3c19144ec1c`).
+It contains all 37 `verdict.json` receipts from both the primary lane and
+the `jit-subscr-virtual` worktree (path-preserved under `verdicts/`),
+`manifest.tsv` mapping each receipt to its baseline/candidate build
+labels, commits, flags, decision, and harness digest, the six
+`perf-*-all*.log` suite logs, the three stage build logs, and
+`builds/*.json` build reports. Full per-round sample data remains in
+place under `rust-cpython/results/perf-bench/` and the worktree's
+`results/perf-bench/` on this host; the archive preserves every harness
+JSON needed to audit the decisions without it.
