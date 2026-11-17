@@ -180,12 +180,42 @@ progress; `INCOMPLETE_PLATEAU` remains acceptable only after meaningful
 architectural investigation. Prior ledger rows, eval counts, source
 epoch, and negative results are preserved.
 
+**J gate repaired and eval 9 requalified ACCEPT (2026-11-17).** The
+`run_observation` conflict is fixed on `main` at `f29d45e` (probe-rust
+twin `ace3715`): raw `timing.status == "fail"` no longer overrides the
+paired bootstrap interval, and inconclusive replicated metrics can
+resolve to within-budget through a whole-run cluster bootstrap (≥2
+runs, ≥2 paired ratios per run, no run classified regressed;
+`PHYSICAL_FOOTPRINT` excluded). 179 `test_perf.py` tests pass. Fresh
+five-run self-calibration under the repaired identity is
+**CALIBRATION-OK** on a quiet host
+(`20261117T045318Z-calibrate-perf-rust-jit`, pre/post
+`perf-gate-ready` clean). Eval 9's candidate
+`perf-jit-list-read-unbox`@`17ade05` versus incumbent
+`perf-rust-jit`@`f19fb2feba` then gated **ACCEPT** on a four-run
+verdict (`20261117T065745Z`, quiet, floor 1%): all five scimark
+targets improved — fft 0.815x, sparse_mat_mult 0.913x, monte_carlo
+0.950x, lu 0.957x, sor 0.985x — and every other entity within budget,
+including the previously straddling fannkuch, import_django, nqueens,
+gzip_extract_1m and zlib_decode_1m metrics. A diagnostic merge of the
+two same-binary run sets (5 + 4 = 9 independent runs, cluster
+bootstrap over whole runs) also classifies **ACCEPT** with zero
+inconclusive entities, so the earlier five-run INCONCLUSIVE
+(`20261117T060726Z`) was borderline sampling, not a hidden regression.
+Correctness carries from eval 9 (CORRECT digests/fuzz/suites,
+independent APPROVE). The bundle merged to `main` at `574946e`; the
+incumbent rebuild at that commit is in progress. This requalification
+is a remeasurement of eval 9 under the repaired harness, not a new
+candidate evaluation — round 1 remains at **10 of ≤12** spent.
+
 Main's last correctness-qualified runtime is `3bd21f6` (reference-init).
 The recorded `perf-rust-jit` score is **S = 0.7463** versus M0 0.7748,
 held-out 0.8366, RSS at most 1.073x reference and code at most 1.66x M0.
 These are recorded measurements, **not a qualified milestone**: the fresh
 A/A gate was INCONCLUSIVE and the frozen-reference guard gate REJECTED.
-M4 ≤ 0.25 remains unmet. No CLIMB round-1 candidate has been accepted.
+M4 ≤ 0.25 remains unmet. The eval-9 three-layer bundle is now the
+first accepted CLIMB candidate (merged `574946e`); the recorded score
+predates it.
 
 Round 1 has consumed **10 of ≤12 candidate evaluations**. Preserve that total,
 but audit the separate evaluable-failure counter; a shared measurement
@@ -208,9 +238,10 @@ stack and bounded backlog work.
   partial receipt, but a retry is conditional on H0 and the stack/Rust audit.
 - `campaign/jit-list-read-unbox` `17ade05` — eval 6 (unboxed list float
   reads + guard elision) plus the QUALIFY three-layer bundle re-gate
-  (eval 9, INCONCLUSIVE gate / CORRECT / APPROVE, see above); rebased
-  onto `f19fb2f`, overlay identical to `a27dec1`. The pre-rebase
-  `a27dec1` remains the eval-6 record; ancestor of the stack tip.
+  (eval 9, **ACCEPT** under the repaired gate 2026-11-17, see above);
+  rebased onto `f19fb2f`, overlay identical to `a27dec1`. Merged to
+  `main` at `574946e`; the pre-rebase `a27dec1` remains the eval-6
+  record; ancestor of the stack tip.
 - `campaign/jit-array-index-unbox` `a51c17b` — eval 5 (unboxed array
   reads); screen 0.9765, gate INCONCLUSIVE ×2, CORRECT; ancestor.
 - `campaign/jit-store-subscr-array` `8c7136f` — eval 2
