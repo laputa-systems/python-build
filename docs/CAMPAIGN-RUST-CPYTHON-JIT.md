@@ -360,6 +360,29 @@ func_version → executors the way the globals bloom-filter dependency
 invalidates traces. Hoisting requires a new invalidation dependency
 type — safety-critical infrastructure work, not a peephole.
 
+**Planner barrier override — measured, REJECTED (2026-11-18).**
+`describe_uop` (`optimizer.c:~2122`) turned out to feed only
+`unbox_values` — each other planner (leaf, store, cache, loop_globals,
+loop_types, attributes) builds its own descriptor struct, so a barrier
+narrowing there is unbox-scoped. The exact-builtin
+`_UNPACK_SEQUENCE_{TWO_TUPLE,TUPLE,LIST,UNIQUE_TUPLE}` ops carry
+`HAS_ESCAPES_FLAG` (or `{-1,-1,-1}` stack shape) yet cannot run user
+code: items are incref'd onto the stack before the container decref,
+and exact list/tuple dealloc is code-free. Two planner blockers were
+removed in a probe: supplied `pushed=oparg` shapes (TUPLE/LIST/
+UNIQUE_TUPLE were `shape=None`, which `verify()` treats as plan-fatal
+when any unboxed value is live) and cleared `JIT_OPT_EFFECT_BARRIER`
+for the three escaping variants. Verified the override fires (debug
+counter showed correct pushed counts) and smoke/deopt tests passed,
+but generated executors were uop-for-uop identical (81/73 uops on the
+probe functions) and the targeted micro plus the 16-kernel
+`--jit-set --timing-only` bench read WITHIN-BUDGET with no kernel
+improvement. Root cause: unboxed float/int values essentially never
+remain live at unpack points — stores box them into locals first — so
+the barrier/shape relaxation has nothing to unlock. Reverted; the
+remaining unbox ceiling is values boxed at local/stack stores, not
+escape barriers.
+
 - `campaign/jit-subscr-virtual` `da402d9` — stack tip, worktree
   `.work/wt/jit-subscr-virtual` (closeout-allowed). Evals 7+8: fused
   unpack-to-locals (`_UNPACK_SEQUENCE_TWO_TUPLE_TO_FAST`,
