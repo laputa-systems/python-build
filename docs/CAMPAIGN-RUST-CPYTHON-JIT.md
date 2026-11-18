@@ -313,6 +313,23 @@ assembler layout/finally passes. No single bounded emission hotspot
 emerged; the coherent remaining target is the graph pipeline itself,
 whose passes produce the byte-parity output.
 
+**Serc phase breakdown measured (2026-11-18, `SERC_PROFILE=1`).** Per-file
+compile CPU on `perf-rust-serc` (typical ~110 µs): `parse` ~29% (ruff
+parser), `emit` ~46% of which `asm-finish` ~20% (final layout/emission)
+and `pipeline-optimize` ~13%, `context` (Compiler::module_with_scopes scope/name analysis) ~11%,
+`rules` ~10%, `validate` ~5%, `frontend`/`marshal-*` ~0%. The `rules`
+phase alone runs ~7 separate AST/token traversals (`parser_stack_estimate`,
+`captures_debug_pattern`, `has_deep_format_spec`,
+`has_too_many_nested_interpolated_strings`, `leaves_finally_body`,
+`validate_with_integer_limit`, `static_blocks::validate`, `may_warn`),
+several with token-level pre-filter potential (`TokenKind::Finally`,
+`FStringStart`, `TStringStart` exist in the pinned ruff AST). `parse` is
+the largest single phase but is third-party parser code. Consolidating
+the `rules`/`validate`/`context` traversals or pre-filtering the rare-
+construct checks is the most concrete bounded Serc lever found; expected
+ceiling roughly 5–10% of compile CPU if most walks can be skipped or
+fused, against the ~12% C3 gap.
+
 - `campaign/jit-subscr-virtual` `da402d9` — stack tip, worktree
   `.work/wt/jit-subscr-virtual` (closeout-allowed). Evals 7+8: fused
   unpack-to-locals (`_UNPACK_SEQUENCE_TWO_TUPLE_TO_FAST`,
