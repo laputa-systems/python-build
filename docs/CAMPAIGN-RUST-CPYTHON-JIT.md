@@ -425,6 +425,34 @@ unreachable. Serc side is likewise saturated: ~53% of django code objects
 are no-jump (linear-eligible ceiling already reached at 911/1822 asm-linear
 units); the jumped remainder requires graph-pipeline work.
 
+**Serc linear-path ceiling revisited — eligibility, not speed (2026-11-18).**
+Follow-up measurement overturned the "saturated" conclusion above. Decisive
+data: (1) synthetic straight-line corpus — Serc build compiles 40 modules in
+14.9 ms vs 36.8 ms for the C-compiler build (**2.5x faster**); Serc's core
+machinery is not the problem. (2) Per-file timing on the compileall_source
+corpus is bimodal: Serc wins big on linear-dominated files (normalize.py
+-29%, cli.py -17%, codec.py -12%, errors.py -44%) and loses on
+branch-heavy files (storage.py +31%, repository.py +26%, ingest.py +17%).
+(3) Opcode census of the same corpus (263 code objects): 77 fully linear
+(29%), **104 simple forward-branch only — conditional jumps, no loops,
+try/except, with, or yield (40%)**, 82 complex (31%). (4) SERC_PROFILE
+per file: `asm-linear` is ~3% of compile while `asm-finish`/
+`pipeline-optimize` dominate (~27% and ~37-50%); the graph pipeline's
+per-function fixed cost is the entire C3 gap. (5) Infrastructure check:
+`LayoutAssembler::finish` is already a *general* assembler — it resolves
+arbitrary `Operand::Forward`/`Operand::Backward` labels with iterative
+extended-arg layout, line tables, exception tables, and max-depth; the
+linear predicates (`has_no_linear_control_flow_metadata` requires
+`next_label == 0`) are what's conservative, not the layout engine. The
+terminal-guard path already proves forward-label layouts can be
+byte-identical. **Next concrete project:** a "simple-branch linear" path —
+extend the label tolerance from `next_label <= 4` terminal guards to
+arbitrary forward-only branch DAGs (no backward jumps, no exception
+regions, no borrow/loop metadata), reusing `optimize_linear_assertion_side_exits`
++ `LayoutAssembler::finish`, verified by the 30,318-case parity census.
+Potential eligibility expansion ~29% -> ~69% of code objects; if realized,
+this is the first mechanism with enough headroom to reach C3.
+
 **Emission attribution limit (2026-11-18).** A 60-iteration `sample`
 profile of `compileall_source` on `perf-rust-serc` is dominated by
 process-level filesystem syscalls (`open`/`rename`/`unlinkat`/`mkdir`/
