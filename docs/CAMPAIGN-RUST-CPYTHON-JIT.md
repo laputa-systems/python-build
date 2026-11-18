@@ -317,6 +317,22 @@ bytecode. Still open for Close: fresh A/A twin at this epoch
 timing gates, the independent final review, and the deliverables
 rewrite toward INCOMPLETE_PLATEAU.
 
+**Close: fresh A/A and final review (2026-11-18).** `perf-rust-jit-aa`
+rebuilt clean at `0748280` and gated **WITHIN-BUDGET** on every metric
+(`20261118T044154Z`, `--jit-set --gate --runs 5`, quiet): all wall/cpu/
+peak_rss pooled medians within 0.997-1.009, no target improved - a
+clean same-source twin at the final epoch. `docs/RUST-CAMPAIGN-RESULTS.md`
+was rewritten as **INCOMPLETE_PLATEAU** and an independent evidence
+review reproduced every checkable number (S = 0.7258, held-out 0.8368,
+guard django_wsgi wall 1.0162 as sole >1.01 entity, all 16 combined
+digests mismatch-free, no kernel <= 0.45). Remaining Close debt is
+attribution work, not measurement: the `django_wsgi_request` wall
+signature and the C2/footprint gates on stale-epoch guard builds, plus
+any owner decision on the two research-grade follow-ups (JIT unboxed
+locals, Serc pipeline fusion). **Campaign outcome: INCOMPLETE_PLATEAU** -
+best qualified result S = 0.7258 delivered with measured ceilings; M4
+and C3 unmet.
+
 **P2 linear-path port scoped (2026-11-18).** The Py316 exclusion is two
 independent gates, not one: `finish_code_with_constants` requires
 `python_version == Py314` before any linear predicate runs

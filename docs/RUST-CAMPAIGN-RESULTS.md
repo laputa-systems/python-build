@@ -52,7 +52,8 @@ the lane root.
   - Guard gate REJECT under unchanged policy (`20261118T023948Z`):
     `django_wsgi_request` wall 1.016 in all five runs (cpu 0.979
     improved) — the same wall-only django signature recorded at M0.
-  - Memory within OD4: peak RSS 1.006–1.073× (< +8%); JIT code bytes
+  - Memory within OD4: peak RSS pooled medians 1.014–1.073× on the
+    training set and down to 1.006× on held-out (< +8%); JIT code bytes
     ≤1.28× M0.
   - Per-kernel cpu: nbody 0.554, scimark_fft 0.534, scimark_lu 0.564,
     scimark_sparse 0.564, scimark_sor 0.578, scimark_monte_carlo 0.731,
