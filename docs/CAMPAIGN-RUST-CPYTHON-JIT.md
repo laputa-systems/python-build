@@ -97,7 +97,11 @@ no-JIT `perf-rust` and Serc-only `perf-rust-serc` stages built and
 launched. The no-JIT compiler control passed five suites (857 tests
 reported, 5 skipped), and the Serc-only stage passed all 11 source-mode
 routing tests. The combined build and the Serc verification suites are
-the remaining checks before self-calibration.
+now at the next checkpoint: `perf-final-jit-serc` built in 826.6 seconds,
+verified 58 Rust extensions, and launched CPython 3.16. All six optimized
+baseline stages and the independent A/A twin are present. The Serc
+verification suites run before self-calibration. See the stage reports
+under `rust-cpython/results/`.
 
 ### Scorecard
 
