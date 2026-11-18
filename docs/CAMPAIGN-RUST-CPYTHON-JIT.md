@@ -4866,6 +4866,17 @@ splitting each `build` into collect/assemble phases (~hundreds of lines
 moved). Expected saving is modest: context ≈52 ms of ≈470 ms compile,
 parallel across ~10 cores minus dispatch overhead, plausibly ~1–2% of
 compile CPU — below the semantic merge's ~4% but far lower risk.
+**Parallel per-scope collection — evaluated, rejected.** Implemented a
+`rayon::par_iter` pre-pass over `definitions` collecting
+`ScopeBodyFacts` before the sequential plan-build loop (with the flat-
+function early-return predicate replicated exactly). Rejected on two
+grounds: (1) `rayon` is only a dev-dependency of `serc` — using it in
+the library would add a shipped dependency for marginal gain; (2) the
+django corpus averages **12.8 scopes/module (median 3, p90 36)**, so
+per-compile parallel dispatch overhead exceeds the ~20–50 µs of
+collector walks it would save — intra-compile parallelism cannot pay.
+Cross-file parallelism belongs to the interpreter's compile call sites,
+not `compile()`. Experiment reverted uncommitted.
 Related finding: asserting functions at -O1/-O2 already pay a *second*
 `LocalCollector::collect_suite` on an `elide_assertions` clone
 (scope.rs ~1090), so the locals walk is occasionally doubled today.
