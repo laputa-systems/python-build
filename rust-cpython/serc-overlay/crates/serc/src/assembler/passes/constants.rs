@@ -949,3 +949,73 @@ mod tests {
         );
     }
 }
+
+/// Lowers 3.15/3.16 immortal constants on a finished linear instruction stream.
+///
+/// Mirrors [`OptimizationPipeline::lower_common_constants`] for the certified
+/// linear path, which never builds a block graph. The constant table is compacted
+/// with the same admission-order replay so `co_consts` stays identical.
+pub(in crate::assembler) fn lower_common_constants_linear(
+    items: &mut [Item],
+    constants: &mut dyn ConstantTable,
+    python_version: PythonVersion,
+) {
+    if !matches!(
+        python_version,
+        PythonVersion::Py315 | PythonVersion::Py316
+    ) {
+        return;
+    }
+    let mut changed = false;
+    for item in items.iter_mut() {
+        let Item::Instruction(instruction) = item else {
+            continue;
+        };
+        if instruction.opcode != LOAD_CONST {
+            continue;
+        }
+        let Some(index) = instruction.value_argument() else {
+            continue;
+        };
+        let argument = match constants.get(index) {
+            Constant::None => CommonConstant::NONE.argument(),
+            Constant::Bool(true) => CommonConstant::TRUE.argument(),
+            Constant::Bool(false) => CommonConstant::FALSE.argument(),
+            Constant::String(value) if value.is_empty() => {
+                CommonConstant::EMPTY_STR.argument()
+            }
+            Constant::SignedInt(-1) => CommonConstant::MINUS_ONE.argument(),
+            Constant::Tuple(values)
+                if values.is_empty() && python_version == PythonVersion::Py316 =>
+            {
+                crate::target::operands316::CommonConstant::EMPTY_TUPLE.argument()
+            }
+            _ => continue,
+        };
+        instruction.opcode = LOAD_COMMON_CONSTANT;
+        instruction.set_operand(Operand::Value(argument));
+        changed = true;
+    }
+    if !changed {
+        return;
+    }
+
+    let mut used = vec![false; constants.len()];
+    for item in items.iter() {
+        if let Item::Instruction(instruction) = item
+            && instruction.opcode == LOAD_CONST
+            && let Some(index) = instruction.value_argument()
+        {
+            used[index as usize] = true;
+        }
+    }
+    let indices = constants.retain_used_in_order(&used);
+    for item in items.iter_mut() {
+        if let Item::Instruction(instruction) = item
+            && instruction.opcode == LOAD_CONST
+            && let Some(index) = instruction.value_argument()
+        {
+            instruction.set_operand(Operand::Value(indices[index as usize].unwrap()));
+        }
+    }
+}

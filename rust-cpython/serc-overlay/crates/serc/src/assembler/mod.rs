@@ -1271,7 +1271,7 @@ impl Assembler {
 
     fn has_terminal_guard_metadata(&self) -> bool {
         let provenance = &self.exception_owner_provenance;
-        self.python_version == crate::PythonVersion::Py314
+        matches!(self.python_version, crate::PythonVersion::Py314 | crate::PythonVersion::Py316)
             && self.next_label != 0
             && self.exception_regions.is_empty()
             && self.preserved_block_boundaries.is_empty()

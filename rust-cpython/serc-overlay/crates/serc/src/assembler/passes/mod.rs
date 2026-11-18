@@ -292,7 +292,7 @@ impl Assembler {
         self.resolve_folded_condition_borrow_entries();
         // Keep ordinary blocks with more locals on the graph path, which also preserves
         // initialization for locals above CPython's 64-bit dataflow mask.
-        if self.python_version == crate::PythonVersion::Py314
+        if matches!(self.python_version, crate::PythonVersion::Py314 | crate::PythonVersion::Py316)
             && self
                 .exception_owner_provenance
                 .module_annotation_nop_pairs
@@ -310,13 +310,19 @@ impl Assembler {
         {
             let started = crate::phase_profile::enabled()
                 .then(std::time::Instant::now);
-            let result = self
-                .optimize_linear_assertion_side_exits(
-                    local_count,
-                    parameter_count,
-                    constants.as_deref(),
-                )?
-                .finish(first_line_number);
+            let mut layout = self.optimize_linear_assertion_side_exits(
+                local_count,
+                parameter_count,
+                constants.as_deref(),
+            )?;
+            if let Some(table) = constants {
+                constants::lower_common_constants_linear(
+                    &mut layout.items,
+                    table,
+                    layout.python_version,
+                );
+            }
+            let result = layout.finish(first_line_number);
             if let Some(started) = started {
                 crate::phase_profile::add(
                     "asm-linear",
