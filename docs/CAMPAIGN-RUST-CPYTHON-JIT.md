@@ -289,6 +289,17 @@ plus the linear finish recovers enough of the ~28% `pipeline-optimize`
 bucket to matter against the ~12% C3 gap. Reject the port if eligibility
 is low or the shape audit shows the patterns do not transfer.
 
+**Measured rejection of the naive port (2026-11-18, exploratory).**
+Relaxing both Py314 gates to include Py316 (`passes/mod.rs` linear-path
+gate and `has_terminal_guard_metadata`) compiled cleanly and built
+`perf-serc-l316`, but `bench compileall_source` reported
+`mismatch: true` — the linear path does fire for Py316 shapes yet
+`optimize_linear_assertion_side_exits` emits bytecode that differs from
+the graph path. Cold workloads stayed within noise (~0.99). A real port
+therefore needs per-shape equivalence fixes inside the pinned archive
+`passes/linear.rs`, not a version-gate change; parked unless a cheaper
+Serc lever appears first.
+
 - `campaign/jit-subscr-virtual` `da402d9` — stack tip, worktree
   `.work/wt/jit-subscr-virtual` (closeout-allowed). Evals 7+8: fused
   unpack-to-locals (`_UNPACK_SEQUENCE_TWO_TUPLE_TO_FAST`,
