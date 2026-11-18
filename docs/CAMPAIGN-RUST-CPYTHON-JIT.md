@@ -4843,7 +4843,11 @@ the `LocalCollector` seeds (`globals`, `nonlocals`) **before**
 depends on complete global/nonlocal knowledge — declarations may appear
 after uses, which is why CPython's symtable itself is multi-pass. This
 rules out fusing the two per-body walks into one pass without deferred
-reclassification; only the module-walk hook-merge (facts accumulated
+reclassification — `globals`/`nonlocals` are consulted at insert-time
+throughout `LocalCollector` (`mark_binding`, `insert_candidate`,
+`insert`, and every comprehension-target path), so binding order in
+`names` cannot be reproduced after the fact; only the module-walk
+hook-merge (facts accumulated
 during `ModuleNameCollector`'s traversal, locals likewise) remains, where
 the same ordering constraint applies per scope;
 (3) name-interning order must stay
