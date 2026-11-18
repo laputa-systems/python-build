@@ -12,14 +12,13 @@ It replaces `CAMPAIGN-JIT.md` (J0-J9, closed 2026-11-01),
 collected asynchronously (see **Owner queue**) and blocks only the lane
 that needs it.
 
-**Operating contract updated 2026-11-15:** this campaign runs and closes on
-native **macOS arm64 only**. Linux work is deferred until the owner has a
-native Linux host and explicitly reopens it. The owner reopened the campaign on
-2026-11-15; see [Status](#status). For the next launched run, the execution
-model below replaces open-ended correctness-only accumulation under
-OD14/OD16 with measured selection and bounded deferral. Historical
-receipts retain their original verdicts; `CORRECT` never becomes `ACCEPT`
-because the policy changed.
+**Operating contract updated 2026-11-18 (OD18, OD19):** the campaign runs
+and closes on native **macOS arm64 only**; Linux is deferred future work
+that blocks nothing. It runs unattended toward M4 and C3, ranks work by
+measured whole-workload cost, and keeps the predetermined-protocol,
+correctness and review rules below. Historical receipts retain their
+original verdicts; `CORRECT` never becomes `ACCEPT` because the policy
+changed.
 
 Read [Status](#status), [Execution model](#execution-model), and the active
 item first. The long implementation narratives and ledger are evidence to
@@ -27,762 +26,187 @@ consult by item, not a queue of work to repeat.
 
 ## Status
 
-Rewrite this table at each checkpoint; keep detailed provenance in the
-ledger and the [preserved host handoff](#preserved-host-handoff).
+Rewrite this section at each checkpoint. Keep it short: scorecard, blockers,
+next experiments. Receipts go to the [Ledger](#ledger); the pre-2026-11-18
+narrative is preserved verbatim under [Status history](#status-history-2026-11-15-to-2026-11-18).
 
-**PAUSED — the owner's stop is preserved (recorded 2026-11-16 UTC).**
-Steering review on 2026-11-15 Pacific examined published `main 5515913`;
-it did not resume the Mac, run native benchmarks, or cancel a closeout helper.
-On an explicit resume: "Recover the rust-cpython campaign evidence, resolve
-H0's shared measurement blocker, then qualify a reduced candidate stack and
-C3 before returning to CLIMB." Follow **Start here** before any host helper.
+**ACTIVE — resumed under OD18/OD19 (checkpoint 2026-11-18, `main` after
+`536b933`).** Native macOS arm64 only; Linux is deferred future work and
+blocks nothing. The historical **PAUSED** (2026-11-15), **BLOCKED**
+(2026-11-17) and **INCOMPLETE_PLATEAU** (2026-11-18 03:00) closeouts are
+superseded records, not the campaign outcome. Execution is in **WAIT**: the
+host is lent to other work, so no timing, profile or gate runs until a quiet
+window. The first quiet window runs the P0 protocol below before any new
+candidate is gated.
 
-**H0 RECOVERED (2026-11-16).** The shared measurement blocker is resolved:
-raw memory rounds showed the verdict layer discarded paired RSS samples
-(`f750e0a`, index-aligned `67606dc`), and sampling depth could not resolve
-the 1% floor (`14e3af6`, `856c824`, `f876f66`). Full all-metric
-**CALIBRATION-OK** on a quiet host
-(`20261116T183903Z-calibrate-perf-rust-jit`, pre/post `perf-gate-ready`
-clean) and a fresh A/A twin **WITHIN-BUDGET** on all 23 workloads
-(`20261116T192836Z-perf-rust-jit-vs-perf-rust-jit-aa`). Feature-split
-controls remeasured under this one harness identity: `perf-guard-jit`
-confirms bounded frozen-reference wall regressions (coroutines 1.014,
-django_wsgi 1.020, generators wall/cpu 1.022; `20261116T201817Z`), and
-`perf-guard-serc` adds bounded Serc-attributed regressions previously hidden
-by sparse sampling (gzip_extract_1m cpu 1.032, import_django wall/cpu
-1.012/1.018; `20261116T203003Z`). Both stay exploratory, not acceptance
-evidence; the frozen-reference losses remain qualification debt.
+**Owner queue:** empty. Nothing in this checkpoint needs an owner decision.
 
-**QUALIFY in progress (2026-11-16).** The incumbent `perf-rust-jit` was
-rebuilt clean at `f19fb2f` (`--jit`, overlay byte-identical to `3bd21f6`),
-and the reduced three-layer stack — `STORE_SUBSCR_ARRAY_D`, array index
-unboxing, list-read unboxing — was rebased to `17ade05` on
-`campaign/jit-list-read-unbox` and rebuilt `--jit`-only as
-`perf-jit-list-read-unbox`. Evaluation 9 consumed: screen point 0.9751,
-gate **INCONCLUSIVE** (point 0.9752, quiet, `perf-gate-ready` clean both
-sides; `20261116T213216Z-perf-rust-jit-vs-perf-jit-list-read-unbox`).
-Eight entity-metrics stayed unbounded — fannkuch wall/cpu, import_django
-wall/cpu, nqueens wall/cpu, python_startup cpu, zlib_decode_1m cpu — with
-pooled medians showing real sub-floor regressions of roughly 0.4–0.9%;
-no entity regressed and no kernel's CI95 lower bound exceeds the 1.02
-bar. Correctness is **CORRECT** (training and held-out digests equal,
-2,000 fuzz programs with 0 mismatches at 97.4% JIT coverage, targeted
-suites match with only the 17 named superseded uop assertions) and the
-combined diff earned an independent **APPROVE**. JIT code bytes versus
-the incumbent grow at most ~25% (scimark_fft 54,328 vs 43,348; nbody
-54,900 vs 45,604). A fresh same-commit A/A twin at `f19fb2f`
-(`20261116T223944Z-perf-rust-jit-vs-perf-rust-jit-aa`) is
-**WITHIN-BUDGET** on every entity, so the sub-floor regressions are real
-candidate effects rather than rebuild noise. Round 1 has now consumed
-**9 of ≤12 candidate evaluations**.
+### Scorecard
 
-Evaluation 10 (remove-one subset: store-subscript + array-index unbox,
-`25da18e`, `perf-jit-array-index-unbox`) gated **INCONCLUSIVE** at point
-0.9755 (`20261116T234252Z`): fannkuch, gzip_extract_1m, import_django,
-nqueens, and zlib_decode_1m wall/cpu stayed unbounded — the list-read
-layer was not the cause. JIT code bytes are identical to the three-layer
-build except nbody (45,604 vs 54,900).
+| Track | Measure | Current | Qualified? | Target / gap |
+| --- | --- | --- | --- | --- |
+| J | incumbent | `perf-rust-jit` @ `285f619` (`--jit`, Rust fat LTO) | no — see P0 | — |
+| J | `S` (16-kernel CPU geomean vs reference) | 0.7258 (`20261118T013628Z`) | **no**: reference `perf-climb-ref` is Rust thin LTO/cgu16, incumbent fat/cgu1; eval-9 layer unqualified | M4 ≤ 0.25 (2.9× away) |
+| J | last qualified step | validity-check pruning `2f6284b`, 5-run ACCEPT, single attempt (`20261117T222329Z`) | yes, relative to its parent | — |
+| J | held-out / guard | 0.8368 ≤ S^0.5 / REJECT (`django_wsgi_request` wall 1.016) | same LTO confound | guards within 1% |
+| J | where kernel CPU goes (provisional, 11-15 profiles, pre-bundle) | JIT code 21–76%; alloc/dealloc/refcount 10–41%; `_tlv_get_addr` up to 26% (fannkuch), 13% (float); GC 25% (float); interpreter fallback ≤ 10% | refresh in P1 | — |
+| C | C3 cold set wall/cpu, `perf-rust-serc` vs `perf-rust` @ `5e09c5f` | startup 1.105/1.056, import_django 1.048/1.046, compileall 1.107/1.035 (`20261118T091500Z`) | REJECT | ≤ 1.01 each |
+| C | peak RSS / physical footprint | 1.13–1.28× / last measured 1.007–1.073 (pre-fusion, INCONCLUSIVE) | no | footprint ≤ 1.08 |
+| C | change since previous attempt | attempt 2 → 3: wall −1.6 to −3.3 pts | — | — |
+| C | dominant remaining cost | **IPC, not work** (below) | — | — |
 
-Two diagnostic probes then isolated the residual signature. A semantically
-null C change (`campaign/probe-layout`, one file-scope global in
-`optimizer.c`, `perf-probe-layout`) gated **INCONCLUSIVE** with the same
-shape — import_django ~1.009, nqueens ~1.005, gzip/django_*/richards
-wall/cpu straddles (`20261117T004023Z`). A null Rust-export change
-(`campaign/probe-rust`, `perf-probe-rust`) gated **INCONCLUSIVE** with
-only import_django wall (1.007) and zlib_decode_1m cpu (1.004) unbounded
-(`20261117T015234Z`). Same-source A/A stays WITHIN-BUDGET, so the offsets
-are real paired binary differences — code-layout sensitivity of roughly
-0.4–1% on import/startup/compression workloads — not candidate defects
-and not rebuild noise. A deepening probe (`fdf0c89`: import_django 300,
-nqueens 200 timing rounds; exploratory `20261117T013242Z`) resolved
-nqueens to within-budget but showed import_django wall's ~1.009 offset is
-a stable detected regression under the runner's noise-relative fail
-check, which `perf_verdict` promotes to per-run regressed regardless of
-the 1% floor. Conclusion: the all-metrics gate cannot ACCEPT any
-candidate whose binary perturbs these layout-sensitive workloads, which
-is every real source change; evals 11–12 are preserved unspent rather
-than spent reproducing the same signature. This is a shared unresolved
-measurement signature — the stacking rule's H0-blocker clause applies,
-so the CORRECT bundle and subset are not stack-tagged.
+**C3 diagnosis changed (2026-11-18, `/usr/bin/time -l` counters, light
+load, fault/instruction counts are load-independent).** Cold-compiling six
+stdlib packages (`json argparse email.parser http.client decimal unittest`,
+empty `PYTHONPYCACHEPREFIX`, `-B -X frozen_modules=off`), 8 runs each:
+`perf-rust` retires 1,981M instructions in ~698M cycles (IPC 2.84);
+`perf-rust-serc` retires **1,740M (−12%) in ~765M cycles (+9%, IPC 2.28)**.
+With a warm cache (no compiles) both run ~150–170M cycles, so the deficit is
+in the compile path: Serc compiles with ~16% fewer instructions at ~24% lower
+IPC. Extra page reclaims (~+300) explain only ~2M of the ~59M extra cycles.
+Linking Serc grows libpython `__TEXT` 5.2 → 12.9 MB and max RSS +6.5 MB at
+startup with only +1.3 MB dirty footprint, so ~5 MB of extra clean text is
+paged in per process. Every earlier Serc lever (walk fusion, pre-filters,
+linear-path eligibility) reduced instructions; none addressed front-end or
+memory stalls. This reorders the C queue below.
 
-**C3 cold-compilation gate attempted (2026-11-17).** Fresh same-epoch
-builds `perf-rust` and `perf-rust-serc` (source `e891a911`, `--serc` only
-difference; reports `rust-cpython/results/perf-rust{,-serc}.json`) ran the
-locked three-workload set under `perf-gate-ready` clean on both sides
-(`20261117T025435Z-perf-rust-vs-perf-rust-serc`). Decision **REJECT**:
-`cold_python_startup` wall/cpu 1.157/1.082 and `cold_import_django`
-1.122/1.115 and `compileall_source` 1.164/1.060 all regressed in every
-run, with peak RSS 1.19–1.37× across the board — Serc cold compilation is
-a real, large cost on this epoch, consistent with the bounded
-`perf-guard-serc` warm-workload regressions. The OD15 memory-only
-footprint check (`20261117T033603Z`, `memory-only-serc-cost` policy)
-returned **INCONCLUSIVE**, not ACCEPT: physical footprint stayed within
-budget on most workloads (1.007–1.063×) but `cold_python_startup`
-(1.073 [1.069,1.076]) and `gzip_extract_1m` (1.063 [1.055,1.112]) were
-unbounded, while peak RSS — a recorded linking cost that does not
-decide — ran 1.09–1.37×. C3 performance acceptance is not met on either
-leg.
+### P0 — qualification debt (first quiet window, predetermined)
 
-**CLOSEOUT — outcome BLOCKED (2026-11-17).** Neither track produced an
-acceptable result on this host, so COMPLETE_MACOS is unreachable without
-an owner decision. Track J: the reduced bundle and its subset are
-CORRECT but the all-metrics gate cannot ACCEPT any different-binary
-candidate — proven by two semantically null probes reproducing the same
-layout-sensitive ~0.4–1% signature; evals 11–12 remain unspent rather
-than spent reproducing it. Track C: the locked cold set REJECTED and the
-footprint check was INCONCLUSIVE, so Serc cold compilation needs real
-compiler-side performance work or a scope decision. Best measured
-incumbent remains `perf-rust-jit` (S = 0.7258 measured at `285f619`,
-M4 missed); `perf-final-jit-serc` is built for the runnable-variants
-deliverable.
-Full account, gaps, owner queue, and evidence manifest:
-[docs/RUST-CAMPAIGN-RESULTS.md](RUST-CAMPAIGN-RESULTS.md). Linux evidence
-was not collected.
+Status of the owner's P0 list:
 
-**Closeout evidence completed (2026-11-17).** The four same-epoch
-variants ran their complete applicable suites on the repaired harness:
-`perf-rust`, `perf-rust-jit`, `perf-rust-serc`, `perf-final-jit-serc`,
-each `--all` (52,102 tests) plus `--serc-verify` on both Serc builds.
-Non-JIT builds fail exactly `test_asyncio.test_sendfile`,
-`test_asyncio.test_sslproto`, `test_ssl`, `test_support` — the historical
-`test_multiprocessing_forkserver.test_misc` known-red passed this epoch.
-JIT builds add only `test_capi` (19 failures, all `test_opt` uop-shape
-assertions; the two `test_jitted_code_sees_changed_copied_globals`
-subtests were verified semantically correct — copied-dict globals are
-seen properly under `_GUARD_LOOP_GLOBALS_VERSION` — and catalogued in
-`CLIMB_SUPERSEDED_UOP_ASSERTIONS` at `912ed8c`). Serc verify introduces
-no failed-test difference. Combined-build correctness: 2,000-program
-differential fuzz at 97.45% JIT coverage, 0 mismatches; targeted
-JIT suites differ only by the same superseded assertions; all eight
-held-out kernel digests match the incumbent
-(`20261117T041840Z-perf-rust-jit-vs-perf-final-jit-serc`, exploratory
-single-run timing ignored — digests only).
+1. **Ruff on `main`:** fixed at `2eb4dfa`; `lint` and `ci` green at `536b933`.
+2. **Eval-9 audit:** confirmed defective. Under the repaired policy the
+   bundle's 5-run gate read **INCONCLUSIVE** (`20261117T060726Z`); a 4-run
+   retry 50 minutes later read ACCEPT (`20261117T065745Z`) and was merged at
+   `574946e`. That is an opportunistic retry with fewer runs than J
+   acceptance step 1 requires. The eval-9 layer is **unqualified**; both
+   receipts are preserved under `rust-cpython/results/lane-jit-subscr-virtual/`.
+   Supporting but not deciding: an independent clean pair, pre-bundle
+   `perf-rust-jit-aa@f19fb2f` vs merged `perf-rust-jit@d525d5c` (both thin
+   LTO), gated **ACCEPT** on 5 runs (`20261117T163839Z`: five scimark
+   kernels improved, every other entity within budget). It was not
+   predetermined, so G1 below decides.
+3. **Gate repair validation** (`f29d45e`): injected controls pass — with
+   no shift, 115/115 A/A and null-probe decisions read WITHIN-BUDGET; a
+   +2% shift is rejected 115/115; +1.5% is never accepted; −2% on a target
+   accepts. No policy change is pending. Reproduce with
+   `rust-cpython/gate_controls.py` (ledger row of 2026-11-18).
+4. **LTO epoch:** `bfc2e23` moved every lane Rust crate (including
+   `_jit_opt_rs`, `_random_rs`, `_collections_rs`, `_zlib_rs`) from thin
+   LTO/16 units to fat LTO/1 unit. `perf-climb-ref` (`3bd21f6`) predates it;
+   every build since 11-17 03:48 has it. The report's `lto: thin` field is
+   CPython's clang LTO and does not record this.
 
-**RESUMED — owner scope decisions (2026-11-17).** The owner resumed the
-campaign with four decisions: (1) **Linux is indefinitely out of scope** —
-no Linux builds, CI, containers, emulation, or qualification; COMPLETE_MACOS
-must be achievable on native macOS arm64 alone and Linux stays explicitly
-deferred future work, not a blocker. (2) **J measurement-gate repair is
-authorized** — a principled correction or redesign of the acceptance
-statistic, not a relaxation of the 1% practical floor, workloads,
-correctness requirements, or M4 targets; first investigate the
-`run_observation` promotion of `timing.status == "fail"` to
-RUN_REGRESSED even when the bootstrap interval is within budget or
-inconclusive, then validate any fix against A/A, null-probe, injected
-regression, and injected improvement controls under a single harness
-identity before resuming the hillclimb toward M4 (S ≤ 0.25). (3)
-**Serc compiler optimization is authorized** — a dedicated profile-backed
-attribution and structural-optimization campaign toward the locked
-three-workload cold set and OD15 footprint, preserving exact semantics,
-coverage, parity, and tests; a demonstrated architectural ceiling must be
-documented with a specific redesign proposal, not assumed. (4) The
-campaign runs unattended and evidence-driven toward substantial measured
-progress; `INCOMPLETE_PLATEAU` remains acceptable only after meaningful
-architectural investigation. Prior ledger rows, eval counts, source
-epoch, and negative results are preserved.
+Protocol, fixed before any result is seen. Each timing step runs between
+`perf-gate-ready` checks, once; a non-quiet run is re-run, any other
+outcome stands. No step is retried to change a verdict.
 
-**J gate repaired and eval 9 requalified ACCEPT (2026-11-17).** The
-`run_observation` conflict is fixed on `main` at `f29d45e` (probe-rust
-twin `ace3715`): raw `timing.status == "fail"` no longer overrides the
-paired bootstrap interval, and inconclusive replicated metrics can
-resolve to within-budget through a whole-run cluster bootstrap (≥2
-runs, ≥2 paired ratios per run, no run classified regressed;
-`PHYSICAL_FOOTPRINT` excluded). 179 `test_perf.py` tests pass. Fresh
-five-run self-calibration under the repaired identity is
-**CALIBRATION-OK** on a quiet host
-(`20261117T045318Z-calibrate-perf-rust-jit`, pre/post
-`perf-gate-ready` clean). Eval 9's candidate
-`perf-jit-list-read-unbox`@`17ade05` versus incumbent
-`perf-rust-jit`@`f19fb2feba` then gated **ACCEPT** on a four-run
-verdict (`20261117T065745Z`, quiet, floor 1%): all five scimark
-targets improved — fft 0.815x, sparse_mat_mult 0.913x, monte_carlo
-0.950x, lu 0.957x, sor 0.985x — and every other entity within budget,
-including the previously straddling fannkuch, import_django, nqueens,
-gzip_extract_1m and zlib_decode_1m metrics. A diagnostic merge of the
-two same-binary run sets (5 + 4 = 9 independent runs, cluster
-bootstrap over whole runs) also classifies **ACCEPT** with zero
-inconclusive entities, so the earlier five-run INCONCLUSIVE
-(`20261117T060726Z`) was borderline sampling, not a hidden regression.
-Correctness carries from eval 9 (CORRECT digests/fuzz/suites,
-independent APPROVE). The bundle merged to `main` at `574946e`; the
-incumbent rebuild at that commit is in progress. This requalification
-is a remeasurement of eval 9 under the repaired harness, not a new
-candidate evaluation — round 1 remains at **10 of ≤12** spent.
+| # | Build (clean) | Source | Flags |
+| --- | --- | --- | --- |
+| B1 | `perf-ref-lto` | `3bd21f6` + `bfc2e23`'s Cargo profile | — |
+| B2 | `perf-q9-base` | `f19fb2f` + fat profile | `--jit` |
+| B3 | `perf-q9-cand` | `574946e` + fat profile | `--jit` |
+| B4 | `perf-rust-jit` | `main` head | `--jit` |
+| B5 | `perf-rust-jit-thin` | `main` head with thin/cgu16 profile | `--jit` |
+| B6 | `perf-rust-serc-thin` | `main` head with thin/cgu16 profile | `--serc` |
 
-Main's last correctness-qualified runtime is `3bd21f6` (reference-init).
-The recorded `perf-rust-jit` score is **S = 0.7463** versus M0 0.7748,
-held-out 0.8366, RSS at most 1.073x reference and code at most 1.66x M0.
-These are recorded measurements, **not a qualified milestone**: the fresh
-A/A gate was INCONCLUSIVE and the frozen-reference guard gate REJECTED.
-M4 ≤ 0.25 remains unmet. The eval-9 three-layer bundle is now the
-first accepted CLIMB candidate (merged `574946e`); the recorded score
-predates it.
+| # | Measurement | Decides |
+| --- | --- | --- |
+| G1 | `bench --baseline perf-q9-base --candidate perf-q9-cand --jit-set --gate --runs 5` + `jit-stats` both + digests/fuzz from eval 9 | ACCEPT → eval 9 qualified. INCONCLUSIVE with point ≤ 0.995 and no regressed entity → stays merged as an unqualified layer, and `S` stays provisional until a later milestone gate covers it. REJECT → revert `574946e` in its own commit and rebuild the incumbent. |
+| G2 | `bench --baseline perf-climb-ref --candidate perf-ref-lto --jit-set --gate --runs 5` | Size of the LTO change on the reference alone (recorded, no verdict on the reference). |
+| G3 | Milestone gate with `perf-ref-lto` as reference: `--jit-set --runs 5`, `--jit-heldout --runs 5`, `--jit-set --gate --runs 5`, `jit-stats` | The first qualified `S` of the fat-LTO epoch. `perf-climb-ref` and the M0 code-size denominator are preserved; `perf-ref-lto` becomes the score reference only through this recorded step. |
+| G4 | `bench --baseline perf-rust-jit-thin --candidate perf-rust-jit --jit-set --gate --runs 5`, plus build seconds and libpython segment sizes | Justifies or reverts global fat LTO for the JIT build. |
+| G5 | `bench --baseline perf-rust-serc-thin --candidate perf-rust-serc` on the locked C3 set, `--gate --runs 5`, plus the IPC counters above | Same for Serc in-process (the 8% gain was CLI-only). If fat LTO does not win in-process on both tracks, revert `bfc2e23`. |
 
-Round 1 has consumed **10 of ≤12 candidate evaluations**. Preserve that total,
-but audit the separate evaluable-failure counter; a shared measurement
-blocker is not evidence of an optimization plateau. Evals 2/5/6/7/8 repeatedly
-hit the same ~1% unrelated-workload / unbounded-RSS signature. Their contrast
-is **JIT candidate versus JIT incumbent**; the earlier **JIT versus frozen
-interpreter** attribution does not explain it. H0 resolved the shared
-harness cause (paired-RSS loss plus shallow sampling); eval 9 shows the
-residual signature is now candidate-specific real sub-floor effects, not a
-shared blocker. Do not retry eval 8; evals 10–12 remain for the reduced
-stack and bounded backlog work.
+Estimated host time ≈ 6 h of gates plus ≈ 30 min of builds. G1–G3 decide
+the J incumbent; G4–G5 decide the build profile. If G4/G5 revert fat LTO,
+G3 is repeated at the reverted profile against `perf-climb-ref` instead.
 
-**CLIMB step ACCEPT (2026-11-17).** `2f6284b` `perf(jit): prune validity
-checks after specialization` re-runs the escape scan for `_CHECK_VALIDITY`
-after `unbox_values`, NOPing checks that store/attribute/loop-local/unbox
-specialization made redundant — the stale-pair gap the T1 ledger row
-predicted. Clean build `perf-rust-jit-vc2` gated **ACCEPT** under
-`climb-step --runs 5` on a quiet host (`20261117T222329Z`, point 0.9977;
-nbody cpu/wall improved in all five runs; no kernel CI95 regression;
-held-out digests equal; 2,000-program fuzz clean at 97.45% JIT coverage;
-targeted suites match modulo the named superseded uop assertions).
-Matched-protocol attribution on nbody drops `_CHECK_VALIDITY` from
-10.23% to 4.35% of samples at 100% named coverage, and observed JIT code
-bytes never grow (nbody 43,860 vs 54,900). Absolute `S` is unmeasured
-pending the next milestone gate; the recorded 0.7463 still predates the
-eval-9 bundle and this step. This is the second accepted CLIMB landing
-after eval 9; round accounting is unchanged pending the next checkpoint.
+### Next experiments (ranked; each is one falsifiable hypothesis)
 
-**P1 rerank after the validity step (2026-11-18).** Aggregate attribution
-(16-kernel sample shares summed, pre-merge epoch) plus fresh nbody
-candidate profiles put the remaining JIT cost in three buckets. (1)
-*Boxed-value churn into container storage* — `_STORE_SUBSCR_LIST_INT_FLOAT`
-19.1% and `_STORE_FAST_FUSED_FLOAT_OR_NULL` 16.0% of nbody JIT samples,
-with `_PyFloat_FromDoubleTstate`/`_PyFloat_ExactDeallocTstate`/
-`_Py_NewReference` the dominant runtime calls on float kernels; the only
-real fix is unboxed list/scalar storage or whole-trace escape analysis,
-both object-model-scale, so the bounded JIT ceiling here is low. (2)
-*Broaden unbox/store specialization* — generic `_STORE_FAST_FUSED` still
-sums ~20% across kernels and `_UNPACK_SEQUENCE_{LIST,TUPLE}` ~6% on nbody;
-each typed variant is a bounded Rust-planner change worth roughly
-1–3% aggregate cumulatively. (3) *Guard/bookkeeping* — `_SET_IP` is
-already optimal (0 removable upstream), `_CHECK_PERIODIC`/
-`_TIER2_RESUME_CHECK`/`_CHECK_FUNCTION_VERSION` are required for
-responsiveness/invalidation (`func_version` has no globals-style
-dependency to hoist against), so the ceiling is ~1% aggregate.
-Serc side: `pipeline-optimize` is ~28% of compile but its passes produce
-the byte-parity output, and the Py316 linear path is genuinely Py314-specific
-(`has_terminal_guard_metadata` hard-requires Py314; `has_only_linear_instructions`
-whitelists Py314 opcodes) — a real port with unmeasured eligibility, not a
-gate flip; `emit` ~71% needs a profile-targeted allocation/build pass.
+**J — round 2 opens after P0.** Round 1 reached its checkpoint: eleven
+numbered evaluations plus the validity-pruning gate, two ACCEPTs (eval 9 now
+unqualified; validity step qualified), and the M4 milestone gate ran
+(missed). Totals and the consecutive-failure counter (0 since the last
+accepted step) carry forward. Before ranking, P1 re-profiles all 16 kernels
+on the post-P0 incumbent **sequentially** (`perf.py profile --tool sample
+--jit-map --ref perf-rust-jit --workload <kernel>`, one at a time on a quiet
+host; the 2026-11-18 00:03 set ran concurrently and has ≤ 600 samples per
+kernel, so it is unusable). Then rank by share of total kernel CPU without
+double counting, in these buckets: JIT code (bookkeeping uops, guards,
+compute), interpreter fallback, allocation/deallocation/refcount, GC, TLS
+access, other runtime helpers. Provisional ranking from the 11-15 profiles:
 
-**M4 milestone gate measured — MISSED (2026-11-18).** At backlog
-exhaustion the gate ran on the current incumbent `perf-rust-jit` @
-`285f619` (source-identical to `6453a64`; `jit=True serc=False`) versus
-the frozen `perf-climb-ref`, each leg quiet (`perf-gate-ready` clean):
+1. **Allocation and refcount traffic** (10–41% of kernel CPU on 14/16
+   kernels): `PyFloat`/`PyLong` box-unbox churn into locals and containers,
+   list slice/build allocations, `_Py_NewReference`, deallocs. Mechanism
+   candidates: escape-synced unboxed locals (frame-state materialization
+   only at side exits and observation points), allocation sinking of
+   trace-local temporaries, and a JIT-only fast allocation path. Minimal
+   prototype: unboxed float locals in one nbody/spectral_norm trace shape
+   with materialization at every exit, measured with a whole-kernel probe
+   (not mergeable). Risks: deopt/frame observability (`f_locals`, tracing,
+   `sys._getframe`), identity of floats, refcount balance.
+2. **macOS TLS access (`_tlv_get_addr`)**, up to 26% on fannkuch and 13% on
+   float and also present in alloc paths of other kernels. Eval 11 mirrored
+   the interpreter state globally and lost (GIL-transition stores and a
+   changed inline shape cost more than they saved). Different mechanism:
+   pass `tstate` explicitly into the hot alloc/dealloc paths the JIT and its
+   helpers call (as `_PyFloat_FromDoubleTstate` already does) instead of
+   changing global state. The first falsifier is a call-site census: count
+   which callers reach `_tlv_get_addr` in the fresh profiles. If ≥ 80% come
+   from ≤ 5 call sites, prototype those; otherwise drop it.
+3. **Per-uop bookkeeping and guards** (bookkeeping 3–14% and guards 3–18% of
+   kernel CPU): `_SET_IP`, `_CHECK_VALIDITY`, `_CHECK_PERIODIC`, spill/reload,
+   and repeated type/version guards inside loops. Mechanisms: loop-invariant
+   guard hoisting into trace preheaders with exit-time revalidation;
+   executor-lifetime/deferred-reclamation analysis to see whether validity
+   checks can move to safe points. A validity check is never removed while
+   executor exit state can be freed beneath a running trace. Ceiling is
+   bounded by the bucket share; it ranks third unless P1 shows it larger.
 
-- **S = 0.7258** (`20261118T013628Z`, `--jit-set --runs 5`, pooled-median
-  kernel-CPU geomean over all 16 training kernels) — improved from the
-  recorded 0.7463 that predated the eval-9 bundle and the validity-prune
-  landing; M4's ≤0.25 bar is missed by ~2.9×.
-- **Held-out = 0.8368** ≤ S^0.5 = 0.8519 — held-out bar **passes**
-  (`20261118T021917Z`, `--jit-heldout --runs 5`); coroutines/generators
-  cpu ~1.02 reproduce the known signature.
-- **Guard gate REJECT** under the unchanged policy
-  (`20261118T023948Z`, `--jit-set --gate --runs 5`): `django_wsgi_request`
-  wall 1.016 regressed in all five runs (cpu 0.979 improved) — the same
-  wall-only django signature recorded at M0; all other guard entities
-  within budget or improved.
-- **Memory (OD4):** peak RSS 1.006–1.073× across kernels, inside the +8%
-  bar (the raw gate's peak_rss flags are the recorded linking cost, not a
-  milestone miss); JIT code bytes from `jit-stats` remain ≤1.28× M0
-  (raytrace 583,204 vs M0 457,068), inside 2×.
+Not ranked: more single-opcode specializations, unless a fresh profile shows
+one above 3% of aggregate kernel CPU.
 
-Per-kernel cpu now: nbody 0.554, scimark_fft 0.534, scimark_lu 0.564,
-scimark_sparse 0.564, scimark_sor 0.578, scimark_monte_carlo 0.731,
-spectral_norm 0.691, richards 0.648, raytrace 0.818, float 0.836,
-fannkuch 0.853, chaos 0.860, nqueens 0.887, deltablue 0.902, hexiom
-0.907, go 0.915. M4 also requires every kernel ≤0.45 — none qualifies.
+**C — next experiment is IPC attribution, then layout or allocation.**
 
-**Close-phase suite matrix on the new epoch (2026-11-18, HEAD `32e9286`).**
-All four variants rebuilt clean at the frozen revision and ran the full
-52,102-test suite; failure sets match the documented epoch expectations
-exactly. `perf-rust`: 4 files/5 failures (`test_asyncio.test_sendfile`,
-`test_asyncio.test_sslproto`, `test_ssl`, `test_support`).
-`perf-rust-serc`: identical 4/5 under both `--all` and `--all
---serc-verify` — Serc verification introduces no failed-test difference.
-`perf-rust-jit` and `perf-final-jit-serc`: identical 5 files/24 failures
-under both modes — the same four plus `test_capi`'s 19 known superseded
-`test_opt` uop-shape assertions. Combined-build evidence on this epoch:
-all 16 training-kernel digests equal `perf-rust-jit`
-(`20261118T035428Z`); differential fuzz seeds 0–2 clean on both JIT
-builds (2,000 programs each, 0 mismatches, ~97.4% JIT coverage);
-`test_serc_compile.py` linked verification 11/11 on both Serc builds.
-The C1/C3 census carries from `fb131e1`: `serc-overlay` changed only by
-env-gated `SERC_PROFILE` timers since, which cannot alter emitted
-bytecode. Still open for Close: fresh A/A twin at this epoch
-(`perf-rust-jit-aa` predates the accepted landings), the C2/footprint
-timing gates, the independent final review, and the deliverables
-rewrite toward INCOMPLETE_PLATEAU.
+1. **C-IPC (diagnostic, decides between 2 and 3):** hardware counters
+   (`xctrace record --template 'CPU Counters'`, or `kperf`-based sampling) on
+   the six-package cold compile, Serc vs C: L1I/iTLB misses, branch
+   mispredicts, L1D/L2 misses, attributed to `serc`/`ruff_python_parser`
+   symbols. Run it in the first quiet window after P0, or under light load
+   since counter ratios tolerate it.
+2. **Code locality:** if front-end misses dominate, try per-package
+   `opt-level = "s"` for `serc`/`ruff_*` in the lane release profile, and
+   measure binary size, IPC and the C3 cold set. Then try
+   hot/cold-splitting rare compiler paths (`#[cold]`, outlined error and
+   diagnostic code) to shrink the touched text below the current ~5 MB.
+3. **Allocation locality:** if data misses dominate, move the per-module
+   compile allocations (AST and IR nodes, block graphs, `Vec` growth in
+   emission) to a compile-unit arena; the ruff AST is `Box`-heavy and goes
+   through system malloc today. Prototype on the IR/assembler side first,
+   since the ruff AST is third-party.
+4. Pipeline and emission work (owner P2 items 2–3) continue after C-IPC
+   only where counters show a structural miss source; the
+   instruction-count levers measured so far are exhausted or sub-floor.
 
-**Close: fresh A/A and final review (2026-11-18).** `perf-rust-jit-aa`
-rebuilt clean at `0748280` and gated **WITHIN-BUDGET** on every metric
-(`20261118T044154Z`, `--jit-set --gate --runs 5`, quiet): all wall/cpu/
-peak_rss pooled medians within 0.997-1.009, no target improved - a
-clean same-source twin at the final epoch. `docs/RUST-CAMPAIGN-RESULTS.md`
-was rewritten as **INCOMPLETE_PLATEAU** and an independent evidence
-review reproduced every checkable number (S = 0.7258, held-out 0.8368,
-guard django_wsgi wall 1.0162 as sole >1.01 entity, all 16 combined
-digests mismatch-free, no kernel <= 0.45). Remaining Close debt is
-attribution work, not measurement: the `django_wsgi_request` wall
-signature and the C2/footprint gates on stale-epoch guard builds, plus
-any owner decision on the two research-grade follow-ups (JIT unboxed
-locals, Serc pipeline fusion). **Campaign outcome: INCOMPLETE_PLATEAU** -
-best qualified result S = 0.7258 delivered with measured ceilings; M4
-and C3 unmet.
+Py316 linear-assembler eligibility (owner P2 item 1) is already done:
+landed at `5c64210` (two version-policy gaps fixed, 30,318-case census 0
+mismatches, −5.3% compile CPU, ≈ 1% end to end); the forward-branch
+extension was measured and rejected.
 
-**P2 linear-path port scoped (2026-11-18).** The Py316 exclusion is two
-independent gates, not one: `finish_code_with_constants` requires
-`python_version == Py314` before any linear predicate runs
-(`passes/mod.rs:295`), and `has_terminal_guard_metadata` hard-requires
-Py314 (`mod.rs:1274`) — the latter also disables the
-`used_constant_indices` linear-scan shortcut, so every non-straight-line
-Py316 function builds a `BlockGraph` during constant admission (the graph
-is reused by the pipeline, so it is not double-built, but linear-eligible
-functions can never skip it). The recognizers encode Py314 bytecode
-shapes — `POP_JUMP_IF_*` + `NOT_TAKEN` marker pairs, `LOAD_SMALL_INT`,
-`RESUME` argument forms, and the `has_only_linear_instructions` opcode
-whitelist — so a Py316 port must first verify which of those shapes
-CPython 3.16 actually emits; opcode names resolve through
-`crate::target::opcodes` but the patterns are version-specific.
-`optimize_linear_assertion_side_exits` itself lives in the pinned archive
-(`passes/linear.rs`, not overlaid) and needs a version-assumption audit.
-Open questions before any edit: fraction of compileall functions that are
-linear-eligible under Py316 shapes, and whether skipping graph construction
-plus the linear finish recovers enough of the ~28% `pipeline-optimize`
-bucket to matter against the ~12% C3 gap. Reject the port if eligibility
-is low or the shape audit shows the patterns do not transfer.
+### Host and worktrees
 
-**Measured rejection of the naive port (2026-11-18, exploratory).**
-Relaxing both Py314 gates to include Py316 (`passes/mod.rs` linear-path
-gate and `has_terminal_guard_metadata`) compiled cleanly and built
-`perf-serc-l316`, but `bench compileall_source` reported
-`mismatch: true` — the linear path does fire for Py316 shapes yet
-`optimize_linear_assertion_side_exits` emits bytecode that differs from
-the graph path. Cold workloads stayed within noise (~0.99). A real port
-therefore needs per-shape equivalence fixes inside the pinned archive
-`passes/linear.rs`, not a version-gate change; parked unless a cheaper
-Serc lever appears first.
-
-**Py316 linear-path port landed (2026-11-18, `5c64210`).** The per-shape
-audit found exactly two divergences, both version-policy gaps rather than
-shape mismatches. First, `LOAD_COMMON_CONSTANT`: the graph pipeline's
-`lower_common_constants` (Py315/316) rewrites immortal `LOAD_CONST`s and
-compacts `co_consts` via `retain_used_in_order`; the linear path skipped
-it entirely, so every linear-eligible Py316 unit emitted `LOAD_CONST`
-where the oracle emits `LOAD_COMMON_CONSTANT`. Added
-`lower_common_constants_linear`, the same rewrite plus table compaction
-applied to the finished linear item stream. Second, local-pair fusion:
-`fuse_superinstructions` returns false for `>= Py316` and the pipeline
-instead runs `fuse_borrowed_superinstructions` on final items after
-borrow-load analysis, so `STORE_FAST`+`LOAD_FAST_BORROW` never fuses;
-the linear path ran pre-3.16 `fuse_pair` before borrow analysis and
-fused them into `STORE_FAST_LOAD_FAST`. `passes/linear.rs` is now
-overlaid: for Py316 it skips `fuse_pair` and runs
-`fuse_borrowed_superinstructions` after load-fast optimization, mirroring
-the pipeline order. Census `serc_parity.py --oracle stage-perf-rust`:
-30,318 cases, **0 mismatches**, 9,678 exact matches, 813 intentional
-finally routes — identical totals to the incumbent census. Per-file
-marshal digests identical to `perf-rust-serc` across the census corpus
-at -O0/-O1/-O2; `test_serc_compile` OK; 22 linear assembler unit tests
-pass (the 8 compatibility failures are the pre-existing missing
-`python3.14` oracle, unrelated). Eligibility is high: ~50% of django
-code objects (911/1822) take the linear path. Phase profile on 907
-django modules: Serc compile 534->506 ms (**-5.3%**), `pipeline-optimize`
-156->140 ms, `pipeline-build`+`owners-retain` 21->17 ms. Locked C3
-workloads, exploratory quiet-host bench vs `perf-rust-serc`: wall/cpu
-`cold_import_django` 0.992/0.992, `cold_python_startup` 0.994/0.996,
-`compileall_source` 0.986/0.996 over 3 runs — consistent ~0.6-1.4%
-improvement, at the practical floor on end-to-end workloads because
-compilation is only part of each process. Pure `compile()` timing on the
-django corpus: 0.4875->0.4816 s (-1.2%, 4/4 interleaved pairs faster).
-C3 remains REJECTED (gap was ~6-16%); this is an incremental Serc
-compiler win, not a gate pass. `perf-rust-serc` rebuilt at `5c64210`.
-
-**JIT unboxed-locals feasibility spike (2026-11-18).** Scoped the
-campaign's last identified headroom mechanism before committing sessions
-to it. Findings: (1) `_STORE_FAST_FUSED_FLOAT{,_OR_NULL,_INT}` write an
-already-boxed `_PyStackRef` into `GETLOCAL` and close the old box via
-`_PyFloat_ExactDeallocTstate` (`bytecodes.c:344-370`); the alloc happens
-in the producing uop, and stack temporaries are already unboxed via
-`_PyUnboxedSlots` — so the residual boxed-float churn is exclusively
-named locals, confirming the frame-representation ceiling. (2) A narrower
-variant — reusing the old PyFloat box in place (`ob_fval` mutation when
-`Py_REFCNT==1`) — still fails on two observation points: deopt/materialization
-reads frame locals, so skipping a box write corrupts deopt state unless
-writes happen at every deopt-visible point anyway (leaving only
-alloc/free churn to attack); and float object identity (`id()`, `is`)
-is observable, so in-place mutation changes semantics unless the trace
-proves no identity observation — the same escape-analysis requirement as
-full unboxing. (3) This build uses immediate refcounting (`Py_TAG_REFCNT`
-stackrefs; deferred refcounting is the free-threading path), so a
-refcount check would be reliable — the blocker is observation proofs,
-not the refcount model. Conclusion: no bounded JIT shortcut exists; the
-remaining gap needs the escape-synced frame-representation project or is
-unreachable. Serc side is likewise saturated: ~53% of django code objects
-are no-jump (linear-eligible ceiling already reached at 911/1822 asm-linear
-units); the jumped remainder requires graph-pipeline work.
-
-**Serc linear-path ceiling revisited — eligibility, not speed (2026-11-18).**
-Follow-up measurement overturned the "saturated" conclusion above. Decisive
-data: (1) synthetic straight-line corpus — Serc build compiles 40 modules in
-14.9 ms vs 36.8 ms for the C-compiler build (**2.5x faster**); Serc's core
-machinery is not the problem. (2) Per-file timing on the compileall_source
-corpus is bimodal: Serc wins big on linear-dominated files (normalize.py
--29%, cli.py -17%, codec.py -12%, errors.py -44%) and loses on
-branch-heavy files (storage.py +31%, repository.py +26%, ingest.py +17%).
-(3) Opcode census of the same corpus (263 code objects): 77 fully linear
-(29%), **104 simple forward-branch only — conditional jumps, no loops,
-try/except, with, or yield (40%)**, 82 complex (31%). (4) SERC_PROFILE
-per file: `asm-linear` is ~3% of compile while `asm-finish`/
-`pipeline-optimize` dominate (~27% and ~37-50%); the graph pipeline's
-per-function fixed cost is the entire C3 gap. (5) Infrastructure check:
-`LayoutAssembler::finish` is already a *general* assembler — it resolves
-arbitrary `Operand::Forward`/`Operand::Backward` labels with iterative
-extended-arg layout, line tables, exception tables, and max-depth; the
-linear predicates (`has_no_linear_control_flow_metadata` requires
-`next_label == 0`) are what's conservative, not the layout engine. The
-terminal-guard path already proves forward-label layouts can be
-byte-identical. **Next concrete project:** a "simple-branch linear" path —
-extend the label tolerance from `next_label <= 4` terminal guards to
-arbitrary forward-only branch DAGs (no backward jumps, no exception
-regions, no borrow/loop metadata), reusing `optimize_linear_assertion_side_exits`
-+ `LayoutAssembler::finish`, verified by the 30,318-case parity census.
-Potential eligibility expansion ~29% -> ~69% of code objects; if realized,
-this is the first mechanism with enough headroom to reach C3.
-
-**Forward-branch linear path — implemented, measured, REJECTED (2026-11-18).**
-The predicted expansion did not survive contact with real code. Implemented
-`has_only_forward_branch_instructions` (labels + the five forward-jump
-opcodes, same metadata/provenance requirements as terminal guards, reusing
-`optimize_linear_assertion_side_exits` + `LayoutAssembler::finish`) plus a
-Py316-targeted `fb_probe` harness over the pinned Serc tree. Results:
-synthetic branch functions compile byte-identical (marshal-verified vs the
-C build at -O0/-O1/-O2, including if/else, early returns, conditional
-expressions, and-loop/try correctly excluded). But eligibility gain on real
-corpora is **zero**: asm-linear phase counts unchanged on both
-catalog_service (24->24) and the full django tree (908->908). Rejection
-profiling (~7k django code objects) shows the opcode census drastically
-overstated the opportunity: in 3.16, try/except, for, and with emit no
-control-flow opcodes, so "simple" functions are dominated by metadata the
-linear path cannot take — `exception_regions` non-empty (2769),
-`preserved_block_boundaries` (1531), `has_synthesized_percent_target_locations`
-(574), `borrow_omitted_for_backedges` (526), `with_context_locations` (248),
-plus 980 already-non-Linear IR streams. The residual soft-failures that pass
-metadata (~330 tail cell-conflicts, ~58 jump-policy mismatches on
-POP_JUMP_IF_{NONE,NOT_NONE}, ~196 NOT_TAKEN markers) total ~5% of objects
-and would each need parity-risky policy replication for a sub-floor gain.
-Conclusion: the graph pipeline's exception/borrow machinery is genuinely
-required by real branch code; there is no bounded eligibility expansion.
-Both overlay files reverted; `stage-perf-serc-fb` is a rejected artifact.
-
-**Serc compile profile — AST-traversal dominance found (2026-11-18).**
-Symbolized sampling of the release `serc` crate (`--profile profiling`,
-907-file django corpus x400) shows compile time concentrated in *many
-distinct AST visitor walks*, not the assembler: `ModuleNameCollector::
-visit_expr`/`visit_stmt` (scope.rs), `ScopeBodyFactsCollector`,
-`LocalCollector::collect_suite_with_unwind`, `NamedExpressionCollector`,
-`syntax_warning::Scan`, `syntax::Validator::visit_expr`,
-`static_blocks::ExpressionBlocks`, and `cpython_only` checks
-(`Nesting`, `CapturesDebug`, `has_too_many_nested_interpolated_strings`),
-plus `NameInterner`/`intern_name_with_spelling` hashing. These correspond
-to the `context`/`rules`/`validate` phases (~25-30% of compile combined)
-each performing its own full traversal per module *and* nested scopes.
-This revises the earlier "context is already fused" note: fusion exists
-only inside `SourceAnalysis`/`ModuleNameCollector::collect_with_source`;
-the warning scan, syntax validator, cpython_only checks, and the
-scope-facts collectors remain separate walks. Quantified on the same
-corpus via `SERC_PROFILE` on the release crate (907 django files, Py316):
-total 461.5 ms — `emit` 68.8% (`asm-finish` 38.8% of which
-`pipeline-optimize` 28.3%), `context` 11.7%, `rules` 8.5%, `parse` 8.6%,
-`validate` 2.4%. The visitor-dominated phases (`context`+`rules`+
-`validate` ≈ 22.6%) plus ruff `parse` (8.6%) bound the fusion ceiling at
-roughly a quarter of compile time; capturing even half of it approaches
-the C3 gap. Notes for that project: `syntax_warning::may_warn` is
-already token-gated (`tokens_may_warn` short-circuits the AST `Scan`), so
-it is not a free win; the scope collectors (`ModuleNameCollector`,
-`ScopeBodyFactsCollector`, `LocalCollector`, `NamedExpressionCollector`)
-each implement `ruff_python_ast::visitor::Visitor` and recurse via
-`walk_*` on themselves, so naive composition re-traverses — real fusion
-needs each collector split into fact-extraction vs recursion, or a
-combined visitor that recurses once and dispatches to all collectors per
-node. That is a mechanical but wide refactor across `scope.rs`,
-`syntax_warning.rs`, `syntax.rs`, `static_blocks.rs`, `cpython_only.rs`,
-with byte-parity + warning-order verification via the census. Scope
-sizing: `ScopeBodyFactsCollector::collect` is invoked per function/class
-*definition body* during scope planning (scope.rs ~2567/~2602), so scope
-facts are re-collected for every nested scope on top of the module-level
-walks — traversal count scales with scope count, not just module size.
-`ModuleNameCollector::collect_with_source` is the fused module-level
-exception. **Next concrete project:** measure per-collector cost (phase
-timers exist; a visitor-count census would size it), then fuse compatible
-collectors into shared traversals —
-the first bounded-looking lever with enough headroom (~10%+) to matter
-for C3, provided each collector's facts and warning/error ordering stay
-byte- and diagnostic-identical. Parity census + `test_serc_compile`
-remain the verification gate.
-
-**Emission attribution limit (2026-11-18).** A 60-iteration `sample`
-profile of `compileall_source` on `perf-rust-serc` is dominated by
-process-level filesystem syscalls (`open`/`rename`/`unlinkat`/`mkdir`/
-`stat`/`write` ≈ 400+ of ~1k leaf samples) because the workload writes
-`.pyc` files; it is a poor proxy for compiler CPU. Within compilation,
-self-time is diffuse — `OptimizationPipeline::optimize` is the largest
-single leaf (~27 samples, matching the ~28% `pipeline-optimize` phase
-share) and every other serc leaf is under ~10, spread across
-`compile_statement_inner`/`compile_expression_inner`/`compile_call` and
-assembler layout/finally passes. No single bounded emission hotspot
-emerged; the coherent remaining target is the graph pipeline itself,
-whose passes produce the byte-parity output.
-
-**Serc phase breakdown measured (2026-11-18, `SERC_PROFILE=1`).** Per-file
-compile CPU on `perf-rust-serc` (typical ~110 µs): `parse` ~29% (ruff
-parser), `emit` ~46% of which `asm-finish` ~20% (final layout/emission)
-and `pipeline-optimize` ~13%, `context` (Compiler::module_with_scopes scope/name analysis) ~11%,
-`rules` ~10%, `validate` ~5%, `frontend`/`marshal-*` ~0%. The `rules`
-phase alone runs ~7 separate AST/token traversals (`parser_stack_estimate`,
-`captures_debug_pattern`, `has_deep_format_spec`,
-`has_too_many_nested_interpolated_strings`, `leaves_finally_body`,
-`validate_with_integer_limit`, `static_blocks::validate`, `may_warn`),
-several with token-level pre-filter potential (`TokenKind::Finally`,
-`FStringStart`, `TStringStart` exist in the pinned ruff AST). `parse` is
-the largest single phase but is third-party parser code. Consolidating
-the `rules`/`validate`/`context` traversals or pre-filtering the rare-
-construct checks is the most concrete bounded Serc lever found; expected
-ceiling roughly 5–10% of compile CPU if most walks can be skipped or
-fused, against the ~12% C3 gap.
-
-**Measured: rules pre-filter is sub-floor (2026-11-18, exploratory).**
-Token pre-filters gating `captures_debug_pattern` (needs `TokenKind::
-Match`), `has_deep_format_spec` + `has_too_many_nested_interpolated_
-strings` (need `FStringStart`/`TStringStart`), and `leaves_finally_body`
-(needs `TokenKind::Finally`, signature extended to take tokens) preserved
-byte-identical output on `compileall_source` but measured wall/cpu
-0.993/0.999 compileall, 0.995/0.995 django, 0.999 startup — inside the
-1% floor, `WITHIN-BUDGET`. The gated walks were a small slice of `rules`;
-`parser_stack_estimate`, `static_blocks::validate`,
-`validate_with_integer_limit`, and `may_warn` still traverse every file.
-Reverted; remaining `rules` cost needs walk fusion or cheaper analyses,
-not per-check pre-filters.
-
-**JIT guard analysis (2026-11-18).** Two bounded leads measured/checked
-and both land below the floor or above the risk line. (a) The only hot
-uops still carrying `HAS_ESCAPES_FLAG` on nbody are the exact-builtin
-`_UNPACK_SEQUENCE_{TUPLE,LIST,TWO_TUPLE}` family — their implementations
-incref items onto the stack before decref-ing the container, so no user
-code can run; a whitelist inside `prune_validity_checks` would remove
-~14 of the trace's 30 remaining `_CHECK_VALIDITY` uops (~47% of the
-residual 4.35% nbody share), i.e. well under the 1% gate floor
-aggregate-wide, so not worth a cycle. (b) `_CHECK_FUNCTION_VERSION`
-(~15% summed stale share, up to ~3.8% richards) cannot be hoisted like
-globals: `func_version` is cleared by `func_clear_version` at ~9
-attribute-mutation sites (`__code__`, `__defaults__`, `__kwdefaults__`,
-`__closure__`, etc.) and there is no executor dependency mapping
-func_version → executors the way the globals bloom-filter dependency
-invalidates traces. Hoisting requires a new invalidation dependency
-type — safety-critical infrastructure work, not a peephole.
-
-**Planner barrier override — measured, REJECTED (2026-11-18).**
-`describe_uop` (`optimizer.c:~2122`) turned out to feed only
-`unbox_values` — each other planner (leaf, store, cache, loop_globals,
-loop_types, attributes) builds its own descriptor struct, so a barrier
-narrowing there is unbox-scoped. The exact-builtin
-`_UNPACK_SEQUENCE_{TWO_TUPLE,TUPLE,LIST,UNIQUE_TUPLE}` ops carry
-`HAS_ESCAPES_FLAG` (or `{-1,-1,-1}` stack shape) yet cannot run user
-code: items are incref'd onto the stack before the container decref,
-and exact list/tuple dealloc is code-free. Two planner blockers were
-removed in a probe: supplied `pushed=oparg` shapes (TUPLE/LIST/
-UNIQUE_TUPLE were `shape=None`, which `verify()` treats as plan-fatal
-when any unboxed value is live) and cleared `JIT_OPT_EFFECT_BARRIER`
-for the three escaping variants. Verified the override fires (debug
-counter showed correct pushed counts) and smoke/deopt tests passed,
-but generated executors were uop-for-uop identical (81/73 uops on the
-probe functions) and the targeted micro plus the 16-kernel
-`--jit-set --timing-only` bench read WITHIN-BUDGET with no kernel
-improvement. Root cause: unboxed float/int values essentially never
-remain live at unpack points — stores box them into locals first — so
-the barrier/shape relaxation has nothing to unlock. Reverted; the
-remaining unbox ceiling is values boxed at local/stack stores, not
-escape barriers.
-
-**Unbox ceiling pinned (2026-11-18).** The probe's null result exposed
-the real bound: `_STORE_FAST_FUSED_FLOAT{,_OR_NULL}` and `_INT` write
-`_PyStackRef` (boxed `PyFloat`/`PyLong`) straight into `GETLOCAL` —
-named locals are always boxed objects. The `_PyUnboxedSlots` mechanism
-only covers stack temporaries inside a trace segment; any value that
-touches a named local round-trips through a boxed object on every
-store/load. Unboxed locals would require a frame-representation change
-plus materialization at every observation point (`f_locals`,
-debugging, calls, deopt) — the escape-synced-boxing project, not a
-planner tweak. This bounds realistic JIT gains to stack-temp
-unboxing breadth and guard/store micro-costs; the dominant
-local-churn shares (`_STORE_FAST_FUSED_FLOAT*` ~16% nbody,
-`_STORE_SUBSCR_LIST_INT_FLOAT` ~19%) are the object model itself.
-
-**Serc pipeline structure measured (2026-11-18).** Sub-phase timers on
-`compileall_source` (`SERC_PROFILE=1`, `perf-rust-serc`): `pipeline-
-optimize` ≈27% of compile, emission/lowering ≈25%, `context` ≈15%,
-`parse` ≈8%, `rules` ≈8%, `owners-retain` ≈0.8% (ruled out — the
-~30 `timed_retain_owners` checkpoints are cheap). `optimize()` is not
-a list of independent passes: ~50 transformations interleave with
-`FusionOwnerCertificates` capture/retain and exception-owner provenance
-rewrites that later passes consume — the bookkeeping IS the
-correctness mechanism for exception regions and fusion views, so
-pass fusion is a research project, not a traversal dedup. `context`
-is already fused (`ModuleNameCollector::collect_with_source` feeds
-`SourceAnalysis` in one walk; `LocalCollector` adds a second only when
-module bindings require). Emission self-time is diffuse
-(`compile_statement/expression/call`, `name_index_with_id`,
-`LayoutAssembler::finish`, individual pipeline passes each <3%).
-No bounded Serc lever remains: every measured probe
-(scan-consolidation, token pre-filters, Py316 linear gate) was
-neutral-to-sub-floor or incorrect.
-**Per-collector census measured (2026-11-18).** `WalkTimer` buckets
-(env-gated `SERC_PROFILE` sub-totals, profiling build, 907 django
-files, 451.5 ms total compile): `walk-scope-inputs` 20.4 ms (4.5%),
-`walk-module-names` 19.5 ms (4.3%), `walk-locals` 10.6 ms (2.4%),
-`walk-validator` 9.2 ms (2.0%), `walk-scope-facts` 7.5 ms (1.7%),
-`walk-may-warn` 6.6 ms (1.5%), `walk-expr-blocks` 3.5 ms (0.8%);
-`walk-dup-keys` absent (gated, ~0). Sum ≈ 17% of compile. Nesting:
-`ScopeInputs::collect` (scope.rs:2814) internally drives
-`ModuleNameCollector::collect_with_source` (2837) and one
-`LocalCollector` (2844), so `walk-scope-inputs` already contains most
-of `walk-module-names`; the other `LocalCollector` sites
-(6434/9021/9112) run per-scope during planning/emission, as do the
-per-body `ScopeBodyFactsCollector::collect` calls (2567/2602).
-Distinct-traversal estimate ≈ 55–58 ms ≈ 12–13% of compile, split into
-~5 module-level walks (rules/validate phase: `may_warn` Scan,
-`validate_with_integer_limit`, `static_blocks::validate`, the four
-`source_rules` AST checks, `compiler_rules`) and the per-scope
-planning walks (`ScopeBodyFactsCollector` + `LocalCollector` per
-function/class body). Rules-phase fusion is the most bounded slice:
-all seven walks run back-to-back on the same `parsed.suite()` before
-`frontend`, facts are independent, and error priority is fixed
-(validator → static_blocks → source_rules → compiler_rules), so a
-single dispatching visitor preserving per-collector visit order keeps
-observable behavior identical. Expected capture roughly half the
-rules-phase walk cost ≈ 3–5% of compile — the largest remaining
-bounded lever toward C3.
-**Rules-phase fusion design (2026-11-18).** Collector classification
-for the fused `RulesScan` walk: `CapturesDebug` and `DeepFormatSpec`
-are pure OR-bool standard Visitors (stmt-only / expr-only) — trivial
-dispatch. `Nesting` (interpolated-string depth) and the `MAX_NESTING`
-`Nesting` need enter/exit depth hooks around `walk_expr`/`walk_stmt`;
-`Shape` (`parser_stack_estimate`) needs the same pre/post slot
-accounting on stmt/expr/parameters — all replicable because the fused
-visitor calls each handler before and after its single `walk_*`
-recursion. `FinallyExit` (`leaves_finally_body`) is the awkward one:
-custom stmt arms assign `Finally`/`Loop` block context per field and
-`visit_scope` saves/restores the block stack at function/class/lambda
-boundaries while `visit_expr` is empty — the fused visitor must push
-block markers in `visit_stmt` pre-hooks and invoke scope save/restore
-at the same boundaries, and its canonical `walk_stmt` must be checked
-against `FinallyExit`'s manual field order for coverage equivalence
-(superset visits are safe for an OR-bool detector only if block-state
-semantics are preserved). `syntax_warning::Scan` is bespoke (custom
-stmt arms, block stack, global early-exit) — exclude from stage 1;
-its result is order-insensitive but its custom traversal coverage
-would need a separate equivalence proof. `validate_with_integer_limit`
-(9.2 ms) and `static_blocks::validate` (3.5 ms `walk-expr-blocks`)
-stay for stage 2 behind the fixed error priority
-validator → static_blocks → source_rules → compiler_rules; each
-collector's internal first-error order is preserved because the fused
-walk uses canonical `walk_*` order identical to each standalone
-Visitor. Stage-1 scope: one `RulesScan` visitor in `cpython_only.rs`
-(or a sibling module) computing `captures_debug`, `deep_format_spec`,
-`interpolated_nesting`, `max_nesting`, `parser_stack_shape`, and
-`finally_exit` facts in a single traversal; `source_rules` /
-`compiler_rules` then evaluate the fixed reason priority from stored
-facts. `parser_stack_estimate`'s token-based bracket-depth term is
-unchanged (computed outside the walk). Token pre-filters from the
-rejected experiment stay rejected — this fuses the walks themselves.
-Verification gate: `test_serc_compile` 11/11, `serc_parity` 30,318-case
-census with 0 mismatches, per-file marshal digests at -O0/-O1/-O2, and
-a `SERC_PROFILE` re-run expecting `rules` phase ≈ 8.5% → ~4–5% of
-compile.
-**Stage-1 rules fusion landed (2026-11-18, `b07381c`).** `RulesScan`
-replaces the five cpython_only AST walks with one traversal computing
-all latch/max facts; `source_rules`/`compiler_rules` consume
-`RulesFacts` with unchanged reason priority. A/B verification on the
-staging build: marshal hashes and error strings byte-identical to the
-prior implementation on all 907 django files at -O0/-O1/-O2 plus
-synthetic rule cases; 1,260 serc lib tests pass (compatibility-suite
-oracle tests need `SERC_TEST_PYTHON`, unavailable in scratch). Measured:
-`rules` phase 42.8 → 31.5 ms on the django corpus (−26% of phase,
-≈ −2.3% of compile CPU). Pending before acceptance claims: the full
-30,318-case parity census, per-file marshal digests, and the
-`perf-rust-serc` rebuild + locked C3 gate. Stage 2 remains:
-`validate_with_integer_limit` (9.2 ms) + `static_blocks::validate`
-(3.5 ms) + `may_warn` Scan behind the same error-priority discipline,
-then the per-scope planning walks (`ScopeBodyFactsCollector` +
-`LocalCollector`, ≈ 18 ms).
-**Stage-2 warning fusion landed (2026-11-18, `47e5f71`).**
-`syntax_warning::Scan` is folded into `RulesScan` as a parallel
-warn-block stack plus the compare/call/subscript/assert/lazy-import
-candidate checks; `may_warn` keeps only its token half. `rules` phase
-31.5 → 28.4 ms on the django corpus; cumulative rules-phase reduction
-from the five original walks is 42.8 → 28.4 ms (−34%). Marshal output
-byte-identical to the pre-fusion implementation on all 907 files at
--O0/-O1/-O2 plus synthetic warning cases; 1,260 serc lib tests pass.
-Remaining rules-phase walks: `walk-validator` ≈ 9 ms (error-producing
-visitor — needs its own error-priority analysis), `walk-expr-blocks`
-≈ 3.5 ms (`static_blocks` bespoke block-limit traversal),
-`walk-dup-keys` (small). Context-phase walks (`walk-scope-inputs`
-≈ 21 ms incl. module names, `walk-locals` ≈ 11 ms,
-`walk-scope-facts` ≈ 7.5 ms per-scope) remain the largest untapped
-bucket but carry the highest semantic risk.
-
-- `campaign/jit-subscr-virtual` `da402d9` — stack tip, worktree
-  `.work/wt/jit-subscr-virtual` (closeout-allowed). Evals 7+8: fused
-  unpack-to-locals (`_UNPACK_SEQUENCE_TWO_TUPLE_TO_FAST`,
-  `_UNPACK_SEQUENCE_LIST_TO_FAST`, generic two-tuple). Eval 7 screen
-  0.9756 / gate INCONCLUSIVE ×2 / CORRECT. Eval 8 screen 0.9743 / gate
-  attempt 1 INCONCLUSIVE 0.9740; its one justified retry was interrupted
-  by this winddown. Exact-tip correctness is still pending; retain the
-  partial receipt, but a retry is conditional on H0 and the stack/Rust audit.
-- `campaign/jit-list-read-unbox` `17ade05` — eval 6 (unboxed list float
-  reads + guard elision) plus the QUALIFY three-layer bundle re-gate
-  (eval 9, **ACCEPT** under the repaired gate 2026-11-17, see above);
-  rebased onto `f19fb2f`, overlay identical to `a27dec1`. Merged to
-  `main` at `574946e`; the pre-rebase `a27dec1` remains the eval-6
-  record; ancestor of the stack tip.
-- `campaign/jit-array-index-unbox` `a51c17b` — eval 5 (unboxed array
-  reads); screen 0.9765, gate INCONCLUSIVE ×2, CORRECT; ancestor.
-- `campaign/jit-store-subscr-array` `8c7136f` — eval 2
-  (`STORE_SUBSCR_ARRAY_D`); screen 0.983, gate INCONCLUSIVE ×2,
-  CORRECT; ancestor. `campaign/jit-checked-attr-store` `88bc548` is its
-  pre-rebase twin.
-- Screen-rejected, do not resume without new evidence:
-  `campaign/jit-attr-virtual` `e01a4f0` (1.0030),
-  `campaign/jit-array-read-inline` `531a76e` (0.9966),
-  `campaign/jit-checked-attr-store` `88bc548`.
-
-The tip contains at least four unaccepted mechanisms (array stores, array
-index unboxing, list-read unboxing, unpack fusion), exceeding the three-item
-stack bound even if tuple/list unpack count as one. Its reported late C
-`fuse_unpack_stores` pass also needs the **Rust rule** audit before eligibility.
-Preserve the source, but freeze this stack; an old layer's speedup cannot
-qualify another layer. C3 remains feature-complete with cold-compilation
-acceptance open and can progress independently under the host lease.
-
-Next slice on resume is **RECOVER → H0 → QUALIFY**, not another optimization:
-verify the exact source/receipt inventory, establish calibrated comparisons,
-reduce and audit the stack, then remeasure the smallest useful bundle.
-Retired worktrees' results are recorded under
-`.work/campaign-archive/winddown-20261116/<tree>/`; verify that archive on the
-Mac. No `campaign/*`, `stack/*`, or `lane/*` refs were published at review,
-and their source/raw receipts were unavailable in this review checkout.
-Do not reconstruct claims from the ledger alone. Missing evidence parks the
-affected candidate; missing calibration selects BLOCKED/PERFORMANCE_DEFERRED,
-never INCOMPLETE_PLATEAU merely because attempts were spent.
-
-Subsequent checkpoints also record the exact candidate and reference SHAs,
-build names/flags, phase, next command, attempt/design and 8+4 plateau
-counters, last valid measurement, pending reviews, evidence paths, and each
-blocker's reopening condition. Missing measurements are `unmeasured`, not
-zero; missing old evidence is `needs reconstruction`, not a pass.
+Cleanup on 2026-11-18 left only the primary checkout. Retired worktrees:
+`jit-alloc-interp` (eval 11 REJECT; branch kept),
+`jit-subscr-virtual` (eval 5–10 and null probes; branches kept; its
+receipts are copied to `rust-cpython/results/lane-jit-subscr-virtual/`).
+Null-probe builds for future gate controls are rebuilt from
+`campaign/probe-layout` (`7103543`) and `campaign/probe-rust` (`ace3715`).
+Kept stages: incumbent, A/A twin, `perf-climb-ref`, `perf-guard-*`,
+`perf-rust{,-serc}`, `perf-final-jit-serc`, `perf-rust-jit-vc{,2,3}` (known
+improvement pair for gate controls). Kept scratch:
+`rust-cpython/.work/serc-test` (live Serc checkout).
 
 ## Goal and end state
 
@@ -4012,12 +3436,10 @@ owner explicitly requests an epoch change:
 
 ## Owner decisions
 
-Historical decisions below explain their original receipts. The 2026-11-15
-operating contract above applies to the next explicitly launched run:
-macOS-only completion, measurement-first qualification, and bounded deferral.
-It preserves feature semantics, numeric targets, LLVM pins, the production
-boundary, and OD17's reviewer restriction. The execution pause it referred to
-was lifted by the owner's 2026-11-15 reopen; see **Status**.
+Historical decisions below explain their original receipts. OD18 and
+OD19 are the current operating contract. They preserve feature semantics,
+numeric targets, LLVM pins, the production boundary, and OD17's reviewer
+restriction.
 
 - **OD1 (2026-11-01):** keep the pinned LLVM; see **Boundary**.
 - **OD4:** memory gates stay as written; JIT against no-JIT keeps its peak RSS
@@ -4049,6 +3471,35 @@ was lifted by the owner's 2026-11-15 reopen; see **Status**.
   until measurements can resume; do not claim M4 or campaign completion from
   this waiver.
 - **OD17 (2026-11-12):** Carbon is disabled for this campaign until the owner re-enables it. Independent reviews use an available worker through the Pi bridge. The review requirement and OD16 performance deferral remain unchanged.
+- **OD18 (2026-11-17):** resume. Linux is indefinitely out of scope: no
+  Linux builds, CI, containers, emulation or remote qualification, and
+  COMPLETE_MACOS must be reachable on native macOS arm64 alone; Linux stays
+  explicit deferred work, not a blocker. A principled repair of the J
+  acceptance statistic is authorized, not a relaxation: the 1% floor,
+  workloads, correctness requirements and milestone targets stay. Validate
+  any policy against A/A, semantically null binaries, injected regressions
+  above budget and known improvements; commit and review harness changes
+  apart from optimizations; requalify affected comparisons under one
+  harness identity; never change a gate because a candidate failed it. A
+  dedicated Serc compiler-performance effort is authorized, including deep
+  internal refactoring, with exact semantics, coverage, parity and tests; no
+  widening of C fallback routes. `INCOMPLETE_PLATEAU` needs a measured
+  ceiling after real architectural investigation; a measurement artifact or
+  a compiler problem that needs deeper engineering is not a plateau.
+- **OD19 (2026-11-18):** accelerate toward M4 and C3. First clear the
+  qualification debt (lint, eval-9 requalification under a predetermined
+  5-run protocol, merged-revision resource checks, rebaseline after the
+  fat-LTO profile change, honest Status). Then run architectural experiments
+  ranked by measured whole-kernel share, not single-opcode specializations:
+  profile → one falsifiable hypothesis → minimal prototype → measure →
+  accept/reject → full correctness proof. Probes that are intentionally
+  incomplete estimate ceilings and are never merged. Use narrow checks while
+  exploring and full validation before integration. Keep evaluation counters;
+  open a new round only at a checkpoint with fresh evidence. The global
+  fat-LTO profile must be justified in-process for both tracks. Status is a
+  compact scorecard; receipts go to the ledger. The Rust optimizer
+  requirement and all semantic, deopt, refcount, observability and
+  byte-exactness requirements are unchanged.
 - **Parked:** a method-based frontend (withdrawn PEP 836 prototype, observed
   head `04a79098`) opens only by owner decision.
 
@@ -4682,6 +4133,770 @@ JIT reference does not imply every kernel wins. Raw records:
 `.work/r1/steady-ablation-20261110T045945Z.json`, and
 `.work/r1/timed-24-20261110T053554Z.json`.
 
+## Status history (2026-11-15 to 2026-11-18)
+
+The Status section as it stood at `536b933`, preserved verbatim. Its
+PAUSED, BLOCKED and INCOMPLETE_PLATEAU closeouts are superseded by the
+current [Status](#status); its measurements stand as recorded, subject
+to the eval-9 and LTO-epoch caveats there.
+
+Rewrite this table at each checkpoint; keep detailed provenance in the
+ledger and the [preserved host handoff](#preserved-host-handoff).
+
+**PAUSED — the owner's stop is preserved (recorded 2026-11-16 UTC).**
+Steering review on 2026-11-15 Pacific examined published `main 5515913`;
+it did not resume the Mac, run native benchmarks, or cancel a closeout helper.
+On an explicit resume: "Recover the rust-cpython campaign evidence, resolve
+H0's shared measurement blocker, then qualify a reduced candidate stack and
+C3 before returning to CLIMB." Follow **Start here** before any host helper.
+
+**H0 RECOVERED (2026-11-16).** The shared measurement blocker is resolved:
+raw memory rounds showed the verdict layer discarded paired RSS samples
+(`f750e0a`, index-aligned `67606dc`), and sampling depth could not resolve
+the 1% floor (`14e3af6`, `856c824`, `f876f66`). Full all-metric
+**CALIBRATION-OK** on a quiet host
+(`20261116T183903Z-calibrate-perf-rust-jit`, pre/post `perf-gate-ready`
+clean) and a fresh A/A twin **WITHIN-BUDGET** on all 23 workloads
+(`20261116T192836Z-perf-rust-jit-vs-perf-rust-jit-aa`). Feature-split
+controls remeasured under this one harness identity: `perf-guard-jit`
+confirms bounded frozen-reference wall regressions (coroutines 1.014,
+django_wsgi 1.020, generators wall/cpu 1.022; `20261116T201817Z`), and
+`perf-guard-serc` adds bounded Serc-attributed regressions previously hidden
+by sparse sampling (gzip_extract_1m cpu 1.032, import_django wall/cpu
+1.012/1.018; `20261116T203003Z`). Both stay exploratory, not acceptance
+evidence; the frozen-reference losses remain qualification debt.
+
+**QUALIFY in progress (2026-11-16).** The incumbent `perf-rust-jit` was
+rebuilt clean at `f19fb2f` (`--jit`, overlay byte-identical to `3bd21f6`),
+and the reduced three-layer stack — `STORE_SUBSCR_ARRAY_D`, array index
+unboxing, list-read unboxing — was rebased to `17ade05` on
+`campaign/jit-list-read-unbox` and rebuilt `--jit`-only as
+`perf-jit-list-read-unbox`. Evaluation 9 consumed: screen point 0.9751,
+gate **INCONCLUSIVE** (point 0.9752, quiet, `perf-gate-ready` clean both
+sides; `20261116T213216Z-perf-rust-jit-vs-perf-jit-list-read-unbox`).
+Eight entity-metrics stayed unbounded — fannkuch wall/cpu, import_django
+wall/cpu, nqueens wall/cpu, python_startup cpu, zlib_decode_1m cpu — with
+pooled medians showing real sub-floor regressions of roughly 0.4–0.9%;
+no entity regressed and no kernel's CI95 lower bound exceeds the 1.02
+bar. Correctness is **CORRECT** (training and held-out digests equal,
+2,000 fuzz programs with 0 mismatches at 97.4% JIT coverage, targeted
+suites match with only the 17 named superseded uop assertions) and the
+combined diff earned an independent **APPROVE**. JIT code bytes versus
+the incumbent grow at most ~25% (scimark_fft 54,328 vs 43,348; nbody
+54,900 vs 45,604). A fresh same-commit A/A twin at `f19fb2f`
+(`20261116T223944Z-perf-rust-jit-vs-perf-rust-jit-aa`) is
+**WITHIN-BUDGET** on every entity, so the sub-floor regressions are real
+candidate effects rather than rebuild noise. Round 1 has now consumed
+**9 of ≤12 candidate evaluations**.
+
+Evaluation 10 (remove-one subset: store-subscript + array-index unbox,
+`25da18e`, `perf-jit-array-index-unbox`) gated **INCONCLUSIVE** at point
+0.9755 (`20261116T234252Z`): fannkuch, gzip_extract_1m, import_django,
+nqueens, and zlib_decode_1m wall/cpu stayed unbounded — the list-read
+layer was not the cause. JIT code bytes are identical to the three-layer
+build except nbody (45,604 vs 54,900).
+
+Two diagnostic probes then isolated the residual signature. A semantically
+null C change (`campaign/probe-layout`, one file-scope global in
+`optimizer.c`, `perf-probe-layout`) gated **INCONCLUSIVE** with the same
+shape — import_django ~1.009, nqueens ~1.005, gzip/django_*/richards
+wall/cpu straddles (`20261117T004023Z`). A null Rust-export change
+(`campaign/probe-rust`, `perf-probe-rust`) gated **INCONCLUSIVE** with
+only import_django wall (1.007) and zlib_decode_1m cpu (1.004) unbounded
+(`20261117T015234Z`). Same-source A/A stays WITHIN-BUDGET, so the offsets
+are real paired binary differences — code-layout sensitivity of roughly
+0.4–1% on import/startup/compression workloads — not candidate defects
+and not rebuild noise. A deepening probe (`fdf0c89`: import_django 300,
+nqueens 200 timing rounds; exploratory `20261117T013242Z`) resolved
+nqueens to within-budget but showed import_django wall's ~1.009 offset is
+a stable detected regression under the runner's noise-relative fail
+check, which `perf_verdict` promotes to per-run regressed regardless of
+the 1% floor. Conclusion: the all-metrics gate cannot ACCEPT any
+candidate whose binary perturbs these layout-sensitive workloads, which
+is every real source change; evals 11–12 are preserved unspent rather
+than spent reproducing the same signature. This is a shared unresolved
+measurement signature — the stacking rule's H0-blocker clause applies,
+so the CORRECT bundle and subset are not stack-tagged.
+
+**C3 cold-compilation gate attempted (2026-11-17).** Fresh same-epoch
+builds `perf-rust` and `perf-rust-serc` (source `e891a911`, `--serc` only
+difference; reports `rust-cpython/results/perf-rust{,-serc}.json`) ran the
+locked three-workload set under `perf-gate-ready` clean on both sides
+(`20261117T025435Z-perf-rust-vs-perf-rust-serc`). Decision **REJECT**:
+`cold_python_startup` wall/cpu 1.157/1.082 and `cold_import_django`
+1.122/1.115 and `compileall_source` 1.164/1.060 all regressed in every
+run, with peak RSS 1.19–1.37× across the board — Serc cold compilation is
+a real, large cost on this epoch, consistent with the bounded
+`perf-guard-serc` warm-workload regressions. The OD15 memory-only
+footprint check (`20261117T033603Z`, `memory-only-serc-cost` policy)
+returned **INCONCLUSIVE**, not ACCEPT: physical footprint stayed within
+budget on most workloads (1.007–1.063×) but `cold_python_startup`
+(1.073 [1.069,1.076]) and `gzip_extract_1m` (1.063 [1.055,1.112]) were
+unbounded, while peak RSS — a recorded linking cost that does not
+decide — ran 1.09–1.37×. C3 performance acceptance is not met on either
+leg.
+
+**CLOSEOUT — outcome BLOCKED (2026-11-17).** Neither track produced an
+acceptable result on this host, so COMPLETE_MACOS is unreachable without
+an owner decision. Track J: the reduced bundle and its subset are
+CORRECT but the all-metrics gate cannot ACCEPT any different-binary
+candidate — proven by two semantically null probes reproducing the same
+layout-sensitive ~0.4–1% signature; evals 11–12 remain unspent rather
+than spent reproducing it. Track C: the locked cold set REJECTED and the
+footprint check was INCONCLUSIVE, so Serc cold compilation needs real
+compiler-side performance work or a scope decision. Best measured
+incumbent remains `perf-rust-jit` (S = 0.7258 measured at `285f619`,
+M4 missed); `perf-final-jit-serc` is built for the runnable-variants
+deliverable.
+Full account, gaps, owner queue, and evidence manifest:
+[docs/RUST-CAMPAIGN-RESULTS.md](RUST-CAMPAIGN-RESULTS.md). Linux evidence
+was not collected.
+
+**Closeout evidence completed (2026-11-17).** The four same-epoch
+variants ran their complete applicable suites on the repaired harness:
+`perf-rust`, `perf-rust-jit`, `perf-rust-serc`, `perf-final-jit-serc`,
+each `--all` (52,102 tests) plus `--serc-verify` on both Serc builds.
+Non-JIT builds fail exactly `test_asyncio.test_sendfile`,
+`test_asyncio.test_sslproto`, `test_ssl`, `test_support` — the historical
+`test_multiprocessing_forkserver.test_misc` known-red passed this epoch.
+JIT builds add only `test_capi` (19 failures, all `test_opt` uop-shape
+assertions; the two `test_jitted_code_sees_changed_copied_globals`
+subtests were verified semantically correct — copied-dict globals are
+seen properly under `_GUARD_LOOP_GLOBALS_VERSION` — and catalogued in
+`CLIMB_SUPERSEDED_UOP_ASSERTIONS` at `912ed8c`). Serc verify introduces
+no failed-test difference. Combined-build correctness: 2,000-program
+differential fuzz at 97.45% JIT coverage, 0 mismatches; targeted
+JIT suites differ only by the same superseded assertions; all eight
+held-out kernel digests match the incumbent
+(`20261117T041840Z-perf-rust-jit-vs-perf-final-jit-serc`, exploratory
+single-run timing ignored — digests only).
+
+**RESUMED — owner scope decisions (2026-11-17).** The owner resumed the
+campaign with four decisions: (1) **Linux is indefinitely out of scope** —
+no Linux builds, CI, containers, emulation, or qualification; COMPLETE_MACOS
+must be achievable on native macOS arm64 alone and Linux stays explicitly
+deferred future work, not a blocker. (2) **J measurement-gate repair is
+authorized** — a principled correction or redesign of the acceptance
+statistic, not a relaxation of the 1% practical floor, workloads,
+correctness requirements, or M4 targets; first investigate the
+`run_observation` promotion of `timing.status == "fail"` to
+RUN_REGRESSED even when the bootstrap interval is within budget or
+inconclusive, then validate any fix against A/A, null-probe, injected
+regression, and injected improvement controls under a single harness
+identity before resuming the hillclimb toward M4 (S ≤ 0.25). (3)
+**Serc compiler optimization is authorized** — a dedicated profile-backed
+attribution and structural-optimization campaign toward the locked
+three-workload cold set and OD15 footprint, preserving exact semantics,
+coverage, parity, and tests; a demonstrated architectural ceiling must be
+documented with a specific redesign proposal, not assumed. (4) The
+campaign runs unattended and evidence-driven toward substantial measured
+progress; `INCOMPLETE_PLATEAU` remains acceptable only after meaningful
+architectural investigation. Prior ledger rows, eval counts, source
+epoch, and negative results are preserved.
+
+**J gate repaired and eval 9 requalified ACCEPT (2026-11-17).** The
+`run_observation` conflict is fixed on `main` at `f29d45e` (probe-rust
+twin `ace3715`): raw `timing.status == "fail"` no longer overrides the
+paired bootstrap interval, and inconclusive replicated metrics can
+resolve to within-budget through a whole-run cluster bootstrap (≥2
+runs, ≥2 paired ratios per run, no run classified regressed;
+`PHYSICAL_FOOTPRINT` excluded). 179 `test_perf.py` tests pass. Fresh
+five-run self-calibration under the repaired identity is
+**CALIBRATION-OK** on a quiet host
+(`20261117T045318Z-calibrate-perf-rust-jit`, pre/post
+`perf-gate-ready` clean). Eval 9's candidate
+`perf-jit-list-read-unbox`@`17ade05` versus incumbent
+`perf-rust-jit`@`f19fb2feba` then gated **ACCEPT** on a four-run
+verdict (`20261117T065745Z`, quiet, floor 1%): all five scimark
+targets improved — fft 0.815x, sparse_mat_mult 0.913x, monte_carlo
+0.950x, lu 0.957x, sor 0.985x — and every other entity within budget,
+including the previously straddling fannkuch, import_django, nqueens,
+gzip_extract_1m and zlib_decode_1m metrics. A diagnostic merge of the
+two same-binary run sets (5 + 4 = 9 independent runs, cluster
+bootstrap over whole runs) also classifies **ACCEPT** with zero
+inconclusive entities, so the earlier five-run INCONCLUSIVE
+(`20261117T060726Z`) was borderline sampling, not a hidden regression.
+Correctness carries from eval 9 (CORRECT digests/fuzz/suites,
+independent APPROVE). The bundle merged to `main` at `574946e`; the
+incumbent rebuild at that commit is in progress. This requalification
+is a remeasurement of eval 9 under the repaired harness, not a new
+candidate evaluation — round 1 remains at **10 of ≤12** spent.
+
+Main's last correctness-qualified runtime is `3bd21f6` (reference-init).
+The recorded `perf-rust-jit` score is **S = 0.7463** versus M0 0.7748,
+held-out 0.8366, RSS at most 1.073x reference and code at most 1.66x M0.
+These are recorded measurements, **not a qualified milestone**: the fresh
+A/A gate was INCONCLUSIVE and the frozen-reference guard gate REJECTED.
+M4 ≤ 0.25 remains unmet. The eval-9 three-layer bundle is now the
+first accepted CLIMB candidate (merged `574946e`); the recorded score
+predates it.
+
+Round 1 has consumed **10 of ≤12 candidate evaluations**. Preserve that total,
+but audit the separate evaluable-failure counter; a shared measurement
+blocker is not evidence of an optimization plateau. Evals 2/5/6/7/8 repeatedly
+hit the same ~1% unrelated-workload / unbounded-RSS signature. Their contrast
+is **JIT candidate versus JIT incumbent**; the earlier **JIT versus frozen
+interpreter** attribution does not explain it. H0 resolved the shared
+harness cause (paired-RSS loss plus shallow sampling); eval 9 shows the
+residual signature is now candidate-specific real sub-floor effects, not a
+shared blocker. Do not retry eval 8; evals 10–12 remain for the reduced
+stack and bounded backlog work.
+
+**CLIMB step ACCEPT (2026-11-17).** `2f6284b` `perf(jit): prune validity
+checks after specialization` re-runs the escape scan for `_CHECK_VALIDITY`
+after `unbox_values`, NOPing checks that store/attribute/loop-local/unbox
+specialization made redundant — the stale-pair gap the T1 ledger row
+predicted. Clean build `perf-rust-jit-vc2` gated **ACCEPT** under
+`climb-step --runs 5` on a quiet host (`20261117T222329Z`, point 0.9977;
+nbody cpu/wall improved in all five runs; no kernel CI95 regression;
+held-out digests equal; 2,000-program fuzz clean at 97.45% JIT coverage;
+targeted suites match modulo the named superseded uop assertions).
+Matched-protocol attribution on nbody drops `_CHECK_VALIDITY` from
+10.23% to 4.35% of samples at 100% named coverage, and observed JIT code
+bytes never grow (nbody 43,860 vs 54,900). Absolute `S` is unmeasured
+pending the next milestone gate; the recorded 0.7463 still predates the
+eval-9 bundle and this step. This is the second accepted CLIMB landing
+after eval 9; round accounting is unchanged pending the next checkpoint.
+
+**P1 rerank after the validity step (2026-11-18).** Aggregate attribution
+(16-kernel sample shares summed, pre-merge epoch) plus fresh nbody
+candidate profiles put the remaining JIT cost in three buckets. (1)
+*Boxed-value churn into container storage* — `_STORE_SUBSCR_LIST_INT_FLOAT`
+19.1% and `_STORE_FAST_FUSED_FLOAT_OR_NULL` 16.0% of nbody JIT samples,
+with `_PyFloat_FromDoubleTstate`/`_PyFloat_ExactDeallocTstate`/
+`_Py_NewReference` the dominant runtime calls on float kernels; the only
+real fix is unboxed list/scalar storage or whole-trace escape analysis,
+both object-model-scale, so the bounded JIT ceiling here is low. (2)
+*Broaden unbox/store specialization* — generic `_STORE_FAST_FUSED` still
+sums ~20% across kernels and `_UNPACK_SEQUENCE_{LIST,TUPLE}` ~6% on nbody;
+each typed variant is a bounded Rust-planner change worth roughly
+1–3% aggregate cumulatively. (3) *Guard/bookkeeping* — `_SET_IP` is
+already optimal (0 removable upstream), `_CHECK_PERIODIC`/
+`_TIER2_RESUME_CHECK`/`_CHECK_FUNCTION_VERSION` are required for
+responsiveness/invalidation (`func_version` has no globals-style
+dependency to hoist against), so the ceiling is ~1% aggregate.
+Serc side: `pipeline-optimize` is ~28% of compile but its passes produce
+the byte-parity output, and the Py316 linear path is genuinely Py314-specific
+(`has_terminal_guard_metadata` hard-requires Py314; `has_only_linear_instructions`
+whitelists Py314 opcodes) — a real port with unmeasured eligibility, not a
+gate flip; `emit` ~71% needs a profile-targeted allocation/build pass.
+
+**M4 milestone gate measured — MISSED (2026-11-18).** At backlog
+exhaustion the gate ran on the current incumbent `perf-rust-jit` @
+`285f619` (source-identical to `6453a64`; `jit=True serc=False`) versus
+the frozen `perf-climb-ref`, each leg quiet (`perf-gate-ready` clean):
+
+- **S = 0.7258** (`20261118T013628Z`, `--jit-set --runs 5`, pooled-median
+  kernel-CPU geomean over all 16 training kernels) — improved from the
+  recorded 0.7463 that predated the eval-9 bundle and the validity-prune
+  landing; M4's ≤0.25 bar is missed by ~2.9×.
+- **Held-out = 0.8368** ≤ S^0.5 = 0.8519 — held-out bar **passes**
+  (`20261118T021917Z`, `--jit-heldout --runs 5`); coroutines/generators
+  cpu ~1.02 reproduce the known signature.
+- **Guard gate REJECT** under the unchanged policy
+  (`20261118T023948Z`, `--jit-set --gate --runs 5`): `django_wsgi_request`
+  wall 1.016 regressed in all five runs (cpu 0.979 improved) — the same
+  wall-only django signature recorded at M0; all other guard entities
+  within budget or improved.
+- **Memory (OD4):** peak RSS 1.006–1.073× across kernels, inside the +8%
+  bar (the raw gate's peak_rss flags are the recorded linking cost, not a
+  milestone miss); JIT code bytes from `jit-stats` remain ≤1.28× M0
+  (raytrace 583,204 vs M0 457,068), inside 2×.
+
+Per-kernel cpu now: nbody 0.554, scimark_fft 0.534, scimark_lu 0.564,
+scimark_sparse 0.564, scimark_sor 0.578, scimark_monte_carlo 0.731,
+spectral_norm 0.691, richards 0.648, raytrace 0.818, float 0.836,
+fannkuch 0.853, chaos 0.860, nqueens 0.887, deltablue 0.902, hexiom
+0.907, go 0.915. M4 also requires every kernel ≤0.45 — none qualifies.
+
+**Close-phase suite matrix on the new epoch (2026-11-18, HEAD `32e9286`).**
+All four variants rebuilt clean at the frozen revision and ran the full
+52,102-test suite; failure sets match the documented epoch expectations
+exactly. `perf-rust`: 4 files/5 failures (`test_asyncio.test_sendfile`,
+`test_asyncio.test_sslproto`, `test_ssl`, `test_support`).
+`perf-rust-serc`: identical 4/5 under both `--all` and `--all
+--serc-verify` — Serc verification introduces no failed-test difference.
+`perf-rust-jit` and `perf-final-jit-serc`: identical 5 files/24 failures
+under both modes — the same four plus `test_capi`'s 19 known superseded
+`test_opt` uop-shape assertions. Combined-build evidence on this epoch:
+all 16 training-kernel digests equal `perf-rust-jit`
+(`20261118T035428Z`); differential fuzz seeds 0–2 clean on both JIT
+builds (2,000 programs each, 0 mismatches, ~97.4% JIT coverage);
+`test_serc_compile.py` linked verification 11/11 on both Serc builds.
+The C1/C3 census carries from `fb131e1`: `serc-overlay` changed only by
+env-gated `SERC_PROFILE` timers since, which cannot alter emitted
+bytecode. Still open for Close: fresh A/A twin at this epoch
+(`perf-rust-jit-aa` predates the accepted landings), the C2/footprint
+timing gates, the independent final review, and the deliverables
+rewrite toward INCOMPLETE_PLATEAU.
+
+**Close: fresh A/A and final review (2026-11-18).** `perf-rust-jit-aa`
+rebuilt clean at `0748280` and gated **WITHIN-BUDGET** on every metric
+(`20261118T044154Z`, `--jit-set --gate --runs 5`, quiet): all wall/cpu/
+peak_rss pooled medians within 0.997-1.009, no target improved - a
+clean same-source twin at the final epoch. `docs/RUST-CAMPAIGN-RESULTS.md`
+was rewritten as **INCOMPLETE_PLATEAU** and an independent evidence
+review reproduced every checkable number (S = 0.7258, held-out 0.8368,
+guard django_wsgi wall 1.0162 as sole >1.01 entity, all 16 combined
+digests mismatch-free, no kernel <= 0.45). Remaining Close debt is
+attribution work, not measurement: the `django_wsgi_request` wall
+signature and the C2/footprint gates on stale-epoch guard builds, plus
+any owner decision on the two research-grade follow-ups (JIT unboxed
+locals, Serc pipeline fusion). **Campaign outcome: INCOMPLETE_PLATEAU** -
+best qualified result S = 0.7258 delivered with measured ceilings; M4
+and C3 unmet.
+
+**P2 linear-path port scoped (2026-11-18).** The Py316 exclusion is two
+independent gates, not one: `finish_code_with_constants` requires
+`python_version == Py314` before any linear predicate runs
+(`passes/mod.rs:295`), and `has_terminal_guard_metadata` hard-requires
+Py314 (`mod.rs:1274`) — the latter also disables the
+`used_constant_indices` linear-scan shortcut, so every non-straight-line
+Py316 function builds a `BlockGraph` during constant admission (the graph
+is reused by the pipeline, so it is not double-built, but linear-eligible
+functions can never skip it). The recognizers encode Py314 bytecode
+shapes — `POP_JUMP_IF_*` + `NOT_TAKEN` marker pairs, `LOAD_SMALL_INT`,
+`RESUME` argument forms, and the `has_only_linear_instructions` opcode
+whitelist — so a Py316 port must first verify which of those shapes
+CPython 3.16 actually emits; opcode names resolve through
+`crate::target::opcodes` but the patterns are version-specific.
+`optimize_linear_assertion_side_exits` itself lives in the pinned archive
+(`passes/linear.rs`, not overlaid) and needs a version-assumption audit.
+Open questions before any edit: fraction of compileall functions that are
+linear-eligible under Py316 shapes, and whether skipping graph construction
+plus the linear finish recovers enough of the ~28% `pipeline-optimize`
+bucket to matter against the ~12% C3 gap. Reject the port if eligibility
+is low or the shape audit shows the patterns do not transfer.
+
+**Measured rejection of the naive port (2026-11-18, exploratory).**
+Relaxing both Py314 gates to include Py316 (`passes/mod.rs` linear-path
+gate and `has_terminal_guard_metadata`) compiled cleanly and built
+`perf-serc-l316`, but `bench compileall_source` reported
+`mismatch: true` — the linear path does fire for Py316 shapes yet
+`optimize_linear_assertion_side_exits` emits bytecode that differs from
+the graph path. Cold workloads stayed within noise (~0.99). A real port
+therefore needs per-shape equivalence fixes inside the pinned archive
+`passes/linear.rs`, not a version-gate change; parked unless a cheaper
+Serc lever appears first.
+
+**Py316 linear-path port landed (2026-11-18, `5c64210`).** The per-shape
+audit found exactly two divergences, both version-policy gaps rather than
+shape mismatches. First, `LOAD_COMMON_CONSTANT`: the graph pipeline's
+`lower_common_constants` (Py315/316) rewrites immortal `LOAD_CONST`s and
+compacts `co_consts` via `retain_used_in_order`; the linear path skipped
+it entirely, so every linear-eligible Py316 unit emitted `LOAD_CONST`
+where the oracle emits `LOAD_COMMON_CONSTANT`. Added
+`lower_common_constants_linear`, the same rewrite plus table compaction
+applied to the finished linear item stream. Second, local-pair fusion:
+`fuse_superinstructions` returns false for `>= Py316` and the pipeline
+instead runs `fuse_borrowed_superinstructions` on final items after
+borrow-load analysis, so `STORE_FAST`+`LOAD_FAST_BORROW` never fuses;
+the linear path ran pre-3.16 `fuse_pair` before borrow analysis and
+fused them into `STORE_FAST_LOAD_FAST`. `passes/linear.rs` is now
+overlaid: for Py316 it skips `fuse_pair` and runs
+`fuse_borrowed_superinstructions` after load-fast optimization, mirroring
+the pipeline order. Census `serc_parity.py --oracle stage-perf-rust`:
+30,318 cases, **0 mismatches**, 9,678 exact matches, 813 intentional
+finally routes — identical totals to the incumbent census. Per-file
+marshal digests identical to `perf-rust-serc` across the census corpus
+at -O0/-O1/-O2; `test_serc_compile` OK; 22 linear assembler unit tests
+pass (the 8 compatibility failures are the pre-existing missing
+`python3.14` oracle, unrelated). Eligibility is high: ~50% of django
+code objects (911/1822) take the linear path. Phase profile on 907
+django modules: Serc compile 534->506 ms (**-5.3%**), `pipeline-optimize`
+156->140 ms, `pipeline-build`+`owners-retain` 21->17 ms. Locked C3
+workloads, exploratory quiet-host bench vs `perf-rust-serc`: wall/cpu
+`cold_import_django` 0.992/0.992, `cold_python_startup` 0.994/0.996,
+`compileall_source` 0.986/0.996 over 3 runs — consistent ~0.6-1.4%
+improvement, at the practical floor on end-to-end workloads because
+compilation is only part of each process. Pure `compile()` timing on the
+django corpus: 0.4875->0.4816 s (-1.2%, 4/4 interleaved pairs faster).
+C3 remains REJECTED (gap was ~6-16%); this is an incremental Serc
+compiler win, not a gate pass. `perf-rust-serc` rebuilt at `5c64210`.
+
+**JIT unboxed-locals feasibility spike (2026-11-18).** Scoped the
+campaign's last identified headroom mechanism before committing sessions
+to it. Findings: (1) `_STORE_FAST_FUSED_FLOAT{,_OR_NULL,_INT}` write an
+already-boxed `_PyStackRef` into `GETLOCAL` and close the old box via
+`_PyFloat_ExactDeallocTstate` (`bytecodes.c:344-370`); the alloc happens
+in the producing uop, and stack temporaries are already unboxed via
+`_PyUnboxedSlots` — so the residual boxed-float churn is exclusively
+named locals, confirming the frame-representation ceiling. (2) A narrower
+variant — reusing the old PyFloat box in place (`ob_fval` mutation when
+`Py_REFCNT==1`) — still fails on two observation points: deopt/materialization
+reads frame locals, so skipping a box write corrupts deopt state unless
+writes happen at every deopt-visible point anyway (leaving only
+alloc/free churn to attack); and float object identity (`id()`, `is`)
+is observable, so in-place mutation changes semantics unless the trace
+proves no identity observation — the same escape-analysis requirement as
+full unboxing. (3) This build uses immediate refcounting (`Py_TAG_REFCNT`
+stackrefs; deferred refcounting is the free-threading path), so a
+refcount check would be reliable — the blocker is observation proofs,
+not the refcount model. Conclusion: no bounded JIT shortcut exists; the
+remaining gap needs the escape-synced frame-representation project or is
+unreachable. Serc side is likewise saturated: ~53% of django code objects
+are no-jump (linear-eligible ceiling already reached at 911/1822 asm-linear
+units); the jumped remainder requires graph-pipeline work.
+
+**Serc linear-path ceiling revisited — eligibility, not speed (2026-11-18).**
+Follow-up measurement overturned the "saturated" conclusion above. Decisive
+data: (1) synthetic straight-line corpus — Serc build compiles 40 modules in
+14.9 ms vs 36.8 ms for the C-compiler build (**2.5x faster**); Serc's core
+machinery is not the problem. (2) Per-file timing on the compileall_source
+corpus is bimodal: Serc wins big on linear-dominated files (normalize.py
+-29%, cli.py -17%, codec.py -12%, errors.py -44%) and loses on
+branch-heavy files (storage.py +31%, repository.py +26%, ingest.py +17%).
+(3) Opcode census of the same corpus (263 code objects): 77 fully linear
+(29%), **104 simple forward-branch only — conditional jumps, no loops,
+try/except, with, or yield (40%)**, 82 complex (31%). (4) SERC_PROFILE
+per file: `asm-linear` is ~3% of compile while `asm-finish`/
+`pipeline-optimize` dominate (~27% and ~37-50%); the graph pipeline's
+per-function fixed cost is the entire C3 gap. (5) Infrastructure check:
+`LayoutAssembler::finish` is already a *general* assembler — it resolves
+arbitrary `Operand::Forward`/`Operand::Backward` labels with iterative
+extended-arg layout, line tables, exception tables, and max-depth; the
+linear predicates (`has_no_linear_control_flow_metadata` requires
+`next_label == 0`) are what's conservative, not the layout engine. The
+terminal-guard path already proves forward-label layouts can be
+byte-identical. **Next concrete project:** a "simple-branch linear" path —
+extend the label tolerance from `next_label <= 4` terminal guards to
+arbitrary forward-only branch DAGs (no backward jumps, no exception
+regions, no borrow/loop metadata), reusing `optimize_linear_assertion_side_exits`
++ `LayoutAssembler::finish`, verified by the 30,318-case parity census.
+Potential eligibility expansion ~29% -> ~69% of code objects; if realized,
+this is the first mechanism with enough headroom to reach C3.
+
+**Forward-branch linear path — implemented, measured, REJECTED (2026-11-18).**
+The predicted expansion did not survive contact with real code. Implemented
+`has_only_forward_branch_instructions` (labels + the five forward-jump
+opcodes, same metadata/provenance requirements as terminal guards, reusing
+`optimize_linear_assertion_side_exits` + `LayoutAssembler::finish`) plus a
+Py316-targeted `fb_probe` harness over the pinned Serc tree. Results:
+synthetic branch functions compile byte-identical (marshal-verified vs the
+C build at -O0/-O1/-O2, including if/else, early returns, conditional
+expressions, and-loop/try correctly excluded). But eligibility gain on real
+corpora is **zero**: asm-linear phase counts unchanged on both
+catalog_service (24->24) and the full django tree (908->908). Rejection
+profiling (~7k django code objects) shows the opcode census drastically
+overstated the opportunity: in 3.16, try/except, for, and with emit no
+control-flow opcodes, so "simple" functions are dominated by metadata the
+linear path cannot take — `exception_regions` non-empty (2769),
+`preserved_block_boundaries` (1531), `has_synthesized_percent_target_locations`
+(574), `borrow_omitted_for_backedges` (526), `with_context_locations` (248),
+plus 980 already-non-Linear IR streams. The residual soft-failures that pass
+metadata (~330 tail cell-conflicts, ~58 jump-policy mismatches on
+POP_JUMP_IF_{NONE,NOT_NONE}, ~196 NOT_TAKEN markers) total ~5% of objects
+and would each need parity-risky policy replication for a sub-floor gain.
+Conclusion: the graph pipeline's exception/borrow machinery is genuinely
+required by real branch code; there is no bounded eligibility expansion.
+Both overlay files reverted; `stage-perf-serc-fb` is a rejected artifact.
+
+**Serc compile profile — AST-traversal dominance found (2026-11-18).**
+Symbolized sampling of the release `serc` crate (`--profile profiling`,
+907-file django corpus x400) shows compile time concentrated in *many
+distinct AST visitor walks*, not the assembler: `ModuleNameCollector::
+visit_expr`/`visit_stmt` (scope.rs), `ScopeBodyFactsCollector`,
+`LocalCollector::collect_suite_with_unwind`, `NamedExpressionCollector`,
+`syntax_warning::Scan`, `syntax::Validator::visit_expr`,
+`static_blocks::ExpressionBlocks`, and `cpython_only` checks
+(`Nesting`, `CapturesDebug`, `has_too_many_nested_interpolated_strings`),
+plus `NameInterner`/`intern_name_with_spelling` hashing. These correspond
+to the `context`/`rules`/`validate` phases (~25-30% of compile combined)
+each performing its own full traversal per module *and* nested scopes.
+This revises the earlier "context is already fused" note: fusion exists
+only inside `SourceAnalysis`/`ModuleNameCollector::collect_with_source`;
+the warning scan, syntax validator, cpython_only checks, and the
+scope-facts collectors remain separate walks. Quantified on the same
+corpus via `SERC_PROFILE` on the release crate (907 django files, Py316):
+total 461.5 ms — `emit` 68.8% (`asm-finish` 38.8% of which
+`pipeline-optimize` 28.3%), `context` 11.7%, `rules` 8.5%, `parse` 8.6%,
+`validate` 2.4%. The visitor-dominated phases (`context`+`rules`+
+`validate` ≈ 22.6%) plus ruff `parse` (8.6%) bound the fusion ceiling at
+roughly a quarter of compile time; capturing even half of it approaches
+the C3 gap. Notes for that project: `syntax_warning::may_warn` is
+already token-gated (`tokens_may_warn` short-circuits the AST `Scan`), so
+it is not a free win; the scope collectors (`ModuleNameCollector`,
+`ScopeBodyFactsCollector`, `LocalCollector`, `NamedExpressionCollector`)
+each implement `ruff_python_ast::visitor::Visitor` and recurse via
+`walk_*` on themselves, so naive composition re-traverses — real fusion
+needs each collector split into fact-extraction vs recursion, or a
+combined visitor that recurses once and dispatches to all collectors per
+node. That is a mechanical but wide refactor across `scope.rs`,
+`syntax_warning.rs`, `syntax.rs`, `static_blocks.rs`, `cpython_only.rs`,
+with byte-parity + warning-order verification via the census. Scope
+sizing: `ScopeBodyFactsCollector::collect` is invoked per function/class
+*definition body* during scope planning (scope.rs ~2567/~2602), so scope
+facts are re-collected for every nested scope on top of the module-level
+walks — traversal count scales with scope count, not just module size.
+`ModuleNameCollector::collect_with_source` is the fused module-level
+exception. **Next concrete project:** measure per-collector cost (phase
+timers exist; a visitor-count census would size it), then fuse compatible
+collectors into shared traversals —
+the first bounded-looking lever with enough headroom (~10%+) to matter
+for C3, provided each collector's facts and warning/error ordering stay
+byte- and diagnostic-identical. Parity census + `test_serc_compile`
+remain the verification gate.
+
+**Emission attribution limit (2026-11-18).** A 60-iteration `sample`
+profile of `compileall_source` on `perf-rust-serc` is dominated by
+process-level filesystem syscalls (`open`/`rename`/`unlinkat`/`mkdir`/
+`stat`/`write` ≈ 400+ of ~1k leaf samples) because the workload writes
+`.pyc` files; it is a poor proxy for compiler CPU. Within compilation,
+self-time is diffuse — `OptimizationPipeline::optimize` is the largest
+single leaf (~27 samples, matching the ~28% `pipeline-optimize` phase
+share) and every other serc leaf is under ~10, spread across
+`compile_statement_inner`/`compile_expression_inner`/`compile_call` and
+assembler layout/finally passes. No single bounded emission hotspot
+emerged; the coherent remaining target is the graph pipeline itself,
+whose passes produce the byte-parity output.
+
+**Serc phase breakdown measured (2026-11-18, `SERC_PROFILE=1`).** Per-file
+compile CPU on `perf-rust-serc` (typical ~110 µs): `parse` ~29% (ruff
+parser), `emit` ~46% of which `asm-finish` ~20% (final layout/emission)
+and `pipeline-optimize` ~13%, `context` (Compiler::module_with_scopes scope/name analysis) ~11%,
+`rules` ~10%, `validate` ~5%, `frontend`/`marshal-*` ~0%. The `rules`
+phase alone runs ~7 separate AST/token traversals (`parser_stack_estimate`,
+`captures_debug_pattern`, `has_deep_format_spec`,
+`has_too_many_nested_interpolated_strings`, `leaves_finally_body`,
+`validate_with_integer_limit`, `static_blocks::validate`, `may_warn`),
+several with token-level pre-filter potential (`TokenKind::Finally`,
+`FStringStart`, `TStringStart` exist in the pinned ruff AST). `parse` is
+the largest single phase but is third-party parser code. Consolidating
+the `rules`/`validate`/`context` traversals or pre-filtering the rare-
+construct checks is the most concrete bounded Serc lever found; expected
+ceiling roughly 5–10% of compile CPU if most walks can be skipped or
+fused, against the ~12% C3 gap.
+
+**Measured: rules pre-filter is sub-floor (2026-11-18, exploratory).**
+Token pre-filters gating `captures_debug_pattern` (needs `TokenKind::
+Match`), `has_deep_format_spec` + `has_too_many_nested_interpolated_
+strings` (need `FStringStart`/`TStringStart`), and `leaves_finally_body`
+(needs `TokenKind::Finally`, signature extended to take tokens) preserved
+byte-identical output on `compileall_source` but measured wall/cpu
+0.993/0.999 compileall, 0.995/0.995 django, 0.999 startup — inside the
+1% floor, `WITHIN-BUDGET`. The gated walks were a small slice of `rules`;
+`parser_stack_estimate`, `static_blocks::validate`,
+`validate_with_integer_limit`, and `may_warn` still traverse every file.
+Reverted; remaining `rules` cost needs walk fusion or cheaper analyses,
+not per-check pre-filters.
+
+**JIT guard analysis (2026-11-18).** Two bounded leads measured/checked
+and both land below the floor or above the risk line. (a) The only hot
+uops still carrying `HAS_ESCAPES_FLAG` on nbody are the exact-builtin
+`_UNPACK_SEQUENCE_{TUPLE,LIST,TWO_TUPLE}` family — their implementations
+incref items onto the stack before decref-ing the container, so no user
+code can run; a whitelist inside `prune_validity_checks` would remove
+~14 of the trace's 30 remaining `_CHECK_VALIDITY` uops (~47% of the
+residual 4.35% nbody share), i.e. well under the 1% gate floor
+aggregate-wide, so not worth a cycle. (b) `_CHECK_FUNCTION_VERSION`
+(~15% summed stale share, up to ~3.8% richards) cannot be hoisted like
+globals: `func_version` is cleared by `func_clear_version` at ~9
+attribute-mutation sites (`__code__`, `__defaults__`, `__kwdefaults__`,
+`__closure__`, etc.) and there is no executor dependency mapping
+func_version → executors the way the globals bloom-filter dependency
+invalidates traces. Hoisting requires a new invalidation dependency
+type — safety-critical infrastructure work, not a peephole.
+
+**Planner barrier override — measured, REJECTED (2026-11-18).**
+`describe_uop` (`optimizer.c:~2122`) turned out to feed only
+`unbox_values` — each other planner (leaf, store, cache, loop_globals,
+loop_types, attributes) builds its own descriptor struct, so a barrier
+narrowing there is unbox-scoped. The exact-builtin
+`_UNPACK_SEQUENCE_{TWO_TUPLE,TUPLE,LIST,UNIQUE_TUPLE}` ops carry
+`HAS_ESCAPES_FLAG` (or `{-1,-1,-1}` stack shape) yet cannot run user
+code: items are incref'd onto the stack before the container decref,
+and exact list/tuple dealloc is code-free. Two planner blockers were
+removed in a probe: supplied `pushed=oparg` shapes (TUPLE/LIST/
+UNIQUE_TUPLE were `shape=None`, which `verify()` treats as plan-fatal
+when any unboxed value is live) and cleared `JIT_OPT_EFFECT_BARRIER`
+for the three escaping variants. Verified the override fires (debug
+counter showed correct pushed counts) and smoke/deopt tests passed,
+but generated executors were uop-for-uop identical (81/73 uops on the
+probe functions) and the targeted micro plus the 16-kernel
+`--jit-set --timing-only` bench read WITHIN-BUDGET with no kernel
+improvement. Root cause: unboxed float/int values essentially never
+remain live at unpack points — stores box them into locals first — so
+the barrier/shape relaxation has nothing to unlock. Reverted; the
+remaining unbox ceiling is values boxed at local/stack stores, not
+escape barriers.
+
+**Unbox ceiling pinned (2026-11-18).** The probe's null result exposed
+the real bound: `_STORE_FAST_FUSED_FLOAT{,_OR_NULL}` and `_INT` write
+`_PyStackRef` (boxed `PyFloat`/`PyLong`) straight into `GETLOCAL` —
+named locals are always boxed objects. The `_PyUnboxedSlots` mechanism
+only covers stack temporaries inside a trace segment; any value that
+touches a named local round-trips through a boxed object on every
+store/load. Unboxed locals would require a frame-representation change
+plus materialization at every observation point (`f_locals`,
+debugging, calls, deopt) — the escape-synced-boxing project, not a
+planner tweak. This bounds realistic JIT gains to stack-temp
+unboxing breadth and guard/store micro-costs; the dominant
+local-churn shares (`_STORE_FAST_FUSED_FLOAT*` ~16% nbody,
+`_STORE_SUBSCR_LIST_INT_FLOAT` ~19%) are the object model itself.
+
+**Serc pipeline structure measured (2026-11-18).** Sub-phase timers on
+`compileall_source` (`SERC_PROFILE=1`, `perf-rust-serc`): `pipeline-
+optimize` ≈27% of compile, emission/lowering ≈25%, `context` ≈15%,
+`parse` ≈8%, `rules` ≈8%, `owners-retain` ≈0.8% (ruled out — the
+~30 `timed_retain_owners` checkpoints are cheap). `optimize()` is not
+a list of independent passes: ~50 transformations interleave with
+`FusionOwnerCertificates` capture/retain and exception-owner provenance
+rewrites that later passes consume — the bookkeeping IS the
+correctness mechanism for exception regions and fusion views, so
+pass fusion is a research project, not a traversal dedup. `context`
+is already fused (`ModuleNameCollector::collect_with_source` feeds
+`SourceAnalysis` in one walk; `LocalCollector` adds a second only when
+module bindings require). Emission self-time is diffuse
+(`compile_statement/expression/call`, `name_index_with_id`,
+`LayoutAssembler::finish`, individual pipeline passes each <3%).
+No bounded Serc lever remains: every measured probe
+(scan-consolidation, token pre-filters, Py316 linear gate) was
+neutral-to-sub-floor or incorrect.
+**Per-collector census measured (2026-11-18).** `WalkTimer` buckets
+(env-gated `SERC_PROFILE` sub-totals, profiling build, 907 django
+files, 451.5 ms total compile): `walk-scope-inputs` 20.4 ms (4.5%),
+`walk-module-names` 19.5 ms (4.3%), `walk-locals` 10.6 ms (2.4%),
+`walk-validator` 9.2 ms (2.0%), `walk-scope-facts` 7.5 ms (1.7%),
+`walk-may-warn` 6.6 ms (1.5%), `walk-expr-blocks` 3.5 ms (0.8%);
+`walk-dup-keys` absent (gated, ~0). Sum ≈ 17% of compile. Nesting:
+`ScopeInputs::collect` (scope.rs:2814) internally drives
+`ModuleNameCollector::collect_with_source` (2837) and one
+`LocalCollector` (2844), so `walk-scope-inputs` already contains most
+of `walk-module-names`; the other `LocalCollector` sites
+(6434/9021/9112) run per-scope during planning/emission, as do the
+per-body `ScopeBodyFactsCollector::collect` calls (2567/2602).
+Distinct-traversal estimate ≈ 55–58 ms ≈ 12–13% of compile, split into
+~5 module-level walks (rules/validate phase: `may_warn` Scan,
+`validate_with_integer_limit`, `static_blocks::validate`, the four
+`source_rules` AST checks, `compiler_rules`) and the per-scope
+planning walks (`ScopeBodyFactsCollector` + `LocalCollector` per
+function/class body). Rules-phase fusion is the most bounded slice:
+all seven walks run back-to-back on the same `parsed.suite()` before
+`frontend`, facts are independent, and error priority is fixed
+(validator → static_blocks → source_rules → compiler_rules), so a
+single dispatching visitor preserving per-collector visit order keeps
+observable behavior identical. Expected capture roughly half the
+rules-phase walk cost ≈ 3–5% of compile — the largest remaining
+bounded lever toward C3.
+**Rules-phase fusion design (2026-11-18).** Collector classification
+for the fused `RulesScan` walk: `CapturesDebug` and `DeepFormatSpec`
+are pure OR-bool standard Visitors (stmt-only / expr-only) — trivial
+dispatch. `Nesting` (interpolated-string depth) and the `MAX_NESTING`
+`Nesting` need enter/exit depth hooks around `walk_expr`/`walk_stmt`;
+`Shape` (`parser_stack_estimate`) needs the same pre/post slot
+accounting on stmt/expr/parameters — all replicable because the fused
+visitor calls each handler before and after its single `walk_*`
+recursion. `FinallyExit` (`leaves_finally_body`) is the awkward one:
+custom stmt arms assign `Finally`/`Loop` block context per field and
+`visit_scope` saves/restores the block stack at function/class/lambda
+boundaries while `visit_expr` is empty — the fused visitor must push
+block markers in `visit_stmt` pre-hooks and invoke scope save/restore
+at the same boundaries, and its canonical `walk_stmt` must be checked
+against `FinallyExit`'s manual field order for coverage equivalence
+(superset visits are safe for an OR-bool detector only if block-state
+semantics are preserved). `syntax_warning::Scan` is bespoke (custom
+stmt arms, block stack, global early-exit) — exclude from stage 1;
+its result is order-insensitive but its custom traversal coverage
+would need a separate equivalence proof. `validate_with_integer_limit`
+(9.2 ms) and `static_blocks::validate` (3.5 ms `walk-expr-blocks`)
+stay for stage 2 behind the fixed error priority
+validator → static_blocks → source_rules → compiler_rules; each
+collector's internal first-error order is preserved because the fused
+walk uses canonical `walk_*` order identical to each standalone
+Visitor. Stage-1 scope: one `RulesScan` visitor in `cpython_only.rs`
+(or a sibling module) computing `captures_debug`, `deep_format_spec`,
+`interpolated_nesting`, `max_nesting`, `parser_stack_shape`, and
+`finally_exit` facts in a single traversal; `source_rules` /
+`compiler_rules` then evaluate the fixed reason priority from stored
+facts. `parser_stack_estimate`'s token-based bracket-depth term is
+unchanged (computed outside the walk). Token pre-filters from the
+rejected experiment stay rejected — this fuses the walks themselves.
+Verification gate: `test_serc_compile` 11/11, `serc_parity` 30,318-case
+census with 0 mismatches, per-file marshal digests at -O0/-O1/-O2, and
+a `SERC_PROFILE` re-run expecting `rules` phase ≈ 8.5% → ~4–5% of
+compile.
+**Stage-1 rules fusion landed (2026-11-18, `b07381c`).** `RulesScan`
+replaces the five cpython_only AST walks with one traversal computing
+all latch/max facts; `source_rules`/`compiler_rules` consume
+`RulesFacts` with unchanged reason priority. A/B verification on the
+staging build: marshal hashes and error strings byte-identical to the
+prior implementation on all 907 django files at -O0/-O1/-O2 plus
+synthetic rule cases; 1,260 serc lib tests pass (compatibility-suite
+oracle tests need `SERC_TEST_PYTHON`, unavailable in scratch). Measured:
+`rules` phase 42.8 → 31.5 ms on the django corpus (−26% of phase,
+≈ −2.3% of compile CPU). Pending before acceptance claims: the full
+30,318-case parity census, per-file marshal digests, and the
+`perf-rust-serc` rebuild + locked C3 gate. Stage 2 remains:
+`validate_with_integer_limit` (9.2 ms) + `static_blocks::validate`
+(3.5 ms) + `may_warn` Scan behind the same error-priority discipline,
+then the per-scope planning walks (`ScopeBodyFactsCollector` +
+`LocalCollector`, ≈ 18 ms).
+**Stage-2 warning fusion landed (2026-11-18, `47e5f71`).**
+`syntax_warning::Scan` is folded into `RulesScan` as a parallel
+warn-block stack plus the compare/call/subscript/assert/lazy-import
+candidate checks; `may_warn` keeps only its token half. `rules` phase
+31.5 → 28.4 ms on the django corpus; cumulative rules-phase reduction
+from the five original walks is 42.8 → 28.4 ms (−34%). Marshal output
+byte-identical to the pre-fusion implementation on all 907 files at
+-O0/-O1/-O2 plus synthetic warning cases; 1,260 serc lib tests pass.
+Remaining rules-phase walks: `walk-validator` ≈ 9 ms (error-producing
+visitor — needs its own error-priority analysis), `walk-expr-blocks`
+≈ 3.5 ms (`static_blocks` bespoke block-limit traversal),
+`walk-dup-keys` (small). Context-phase walks (`walk-scope-inputs`
+≈ 21 ms incl. module names, `walk-locals` ≈ 11 ms,
+`walk-scope-facts` ≈ 7.5 ms per-scope) remain the largest untapped
+bucket but carry the highest semantic risk.
+
+- `campaign/jit-subscr-virtual` `da402d9` — stack tip, worktree
+  `.work/wt/jit-subscr-virtual` (closeout-allowed). Evals 7+8: fused
+  unpack-to-locals (`_UNPACK_SEQUENCE_TWO_TUPLE_TO_FAST`,
+  `_UNPACK_SEQUENCE_LIST_TO_FAST`, generic two-tuple). Eval 7 screen
+  0.9756 / gate INCONCLUSIVE ×2 / CORRECT. Eval 8 screen 0.9743 / gate
+  attempt 1 INCONCLUSIVE 0.9740; its one justified retry was interrupted
+  by this winddown. Exact-tip correctness is still pending; retain the
+  partial receipt, but a retry is conditional on H0 and the stack/Rust audit.
+- `campaign/jit-list-read-unbox` `17ade05` — eval 6 (unboxed list float
+  reads + guard elision) plus the QUALIFY three-layer bundle re-gate
+  (eval 9, **ACCEPT** under the repaired gate 2026-11-17, see above);
+  rebased onto `f19fb2f`, overlay identical to `a27dec1`. Merged to
+  `main` at `574946e`; the pre-rebase `a27dec1` remains the eval-6
+  record; ancestor of the stack tip.
+- `campaign/jit-array-index-unbox` `a51c17b` — eval 5 (unboxed array
+  reads); screen 0.9765, gate INCONCLUSIVE ×2, CORRECT; ancestor.
+- `campaign/jit-store-subscr-array` `8c7136f` — eval 2
+  (`STORE_SUBSCR_ARRAY_D`); screen 0.983, gate INCONCLUSIVE ×2,
+  CORRECT; ancestor. `campaign/jit-checked-attr-store` `88bc548` is its
+  pre-rebase twin.
+- Screen-rejected, do not resume without new evidence:
+  `campaign/jit-attr-virtual` `e01a4f0` (1.0030),
+  `campaign/jit-array-read-inline` `531a76e` (0.9966),
+  `campaign/jit-checked-attr-store` `88bc548`.
+
+The tip contains at least four unaccepted mechanisms (array stores, array
+index unboxing, list-read unboxing, unpack fusion), exceeding the three-item
+stack bound even if tuple/list unpack count as one. Its reported late C
+`fuse_unpack_stores` pass also needs the **Rust rule** audit before eligibility.
+Preserve the source, but freeze this stack; an old layer's speedup cannot
+qualify another layer. C3 remains feature-complete with cold-compilation
+acceptance open and can progress independently under the host lease.
+
+Next slice on resume is **RECOVER → H0 → QUALIFY**, not another optimization:
+verify the exact source/receipt inventory, establish calibrated comparisons,
+reduce and audit the stack, then remeasure the smallest useful bundle.
+Retired worktrees' results are recorded under
+`.work/campaign-archive/winddown-20261116/<tree>/`; verify that archive on the
+Mac. No `campaign/*`, `stack/*`, or `lane/*` refs were published at review,
+and their source/raw receipts were unavailable in this review checkout.
+Do not reconstruct claims from the ledger alone. Missing evidence parks the
+affected candidate; missing calibration selects BLOCKED/PERFORMANCE_DEFERRED,
+never INCOMPLETE_PLATEAU merely because attempts were spent.
+
+Subsequent checkpoints also record the exact candidate and reference SHAs,
+build names/flags, phase, next command, attempt/design and 8+4 plateau
+counters, last valid measurement, pending reviews, evidence paths, and each
+blocker's reopening condition. Missing measurements are `unmeasured`, not
+zero; missing old evidence is `needs reconstruction`, not a pass.
+
 ## Ledger
 
 Track C and R1 rows use the same columns, with the gate's headline ratio in
@@ -4971,3 +5186,7 @@ no Rust codegen-flag headroom on this host; `-Ctarget-cpu=native`
 resolves to the same `apple-m1` CPU. Closed without a build change.
 | 2026-11-17 | e891 | J | diagnostic | `perf.py profile --jit-map` on `spectral_norm` (400 iterations, incumbent `perf-rust-jit`): 6,323 JIT-attributed samples, 100% uop coverage; `_CHECK_VALIDITY` alone 7.36% (926 samples), `_SET_IP` 1.19%, `_TIER2_RESUME_CHECK`/`_CHECK_PERIODIC`/`_CHECK_FUNCTION_VERSION`/`_CHECK_RECURSION_REMAINING`/`_CHECK_STACK_SPACE_OPERAND` ~4.4% combined, guard family ~10%; emitted once per translated bytecode via `ADD_TO_TRACE(_CHECK_VALIDITY)` in `optimizer.c` | `perf-rust-jit` @ `d525d5c` | unmeasured (profiling only) | — | DIAGNOSTIC: checks+guards+validity ≈ 20% of JIT samples; `_CHECK_VALIDITY` is load-bearing for memory safety — `executor_invalidate` frees executor exits (`executor_clear_exits`) at any time, so a running trace must observe `vm_data.valid == 0` before touching exit state; reducing check frequency risks UAF, not just stale semantics; tracemalloc polling shares the same uop; no bounded frequency reduction identified; M4 (S ≤ 0.25 vs incumbent 0.7278) needs ~3× and no single uop mechanism approaches it | `rust-cpython/results/perf-profile/20261117T111906Z-perf-rust-jit-spectral_norm-sample` |
 | 2026-11-17 | e891 | J | T1 | post-specialization `_CHECK_VALIDITY` pruning: second escape scan after `unbox_values` NOPs validity checks that `guard_loop_locals`/`specialize_stores`/`specialize_attribute_loads`/unboxing made redundant — the stale pair the earlier T1 row predicted | `perf-rust-jit` @ `2eb4dfa` vs `perf-rust-jit-vc2` @ `2f6284b` (clean `--jit` build) | gate `climb-step --runs 5`, `perf-gate-ready` clean both sides | point 0.9977; nbody cpu/wall improved in all 5 runs | ACCEPT: gate ACCEPT, no kernel CI95 regression, training+held-out digests equal, 2,000-program fuzz 0 mismatches at 97.45% coverage, targeted suites match modulo named superseded uop assertions; nbody `_CHECK_VALIDITY` samples 10.23% → 4.35% at 100% named coverage; JIT code bytes never grow (nbody 43,860 vs 54,900); peak RSS within budget | `rust-cpython/results/perf-bench/20261117T222329Z-perf-rust-jit-vs-perf-rust-jit-vc2`; held-out `20261117T232755Z-perf-rust-jit-vs-perf-rust-jit-vc2` |
+| 2026-11-18 | e891 | J | audit | eval-9 acceptance audit (OD19 P0): under the repaired policy the bundle's 5-run gate read INCONCLUSIVE (fannkuch, gzip_extract_1m, import_django, nqueens, zlib_decode_1m unbounded); a 4-run retry 50 min later read ACCEPT and was merged at `574946e` | `perf-rust-jit` @ `f19fb2f` vs `perf-jit-list-read-unbox` @ `17ade05` | — | — | UNQUALIFIED: opportunistic retry with fewer runs than J acceptance step 1; requalify once under the predetermined Status P0 protocol (G1); the merge stays pending that verdict | `rust-cpython/results/lane-jit-subscr-virtual/perf-bench/20261117T060726Z-perf-rust-jit-vs-perf-jit-list-read-unbox`, `…/20261117T065745Z-perf-rust-jit-vs-perf-jit-list-read-unbox` |
+| 2026-11-18 | e891 | J/C | audit | build-epoch audit: `bfc2e23` moved all lane Rust crates to fat LTO/1 codegen unit; `perf-climb-ref` (`3bd21f6`) is thin/16, every build after 11-17 03:48 is fat; build reports' `lto` field records CPython's clang LTO only | `perf-climb-ref` vs `perf-rust-jit` | `S` 0.7258 and the guard REJECT cross build configurations | — | PROVISIONAL: rebaseline per Status P0 G2–G5 | `rust-cpython/results/perf-*.json` (`cargo_profile`, `lto` fields); `rust-cpython/overlay/Cargo.toml` |
+| 2026-11-18 | e891 | C | diagnostic | cold-compile hardware counters, `/usr/bin/time -l`, 8 runs per build, six stdlib packages compiled from source (`-B -X frozen_modules=off`, empty `PYTHONPYCACHEPREFIX`); warm-cache control 4 runs | `perf-rust` vs `perf-rust-serc` @ `5e09c5f` | — | instructions 1,981M → 1,740M (−12%); cycles ~698M → ~765M (+9%); IPC 2.84 → 2.28; warm-cache cycles ~150–170M on both; page reclaims +~300; libpython `__TEXT` 5.2 → 12.9 MB; startup max RSS 16.8 → 23.3 MB with dirty footprint 9.3 → 10.6 MB | MEASURED: the C3 gap is compile-path IPC (front-end or memory stalls), not instruction work; reorders the C queue to C-IPC attribution then code locality or allocation locality | reproduce: `PYTHONPYCACHEPREFIX=$(mktemp -d) /usr/bin/time -l rust-cpython/work/perf/<build>/build/python.exe -B -X frozen_modules=off -c 'import json, argparse, email.parser, http.client, decimal, unittest'` |
+| 2026-11-18 | e891 | J | H0 | injected-control validation of the repaired policy (`f29d45e`, OD18): `rust-cpython/gate_controls.py` scales one entity's per-run wall/cpu ratios and intervals by a known factor and re-judges, over 3 same-source A/A receipts and 2 null-binary probes (115 entity decisions, 230 timing metrics) | current `perf_verdict.py` | — | factor 1.0: 100% metrics within budget, 115/115 WITHIN-BUDGET (no false ACCEPT/REJECT); 1.02: 98.3% metrics regressed, 115/115 REJECT; 1.015: 80.9% regressed, 100 REJECT / 15 INCONCLUSIVE, none accepted; 0.98: 94.8% improved, ACCEPT whenever the shifted entity is a target | VALIDATED: no policy change; limitation: shifts are synthetic over real noise, so cross-build layout offsets are covered only by the two null probes | `python3 rust-cpython/gate_controls.py rust-cpython/results/perf-bench/20261116T192836Z-perf-rust-jit-vs-perf-rust-jit-aa …/20261116T223944Z-… …/20261118T044154Z-… rust-cpython/results/lane-jit-subscr-virtual/perf-bench/20261117T004023Z-perf-rust-jit-vs-perf-probe-layout …/20261117T015234Z-perf-rust-jit-vs-perf-probe-rust --factor 0.98 --factor 1.0 --factor 1.015 --factor 1.02` |

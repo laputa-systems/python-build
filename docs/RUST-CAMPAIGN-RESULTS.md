@@ -1,6 +1,29 @@
-# rust-cpython JIT campaign — closeout results
+# rust-cpython JIT campaign — results
 
-**Outcome: INCOMPLETE_PLATEAU.** The resumed campaign (owner decisions of
+**Current state (2026-11-18): campaign ACTIVE, not closed.** The owner
+resumed it under OD18/OD19 after the closeouts recorded below. Live
+scorecard, blockers and next experiments are in the campaign's
+[Status](CAMPAIGN-RUST-CPYTHON-JIT.md#status). Two caveats apply to every
+J number on this page:
+
+- **Eval 9 is unqualified.** Its recorded ACCEPT came from a 4-run retry
+  after a 5-run INCONCLUSIVE under the same policy. A predetermined 5-run
+  requalification is pending.
+- **The scores cross build configurations.** `S = 0.7258` and the guard
+  REJECT compare a fat-LTO incumbent against a thin-LTO reference
+  (`perf-climb-ref`). The first qualified score of the current build epoch
+  is pending against a fat-LTO reference built from the same source.
+
+The Serc numbers are same-configuration (`perf-rust` and `perf-rust-serc`
+are both fat LTO at `5e09c5f`) and stand: C3 REJECTED at attempt 3.
+
+## Historical closeout (2026-11-18 03:00, superseded)
+
+The text below is the INCOMPLETE_PLATEAU closeout as written. It
+superseded an earlier BLOCKED closeout (2026-11-17). Its "bounded space
+exhausted" conclusions predate the Serc IPC finding and the eval-9 audit.
+
+**Outcome then: INCOMPLETE_PLATEAU.** The resumed campaign (owner decisions of
 2026-11-17: macOS arm64 only, J measurement-gate repair authorized, Serc
 cold-compile optimization authorized) ran its bounded search to
 exhaustion on native macOS arm64. The best qualified result is recorded
@@ -16,7 +39,7 @@ lowered and no gate was waived.
   locked C3 cold-compilation gate REJECTED (6–16% wall regression) and
   the bounded compiler-optimization space is measured exhausted.
 
-## Tested source and environment
+### Tested source and environment
 
 - CPython source commit: `e891a9117985888df3e5d48145cf07ddda098335`
   (3.16.0a1+dev); lane `main` at closeout `0748280`.
@@ -27,7 +50,7 @@ lowered and no gate was waived.
 - Linux evidence: **not collected** — deferred until the owner supplies a
   native Linux host.
 
-## Runnable variants (same epoch, verified build reports)
+### Runnable variants (same epoch, verified build reports)
 
 | Build | Flags | Report |
 | --- | --- | --- |
@@ -42,7 +65,7 @@ revision; only campaign docs changed since `285f619`). Rebuild:
 `python3 rust-cpython/perf.py build --name <name> [--jit] [--serc]` from
 the lane root.
 
-## Measured results (all quiet-host, `perf-gate-ready` clean both sides)
+### Measured results (all quiet-host, `perf-gate-ready` clean both sides)
 
 - **M4 milestone gate** (`perf-rust-jit` @ `285f619` vs `perf-climb-ref`):
   - `S = 0.7258` — `20261118T013628Z`, `--jit-set --runs 5`, pooled-median
@@ -82,7 +105,7 @@ the lane root.
   (30,318 cases, zero mismatches); `serc-overlay` changed only by
   env-gated `SERC_PROFILE` timers since.
 
-## Measured ceilings (why the plateau is architectural)
+### Measured ceilings (why the plateau is architectural)
 
 - JIT remaining hot costs are boxed-value churn: `_STORE_SUBSCR_LIST_INT_FLOAT`
   ~19% and fused-float local stores ~16% of nbody JIT samples require
@@ -98,7 +121,7 @@ the lane root.
   consolidation, Py316 linear-path relaxation) were all sub-floor or
   bytecode-mismatched.
 
-## Measured gaps to the done criteria
+### Measured gaps to the done criteria
 
 - **M4 unmet**: S = 0.7258 vs ≤ 0.25; needs ~66% further CPU reduction.
 - **C3 performance unmet**: cold-compilation ACCEPT and OD15 footprint
@@ -109,7 +132,7 @@ the lane root.
   evidenced; no accepted Serc performance result exists to qualify a
   combined score.
 
-## Limitations
+### Limitations
 
 - All evidence is native macOS arm64 on one M1 Max; no Linux data.
 - The all-metrics gate still shows layout-sensitive ~0.4–1% offsets on
@@ -119,7 +142,7 @@ the lane root.
 - Serc cold compilation is 6–16% slower wall / up to +37% peak RSS than
   the C compiler path on the locked workloads.
 
-## Owner queue / smallest unblock actions
+### Owner queue / smallest unblock actions
 
 1. **JIT unboxed locals / frame representation** — the only identified
    mechanism with material headroom; multi-session research project
@@ -130,7 +153,7 @@ the lane root.
    improved cpu; needs attribution before it can be waived or fixed.
 4. **Linux** — deferred until a native Linux host is supplied.
 
-## Post-closeout note (2026-11-18, `5c64210`)
+### Post-closeout note (2026-11-18, `5c64210`)
 
 After the plateau closeout, the Py316 linear-assembler port was completed
 and landed as an incremental Serc compiler improvement. The two required
@@ -145,7 +168,7 @@ locked C3 workloads and -1.2% on pure `compile()` timing — real but at the
 practical floor end-to-end. **C3 remains REJECTED**; the gap narrowed, not
 closed. `perf-rust-serc` was rebuilt at `5c64210`.
 
-## Evidence manifest
+### Evidence manifest
 
 Raw receipts live under `rust-cpython/results/perf-bench/<UTC>-<a>-vs-<b>/`
 (`verdict.json` plus per-round samples) and build reports under

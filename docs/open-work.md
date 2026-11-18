@@ -35,7 +35,7 @@ doing, P4 is optional. A debt entry is not success.
 
 JIT work, 3.16 source epochs, the Serc compiler port, and compiler-parity fixes
 belong to the [rust-cpython JIT campaign](CAMPAIGN-RUST-CPYTHON-JIT.md) and
-are not tracked here. That campaign owns its execution pause and current
+are not tracked here. That campaign owns its execution state and current
 macOS-only scope. None of it gates a production release.
 
 - [ ] **P3 — deferred Linux qualification and timing.** Reopen only when the
