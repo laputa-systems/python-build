@@ -366,6 +366,41 @@ therefore needs per-shape equivalence fixes inside the pinned archive
 `passes/linear.rs`, not a version-gate change; parked unless a cheaper
 Serc lever appears first.
 
+**Py316 linear-path port landed (2026-11-18, `5c64210`).** The per-shape
+audit found exactly two divergences, both version-policy gaps rather than
+shape mismatches. First, `LOAD_COMMON_CONSTANT`: the graph pipeline's
+`lower_common_constants` (Py315/316) rewrites immortal `LOAD_CONST`s and
+compacts `co_consts` via `retain_used_in_order`; the linear path skipped
+it entirely, so every linear-eligible Py316 unit emitted `LOAD_CONST`
+where the oracle emits `LOAD_COMMON_CONSTANT`. Added
+`lower_common_constants_linear`, the same rewrite plus table compaction
+applied to the finished linear item stream. Second, local-pair fusion:
+`fuse_superinstructions` returns false for `>= Py316` and the pipeline
+instead runs `fuse_borrowed_superinstructions` on final items after
+borrow-load analysis, so `STORE_FAST`+`LOAD_FAST_BORROW` never fuses;
+the linear path ran pre-3.16 `fuse_pair` before borrow analysis and
+fused them into `STORE_FAST_LOAD_FAST`. `passes/linear.rs` is now
+overlaid: for Py316 it skips `fuse_pair` and runs
+`fuse_borrowed_superinstructions` after load-fast optimization, mirroring
+the pipeline order. Census `serc_parity.py --oracle stage-perf-rust`:
+30,318 cases, **0 mismatches**, 9,678 exact matches, 813 intentional
+finally routes — identical totals to the incumbent census. Per-file
+marshal digests identical to `perf-rust-serc` across the census corpus
+at -O0/-O1/-O2; `test_serc_compile` OK; 22 linear assembler unit tests
+pass (the 8 compatibility failures are the pre-existing missing
+`python3.14` oracle, unrelated). Eligibility is high: ~50% of django
+code objects (911/1822) take the linear path. Phase profile on 907
+django modules: Serc compile 534->506 ms (**-5.3%**), `pipeline-optimize`
+156->140 ms, `pipeline-build`+`owners-retain` 21->17 ms. Locked C3
+workloads, exploratory quiet-host bench vs `perf-rust-serc`: wall/cpu
+`cold_import_django` 0.992/0.992, `cold_python_startup` 0.994/0.996,
+`compileall_source` 0.986/0.996 over 3 runs — consistent ~0.6-1.4%
+improvement, at the practical floor on end-to-end workloads because
+compilation is only part of each process. Pure `compile()` timing on the
+django corpus: 0.4875->0.4816 s (-1.2%, 4/4 interleaved pairs faster).
+C3 remains REJECTED (gap was ~6-16%); this is an incremental Serc
+compiler win, not a gate pass. `perf-rust-serc` rebuilt at `5c64210`.
+
 **Emission attribution limit (2026-11-18).** A 60-iteration `sample`
 profile of `compileall_source` on `perf-rust-serc` is dominated by
 process-level filesystem syscalls (`open`/`rename`/`unlinkat`/`mkdir`/

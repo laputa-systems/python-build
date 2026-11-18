@@ -124,11 +124,26 @@ the lane root.
 1. **JIT unboxed locals / frame representation** — the only identified
    mechanism with material headroom; multi-session research project
    with deopt/observability/refcounting obligations.
-2. **Serc pipeline fusion or Py316 linear-path port** — research-grade;
-   the linear path needs per-shape fixes in the pinned archive.
+2. **Serc pipeline fusion** — research-grade; the Py316 linear-path
+   port has since landed (see post-closeout note below).
 3. **django_wsgi_request wall signature** — ~1.6% wall regression with
    improved cpu; needs attribution before it can be waived or fixed.
 4. **Linux** — deferred until a native Linux host is supplied.
+
+## Post-closeout note (2026-11-18, `5c64210`)
+
+After the plateau closeout, the Py316 linear-assembler port was completed
+and landed as an incremental Serc compiler improvement. The two required
+fixes: `LOAD_COMMON_CONSTANT` lowering plus `co_consts` compaction on the
+linear item stream, and Py316-faithful fusion (`fuse_borrowed_superinstructions`
+after borrow-load analysis instead of pre-3.16 `fuse_pair`). Verified by a
+clean 30,318-case census (0 mismatches, identical totals to the incumbent
+census), per-file marshal parity at -O0/-O1/-O2, and `test_serc_compile`.
+Measured: -5.3% Serc compile-phase time on 907 django modules (~50% of
+code objects now take the linear path); ~0.6-1.4% improvement on the
+locked C3 workloads and -1.2% on pure `compile()` timing — real but at the
+practical floor end-to-end. **C3 remains REJECTED**; the gap narrowed, not
+closed. `perf-rust-serc` was rebuilt at `5c64210`.
 
 ## Evidence manifest
 
