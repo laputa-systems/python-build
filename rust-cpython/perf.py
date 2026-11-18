@@ -2315,7 +2315,7 @@ def parse_jit_map_code_bytes(jit_map: str) -> int:
 
 def _jit_code_bytes(side: dict[str, Any], name: str, env: dict[str, str],
                     scratch: Path) -> int | None:
-    if lb.IS_LINUX or side["report"].get("pristine"):
+    if side["report"].get("pristine"):
         return None
     python = side["python"]
     mapping = scratch / f"{name}.jit-map.tsv"

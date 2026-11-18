@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""Fail-closed quiet-host check for native Ubuntu 24.04 campaign measurements.
+
+Usage: perf-gate-ready [-s PATH] [-1] [--json]. -1 is the post-run check.
+The benchmark's internal quiet-host and paired-sampling gates remain mandatory.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import platform
+import shutil
+import time
+from pathlib import Path
+
+MIN_IDLE_PERCENT = 95.0
+MAX_IOWAIT_PERCENT = 2.0
+MAX_STEAL_PERCENT = 0.2
+MAX_LOAD_PER_CORE = 0.7
+MIN_AVAILABLE_GIB = 4.0
+MIN_DISK_FREE_GIB = 20.0
+GIB = 1024**3
+
+
+def cpu_counters() -> tuple[int, int, int, int]:
+    values = [int(item) for item in Path("/proc/stat").read_text().splitlines()[0].split()[1:]]
+    if len(values) < 8:
+        raise ValueError("/proc/stat lacks required CPU counters")
+    return sum(values), values[3], values[4], values[7]
+
+
+def swapped_pages() -> int:
+    counters = {}
+    for line in Path("/proc/vmstat").read_text().splitlines():
+        key, _, value = line.partition(" ")
+        if key in {"pswpin", "pswpout"}:
+            counters[key] = int(value.strip())
+    if set(counters) != {"pswpin", "pswpout"}:
+        raise ValueError("/proc/vmstat lacks swap counters")
+    return sum(counters.values())
+
+
+def available_memory_gib() -> float:
+    for line in Path("/proc/meminfo").read_text().splitlines():
+        if line.startswith("MemAvailable:"):
+            return int(line.split()[1]) * 1024 / GIB
+    raise ValueError("/proc/meminfo lacks MemAvailable")
+
+
+def ac_online() -> bool | None:
+    paths = list(Path("/sys/class/power_supply").glob("*/online"))
+    if not paths:
+        return None  # Desktop boards often have no power-supply telemetry.
+    readings = [path.read_text().strip() for path in paths]
+    if any(value not in {"0", "1"} for value in readings):
+        raise ValueError("unknown AC power-supply state")
+    return "1" in readings
+
+
+def sample_cpu(seconds: int = 3) -> dict[str, float | int]:
+    start = cpu_counters()
+    swap_before = swapped_pages()
+    idle_min, iowait_max, steal_max = 100.0, 0.0, 0.0
+    for _ in range(seconds):
+        time.sleep(1)
+        end = cpu_counters()
+        total = end[0] - start[0]
+        if total <= 0:
+            raise ValueError("non-increasing CPU counters")
+        idle_min = min(idle_min, 100 * (end[1] - start[1]) / total)
+        iowait_max = max(iowait_max, 100 * (end[2] - start[2]) / total)
+        steal_max = max(steal_max, 100 * (end[3] - start[3]) / total)
+        start = end
+    return {"min_idle_pct": idle_min, "max_iowait_pct": iowait_max,
+            "max_steal_pct": steal_max, "swap_pages": swapped_pages() - swap_before}
+
+
+def classify(metrics: dict[str, object]) -> list[str]:
+    failures = []
+    for key, threshold, label in (
+        ("min_idle_pct", MIN_IDLE_PERCENT, "CPU idle"),
+        ("available_gib", MIN_AVAILABLE_GIB, "available memory"),
+        ("disk_free_gib", MIN_DISK_FREE_GIB, "disk free"),
+    ):
+        if float(metrics[key]) < threshold:
+            failures.append(f"{label} {metrics[key]} below {threshold}")
+    for key, threshold, label in (
+        ("max_iowait_pct", MAX_IOWAIT_PERCENT, "CPU iowait"),
+        ("max_steal_pct", MAX_STEAL_PERCENT, "CPU steal"),
+    ):
+        if float(metrics[key]) > threshold:
+            failures.append(f"{label} {metrics[key]} exceeds {threshold}")
+    if float(metrics["load1"]) > float(metrics["cores"]) * MAX_LOAD_PER_CORE:
+        failures.append("1m load exceeds 0.7 per CPU")
+    if int(metrics["swap_pages"]) != 0:
+        failures.append(f"swap activity detected: {metrics['swap_pages']} pages")
+    if metrics["ac_online"] is False:
+        failures.append("host is not on AC power")
+    return failures
+
+
+def collect(path: Path) -> dict[str, object]:
+    if platform.system() != "Linux" or platform.machine() != "x86_64":
+        raise ValueError("requires native Linux x86_64")
+    release = {}
+    for line in Path("/etc/os-release").read_text().splitlines():
+        key, sep, value = line.partition("=")
+        if sep:
+            release[key] = value.strip().strip('"')
+    if (release.get("ID"), release.get("VERSION_ID")) != ("ubuntu", "24.04"):
+        raise ValueError("requires Ubuntu 24.04; another distro is not a comparable host")
+    counters = sample_cpu()
+    usage = shutil.disk_usage(path)
+    return {**counters, "cores": len(os.sched_getaffinity(0)),
+            "load1": os.getloadavg()[0],
+            "available_gib": round(available_memory_gib(), 2),
+            "disk_free_gib": round(usage.free / GIB, 2),
+            "ac_online": ac_online(), "path": str(path.resolve())}
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("-s", "--space", default=".", help="filesystem to check for free space")
+    parser.add_argument("-1", action="store_true", dest="post", help="post-measurement check")
+    parser.add_argument("--json", action="store_true", help="print machine-readable evidence")
+    parser.add_argument("--self-test", action="store_true", help="test the decision rules offline")
+    args = parser.parse_args()
+    if args.self_test:
+        healthy = {"min_idle_pct": 99, "available_gib": 10, "disk_free_gib": 70,
+                   "max_iowait_pct": 0, "max_steal_pct": 0, "load1": 0,
+                   "cores": 8, "swap_pages": 0, "ac_online": None}
+        assert classify(healthy) == []
+        for changed in ({"min_idle_pct": 80}, {"swap_pages": 1},
+                        {"max_steal_pct": 0.3}, {"disk_free_gib": 5},
+                        {"ac_online": False}):
+            assert classify({**healthy, **changed})
+        print("PASS gate decision controls")
+        return 0
+    try:
+        metrics = collect(Path(args.space))
+        failures = classify(metrics)
+    except (OSError, ValueError, ZeroDivisionError) as error:
+        metrics = {}
+        failures = [str(error)]
+    result = {"phase": "post" if args.post else "pre", "ok": not failures,
+              "metrics": metrics, "failures": failures}
+    if args.json:
+        print(json.dumps(result, sort_keys=True))
+    else:
+        print(f"{'OK' if result['ok'] else 'BLOCKED'} perf-gate-ready ({result['phase']}): "
+              + ("quiet-host controls passed" if not failures else "; ".join(failures)))
+        if metrics:
+            print(json.dumps(metrics, sort_keys=True))
+    return 0 if result["ok"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
