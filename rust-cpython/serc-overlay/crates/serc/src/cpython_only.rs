@@ -3,10 +3,11 @@ use ruff_python_ast::visitor::{
     Visitor, walk_except_handler, walk_expr, walk_parameters, walk_stmt,
 };
 use ruff_python_ast::{
-    Expr, InterpolatedStringElement, InterpolatedStringElements, InterpolatedStringFormatSpec,
-    Parameters, Pattern, Stmt,
+    self as ast, CmpOp, Expr, InterpolatedStringElement, InterpolatedStringElements,
+    InterpolatedStringFormatSpec, Number, Operator, Parameters, Pattern, Stmt,
 };
 use ruff_python_parser::{LexicalErrorType, ParseError, ParseErrorType};
+use ruff_text_size::Ranged;
 
 /// The deepest statement and expression nesting Serc compiles.
 ///
@@ -80,11 +81,22 @@ pub(crate) struct RulesFacts {
     max_expression_slots: usize,
     max_arms: usize,
     finally_exit: bool,
+    may_warn: bool,
+}
+
+impl RulesFacts {
+    /// Whether CPython's compile-time warning checks could fire for this module.
+    pub(crate) fn may_warn(&self) -> bool {
+        self.may_warn
+    }
 }
 
 /// Walk the module once and collect every fact the rules below need.
-pub(crate) fn rules_scan(suite: &[Stmt]) -> RulesFacts {
-    let mut scan = RulesScan::default();
+pub(crate) fn rules_scan(suite: &[Stmt], source: &str) -> RulesFacts {
+    let mut scan = RulesScan {
+        source,
+        ..RulesScan::default()
+    };
     scan.visit_body(suite);
     RulesFacts {
         captures_debug: scan.captures_debug,
@@ -94,6 +106,7 @@ pub(crate) fn rules_scan(suite: &[Stmt]) -> RulesFacts {
         max_expression_slots: scan.max_expression_slots,
         max_arms: scan.max_arms,
         finally_exit: scan.finally_exit,
+        may_warn: scan.warn_found,
     }
 }
 
@@ -103,8 +116,15 @@ enum Block {
     Loop,
 }
 
-#[derive(Default)]
-struct RulesScan {
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum WarnBlock {
+    Finally,
+    Function,
+    Loop,
+}
+
+struct RulesScan<'src> {
+    source: &'src str,
     captures_debug: bool,
     deep_format_spec: bool,
     interp_depth: usize,
@@ -116,15 +136,57 @@ struct RulesScan {
     max_arms: usize,
     finally_blocks: Vec<Block>,
     finally_exit: bool,
+    warn_blocks: Vec<WarnBlock>,
+    warn_found: bool,
 }
 
-impl<'a> Visitor<'a> for RulesScan {
-    fn visit_stmt(&mut self, statement: &'a Stmt) {
+impl Default for RulesScan<'_> {
+    fn default() -> Self {
+        Self {
+            source: "",
+            captures_debug: false,
+            deep_format_spec: false,
+            interp_depth: 0,
+            interp_exceeded: false,
+            blocks: 0,
+            max_blocks: 0,
+            expression_slots: 0,
+            max_expression_slots: 0,
+            max_arms: 0,
+            finally_blocks: Vec::new(),
+            finally_exit: false,
+            warn_blocks: Vec::new(),
+            warn_found: false,
+        }
+    }
+}
+
+impl<'ast, 'src> Visitor<'ast> for RulesScan<'src> {
+    fn visit_stmt(&mut self, statement: &'ast Stmt) {
         if crate::stack_growth_required() {
             return crate::grow_stack(|| self.visit_stmt(statement));
         }
         if let Stmt::If(if_statement) = statement {
             self.max_arms = self.max_arms.max(if_statement.elif_else_clauses.len() + 1);
+        }
+        if !self.warn_found {
+            self.warn_found = match statement {
+                Stmt::Assert(assert) => {
+                    matches!(&*assert.test, Expr::Tuple(tuple) if !tuple.elts.is_empty())
+                }
+                Stmt::ImportFrom(import)
+                    if import.level > 0
+                        && !import.is_lazy
+                        && import.module.as_ref().is_some_and(|module| {
+                            module.as_str() == "lazy"
+                                && self.source.as_bytes()[..module.start().to_usize()].last()
+                                    != Some(&b'.')
+                        }) =>
+                {
+                    true
+                }
+                _ => false,
+            };
         }
         self.blocks += 1;
         self.max_blocks = self.max_blocks.max(self.blocks);
@@ -137,7 +199,16 @@ impl<'a> Visitor<'a> for RulesScan {
             self.captures_debug = true;
         }
         match statement {
-            Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {
+            Stmt::FunctionDef(_) => {
+                let outer = std::mem::take(&mut self.finally_blocks);
+                // The header holds no statements, so the warning block can span the
+                // whole definition without changing which statements see it.
+                self.warn_blocks.push(WarnBlock::Function);
+                walk_stmt(self, statement);
+                self.warn_blocks.pop();
+                self.finally_blocks = outer;
+            }
+            Stmt::ClassDef(_) => {
                 let outer = std::mem::take(&mut self.finally_blocks);
                 walk_stmt(self, statement);
                 self.finally_blocks = outer;
@@ -146,15 +217,19 @@ impl<'a> Visitor<'a> for RulesScan {
                 self.visit_expr(&for_statement.target);
                 self.visit_expr(&for_statement.iter);
                 self.finally_blocks.push(Block::Loop);
+                self.warn_blocks.push(WarnBlock::Loop);
                 self.visit_body(&for_statement.body);
                 self.finally_blocks.pop();
+                self.warn_blocks.pop();
                 self.visit_body(&for_statement.orelse);
             }
             Stmt::While(while_statement) => {
                 self.visit_expr(&while_statement.test);
                 self.finally_blocks.push(Block::Loop);
+                self.warn_blocks.push(WarnBlock::Loop);
                 self.visit_body(&while_statement.body);
                 self.finally_blocks.pop();
+                self.warn_blocks.pop();
                 self.visit_body(&while_statement.orelse);
             }
             Stmt::Try(try_statement) => {
@@ -164,11 +239,14 @@ impl<'a> Visitor<'a> for RulesScan {
                 }
                 self.visit_body(&try_statement.orelse);
                 self.finally_blocks.push(Block::Finally);
+                self.warn_blocks.push(WarnBlock::Finally);
                 self.visit_body(&try_statement.finalbody);
                 self.finally_blocks.pop();
+                self.warn_blocks.pop();
             }
             Stmt::Return(_) => {
                 self.finally_exit |= self.finally_blocks.contains(&Block::Finally);
+                self.warn_found |= self.warn_blocks.last() == Some(&WarnBlock::Finally);
             }
             Stmt::Break(_) | Stmt::Continue(_) => {
                 self.finally_exit |= self
@@ -177,15 +255,32 @@ impl<'a> Visitor<'a> for RulesScan {
                     .rev()
                     .take_while(|&&block| block != Block::Loop)
                     .any(|&block| block == Block::Finally);
+                self.warn_found |= self.warn_blocks.last() == Some(&WarnBlock::Finally);
             }
             _ => walk_stmt(self, statement),
         }
         self.blocks -= 1;
     }
 
-    fn visit_expr(&mut self, expression: &'a Expr) {
+    fn visit_expr(&mut self, expression: &'ast Expr) {
         if crate::stack_growth_required() {
             return crate::grow_stack(|| self.visit_expr(expression));
+        }
+        if !self.warn_found {
+            self.warn_found = match expression {
+                Expr::Compare(compare) => compare.ops.iter().enumerate().any(|(index, op)| {
+                    matches!(op, CmpOp::Is | CmpOp::IsNot)
+                        && (is_identity_literal(&compare.operands[index])
+                            || is_identity_literal(&compare.operands[index + 1]))
+                }),
+                Expr::Call(call) => is_constant(&call.func) || is_display(&call.func),
+                Expr::Subscript(subscript) => {
+                    is_unsubscriptable(&subscript.value)
+                        || (is_sequence_literal(&subscript.value)
+                            && index_type_is_not_integer(&subscript.slice))
+                }
+                _ => false,
+            };
         }
         self.deep_format_spec |= match expression {
             Expr::FString(fstring) => fstring
@@ -211,7 +306,7 @@ impl<'a> Visitor<'a> for RulesScan {
         self.interp_depth -= usize::from(interpolated);
     }
 
-    fn visit_parameters(&mut self, parameters: &'a Parameters) {
+    fn visit_parameters(&mut self, parameters: &'ast Parameters) {
         self.expression_slots += PARSER_STACK_PER_PARAMETER_DEFAULT;
         walk_parameters(self, parameters);
         self.expression_slots -= PARSER_STACK_PER_PARAMETER_DEFAULT;
@@ -344,6 +439,92 @@ fn format_spec_nested_depth(spec: &InterpolatedStringFormatSpec) -> usize {
         .map(format_spec_element_depth)
         .max()
         .unwrap_or(0)
+}
+
+fn is_constant(expression: &Expr) -> bool {
+    match expression {
+        Expr::NumberLiteral(_)
+        | Expr::StringLiteral(_)
+        | Expr::BytesLiteral(_)
+        | Expr::BooleanLiteral(_)
+        | Expr::NoneLiteral(_)
+        | Expr::EllipsisLiteral(_) => true,
+        Expr::Name(name) => name.id.as_str() == "__debug__",
+        _ => false,
+    }
+}
+
+fn is_joined_string(expression: &Expr) -> bool {
+    match expression {
+        Expr::FString(_) => true,
+        Expr::BinOp(binary) => {
+            binary.op == Operator::Mod && matches!(&*binary.left, Expr::StringLiteral(_))
+        }
+        _ => false,
+    }
+}
+
+fn is_display(expression: &Expr) -> bool {
+    is_joined_string(expression)
+        || matches!(
+            expression,
+            Expr::Tuple(_)
+                | Expr::List(_)
+                | Expr::ListComp(_)
+                | Expr::Dict(_)
+                | Expr::DictComp(_)
+                | Expr::Set(_)
+                | Expr::SetComp(_)
+                | Expr::Generator(_)
+                | Expr::TString(_)
+        )
+}
+
+fn is_identity_literal(expression: &Expr) -> bool {
+    match expression {
+        Expr::Tuple(tuple) => tuple.elts.iter().all(is_constant),
+        Expr::BooleanLiteral(_) | Expr::NoneLiteral(_) | Expr::EllipsisLiteral(_) => false,
+        Expr::Name(_) => false,
+        _ => is_constant(expression),
+    }
+}
+
+fn is_unsubscriptable(expression: &Expr) -> bool {
+    matches!(
+        expression,
+        Expr::NumberLiteral(_)
+            | Expr::BooleanLiteral(_)
+            | Expr::NoneLiteral(_)
+            | Expr::EllipsisLiteral(_)
+            | Expr::Set(_)
+            | Expr::SetComp(_)
+            | Expr::Generator(_)
+            | Expr::TString(_)
+            | Expr::Lambda(_)
+    ) || matches!(expression, Expr::Name(name) if name.id.as_str() == "__debug__")
+}
+
+fn is_sequence_literal(expression: &Expr) -> bool {
+    is_joined_string(expression)
+        || matches!(
+            expression,
+            Expr::StringLiteral(_)
+                | Expr::BytesLiteral(_)
+                | Expr::Tuple(_)
+                | Expr::List(_)
+                | Expr::ListComp(_)
+        )
+}
+
+fn index_type_is_not_integer(index: &Expr) -> bool {
+    match index {
+        Expr::NumberLiteral(ast::ExprNumberLiteral { value, .. }) => {
+            !matches!(value, Number::Int(_))
+        }
+        Expr::BooleanLiteral(_) | Expr::Name(_) => false,
+        Expr::Lambda(_) => true,
+        _ => is_constant(index) || is_display(index),
+    }
 }
 
 /// Estimate CPython's peak parser stack as the sum of the deepest bracket nesting at

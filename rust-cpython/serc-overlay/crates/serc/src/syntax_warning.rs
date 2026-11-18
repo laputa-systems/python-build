@@ -1,6 +1,5 @@
+use ruff_python_ast::StringFlags;
 use ruff_python_ast::token::{TokenKind, Tokens};
-use ruff_python_ast::visitor::{Visitor, walk_except_handler, walk_expr, walk_stmt};
-use ruff_python_ast::{self as ast, CmpOp, Expr, Number, Operator, Stmt, StringFlags};
 use ruff_text_size::Ranged;
 
 /// Report whether CPython 3.16's compiler can emit a `SyntaxWarning` for this module.
@@ -9,16 +8,11 @@ use ruff_text_size::Ranged;
 /// literal directly followed by a name or keyword, identity comparison with a literal, calls and
 /// subscripts of literals, an assertion on a non-empty tuple, `return`, `break`, or `continue`
 /// directly inside `finally`, and `from . lazy import`. `false` means CPython emits none.
-pub(crate) fn may_warn(source: &str, tokens: &Tokens, suite: &[Stmt]) -> bool {
-    tokens_may_warn(source, tokens) || {
-        let mut scan = Scan {
-            source,
-            found: false,
-            blocks: Vec::new(),
-        };
-        scan.visit_body(suite);
-        scan.found
-    }
+///
+/// `ast_candidate` is the AST half of the answer, collected by the rules scan so the module
+/// is not walked twice; the token half runs here because it needs the token stream.
+pub(crate) fn may_warn(source: &str, tokens: &Tokens, ast_candidate: bool) -> bool {
+    ast_candidate || tokens_may_warn(source, tokens)
 }
 
 fn tokens_may_warn(source: &str, tokens: &Tokens) -> bool {
@@ -30,11 +24,9 @@ fn tokens_may_warn(source: &str, tokens: &Tokens) -> bool {
         {
             return true;
         }
-        previous_number_end = matches!(
-            kind,
-            TokenKind::Int | TokenKind::Float | TokenKind::Complex
-        )
-        .then(|| token.end());
+        previous_number_end =
+            matches!(kind, TokenKind::Int | TokenKind::Float | TokenKind::Complex)
+                .then(|| token.end());
         if matches!(
             kind,
             TokenKind::String | TokenKind::FStringMiddle | TokenKind::TStringMiddle
@@ -56,8 +48,8 @@ fn has_invalid_escape(text: &[u8], bytes: bool) -> bool {
         };
         let valid = matches!(
             next,
-            b'\n' | b'\\' | b'\'' | b'"' | b'a' | b'b' | b'f' | b'n' | b'r' | b't' | b'v'
-                | b'0'..=b'3' | b'x'
+            b'\n' | b'\\' | b'\'' | b'"' | b'a' | b'b' | b'f' | b'n' | b'r' | b't' | b'v' | b'0'
+                ..=b'3' | b'x'
         ) || (!bytes && matches!(next, b'N' | b'u' | b'U'));
         if !valid {
             return true;
@@ -65,210 +57,6 @@ fn has_invalid_escape(text: &[u8], bytes: bool) -> bool {
         index += offset + 2;
     }
     false
-}
-
-#[derive(Clone, Copy, Eq, PartialEq)]
-enum Block {
-    Finally,
-    Function,
-    Loop,
-}
-
-struct Scan<'source> {
-    source: &'source str,
-    found: bool,
-    blocks: Vec<Block>,
-}
-
-impl Scan<'_> {
-    fn in_finally(&self) -> bool {
-        self.blocks.last() == Some(&Block::Finally)
-    }
-
-    fn visit_block(&mut self, block: Block, body: &[Stmt]) {
-        self.blocks.push(block);
-        self.visit_body(body);
-        self.blocks.pop();
-    }
-}
-
-impl<'a> Visitor<'a> for Scan<'_> {
-    fn visit_stmt(&mut self, statement: &'a Stmt) {
-        if self.found {
-            return;
-        }
-        if crate::stack_growth_required() {
-            return crate::grow_stack(|| self.visit_stmt(statement));
-        }
-        match statement {
-            Stmt::FunctionDef(function) => {
-                for decorator in &function.decorator_list {
-                    self.visit_decorator(decorator);
-                }
-                if let Some(type_params) = &function.type_params {
-                    self.visit_type_params(type_params);
-                }
-                self.visit_parameters(&function.parameters);
-                if let Some(returns) = &function.returns {
-                    self.visit_annotation(returns);
-                }
-                self.visit_block(Block::Function, &function.body);
-            }
-            Stmt::For(for_statement) => {
-                self.visit_expr(&for_statement.target);
-                self.visit_expr(&for_statement.iter);
-                self.visit_block(Block::Loop, &for_statement.body);
-                self.visit_body(&for_statement.orelse);
-            }
-            Stmt::While(while_statement) => {
-                self.visit_expr(&while_statement.test);
-                self.visit_block(Block::Loop, &while_statement.body);
-                self.visit_body(&while_statement.orelse);
-            }
-            Stmt::Try(try_statement) => {
-                self.visit_body(&try_statement.body);
-                for handler in &try_statement.handlers {
-                    walk_except_handler(self, handler);
-                }
-                self.visit_body(&try_statement.orelse);
-                self.visit_block(Block::Finally, &try_statement.finalbody);
-            }
-            Stmt::TypeAlias(alias) => {
-                self.visit_expr(&alias.name);
-                if let Some(type_params) = &alias.type_params {
-                    self.visit_type_params(type_params);
-                }
-                self.visit_expr(&alias.value);
-            }
-            Stmt::Return(_) | Stmt::Break(_) | Stmt::Continue(_) if self.in_finally() => {
-                self.found = true;
-            }
-            Stmt::Assert(assert) if matches!(&*assert.test, Expr::Tuple(tuple) if !tuple.elts.is_empty()) => {
-                self.found = true;
-            }
-            Stmt::ImportFrom(import)
-                if import.level > 0
-                    && !import.is_lazy
-                    && import.module.as_ref().is_some_and(|module| {
-                        module.as_str() == "lazy"
-                            && self.source.as_bytes()[..module.start().to_usize()].last() != Some(&b'.')
-                    }) =>
-            {
-                self.found = true;
-            }
-            _ => walk_stmt(self, statement),
-        }
-    }
-
-    fn visit_expr(&mut self, expression: &'a Expr) {
-        if self.found {
-            return;
-        }
-        if crate::stack_growth_required() {
-            return crate::grow_stack(|| self.visit_expr(expression));
-        }
-        self.found = match expression {
-            Expr::Compare(compare) => compare.ops.iter().enumerate().any(|(index, op)| {
-                matches!(op, CmpOp::Is | CmpOp::IsNot)
-                    && (is_identity_literal(&compare.operands[index])
-                        || is_identity_literal(&compare.operands[index + 1]))
-            }),
-            Expr::Call(call) => is_constant(&call.func) || is_display(&call.func),
-            Expr::Subscript(subscript) => {
-                is_unsubscriptable(&subscript.value)
-                    || (is_sequence_literal(&subscript.value)
-                        && index_type_is_not_integer(&subscript.slice))
-            }
-            _ => false,
-        };
-        if !self.found {
-            walk_expr(self, expression);
-        }
-    }
-}
-
-fn is_constant(expression: &Expr) -> bool {
-    match expression {
-        Expr::NumberLiteral(_)
-        | Expr::StringLiteral(_)
-        | Expr::BytesLiteral(_)
-        | Expr::BooleanLiteral(_)
-        | Expr::NoneLiteral(_)
-        | Expr::EllipsisLiteral(_) => true,
-        Expr::Name(name) => name.id.as_str() == "__debug__",
-        _ => false,
-    }
-}
-
-fn is_joined_string(expression: &Expr) -> bool {
-    match expression {
-        Expr::FString(_) => true,
-        Expr::BinOp(binary) => {
-            binary.op == Operator::Mod && matches!(&*binary.left, Expr::StringLiteral(_))
-        }
-        _ => false,
-    }
-}
-
-fn is_display(expression: &Expr) -> bool {
-    is_joined_string(expression)
-        || matches!(
-            expression,
-            Expr::Tuple(_)
-                | Expr::List(_)
-                | Expr::ListComp(_)
-                | Expr::Dict(_)
-                | Expr::DictComp(_)
-                | Expr::Set(_)
-                | Expr::SetComp(_)
-                | Expr::Generator(_)
-                | Expr::TString(_)
-        )
-}
-
-fn is_identity_literal(expression: &Expr) -> bool {
-    match expression {
-        Expr::Tuple(tuple) => tuple.elts.iter().all(is_constant),
-        Expr::BooleanLiteral(_) | Expr::NoneLiteral(_) | Expr::EllipsisLiteral(_) => false,
-        Expr::Name(_) => false,
-        _ => is_constant(expression),
-    }
-}
-
-fn is_unsubscriptable(expression: &Expr) -> bool {
-    matches!(
-        expression,
-        Expr::NumberLiteral(_)
-            | Expr::BooleanLiteral(_)
-            | Expr::NoneLiteral(_)
-            | Expr::EllipsisLiteral(_)
-            | Expr::Set(_)
-            | Expr::SetComp(_)
-            | Expr::Generator(_)
-            | Expr::TString(_)
-            | Expr::Lambda(_)
-    ) || matches!(expression, Expr::Name(name) if name.id.as_str() == "__debug__")
-}
-
-fn is_sequence_literal(expression: &Expr) -> bool {
-    is_joined_string(expression)
-        || matches!(
-            expression,
-            Expr::StringLiteral(_)
-                | Expr::BytesLiteral(_)
-                | Expr::Tuple(_)
-                | Expr::List(_)
-                | Expr::ListComp(_)
-        )
-}
-
-fn index_type_is_not_integer(index: &Expr) -> bool {
-    match index {
-        Expr::NumberLiteral(ast::ExprNumberLiteral { value, .. }) => !matches!(value, Number::Int(_)),
-        Expr::BooleanLiteral(_) | Expr::Name(_) => false,
-        Expr::Lambda(_) => true,
-        _ => is_constant(index) || is_display(index),
-    }
 }
 
 #[cfg(test)]

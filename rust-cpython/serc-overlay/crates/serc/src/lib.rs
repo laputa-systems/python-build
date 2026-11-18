@@ -1423,7 +1423,8 @@ fn compile_normalized(
     parsed_module.recover_bare_raises(&bare_raises);
     profile.lap("validate");
     let parsed = &parsed_module;
-    let may_warn = syntax_warning::may_warn(source, parsed.tokens(), parsed.suite());
+    let rules = cpython_only::rules_scan(parsed.suite(), source);
+    let may_warn = syntax_warning::may_warn(source, parsed.tokens(), rules.may_warn());
     if source.len() > 640
         && parse_int_max_str_digits.is_none()
         && has_large_decimal_token(source, parsed.tokens())
@@ -1441,7 +1442,6 @@ fn compile_normalized(
     if options.python_version >= PythonVersion::Py316 {
         compiler::static_blocks::validate(parsed.suite(), options.optimization_level)?;
     }
-    let rules = cpython_only::rules_scan(parsed.suite());
     if let Some(reason) = cpython_only::source_rules(&rules, parsed.tokens()) {
         return Err(CompileError::RequiresCpythonParser(reason));
     }
