@@ -133,7 +133,11 @@ sendfile, asyncio SSL protocol, SSL and support suites. The other two
 were the profiling timeout and external-inspection error reproduced on
 pristine CPython. The combined JIT+Serc stage also passed 2,000
 differential fuzz cases (97.45% JIT coverage, no mismatches or
-nondeterministic cases). Full JIT and Serc suite parity remains pending.
+nondeterministic cases). The full `perf-rust-jit` run reported 52,220
+tests and the same six failed files plus `test_capi`. A verbose
+`test_capi.test_opt` run matched all 19 existing uop assertion failures
+across the 18 catalogued tests, including the two copied-globals subtests.
+Full Serc-only and combined suite parity remains pending.
 
 Cloud PMU profiling is deferred. A self-only user-mode CPU-cycle
 `perf_event_open` probe returned `EPERM` in both the agent host shell and the
