@@ -92,6 +92,12 @@ as specified in H0.
 The Rust JIT baseline's 2,000-program differential fuzz run (seed 0)
 reported 97.45% JIT coverage, zero mismatches and zero nondeterministic
 cases. See `rust-cpython/logs/cloud-bringup/jit-fuzz.log`.
+Its coroutine and generator suites passed all 159 tests. The clean
+no-JIT `perf-rust` and Serc-only `perf-rust-serc` stages built and
+launched. The no-JIT compiler control passed five suites (857 tests
+reported, 5 skipped), and the Serc-only stage passed all 11 source-mode
+routing tests. The combined build and the Serc verification suites are
+the remaining checks before self-calibration.
 
 ### Scorecard
 
