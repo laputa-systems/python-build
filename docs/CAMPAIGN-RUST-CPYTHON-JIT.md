@@ -453,6 +453,31 @@ regions, no borrow/loop metadata), reusing `optimize_linear_assertion_side_exits
 Potential eligibility expansion ~29% -> ~69% of code objects; if realized,
 this is the first mechanism with enough headroom to reach C3.
 
+**Forward-branch linear path — implemented, measured, REJECTED (2026-11-18).**
+The predicted expansion did not survive contact with real code. Implemented
+`has_only_forward_branch_instructions` (labels + the five forward-jump
+opcodes, same metadata/provenance requirements as terminal guards, reusing
+`optimize_linear_assertion_side_exits` + `LayoutAssembler::finish`) plus a
+Py316-targeted `fb_probe` harness over the pinned Serc tree. Results:
+synthetic branch functions compile byte-identical (marshal-verified vs the
+C build at -O0/-O1/-O2, including if/else, early returns, conditional
+expressions, and-loop/try correctly excluded). But eligibility gain on real
+corpora is **zero**: asm-linear phase counts unchanged on both
+catalog_service (24->24) and the full django tree (908->908). Rejection
+profiling (~7k django code objects) shows the opcode census drastically
+overstated the opportunity: in 3.16, try/except, for, and with emit no
+control-flow opcodes, so "simple" functions are dominated by metadata the
+linear path cannot take — `exception_regions` non-empty (2769),
+`preserved_block_boundaries` (1531), `has_synthesized_percent_target_locations`
+(574), `borrow_omitted_for_backedges` (526), `with_context_locations` (248),
+plus 980 already-non-Linear IR streams. The residual soft-failures that pass
+metadata (~330 tail cell-conflicts, ~58 jump-policy mismatches on
+POP_JUMP_IF_{NONE,NOT_NONE}, ~196 NOT_TAKEN markers) total ~5% of objects
+and would each need parity-risky policy replication for a sub-floor gain.
+Conclusion: the graph pipeline's exception/borrow machinery is genuinely
+required by real branch code; there is no bounded eligibility expansion.
+Both overlay files reverted; `stage-perf-serc-fb` is a rejected artifact.
+
 **Emission attribution limit (2026-11-18).** A 60-iteration `sample`
 profile of `compileall_source` on `perf-rust-serc` is dominated by
 process-level filesystem syscalls (`open`/`rename`/`unlinkat`/`mkdir`/
