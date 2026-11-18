@@ -343,6 +343,23 @@ byte-identical output on `compileall_source` but measured wall/cpu
 Reverted; remaining `rules` cost needs walk fusion or cheaper analyses,
 not per-check pre-filters.
 
+**JIT guard analysis (2026-11-18).** Two bounded leads measured/checked
+and both land below the floor or above the risk line. (a) The only hot
+uops still carrying `HAS_ESCAPES_FLAG` on nbody are the exact-builtin
+`_UNPACK_SEQUENCE_{TUPLE,LIST,TWO_TUPLE}` family — their implementations
+incref items onto the stack before decref-ing the container, so no user
+code can run; a whitelist inside `prune_validity_checks` would remove
+~14 of the trace's 30 remaining `_CHECK_VALIDITY` uops (~47% of the
+residual 4.35% nbody share), i.e. well under the 1% gate floor
+aggregate-wide, so not worth a cycle. (b) `_CHECK_FUNCTION_VERSION`
+(~15% summed stale share, up to ~3.8% richards) cannot be hoisted like
+globals: `func_version` is cleared by `func_clear_version` at ~9
+attribute-mutation sites (`__code__`, `__defaults__`, `__kwdefaults__`,
+`__closure__`, etc.) and there is no executor dependency mapping
+func_version → executors the way the globals bloom-filter dependency
+invalidates traces. Hoisting requires a new invalidation dependency
+type — safety-critical infrastructure work, not a peephole.
+
 - `campaign/jit-subscr-virtual` `da402d9` — stack tip, worktree
   `.work/wt/jit-subscr-virtual` (closeout-allowed). Evals 7+8: fused
   unpack-to-locals (`_UNPACK_SEQUENCE_TWO_TUPLE_TO_FAST`,
