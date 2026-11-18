@@ -383,6 +383,20 @@ the barrier/shape relaxation has nothing to unlock. Reverted; the
 remaining unbox ceiling is values boxed at local/stack stores, not
 escape barriers.
 
+**Unbox ceiling pinned (2026-11-18).** The probe's null result exposed
+the real bound: `_STORE_FAST_FUSED_FLOAT{,_OR_NULL}` and `_INT` write
+`_PyStackRef` (boxed `PyFloat`/`PyLong`) straight into `GETLOCAL` —
+named locals are always boxed objects. The `_PyUnboxedSlots` mechanism
+only covers stack temporaries inside a trace segment; any value that
+touches a named local round-trips through a boxed object on every
+store/load. Unboxed locals would require a frame-representation change
+plus materialization at every observation point (`f_locals`,
+debugging, calls, deopt) — the escape-synced-boxing project, not a
+planner tweak. This bounds realistic JIT gains to stack-temp
+unboxing breadth and guard/store micro-costs; the dominant
+local-churn shares (`_STORE_FAST_FUSED_FLOAT*` ~16% nbody,
+`_STORE_SUBSCR_LIST_INT_FLOAT` ~19%) are the object model itself.
+
 - `campaign/jit-subscr-virtual` `da402d9` — stack tip, worktree
   `.work/wt/jit-subscr-virtual` (closeout-allowed). Evals 7+8: fused
   unpack-to-locals (`_UNPACK_SEQUENCE_TWO_TUPLE_TO_FAST`,
