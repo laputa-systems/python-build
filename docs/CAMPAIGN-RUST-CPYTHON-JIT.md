@@ -81,6 +81,17 @@ verdict as measured. Run ID:
 `20261118T185932Z-perf-rust-jit-vs-perf-rust-jit-aa`.
 Receipt SHA-256:
 `3849ff142c19d42a378eb8664def290112f167f8e8e98ff6e77078ef7888aad0`.
+The two measured install prefixes differ by three characters. The pooled
+CPU ratios were 1.0131 for `chaos` and 1.0148 for `deltablue`, with
+inconclusive per-run intervals in both. `gzip_extract_1m` and
+`zlib_decode_1m` had inconclusive RSS, private-memory and PSS intervals.
+Self-calibration isolates sampling from stage differences. If it bounds
+the metrics, rebuild a same-revision pair at equal-length install paths
+as specified in H0.
+
+The Rust JIT baseline's 2,000-program differential fuzz run (seed 0)
+reported 97.45% JIT coverage, zero mismatches and zero nondeterministic
+cases. See `rust-cpython/logs/cloud-bringup/jit-fuzz.log`.
 
 ### Scorecard
 
