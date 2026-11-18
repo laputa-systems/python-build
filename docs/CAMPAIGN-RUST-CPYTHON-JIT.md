@@ -500,9 +500,20 @@ total 461.5 ms — `emit` 68.8% (`asm-finish` 38.8% of which
 `validate` 2.4%. The visitor-dominated phases (`context`+`rules`+
 `validate` ≈ 22.6%) plus ruff `parse` (8.6%) bound the fusion ceiling at
 roughly a quarter of compile time; capturing even half of it approaches
-the C3 gap. **Next concrete project:**
-measure per-collector cost (phase timers exist; a visitor-count census
-would size it), then fuse compatible collectors into shared traversals —
+the C3 gap. Notes for that project: `syntax_warning::may_warn` is
+already token-gated (`tokens_may_warn` short-circuits the AST `Scan`), so
+it is not a free win; the scope collectors (`ModuleNameCollector`,
+`ScopeBodyFactsCollector`, `LocalCollector`, `NamedExpressionCollector`)
+each implement `ruff_python_ast::visitor::Visitor` and recurse via
+`walk_*` on themselves, so naive composition re-traverses — real fusion
+needs each collector split into fact-extraction vs recursion, or a
+combined visitor that recurses once and dispatches to all collectors per
+node. That is a mechanical but wide refactor across `scope.rs`,
+`syntax_warning.rs`, `syntax.rs`, `static_blocks.rs`, `cpython_only.rs`,
+with byte-parity + warning-order verification via the census. **Next
+concrete project:** measure per-collector cost (phase timers exist; a
+visitor-count census would size it), then fuse compatible collectors into
+shared traversals —
 the first bounded-looking lever with enough headroom (~10%+) to matter
 for C3, provided each collector's facts and warning/error ordering stay
 byte- and diagnostic-identical. Parity census + `test_serc_compile`
