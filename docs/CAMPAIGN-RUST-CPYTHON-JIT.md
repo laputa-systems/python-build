@@ -493,7 +493,14 @@ each performing its own full traversal per module *and* nested scopes.
 This revises the earlier "context is already fused" note: fusion exists
 only inside `SourceAnalysis`/`ModuleNameCollector::collect_with_source`;
 the warning scan, syntax validator, cpython_only checks, and the
-scope-facts collectors remain separate walks. **Next concrete project:**
+scope-facts collectors remain separate walks. Quantified on the same
+corpus via `SERC_PROFILE` on the release crate (907 django files, Py316):
+total 461.5 ms — `emit` 68.8% (`asm-finish` 38.8% of which
+`pipeline-optimize` 28.3%), `context` 11.7%, `rules` 8.5%, `parse` 8.6%,
+`validate` 2.4%. The visitor-dominated phases (`context`+`rules`+
+`validate` ≈ 22.6%) plus ruff `parse` (8.6%) bound the fusion ceiling at
+roughly a quarter of compile time; capturing even half of it approaches
+the C3 gap. **Next concrete project:**
 measure per-collector cost (phase timers exist; a visitor-count census
 would size it), then fuse compatible collectors into shared traversals —
 the first bounded-looking lever with enough headroom (~10%+) to matter
