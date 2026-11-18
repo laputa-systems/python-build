@@ -718,6 +718,21 @@ oracle tests need `SERC_TEST_PYTHON`, unavailable in scratch). Measured:
 (3.5 ms) + `may_warn` Scan behind the same error-priority discipline,
 then the per-scope planning walks (`ScopeBodyFactsCollector` +
 `LocalCollector`, ≈ 18 ms).
+**Stage-2 warning fusion landed (2026-11-18, `47e5f71`).**
+`syntax_warning::Scan` is folded into `RulesScan` as a parallel
+warn-block stack plus the compare/call/subscript/assert/lazy-import
+candidate checks; `may_warn` keeps only its token half. `rules` phase
+31.5 → 28.4 ms on the django corpus; cumulative rules-phase reduction
+from the five original walks is 42.8 → 28.4 ms (−34%). Marshal output
+byte-identical to the pre-fusion implementation on all 907 files at
+-O0/-O1/-O2 plus synthetic warning cases; 1,260 serc lib tests pass.
+Remaining rules-phase walks: `walk-validator` ≈ 9 ms (error-producing
+visitor — needs its own error-priority analysis), `walk-expr-blocks`
+≈ 3.5 ms (`static_blocks` bespoke block-limit traversal),
+`walk-dup-keys` (small). Context-phase walks (`walk-scope-inputs`
+≈ 21 ms incl. module names, `walk-locals` ≈ 11 ms,
+`walk-scope-facts` ≈ 7.5 ms per-scope) remain the largest untapped
+bucket but carry the highest semantic risk.
 
 - `campaign/jit-subscr-virtual` `da402d9` — stack tip, worktree
   `.work/wt/jit-subscr-virtual` (closeout-allowed). Evals 7+8: fused
