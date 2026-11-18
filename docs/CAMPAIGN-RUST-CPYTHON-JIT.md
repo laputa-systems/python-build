@@ -478,6 +478,29 @@ Conclusion: the graph pipeline's exception/borrow machinery is genuinely
 required by real branch code; there is no bounded eligibility expansion.
 Both overlay files reverted; `stage-perf-serc-fb` is a rejected artifact.
 
+**Serc compile profile — AST-traversal dominance found (2026-11-18).**
+Symbolized sampling of the release `serc` crate (`--profile profiling`,
+907-file django corpus x400) shows compile time concentrated in *many
+distinct AST visitor walks*, not the assembler: `ModuleNameCollector::
+visit_expr`/`visit_stmt` (scope.rs), `ScopeBodyFactsCollector`,
+`LocalCollector::collect_suite_with_unwind`, `NamedExpressionCollector`,
+`syntax_warning::Scan`, `syntax::Validator::visit_expr`,
+`static_blocks::ExpressionBlocks`, and `cpython_only` checks
+(`Nesting`, `CapturesDebug`, `has_too_many_nested_interpolated_strings`),
+plus `NameInterner`/`intern_name_with_spelling` hashing. These correspond
+to the `context`/`rules`/`validate` phases (~25-30% of compile combined)
+each performing its own full traversal per module *and* nested scopes.
+This revises the earlier "context is already fused" note: fusion exists
+only inside `SourceAnalysis`/`ModuleNameCollector::collect_with_source`;
+the warning scan, syntax validator, cpython_only checks, and the
+scope-facts collectors remain separate walks. **Next concrete project:**
+measure per-collector cost (phase timers exist; a visitor-count census
+would size it), then fuse compatible collectors into shared traversals —
+the first bounded-looking lever with enough headroom (~10%+) to matter
+for C3, provided each collector's facts and warning/error ordering stay
+byte- and diagnostic-identical. Parity census + `test_serc_compile`
+remain the verification gate.
+
 **Emission attribution limit (2026-11-18).** A 60-iteration `sample`
 profile of `compileall_source` on `perf-rust-serc` is dominated by
 process-level filesystem syscalls (`open`/`rename`/`unlinkat`/`mkdir`/
