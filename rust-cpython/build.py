@@ -1818,6 +1818,7 @@ def _configure_source(source: Path, toolchain, target, jobs: int,
         "build_interpreter": str(_build_python()),
         "rust": _rust_identity(rustup),
         "c_toolchain": toolchain.identity(),
+        "network_sandbox": lane_linux.describe() if IS_LINUX else None,
         "sdk": _platform_sdk_report(toolchain),
         "tests": {},
     }

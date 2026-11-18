@@ -20,6 +20,7 @@ the Linux equivalents without touching the production 3.14.6 musl recipes:
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import platform
@@ -39,6 +40,7 @@ from buildsys.inputs import Cache, Input, InputError
 TARGET = "x86_64-unknown-linux-gnu"
 UNSHARE = "/usr/bin/unshare"
 _UNSHARE_ARGS = ("--user", "--map-root-user", "--net", "--")
+_DOCKER_OFFLINE = "RUST_CPYTHON_DOCKER_OFFLINE"
 
 
 class LinuxHostError(Exception):
@@ -441,9 +443,32 @@ def package_report(toolchain: LinuxToolchain) -> dict[str, str]:
     return _dpkg_versions(list(toolchain.system_packages))
 
 
+def _docker_network_proof() -> dict[str, Any]:
+    if not Path("/.dockerenv").is_file():
+        raise LinuxHostError(f"{_DOCKER_OFFLINE} requires a Docker container")
+    interfaces = sorted(name for _, name in socket.if_nameindex())
+    if interfaces != ["lo"]:
+        raise LinuxHostError(f"Docker offline build requires loopback only, found {interfaces}")
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        try:
+            # UDP connect checks routing without sending an application packet.
+            probe.connect(("192.0.2.1", 9))
+        except OSError as error:
+            if error.errno != errno.ENETUNREACH:
+                raise
+        else:
+            raise LinuxHostError("Docker offline build has an external IPv4 route")
+    return {
+        "ok": True,
+        "mechanism": "docker --network none",
+        "interfaces": interfaces,
+        "external_ipv4_route": False,
+    }
+
+
 @dataclass
 class SealedRun:
-    """A command in fresh user and network namespaces."""
+    """A command in the selected offline Linux build boundary."""
 
     write_paths: list[Path] = field(default_factory=list)
     home: Path | None = None
@@ -485,7 +510,11 @@ class SealedRun:
         log: Path | None = None,
     ) -> subprocess.CompletedProcess:
         self.prepare()
-        full = [UNSHARE, *_UNSHARE_ARGS, *command]
+        if os.environ.get(_DOCKER_OFFLINE) == "1":
+            _docker_network_proof()
+            full = command
+        else:
+            full = [UNSHARE, *_UNSHARE_ARGS, *command]
         if log is not None:
             log.parent.mkdir(parents=True, exist_ok=True)
             with log.open("w") as out:
@@ -507,6 +536,8 @@ print("CONNECTED")
 
 def network_boundary_selftest(python: Path, workdir: Path) -> dict[str, Any]:
     """Run one loopback probe outside and inside the namespace."""
+    if os.environ.get(_DOCKER_OFFLINE) == "1":
+        return _docker_network_proof()
     if not Path(UNSHARE).is_file():
         raise LinuxHostError(f"{UNSHARE} is not present")
     workdir = Path(workdir)
@@ -548,6 +579,13 @@ def network_boundary_selftest(python: Path, workdir: Path) -> dict[str, Any]:
 
 
 def describe() -> dict[str, str]:
+    if os.environ.get(_DOCKER_OFFLINE) == "1":
+        return {
+            "mechanism": "docker --network none",
+            "isolation": "Docker network namespace shared by commands in the build container",
+            "network": "container loopback only and no external IPv4 route, checked before commands",
+            "filesystem": "Docker container filesystem with a writable checkout mount",
+        }
     return {
         "mechanism": "unshare --user --map-root-user --net",
         "isolation": "fresh user and network namespaces sharing the host kernel and "

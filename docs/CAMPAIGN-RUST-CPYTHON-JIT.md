@@ -51,6 +51,31 @@ evidence; none of those numbers is a Linux measurement.
 
 **Owner queue:** empty. Nothing in this checkpoint needs an owner decision.
 
+**Cloud baseline bring-up authorized, 2026-11-18.** The owner approved using
+the Linux x86-64 cloud host for this bring-up. The Docker path below keeps the
+Ubuntu 24.04 userspace and pinned build inputs. Cloud timing starts with
+same-host A/A controls. Gate eligibility remains pending those results.
+At repository revision `52aeece` plus the cloud setup changes, the Ubuntu
+image installed all 20 locked packages, the offline doctor passed, and
+the debug CPython 3.16 build and interpreter smoke passed. The debug
+`test_bz2` and `test_zlib` run reported 199 tests with 2 skips. The
+cloud host fingerprint and logs are under `rust-cpython/logs/cloud-bringup/`.
+The clean `perf-upstream` reference built in 386.9 seconds and passed
+interpreter, compression, and SQLite smoke checks. Its stage digest is
+`baccd4274853fe7fc271434efdec7ae23adaaa318dceb231252a81f769e4a996`
+(`rust-cpython/results/perf-upstream.json`).
+The clean upstream JIT, Rust JIT, and independent Rust JIT twin stages also
+built. Both Rust JIT reports verified 58 extensions and matched on source,
+overlay, toolchain, lock and feature identity. The leaf-call test passed
+all seven traces. On `spectral_norm`, the Linux JIT map reported 30,246
+code bytes and libpython reported 3,513,871 text bytes. See
+`rust-cpython/logs/cloud-bringup/jit-stats.log`.
+The first cloud A/A comparison, `perf-rust-jit` versus
+`perf-rust-jit-aa`, started on 2026-11-18 at 18:59 UTC with the
+five-run JIT gate and its existing guard workloads. The pre-check passed
+with 98.8% minimum CPU idle. Timing evidence requires the completed
+verdict and the post-check. See `rust-cpython/logs/cloud-bringup/aa.log`.
+
 ### Scorecard
 
 | Track | Measure | Current | Qualified? | Target / gap |
@@ -386,6 +411,32 @@ source-refresh decision is made. A new native Linux x86-64/Ubuntu 24.04
 host invalidates every macOS build, control, code-size receipt, A/A spread,
 and performance score. Preserve those receipts as historical evidence.
 Nothing is Linux-qualified until the native host records successful steps.
+
+#### Cloud execution
+
+From the repository root on the authorized x86-64 cloud host, run:
+
+```sh
+bash rust-cpython/tools/cloud-ubuntu.sh image
+bash rust-cpython/tools/cloud-ubuntu.sh fetch
+bash rust-cpython/tools/cloud-ubuntu.sh offline python3 rust-cpython/perf.py doctor
+bash rust-cpython/tools/cloud-ubuntu.sh offline python3 rust-cpython/build.py build --jobs 4
+bash rust-cpython/tools/cloud-ubuntu.sh offline rust-cpython/stage/bin/python3.16d -E -S -VV
+```
+
+The image uses a digest-pinned Ubuntu 24.04 base and installs the locked
+packages. Fetch uses the host's CA bundle for TLS verification. Build and
+test commands run as the calling UID with Docker's network disabled and
+all capabilities dropped. The Linux builder checks for a loopback-only
+namespace and proves there is no external IPv4 route before sealed
+commands. The native workflow continues to use the namespace self-test.
+
+Use `offline` for each of the six clean perf builds and for the
+same-source A/A twin. Record the image ID and cloud host fingerprint with
+their build reports. Bracket cloud timing with the existing quiet-host
+checks, retain A/A results, and keep timing evidence scoped to this
+environment pending qualification. The six-stage matrix and P0 order below
+also apply to cloud bring-up.
 
 1. **Provision and preflight on the actual Linux host.** From a clean
    `main` clone, run the checked-in phased bootstrap:
@@ -749,17 +800,20 @@ and an LLVM incompatibility that patching `Tools/jit` cannot fix.
   semantics, fuzzer coverage, or failure exclusions to pass a candidate.
 - **TLS stays out.** `_ssl_rs`, `_hashlib_rs`, RTLS/Graviola, and trust-store
   code are untouched. Serc's SipHash `.pyc` source hashing is unrelated.
-- **Hosts.** All active correctness, performance, and closeout work runs
+- **Hosts.** Native qualification runs
   natively on Linux x86-64 (Ubuntu 24.04, glibc 2.39, per
   `rust-cpython/linux-toolchain.lock.json`; OD20). No VM, Docker, emulation,
-  or remote execution is part of this campaign. Native macOS arm64 is closed
+  or remote execution substitutes for native qualification. The authorized
+  cloud workflow above also permits containerized baseline bring-up.
+  Native macOS arm64 is closed
   history for this campaign; preserve its receipts as history. macOS and
   Linux arm64 are out of scope. Reopening any other host takes an explicit
   owner decision.
 - **Network.** Allowed reads: lane `fetch` and `perf.py fetch` of locked
   inputs, `git ls-remote`/archive downloads of `python/cpython`, and clones of
-  pinned CinderX and Serc commits into `.work/`. No pushes, PRs, issues, or
-  comments anywhere, including upstream Serc, CinderX, or CPython.
+  pinned CinderX and Serc commits into `.work/`. The owner authorized
+  pushing campaign checkpoint commits to this repository's campaign branch.
+  PRs, issues, comments, and pushes to upstream projects remain out of scope.
 
 ## Reference roles
 

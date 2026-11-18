@@ -1333,6 +1333,7 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
         "build_interpreter": str(_build_python(paths["build"])),
         "rust": lb._rust_identity(shutil.which("rustup")),
         "c_toolchain": toolchain.identity(),
+        "network_sandbox": lb.lane_linux.describe() if lb.IS_LINUX else None,
         "stage": str(paths["stage"]),
         "stage_identity": tree_digest(paths["stage"]),
     }
