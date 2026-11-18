@@ -127,6 +127,13 @@ the atomic renames exercised by `test_import` and `test_compileall`.
 The pristine CPython control reproduced the `test_profiling` timeout in
 `test_script_error_treatment` and the `test_external_inspection` dead-process
 read error.
+With the runner fixes, the full `perf-rust` baseline finished with 52,220
+tests reported and six failed files. Four were the existing asyncio
+sendfile, asyncio SSL protocol, SSL and support suites. The other two
+were the profiling timeout and external-inspection error reproduced on
+pristine CPython. The combined JIT+Serc stage also passed 2,000
+differential fuzz cases (97.45% JIT coverage, no mismatches or
+nondeterministic cases). Full JIT and Serc suite parity remains pending.
 
 Cloud PMU profiling is deferred. A self-only user-mode CPU-cycle
 `perf_event_open` probe returned `EPERM` in both the agent host shell and the
