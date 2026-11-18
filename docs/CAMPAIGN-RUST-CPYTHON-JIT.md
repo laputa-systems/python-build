@@ -330,6 +330,19 @@ construct checks is the most concrete bounded Serc lever found; expected
 ceiling roughly 5–10% of compile CPU if most walks can be skipped or
 fused, against the ~12% C3 gap.
 
+**Measured: rules pre-filter is sub-floor (2026-11-18, exploratory).**
+Token pre-filters gating `captures_debug_pattern` (needs `TokenKind::
+Match`), `has_deep_format_spec` + `has_too_many_nested_interpolated_
+strings` (need `FStringStart`/`TStringStart`), and `leaves_finally_body`
+(needs `TokenKind::Finally`, signature extended to take tokens) preserved
+byte-identical output on `compileall_source` but measured wall/cpu
+0.993/0.999 compileall, 0.995/0.995 django, 0.999 startup — inside the
+1% floor, `WITHIN-BUDGET`. The gated walks were a small slice of `rules`;
+`parser_stack_estimate`, `static_blocks::validate`,
+`validate_with_integer_limit`, and `may_warn` still traverse every file.
+Reverted; remaining `rules` cost needs walk fusion or cheaper analyses,
+not per-check pre-filters.
+
 - `campaign/jit-subscr-virtual` `da402d9` — stack tip, worktree
   `.work/wt/jit-subscr-virtual` (closeout-allowed). Evals 7+8: fused
   unpack-to-locals (`_UNPACK_SEQUENCE_TWO_TUPLE_TO_FAST`,
