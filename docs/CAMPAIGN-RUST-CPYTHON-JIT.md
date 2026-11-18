@@ -4801,6 +4801,20 @@ bounded experiment. Bounded AST-walk fusion is therefore exhausted:
 rules-phase walks are fused to their floor (the `Validator` replay
 machinery and `static_blocks` bespoke `BlockLimit` traversal were
 analyzed and rejected), and the context-phase collectors need the
+**Module-bindings trigger narrowing — measured, reverted (`3b06f18`→`6eb94cb`).**
+The `requires_module_bindings` gate was narrowed so `super` interned only
+inside nested bodies no longer triggers the module-local `LocalCollector`
+walk (the walk never descends into nested bodies, so the result is
+provably unchanged; `global` decls and comprehension walruses stay covered
+via `module_globals`). Verified byte-identical marshal on all 3,436
+census-corpus files plus 20 synthetic super-placement cases, and 1260 lib
+tests pass — but same-binary A/B `SERC_PROFILE` on the 907-file django
+corpus showed `context` identical at 52.1 ms old vs 52.1 ms new. The
+`walk-locals` ~11 ms census bucket is dominated by the **per-scope**
+`LocalCollector::collect_suite` runs inside `build_scopes` (one per
+function/class body), not the single shallow module-level walk this flag
+gates. Reverted: correct but sub-floor, and the per-scope collectors are
+exactly the research-grade merge already scoped above.
 research-grade merge. A 30 s `sample` profile of the release `fb_probe`
 over the 907-file django corpus (300 reps) confirms the same for the
 emit side: `OptimizationPipeline::optimize` internals are diffuse — the
