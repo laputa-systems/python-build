@@ -96,12 +96,20 @@ Its coroutine and generator suites passed all 159 tests. The clean
 no-JIT `perf-rust` and Serc-only `perf-rust-serc` stages built and
 launched. The no-JIT compiler control passed five suites (857 tests
 reported, 5 skipped), and the Serc-only stage passed all 11 source-mode
-routing tests. The combined build and the Serc verification suites are
-now at the next checkpoint: `perf-final-jit-serc` built in 826.6 seconds,
+routing tests. The `--serc-verify` compiler comparison passed the same
+five suites with the same counts. The combined `perf-final-jit-serc`
+stage built in 826.6 seconds,
 verified 58 Rust extensions, and launched CPython 3.16. All six optimized
-baseline stages and the independent A/A twin are present. The Serc
-verification suites run before self-calibration. See the stage reports
-under `rust-cpython/results/`.
+baseline stages and the independent A/A twin are present. See the stage
+reports under `rust-cpython/results/`.
+
+The first five-run cloud self-calibration completed with a diagnostic
+`CALIBRATION-INCONCLUSIVE` verdict (12 timing metrics unbounded).
+The post-check failed at 0.774% CPU steal, above the 0.2% limit, so this
+run cannot qualify the measurement path. Full correctness work can
+proceed before another quiet calibration window. Run ID:
+`20261118T211238Z-calibrate-perf-rust-jit`. Receipt SHA-256:
+`938bf9aee332a75face612f634539e6e43e704cd352c464a8c3b4cd11d820374`.
 
 ### Scorecard
 
