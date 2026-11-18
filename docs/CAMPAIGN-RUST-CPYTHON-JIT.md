@@ -665,6 +665,43 @@ single dispatching visitor preserving per-collector visit order keeps
 observable behavior identical. Expected capture roughly half the
 rules-phase walk cost ≈ 3–5% of compile — the largest remaining
 bounded lever toward C3.
+**Rules-phase fusion design (2026-11-18).** Collector classification
+for the fused `RulesScan` walk: `CapturesDebug` and `DeepFormatSpec`
+are pure OR-bool standard Visitors (stmt-only / expr-only) — trivial
+dispatch. `Nesting` (interpolated-string depth) and the `MAX_NESTING`
+`Nesting` need enter/exit depth hooks around `walk_expr`/`walk_stmt`;
+`Shape` (`parser_stack_estimate`) needs the same pre/post slot
+accounting on stmt/expr/parameters — all replicable because the fused
+visitor calls each handler before and after its single `walk_*`
+recursion. `FinallyExit` (`leaves_finally_body`) is the awkward one:
+custom stmt arms assign `Finally`/`Loop` block context per field and
+`visit_scope` saves/restores the block stack at function/class/lambda
+boundaries while `visit_expr` is empty — the fused visitor must push
+block markers in `visit_stmt` pre-hooks and invoke scope save/restore
+at the same boundaries, and its canonical `walk_stmt` must be checked
+against `FinallyExit`'s manual field order for coverage equivalence
+(superset visits are safe for an OR-bool detector only if block-state
+semantics are preserved). `syntax_warning::Scan` is bespoke (custom
+stmt arms, block stack, global early-exit) — exclude from stage 1;
+its result is order-insensitive but its custom traversal coverage
+would need a separate equivalence proof. `validate_with_integer_limit`
+(9.2 ms) and `static_blocks::validate` (3.5 ms `walk-expr-blocks`)
+stay for stage 2 behind the fixed error priority
+validator → static_blocks → source_rules → compiler_rules; each
+collector's internal first-error order is preserved because the fused
+walk uses canonical `walk_*` order identical to each standalone
+Visitor. Stage-1 scope: one `RulesScan` visitor in `cpython_only.rs`
+(or a sibling module) computing `captures_debug`, `deep_format_spec`,
+`interpolated_nesting`, `max_nesting`, `parser_stack_shape`, and
+`finally_exit` facts in a single traversal; `source_rules` /
+`compiler_rules` then evaluate the fixed reason priority from stored
+facts. `parser_stack_estimate`'s token-based bracket-depth term is
+unchanged (computed outside the walk). Token pre-filters from the
+rejected experiment stay rejected — this fuses the walks themselves.
+Verification gate: `test_serc_compile` 11/11, `serc_parity` 30,318-case
+census with 0 mismatches, per-file marshal digests at -O0/-O1/-O2, and
+a `SERC_PROFILE` re-run expecting `rules` phase ≈ 8.5% → ~4–5% of
+compile.
 
 - `campaign/jit-subscr-virtual` `da402d9` — stack tip, worktree
   `.work/wt/jit-subscr-virtual` (closeout-allowed). Evals 7+8: fused
