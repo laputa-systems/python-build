@@ -142,37 +142,51 @@ namespaces; macOS uses `sandbox-exec`.
 
 ## Fresh Linux host setup
 
-Native x86-64 Ubuntu 24.04 (glibc 2.39) — no VM, Docker, emulation, or
-another distribution. On a fresh host, in order:
+Native x86-64 Ubuntu 24.04 (glibc 2.39), not a container, VM or emulated
+host. Start in a fresh clone at the intended campaign revision. Use the
+checked-in phased bootstrap (which reads pinned package versions from
+`linux-toolchain.lock.json`, without requiring `jaq` or `jq`):
 
 ```sh
-# 1. Pinned host packages (exact versions; lane doctor checks them)
-sudo apt-get update
-sudo apt-get install -y make=4.3-4.1build2 pkgconf=1.8.1-2build1 \
-  $(jaq --from json -r '.system_packages[]' rust-cpython/linux-toolchain.lock.json)
-
-# 2. Rustup with no default toolchain, then the lane's pinned channel
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-  sh -s -- -y --profile minimal --default-toolchain none
-rustup toolchain install nightly-2026-09-15 --profile minimal --component rust-src
-
-# 3. Fetch locked inputs, then confirm the environment is green
-python3 rust-cpython/build.py doctor    # caches pending on a fresh host
-python3 rust-cpython/build.py fetch     # ~2 GiB: CPython source, Serc,
-                                         # LLVM 23.1.2 + ICU 70, mpdecimal,
-                                         # private Cargo home
-python3 rust-cpython/build.py doctor    # must be ok: true
-python3 rust-cpython/perf.py doctor
+bash rust-cpython/bootstrap-linux.sh install   # apt + Rust nightly + gate checker
+bash rust-cpython/bootstrap-linux.sh fetch     # verified LLVM, CPython, Serc, Cargo, Django wheels
+bash rust-cpython/bootstrap-linux.sh smoke     # debug CPython build + interpreter smoke
+bash rust-cpython/bootstrap-linux.sh check     # toolchain doctors + gate controls
 ```
 
-`unshare -U -n true` must exit 0 (the offline build boundary runs in fresh
-user and network namespaces). `make` and `pkgconf` are checked at the
-`/usr/bin` paths the lock names; `RUSTUP_TOOLCHAIN` must not force another
-channel. The pins were refreshed 2026-11-18 because noble superseded the
-previous set; if doctor reports a superseded package, refresh the pin in its
-own commit — never to make a gate pass. Full bring-up, including the
-baseline re-measurement every macOS-derived reference needs, is in the
-campaign's **Fresh Linux host bring-up** section.
+These are explicit phases; `all` invokes the sequence. The `install`
+phase uses `sudo apt-get`, installs rustup only when absent, and copies
+the repo's fail-closed `tools/perf-gate-ready` into `~/.local/bin`.
+The scripts prepend `~/.cargo/bin` and `~/.local/bin` to PATH for their
+own processes. **For a new shell or an unattended agent session**, also use
+`export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"`. Leave
+`RUSTUP_TOOLCHAIN` unset; the lane explicitly selects
+`nightly-2026-09-15` with `rust-src` even though the root
+`rust-toolchain.toml` names another interactive toolchain.
+
+Bootstrap deliberately fails if
+`/usr/bin/unshare --user --map-root-user --net -- true` cannot run.
+Ubuntu 24.04's AppArmor policy can block unprivileged user namespaces; an
+administrator must grant a **narrow reviewed policy** for the build isolation
+entrypoint or provide a host with the required permissions. Never disable
+system-wide AppArmor/user-namespace protections to obtain a green check.
+Likewise, installability of exact Ubuntu package versions can drift over
+time; refresh verified package pins in a separate commit, never as part
+of a performance candidate.
+
+The supplied quiet-host checker is intentionally conservative (3 one-second
+CPU samples, ≥95% idle, ≤2% iowait, ≤0.2% steal, no observed swap,
+≥4 GiB available memory, ≥20 GiB free disk, load ≤0.7/core).
+`perf-gate-ready -s .` is the pre-gate check and `perf-gate-ready -1`
+the post-gate check; the benchmark's internal quietness and output parity
+checks are still mandatory. A busy host can complete bootstrap but cannot
+produce accepted timing evidence.
+
+The **Linux host itself still needs to run** the build and verification
+steps above; CI on a different runner or a syntax/self-test check is not
+a native-host qualification. Baseline reconstruction and the full
+predetermined P0 protocol are in the campaign's
+[Fresh Linux host bring-up](../docs/CAMPAIGN-RUST-CPYTHON-JIT.md#fresh-linux-host-bring-up-2026-11-18-od20).
 
 ## Performance harness
 
@@ -199,6 +213,21 @@ and `inputs.linux-cp316.lock.json`; the macOS harness uses the macOS lock.
 | `goals [--candidate R] [--module M ...]` | Module rows against the control |
 | `setup-worktree` | Share verified caches from the primary checkout into a worktree |
 | `status` | Lease holders and every perf build with commit, flags, and suite state |
+
+On Linux x86-64, `jit-stats --ref perf-rust-jit --workload spectral_norm`
+now obtains JIT `code_b` from the same per-trace TSV map used on macOS,
+while the ELF libpython section sizes come from `llvm-readelf`. A
+successful native Linux JIT build and nonzero `code_b` are **required
+bring-up evidence**, not assumed from compiling the source.
+`perf.py profile --tool sample --jit-map` remains macOS-only.
+For Linux native profiling, run `perf record`/`perf report` on the exact
+training workload in an isolated, documented run and retain the separate
+`PYTHON_JIT_MAP` address TSV for attribution; never claim per-uop sample
+attribution until sampled IPs have actually been joined to this mapping.
+Kernel `perf_event_paranoid` or missing perf tools may block hardware
+profiling; record the restriction and ask the host administrator rather
+than changing system security policy silently. This does not block
+correctness tests or paired wall/CPU timing.
 
 On macOS arm64, `profile --tool sample --jit-map --workload W` sets
 `PYTHON_JIT_MAP` to a file in the profile result directory. The instrumented

@@ -83,7 +83,10 @@ memory stalls. This reorders the C queue below.
 ### P0 — qualification debt (first quiet window, predetermined)
 
 **OD20 note.** Every build, reference and receipt in this section was made
-on macOS arm64 and does not transfer. On the Linux host the protocol below
+on macOS arm64 and does not transfer. The Linux setup and trace-map tooling
+landed after OD20 at `a4a8934`; its source changes are not themselves Linux
+performance evidence. Reconstruct only Git-reachable historical stages, and
+do not make unavailable unpublished probe objects a prerequisite. On the Linux host the protocol below
 is re-run in full against Linux-rebuilt stages (see **Fresh Linux host
 bring-up**, step 6): B1–B6 are rebuilt clean at their recorded commits,
 G1–G5 re-run with the same predetermined rules, and no row in the macOS
@@ -148,11 +151,13 @@ G3 is repeated at the reverted profile against `perf-climb-ref` instead.
 numbered evaluations plus the validity-pruning gate, two ACCEPTs (eval 9 now
 unqualified; validity step qualified), and the M4 milestone gate ran
 (missed). Totals and the consecutive-failure counter (0 since the last
-accepted step) carry forward. Before ranking, P1 re-profiles all 16 kernels
-on the post-P0 incumbent **sequentially** (`perf.py profile --tool sample
---jit-map --ref perf-rust-jit --workload <kernel>`, one at a time on a quiet
-host; the 2026-11-18 00:03 set ran concurrently and has ≤ 600 samples per
-kernel, so it is unusable). Then rank by share of total kernel CPU without
+accepted step) carry forward. Before ranking, P1 re-profiles all 16 kernels on the post-P0
+**Linux** incumbent sequentially, using native `perf record`/symbols and
+validated JIT TSV address ranges (not `perf.py profile --tool sample --jit-map`,
+which is macOS-only). The historical 2026-11-18 macOS samples are not
+transferable. Record event permissions, exact commands, sample counts,
+JIT-address coverage, and any unresolved IPs; only then rank by share of
+total kernel CPU without
 double counting, in these buckets: JIT code (bookkeeping uops, guards,
 compute), interpreter fallback, allocation/deallocation/refcount, GC, TLS
 access, other runtime helpers. Provisional ranking from the 11-15 profiles:
@@ -375,86 +380,103 @@ resume. Never cancel an unrelated campaign or assume any process still runs.
 
 ### Fresh Linux host bring-up (2026-11-18, OD20)
 
-Run once per fresh campaign host, in order. Nothing from the macOS host
-carries over: every build, baseline and kept stage is rebuilt and
-re-measured before any gate, milestone or closeout claim. macOS receipts are
-preserved as history and are never Linux evidence. Bring-up itself produces
-no qualification evidence.
+**Fresh platform baseline, not a CPython source epoch change.** Keep the
+pinned e891 CPython source and historical attempt ledger unless an explicit
+source-refresh decision is made. A new native Linux x86-64/Ubuntu 24.04
+host invalidates every macOS build, control, code-size receipt, A/A spread,
+and performance score. Preserve those receipts as historical evidence.
+Nothing is Linux-qualified until the native host records successful steps.
 
-1. **OS.** Native x86-64 Linux, Ubuntu 24.04, glibc 2.39; no VM, Docker,
-   emulation or remote execution. `unshare -U -n true` must exit 0 — the
-   sealed build boundary runs in fresh user and network namespaces, and the
-   build fails its boundary self-test without them. Check with
-   `perf-gate-ready -s .` (needs ≥ 20 GiB free; plan for ≥ 60 GiB over the
-   campaign: locked LLVM ≈ 2 GiB, the source caches and several kept perf
-   stages at ~3 GiB each).
-2. **Pinned host packages.** Install the `system_packages` entries from
-   `rust-cpython/linux-toolchain.lock.json` plus `make=4.3-4.1build2` and
-   `pkgconf=1.8.1-2build1` (the lane's doctor checks the exact installed
-   versions):
+1. **Provision and preflight on the actual Linux host.** From a clean
+   `main` clone, run the checked-in phased bootstrap:
 
    ```sh
-   sudo apt-get update
-   sudo apt-get install -y make=4.3-4.1build2 pkgconf=1.8.1-2build1 \
-     $(jaq --from json -r '.system_packages[]' rust-cpython/linux-toolchain.lock.json)
+   bash rust-cpython/bootstrap-linux.sh install
+   bash rust-cpython/bootstrap-linux.sh fetch
+   bash rust-cpython/bootstrap-linux.sh smoke
+   bash rust-cpython/bootstrap-linux.sh check
+   export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
    ```
 
-   The pins were refreshed on 2026-11-18 (`e291795`) because noble superseded
-   the previous set; doctor reports any future drift. A pin refresh is its
-   own build-tooling commit, never a gate change. `libc6-dev` stays within
-   glibc 2.39; do not accept a new major glibc.
-3. **Rust.** rustup with no default toolchain, then the lane's pinned
-   channel `nightly-2026-09-15` (`RUST_CHANNEL` in `rust-cpython/build.py`)
-   with `rust-src`:
+   `install` uses stdlib JSON to read `linux-toolchain.lock.json`; no
+   preinstalled `jaq`/jq required. It installs exactly pinned Ubuntu
+   packages and the lane's Rust nightly plus `rust-src`.
+   `fetch` verifies the locked LLVM/ICU/mpdecimal/Cargo/source inputs
+   **and** fetches `benchmarks/inputs.linux-cp316.lock.json`'s Django
+   wheel closure through `perf.py fetch` before benchmarks.
+   `smoke` performs a real debug build and launches the installed
+   `stage/bin/python3.16d`. `check` requires both doctors to succeed.
+   These actions must run on the new host; no local/macOS or unrelated CI
+   success substitutes for their result.
 
-   ```sh
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
-   rustup toolchain install nightly-2026-09-15 --profile minimal --component rust-src
-   ```
+2. **Namespace and quiet-host prerequisites.** The sealed build needs
+   `/usr/bin/unshare --user --map-root-user --net -- true` to succeed.
+   Ubuntu 24.04 AppArmor may deny unprivileged user namespaces. Stop and
+   obtain a narrowly scoped administrator-reviewed permission/policy or
+   use an approved host that supports this isolation. Never disable
+   AppArmor or user namespaces globally, use Docker/emulation, or silently
+   run an unsealed build. The bootstrap installs the checked-in
+   `tools/perf-gate-ready` at `~/.local/bin/perf-gate-ready` and verifies
+   its decision controls. `perf-gate-ready -s .` checks disk and CPU
+   quietness; `perf-gate-ready -1` is the corresponding post-check.
+   A busy host may pass bootstrap but cannot yield accepted performance
+   evidence. Budget at least 60 GiB of working disk for multiple clean
+   stages (20 GiB available is merely the gate's safety floor).
 
-   The root `rust-toolchain.toml` pins `nightly-2026-11-09` for interactive
-   Cargo use; the lane deliberately builds with `nightly-2026-09-15`. Do not
-   unify them by editing either file. `RUSTUP_TOOLCHAIN` must not force a
-   different toolchain (an exported override silently retargets every
-   `rustup` call; this host's global `nightly-2026-09-15-x86_64-unknown-linux-musl`
-   override is exactly the failure mode to avoid).
-4. **Fetch and doctor.** Clone or copy the repo, then:
-
-   ```sh
-   python3 rust-cpython/build.py doctor    # expect: caches pending
-   python3 rust-cpython/build.py fetch     # locked CPython source, Serc,
-                                           # LLVM 23.1.2 + ICU 70, mpdecimal,
-                                           # private Cargo home (~2 GiB)
-   python3 rust-cpython/build.py doctor    # must be ok: true
-   python3 rust-cpython/perf.py doctor     # harness side, must agree
-   ```
-
-5. **Dev environment proof.** A full pydebug dev build
-   (`python3 rust-cpython/build.py build`) must succeed and install
-   `stage/bin/python3.16d`; `python3 -c 'import sys'` on it works;
-   `python3 rust-cpython/perf.py status` lists no builds;
-   `command -v perf-gate-ready` resolves. Do not run `perf.py` timing
-   commands for qualification here; they belong to the measured phases.
-6. **Baseline refresh (mandatory before any gate; record each item in
-   Status/Ledger as the Linux re-baseline).** Rebuild clean at `main` head:
+3. **Prove the Linux JIT build and resource instrumentation.** First build
    `perf-upstream`, `perf-upstream-jit`, `perf-rust`, `perf-rust-jit`,
-   `perf-rust-serc`, `perf-final-jit`, `perf-final-jit-serc`. Reconstruct
-   `perf-climb-ref` from the recorded M0 source and flags — never from a
-   newer overlay under yesterday's name. Build a fresh A/A twin
-   (`perf-rust-jit-aa`) and run the A/A gate. Re-run the entire P0 protocol
-   (B1–B6, G1–G5) against Linux-rebuilt references: eval-9 requalification,
-   the fat-LTO epoch check, guard attribution and `S` are all platform
-   identities, not source identities, and every macOS number is void. The
-   M0 code-size denominator is re-measured on ELF — Mach-O `code_b` does not
-   transfer; `jit-stats` reports ELF text/data sizes. The C3 IPC diagnosis
-   re-runs with Linux counters (`perf stat`/`perf record` with
-   L1I/iTLB/branch-misses; `/usr/bin/time -v` replaces `-l`); the TLS bucket
-   in kernel profiles is `__tls_get_addr`/errno, not `_tlv_get_addr`.
-   Null-probe and `perf-rust-jit-vc{2,3}` controls rebuild from their
-   recorded commits for gate calibration. Until this checklist is recorded,
-   Status stays **WAIT — bring-up** and no candidate is gated; the macOS-era
-   P0 debt is recorded unpaid, not payable on macOS, and not payable on
-   Linux until the references above exist.
+   `perf-rust-serc`, and `perf-final-jit-serc` cleanly at `main` using
+   `python3 rust-cpython/perf.py build --name NAME [--empty-overlay]
+   [--jit] [--serc] --jobs N`; flags must match their respective names.
+   Record the verified build reports, source SHA, Cargo profile, compiler
+   identity, Ubuntu lock, and stage paths. Run smoke imports and native
+   targeted JIT/Serc suites before longer qualification gates.
+   `python3 rust-cpython/perf.py jit-stats --ref perf-rust-jit
+   --workload spectral_norm` must report **nonzero JIT `code_b`** from
+   Linux trace-map TSV output (and `llvm-readelf` libpython ELF sizes);
+   if it prints `unavailable`, treat M4 code-size qualification as
+   **BLOCKED** and fix the Linux probe rather than waiving it.
+   `perf.py profile --tool sample --jit-map` remains macOS-only:
+   use validated Linux `perf record`/native symbol profiles, with IP↔TSV
+   correlation where the trace/uop attribution is proven. If `perf`
+   hardware counters are restricted, record PROFILING_DEFERRED, not a
+   fictitious Linux profile. Do not silently change `perf_event_paranoid`.
+
+4. **Reconstruct historical comparison stages only from reachable source.**
+   `3bd21f6`, `f19fb2f`, `574946e`, and `bfc2e23` are reachable Git
+   history; use isolated worktrees and exact build-report identities for
+   P0 B1–B6 rather than overwriting `main`'s stages. The historical
+   `campaign/probe-layout` (`7103543`) and
+   `campaign/probe-rust` (`ace3715`) source commits are **not present
+   in the published repo**. Do not require these unavailable objects on
+   a fresh clone or silently claim they were reconstructed. For H0, use
+   fresh same-source A/A and `gate_controls.py`'s synthetic shift controls;
+   independently construct/commit fresh Linux semantically-null probes
+   only if needed for a new measurement-policy change. Preserve provenance
+   and do not alter evaluation counters.
+
+5. **Establish fresh Linux baseline before optimization.** Build a clean
+   `perf-rust-jit-aa` twin (identical source, flags, toolchain, rebuild
+   identity) and independently verify A/A and self-calibration on the
+   actual clean-host/quietness protocol. Re-run the documented
+   predetermined P0 B1–B6/G1–G5 comparisons using Linux-built stages,
+   no cherry-picked macOS verdicts. The fat-LTO reference must be the
+   **same-host, same-profile** source matched to the Linux incumbent.
+   Record CPU/wall, app guards, RSS/physical footprint, `S`,
+   held-out score, JIT code bytes, and build identity. The P0
+   five-run rule is unchanged: if a run is quiet and valid but fails,
+   retain that verdict instead of retrying until it passes. For C3,
+   collect fresh Linux cold-set and physical-footprint receipts.
+   Re-derive any IPC conclusion with native `perf stat`/counters;
+   macOS `/usr/bin/time -l` evidence does not transfer.
+
+6. **Exit bring-up with a durable checkpoint.** Update **Status**
+   with the host fingerprint (kernel, CPU/microcode, distribution,
+   glibc, toolchain, governor, disk, profile flags), each stage/ref SHA,
+   exact run IDs and verdicts. Only after these are committed as Linux
+   evidence should the J/C hillclimb resume. A fresh host without
+   verified namespaces, build, JIT code-byte probe, or gates stays
+   **WAIT/BLOCKED**, never COMPLETE or INCOMPLETE_PLATEAU by assumption.
 
 ### Phases and selection priority
 
@@ -945,9 +967,14 @@ a new upstream pin.
 
 ### P1: ceilings (start of each tier)
 
-Re-profile all 16 training kernels with `perf.py profile --ref
-@incumbent-jit --workload <kernel> --tool sample --jit-map`. Rank a finite
-backlog by measured removable cost, confidence, and implementation cost.
+Re-profile all 16 training kernels with native Linux hardware profiles
+on the Linux host: `perf record` and `perf report` using the exact pinned
+build and training inputs, plus `PYTHON_JIT_MAP` TSV for address attribution
+where validated. `perf.py profile --tool sample --jit-map` remains a macOS
+command and must never be presented as Linux evidence. If JIT IP attribution
+is not yet reliable, report separate JIT-region vs named-runtime samples
+and mark the detailed uop breakdown unresolved. Rank a finite backlog by
+measured removable cost, confidence, and implementation cost.
 Record the hypothesis, affected workload/path, expected gain, semantic
 obligations, and a falsifying result before editing. Sample share is an upper
 bound, never proof of a speedup. Drop a mechanism below 1% unless a named

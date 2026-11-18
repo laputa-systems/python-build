@@ -10,14 +10,12 @@ The 3.15.1 product is stable and is not modified for lane work.
 `rust-cpython/` is a separate CPython 3.16 Rust research lane whose frontier
 is the Rust JIT and a Rust source compiler ported from Serc: one campaign,
 [rust-cpython JIT](docs/CAMPAIGN-RUST-CPYTHON-JIT.md), owns their goal, end
-state, gates, and execution status. Its current scope is native macOS arm64;
-The 3.16 Rust research lane's current scope is native Linux x86-64 (Ubuntu
+state, gates, and execution status. The 3.16 Rust research lane's current scope is native Linux x86-64 (Ubuntu
 24.04): the owner reopened Linux qualification and execution on 2026-11-18
 (campaign OD20), superseding the macOS arm64-only contract. Follow the
 campaign's Status, including any execution pause or bring-up state. Neither
-the lane's source
-pin nor its results affect production targets; Linux arm64 is not implemented
-there.
+the lane's source pin nor its results affect production targets; Linux arm64
+is not implemented there.
 
 ## Commands
 

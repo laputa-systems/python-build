@@ -9,8 +9,11 @@ apply to every number on this page:
 
 - **OD20 (2026-11-18): the campaign host is now native Linux x86-64.**
   Every number below is a macOS arm64 receipt and is historical; none of
-  it qualifies the Linux host. The fresh host re-derives baselines before
-  any gate (see the campaign's **Fresh Linux host bring-up** section).
+  it qualifies the Linux host. Linux bootstrap and JIT trace-map support
+  were committed at `a4a8934`, but **no Linux-native build or performance
+  qualification has yet been verified here**. The fresh host must execute
+  the checked-in bootstrap and re-derive baselines before any gate (see
+  the campaign's **Fresh Linux host bring-up** section).
 - **Eval 9 is unqualified.** Its recorded ACCEPT came from a 4-run retry
   after a 5-run INCONCLUSIVE under the same policy. A predetermined 5-run
   requalification is pending, and on the Linux host it must re-run against
