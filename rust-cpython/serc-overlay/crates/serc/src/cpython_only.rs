@@ -1,5 +1,7 @@
 use ruff_python_ast::token::{TokenKind, Tokens};
-use ruff_python_ast::visitor::{Visitor, walk_expr, walk_parameters, walk_stmt};
+use ruff_python_ast::visitor::{
+    Visitor, walk_except_handler, walk_expr, walk_parameters, walk_stmt,
+};
 use ruff_python_ast::{
     Expr, InterpolatedStringElement, InterpolatedStringElements, InterpolatedStringFormatSpec,
     Parameters, Pattern, Stmt,
@@ -68,20 +70,168 @@ pub(crate) const MAX_FORMAT_SPEC_DEPTH: usize = 3;
 /// a parenthesized assignment-expression target, a `__debug__` match-pattern capture,
 /// a format spec or f-string nested deeper than CPython's lexer allows, and a module whose
 /// estimated parser stack approaches CPython's limit.
-pub(crate) fn source_rules(suite: &[Stmt], tokens: &Tokens) -> Option<&'static str> {
+/// Facts collected by one AST walk for the parser and compiler rules.
+#[derive(Default)]
+pub(crate) struct RulesFacts {
+    captures_debug: bool,
+    deep_format_spec: bool,
+    interpolated_exceeded: bool,
+    max_blocks: usize,
+    max_expression_slots: usize,
+    max_arms: usize,
+    finally_exit: bool,
+}
+
+/// Walk the module once and collect every fact the rules below need.
+pub(crate) fn rules_scan(suite: &[Stmt]) -> RulesFacts {
+    let mut scan = RulesScan::default();
+    scan.visit_body(suite);
+    RulesFacts {
+        captures_debug: scan.captures_debug,
+        deep_format_spec: scan.deep_format_spec,
+        interpolated_exceeded: scan.interp_exceeded,
+        max_blocks: scan.max_blocks,
+        max_expression_slots: scan.max_expression_slots,
+        max_arms: scan.max_arms,
+        finally_exit: scan.finally_exit,
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum Block {
+    Finally,
+    Loop,
+}
+
+#[derive(Default)]
+struct RulesScan {
+    captures_debug: bool,
+    deep_format_spec: bool,
+    interp_depth: usize,
+    interp_exceeded: bool,
+    blocks: usize,
+    max_blocks: usize,
+    expression_slots: usize,
+    max_expression_slots: usize,
+    max_arms: usize,
+    finally_blocks: Vec<Block>,
+    finally_exit: bool,
+}
+
+impl<'a> Visitor<'a> for RulesScan {
+    fn visit_stmt(&mut self, statement: &'a Stmt) {
+        if crate::stack_growth_required() {
+            return crate::grow_stack(|| self.visit_stmt(statement));
+        }
+        if let Stmt::If(if_statement) = statement {
+            self.max_arms = self.max_arms.max(if_statement.elif_else_clauses.len() + 1);
+        }
+        self.blocks += 1;
+        self.max_blocks = self.max_blocks.max(self.blocks);
+        if let Stmt::Match(match_statement) = statement
+            && match_statement
+                .cases
+                .iter()
+                .any(|case| binds_debug(&case.pattern))
+        {
+            self.captures_debug = true;
+        }
+        match statement {
+            Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {
+                let outer = std::mem::take(&mut self.finally_blocks);
+                walk_stmt(self, statement);
+                self.finally_blocks = outer;
+            }
+            Stmt::For(for_statement) => {
+                self.visit_expr(&for_statement.target);
+                self.visit_expr(&for_statement.iter);
+                self.finally_blocks.push(Block::Loop);
+                self.visit_body(&for_statement.body);
+                self.finally_blocks.pop();
+                self.visit_body(&for_statement.orelse);
+            }
+            Stmt::While(while_statement) => {
+                self.visit_expr(&while_statement.test);
+                self.finally_blocks.push(Block::Loop);
+                self.visit_body(&while_statement.body);
+                self.finally_blocks.pop();
+                self.visit_body(&while_statement.orelse);
+            }
+            Stmt::Try(try_statement) => {
+                self.visit_body(&try_statement.body);
+                for handler in &try_statement.handlers {
+                    walk_except_handler(self, handler);
+                }
+                self.visit_body(&try_statement.orelse);
+                self.finally_blocks.push(Block::Finally);
+                self.visit_body(&try_statement.finalbody);
+                self.finally_blocks.pop();
+            }
+            Stmt::Return(_) => {
+                self.finally_exit |= self.finally_blocks.contains(&Block::Finally);
+            }
+            Stmt::Break(_) | Stmt::Continue(_) => {
+                self.finally_exit |= self
+                    .finally_blocks
+                    .iter()
+                    .rev()
+                    .take_while(|&&block| block != Block::Loop)
+                    .any(|&block| block == Block::Finally);
+            }
+            _ => walk_stmt(self, statement),
+        }
+        self.blocks -= 1;
+    }
+
+    fn visit_expr(&mut self, expression: &'a Expr) {
+        if crate::stack_growth_required() {
+            return crate::grow_stack(|| self.visit_expr(expression));
+        }
+        self.deep_format_spec |= match expression {
+            Expr::FString(fstring) => fstring
+                .value
+                .f_strings()
+                .any(|literal| format_spec_depth(&literal.elements) > MAX_FORMAT_SPEC_DEPTH),
+            Expr::TString(tstring) => tstring
+                .value
+                .as_slice()
+                .iter()
+                .any(|literal| format_spec_depth(&literal.elements) > MAX_FORMAT_SPEC_DEPTH),
+            _ => false,
+        };
+        let interpolated = matches!(expression, Expr::FString(_) | Expr::TString(_));
+        self.interp_depth += usize::from(interpolated);
+        if self.interp_depth >= MAX_INTERPOLATED_STRING_NESTING {
+            self.interp_exceeded = true;
+        }
+        self.expression_slots += PARSER_STACK_PER_EXPRESSION;
+        self.max_expression_slots = self.max_expression_slots.max(self.expression_slots);
+        walk_expr(self, expression);
+        self.expression_slots -= PARSER_STACK_PER_EXPRESSION;
+        self.interp_depth -= usize::from(interpolated);
+    }
+
+    fn visit_parameters(&mut self, parameters: &'a Parameters) {
+        self.expression_slots += PARSER_STACK_PER_PARAMETER_DEFAULT;
+        walk_parameters(self, parameters);
+        self.expression_slots -= PARSER_STACK_PER_PARAMETER_DEFAULT;
+    }
+}
+
+pub(crate) fn source_rules(facts: &RulesFacts, tokens: &Tokens) -> Option<&'static str> {
     if assignment_expression_after_parenthesized_target(tokens) {
         return Some("a parenthesized assignment-expression target is invalid");
     }
-    if captures_debug_pattern(suite) {
+    if facts.captures_debug {
         return Some("a __debug__ match capture is invalid");
     }
-    if has_deep_format_spec(suite) {
+    if facts.deep_format_spec {
         return Some("an f-string format spec nests more expressions than CPython allows");
     }
-    if has_too_many_nested_interpolated_strings(suite) {
+    if facts.interpolated_exceeded {
         return Some("f-strings or t-strings nest deeper than CPython allows");
     }
-    if parser_stack_estimate(suite, tokens) >= PARSER_STACK_BUDGET {
+    if parser_stack_estimate(facts, tokens) >= PARSER_STACK_BUDGET {
         return Some("the source approaches CPython's parser stack limit");
     }
     None
@@ -92,86 +242,10 @@ pub(crate) fn source_rules(suite: &[Stmt], tokens: &Tokens) -> Option<&'static s
 /// A `return` inside a `finally` body, or a `break` or `continue` that leaves one, must
 /// unwind the loops, managers, handlers, and finally bodies between it and its target in
 /// CPython's block order. Serc does not model that order for jumps out of a finally body.
-pub(crate) fn compiler_rules(suite: &[Stmt]) -> Option<&'static str> {
-    leaves_finally_body(suite).then_some("control flow leaves a finally body")
-}
-
-fn leaves_finally_body(suite: &[Stmt]) -> bool {
-    #[derive(Clone, Copy, Eq, PartialEq)]
-    enum Block {
-        Finally,
-        Loop,
-    }
-
-    struct FinallyExit {
-        blocks: Vec<Block>,
-        found: bool,
-    }
-
-    impl FinallyExit {
-        fn visit_block(&mut self, block: Block, body: &[Stmt]) {
-            self.blocks.push(block);
-            self.visit_body(body);
-            self.blocks.pop();
-        }
-
-        fn visit_scope(&mut self, body: &[Stmt]) {
-            let outer = std::mem::take(&mut self.blocks);
-            self.visit_body(body);
-            self.blocks = outer;
-        }
-    }
-
-    impl<'a> Visitor<'a> for FinallyExit {
-        fn visit_stmt(&mut self, statement: &'a Stmt) {
-            if self.found {
-                return;
-            }
-            if crate::stack_growth_required() {
-                return crate::grow_stack(|| self.visit_stmt(statement));
-            }
-            match statement {
-                Stmt::FunctionDef(function) => self.visit_scope(&function.body),
-                Stmt::ClassDef(class) => self.visit_scope(&class.body),
-                Stmt::For(for_statement) => {
-                    self.visit_block(Block::Loop, &for_statement.body);
-                    self.visit_body(&for_statement.orelse);
-                }
-                Stmt::While(while_statement) => {
-                    self.visit_block(Block::Loop, &while_statement.body);
-                    self.visit_body(&while_statement.orelse);
-                }
-                Stmt::Try(try_statement) => {
-                    self.visit_body(&try_statement.body);
-                    for handler in &try_statement.handlers {
-                        let ruff_python_ast::ExceptHandler::ExceptHandler(handler) = handler;
-                        self.visit_body(&handler.body);
-                    }
-                    self.visit_body(&try_statement.orelse);
-                    self.visit_block(Block::Finally, &try_statement.finalbody);
-                }
-                Stmt::Return(_) => self.found = self.blocks.contains(&Block::Finally),
-                Stmt::Break(_) | Stmt::Continue(_) => {
-                    self.found = self
-                        .blocks
-                        .iter()
-                        .rev()
-                        .take_while(|&&block| block != Block::Loop)
-                        .any(|&block| block == Block::Finally);
-                }
-                _ => walk_stmt(self, statement),
-            }
-        }
-
-        fn visit_expr(&mut self, _expression: &'a Expr) {}
-    }
-
-    let mut exit = FinallyExit {
-        blocks: Vec::new(),
-        found: false,
-    };
-    exit.visit_body(suite);
-    exit.found
+pub(crate) fn compiler_rules(facts: &RulesFacts) -> Option<&'static str> {
+    facts
+        .finally_exit
+        .then_some("control flow leaves a finally body")
 }
 
 /// Name a `\N{...}` escape that Ruff's Unicode table rejected, if any.
@@ -208,33 +282,6 @@ fn assignment_expression_after_parenthesized_target(tokens: &Tokens) -> bool {
 
 /// CPython's symbol table rejects every match capture that binds `__debug__`; Ruff's
 /// parser leaves capture names to that later pass.
-fn captures_debug_pattern(suite: &[Stmt]) -> bool {
-    struct CapturesDebug {
-        found: bool,
-    }
-
-    impl<'a> Visitor<'a> for CapturesDebug {
-        fn visit_stmt(&mut self, statement: &'a Stmt) {
-            if self.found {
-                return;
-            }
-            if let Stmt::Match(match_statement) = statement
-                && match_statement
-                    .cases
-                    .iter()
-                    .any(|case| binds_debug(&case.pattern))
-            {
-                self.found = true;
-            } else {
-                walk_stmt(self, statement);
-            }
-        }
-    }
-
-    let mut captures = CapturesDebug { found: false };
-    captures.visit_body(suite);
-    captures.found
-}
 
 fn binds_debug(pattern: &Pattern) -> bool {
     match pattern {
@@ -270,73 +317,6 @@ fn binds_debug(pattern: &Pattern) -> bool {
 
 /// CPython's lexer stops at `MAX_EXPR_NESTING` replacement fields inside one f-string or
 /// t-string. A nested literal starts a new budget, so only format-spec elements count.
-fn has_deep_format_spec(suite: &[Stmt]) -> bool {
-    struct DeepFormatSpec {
-        found: bool,
-    }
-
-    impl<'a> Visitor<'a> for DeepFormatSpec {
-        fn visit_expr(&mut self, expression: &'a Expr) {
-            if self.found {
-                return;
-            }
-            let too_deep = match expression {
-                Expr::FString(fstring) => fstring
-                    .value
-                    .f_strings()
-                    .any(|literal| format_spec_depth(&literal.elements) > MAX_FORMAT_SPEC_DEPTH),
-                Expr::TString(tstring) => tstring
-                    .value
-                    .as_slice()
-                    .iter()
-                    .any(|literal| format_spec_depth(&literal.elements) > MAX_FORMAT_SPEC_DEPTH),
-                _ => false,
-            };
-            if too_deep {
-                self.found = true;
-            } else {
-                walk_expr(self, expression);
-            }
-        }
-    }
-
-    let mut deep = DeepFormatSpec { found: false };
-    deep.visit_body(suite);
-    deep.found
-}
-
-fn has_too_many_nested_interpolated_strings(suite: &[Stmt]) -> bool {
-    struct Nesting {
-        depth: usize,
-        found: bool,
-    }
-
-    impl<'a> Visitor<'a> for Nesting {
-        fn visit_expr(&mut self, expression: &'a Expr) {
-            if self.found {
-                return;
-            }
-            if crate::stack_growth_required() {
-                return crate::grow_stack(|| self.visit_expr(expression));
-            }
-            let interpolated = matches!(expression, Expr::FString(_) | Expr::TString(_));
-            self.depth += usize::from(interpolated);
-            if self.depth >= MAX_INTERPOLATED_STRING_NESTING {
-                self.found = true;
-            } else {
-                walk_expr(self, expression);
-            }
-            self.depth -= usize::from(interpolated);
-        }
-    }
-
-    let mut nesting = Nesting {
-        depth: 0,
-        found: false,
-    };
-    nesting.visit_body(suite);
-    nesting.found
-}
 
 fn format_spec_depth(elements: &InterpolatedStringElements) -> usize {
     elements
@@ -372,41 +352,7 @@ fn format_spec_nested_depth(spec: &InterpolatedStringFormatSpec) -> usize {
 /// [`PARSER_STACK_PER_EXPRESSION`] plus [`PARSER_STACK_PER_PARAMETER_DEFAULT`] for each
 /// enclosing parameter default, and the longest `if`/`elif` chain at one slot per arm.
 /// Summing module-wide maxima only over-estimates.
-pub(crate) fn parser_stack_estimate(suite: &[Stmt], tokens: &Tokens) -> usize {
-    #[derive(Default)]
-    struct Shape {
-        blocks: usize,
-        max_blocks: usize,
-        expression_slots: usize,
-        max_expression_slots: usize,
-        max_arms: usize,
-    }
-
-    impl<'a> Visitor<'a> for Shape {
-        fn visit_stmt(&mut self, statement: &'a Stmt) {
-            if let Stmt::If(if_statement) = statement {
-                self.max_arms = self.max_arms.max(if_statement.elif_else_clauses.len() + 1);
-            }
-            self.blocks += 1;
-            self.max_blocks = self.max_blocks.max(self.blocks);
-            walk_stmt(self, statement);
-            self.blocks -= 1;
-        }
-
-        fn visit_expr(&mut self, expression: &'a Expr) {
-            self.expression_slots += PARSER_STACK_PER_EXPRESSION;
-            self.max_expression_slots = self.max_expression_slots.max(self.expression_slots);
-            walk_expr(self, expression);
-            self.expression_slots -= PARSER_STACK_PER_EXPRESSION;
-        }
-
-        fn visit_parameters(&mut self, parameters: &'a Parameters) {
-            self.expression_slots += PARSER_STACK_PER_PARAMETER_DEFAULT;
-            walk_parameters(self, parameters);
-            self.expression_slots -= PARSER_STACK_PER_PARAMETER_DEFAULT;
-        }
-    }
-
+fn parser_stack_estimate(facts: &RulesFacts, tokens: &Tokens) -> usize {
     // Redundant parentheses leave no AST node, so bracket depth comes from the tokens.
     let mut brackets = 0usize;
     let mut max_brackets = 0usize;
@@ -422,12 +368,10 @@ pub(crate) fn parser_stack_estimate(suite: &[Stmt], tokens: &Tokens) -> usize {
             _ => {}
         }
     }
-    let mut shape = Shape::default();
-    shape.visit_body(suite);
     PARSER_STACK_PER_BRACKET * max_brackets
-        + PARSER_STACK_PER_BLOCK * shape.max_blocks
-        + shape.max_expression_slots
-        + shape.max_arms
+        + PARSER_STACK_PER_BLOCK * facts.max_blocks
+        + facts.max_expression_slots
+        + facts.max_arms
 }
 
 fn imports_barry_as_flufl(suite: &[Stmt]) -> bool {

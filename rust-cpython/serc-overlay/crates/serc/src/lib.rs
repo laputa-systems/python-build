@@ -1441,11 +1441,12 @@ fn compile_normalized(
     if options.python_version >= PythonVersion::Py316 {
         compiler::static_blocks::validate(parsed.suite(), options.optimization_level)?;
     }
-    if let Some(reason) = cpython_only::source_rules(parsed.suite(), parsed.tokens()) {
+    let rules = cpython_only::rules_scan(parsed.suite());
+    if let Some(reason) = cpython_only::source_rules(&rules, parsed.tokens()) {
         return Err(CompileError::RequiresCpythonParser(reason));
     }
     if options.python_version >= PythonVersion::Py316
-        && let Some(reason) = cpython_only::compiler_rules(parsed.suite())
+        && let Some(reason) = cpython_only::compiler_rules(&rules)
     {
         return Err(CompileError::RequiresCpythonCompiler(reason));
     }
