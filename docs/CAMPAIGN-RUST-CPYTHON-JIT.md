@@ -4837,7 +4837,16 @@ depth tracking, `private_name` mangling, `skip_annotations`/
 (2) `LocalCollector` is order-sensitive binding analysis — its
 `collect_suite_with_unwind` statement-order semantics and
 `candidate_bindings`/`unwind` machinery must be reproduced exactly or the
-symbol-table local ordering diverges; (3) name-interning order must stay
+symbol-table local ordering diverges; (2b) facts→locals data dependency: `ScopeBodyFacts` destructures into
+the `LocalCollector` seeds (`globals`, `nonlocals`) **before**
+`locals.collect_suite(&definition.body)` runs, so binding classification
+depends on complete global/nonlocal knowledge — declarations may appear
+after uses, which is why CPython's symtable itself is multi-pass. This
+rules out fusing the two per-body walks into one pass without deferred
+reclassification; only the module-walk hook-merge (facts accumulated
+during `ModuleNameCollector`'s traversal, locals likewise) remains, where
+the same ordering constraint applies per scope;
+(3) name-interning order must stay
 identical because `NameId`s feed marshal-visible ordering. Verification
 bar: 3,436-file corpus digest parity + 30,318-case census + 1260 lib
 tests + synthetic scope edge cases, then the locked C3 gate.
