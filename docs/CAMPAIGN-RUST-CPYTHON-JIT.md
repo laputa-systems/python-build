@@ -444,6 +444,12 @@ checks, retain A/A results, and keep timing evidence scoped to this
 environment pending qualification. The six-stage matrix and P0 order below
 also apply to cloud bring-up.
 
+When running from the primary checkout, set `RUST_CPYTHON_CLOUD_CHECKOUT`
+to an isolated worktree's absolute path to select it. The runner mounts
+both checkouts at their original paths so Git's shared metadata and the
+cache links from `perf.py setup-worktree` resolve inside the container.
+The runner puts the primary checkout's `perf-gate-ready` on PATH.
+
 1. **Provision and preflight on the actual Linux host.** From a clean
    `main` clone, run the checked-in phased bootstrap:
 
