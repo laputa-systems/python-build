@@ -70,11 +70,17 @@ overlay, toolchain, lock and feature identity. The leaf-call test passed
 all seven traces. On `spectral_norm`, the Linux JIT map reported 30,246
 code bytes and libpython reported 3,513,871 text bytes. See
 `rust-cpython/logs/cloud-bringup/jit-stats.log`.
-The first cloud A/A comparison, `perf-rust-jit` versus
-`perf-rust-jit-aa`, started on 2026-11-18 at 18:59 UTC with the
-five-run JIT gate and its existing guard workloads. The pre-check passed
-with 98.8% minimum CPU idle. Timing evidence requires the completed
-verdict and the post-check. See `rust-cpython/logs/cloud-bringup/aa.log`.
+The first cloud A/A comparison, `perf-rust-jit` versus `perf-rust-jit-aa`,
+completed five JIT gate runs and their guard workloads. Both host checks
+passed (98.8% minimum CPU idle before, 99.8% after). The verdict was
+**INCONCLUSIVE** with 23 metrics unbounded across the runs, zero regressions,
+and zero output mismatches. Cloud timing qualification remains open.
+Complete the remaining baseline stages and run the five-run self-calibration
+to diagnose the comparison before attempting P0 timing. Keep this A/A
+verdict as measured. Run ID:
+`20261118T185932Z-perf-rust-jit-vs-perf-rust-jit-aa`.
+Receipt SHA-256:
+`3849ff142c19d42a378eb8664def290112f167f8e8e98ff6e77078ef7888aad0`.
 
 ### Scorecard
 
