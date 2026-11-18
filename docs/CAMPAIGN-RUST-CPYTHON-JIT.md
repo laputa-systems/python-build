@@ -244,6 +244,29 @@ pending the next milestone gate; the recorded 0.7463 still predates the
 eval-9 bundle and this step. This is the second accepted CLIMB landing
 after eval 9; round accounting is unchanged pending the next checkpoint.
 
+**P1 rerank after the validity step (2026-11-18).** Aggregate attribution
+(16-kernel sample shares summed, pre-merge epoch) plus fresh nbody
+candidate profiles put the remaining JIT cost in three buckets. (1)
+*Boxed-value churn into container storage* — `_STORE_SUBSCR_LIST_INT_FLOAT`
+19.1% and `_STORE_FAST_FUSED_FLOAT_OR_NULL` 16.0% of nbody JIT samples,
+with `_PyFloat_FromDoubleTstate`/`_PyFloat_ExactDeallocTstate`/
+`_Py_NewReference` the dominant runtime calls on float kernels; the only
+real fix is unboxed list/scalar storage or whole-trace escape analysis,
+both object-model-scale, so the bounded JIT ceiling here is low. (2)
+*Broaden unbox/store specialization* — generic `_STORE_FAST_FUSED` still
+sums ~20% across kernels and `_UNPACK_SEQUENCE_{LIST,TUPLE}` ~6% on nbody;
+each typed variant is a bounded Rust-planner change worth roughly
+1–3% aggregate cumulatively. (3) *Guard/bookkeeping* — `_SET_IP` is
+already optimal (0 removable upstream), `_CHECK_PERIODIC`/
+`_TIER2_RESUME_CHECK`/`_CHECK_FUNCTION_VERSION` are required for
+responsiveness/invalidation (`func_version` has no globals-style
+dependency to hoist against), so the ceiling is ~1% aggregate.
+Serc side: `pipeline-optimize` is ~28% of compile but its passes produce
+the byte-parity output, and the Py316 linear path is genuinely Py314-specific
+(`has_terminal_guard_metadata` hard-requires Py314; `has_only_linear_instructions`
+whitelists Py314 opcodes) — a real port with unmeasured eligibility, not a
+gate flip; `emit` ~71% needs a profile-targeted allocation/build pass.
+
 - `campaign/jit-subscr-virtual` `da402d9` — stack tip, worktree
   `.work/wt/jit-subscr-virtual` (closeout-allowed). Evals 7+8: fused
   unpack-to-locals (`_UNPACK_SEQUENCE_TWO_TUPLE_TO_FAST`,
