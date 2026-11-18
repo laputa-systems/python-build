@@ -132,8 +132,9 @@ layout-sensitive ~0.4–1% signature; evals 11–12 remain unspent rather
 than spent reproducing it. Track C: the locked cold set REJECTED and the
 footprint check was INCONCLUSIVE, so Serc cold compilation needs real
 compiler-side performance work or a scope decision. Best measured
-incumbent remains `perf-rust-jit` (S = 0.7463 recorded, unqualified);
-`perf-final-jit-serc` is built for the runnable-variants deliverable.
+incumbent remains `perf-rust-jit` (S = 0.7258 measured at `285f619`,
+M4 missed); `perf-final-jit-serc` is built for the runnable-variants
+deliverable.
 Full account, gaps, owner queue, and evidence manifest:
 [docs/RUST-CAMPAIGN-RESULTS.md](RUST-CAMPAIGN-RESULTS.md). Linux evidence
 was not collected.
@@ -266,6 +267,34 @@ the byte-parity output, and the Py316 linear path is genuinely Py314-specific
 (`has_terminal_guard_metadata` hard-requires Py314; `has_only_linear_instructions`
 whitelists Py314 opcodes) — a real port with unmeasured eligibility, not a
 gate flip; `emit` ~71% needs a profile-targeted allocation/build pass.
+
+**M4 milestone gate measured — MISSED (2026-11-18).** At backlog
+exhaustion the gate ran on the current incumbent `perf-rust-jit` @
+`285f619` (source-identical to `6453a64`; `jit=True serc=False`) versus
+the frozen `perf-climb-ref`, each leg quiet (`perf-gate-ready` clean):
+
+- **S = 0.7258** (`20261118T013628Z`, `--jit-set --runs 5`, pooled-median
+  kernel-CPU geomean over all 16 training kernels) — improved from the
+  recorded 0.7463 that predated the eval-9 bundle and the validity-prune
+  landing; M4's ≤0.25 bar is missed by ~2.9×.
+- **Held-out = 0.8368** ≤ S^0.5 = 0.8519 — held-out bar **passes**
+  (`20261118T021917Z`, `--jit-heldout --runs 5`); coroutines/generators
+  cpu ~1.02 reproduce the known signature.
+- **Guard gate REJECT** under the unchanged policy
+  (`20261118T023948Z`, `--jit-set --gate --runs 5`): `django_wsgi_request`
+  wall 1.016 regressed in all five runs (cpu 0.979 improved) — the same
+  wall-only django signature recorded at M0; all other guard entities
+  within budget or improved.
+- **Memory (OD4):** peak RSS 1.006–1.073× across kernels, inside the +8%
+  bar (the raw gate's peak_rss flags are the recorded linking cost, not a
+  milestone miss); JIT code bytes from `jit-stats` remain ≤1.28× M0
+  (raytrace 583,204 vs M0 457,068), inside 2×.
+
+Per-kernel cpu now: nbody 0.554, scimark_fft 0.534, scimark_lu 0.564,
+scimark_sparse 0.564, scimark_sor 0.578, scimark_monte_carlo 0.731,
+spectral_norm 0.691, richards 0.648, raytrace 0.818, float 0.836,
+fannkuch 0.853, chaos 0.860, nqueens 0.887, deltablue 0.902, hexiom
+0.907, go 0.915. M4 also requires every kernel ≤0.45 — none qualifies.
 
 **P2 linear-path port scoped (2026-11-18).** The Py316 exclusion is two
 independent gates, not one: `finish_code_with_constants` requires
