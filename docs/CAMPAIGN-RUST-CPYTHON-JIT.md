@@ -4852,6 +4852,23 @@ during `ModuleNameCollector`'s traversal, locals likewise) remains, where
 the same ordering constraint applies per scope;
 (3) name-interning order must stay
 identical because `NameId`s feed marshal-visible ordering. Verification
+**Alternative to the semantic merge — parallel per-scope collection.**
+`ScopeArena::build_scopes` builds plans post-order (children first), but
+the *collection* phase — `ScopeBodyFactsCollector::collect` plus the
+`LocalCollector` construction + `collect_suite` inside
+`FunctionPlan::build`/`ClassPlan::build` — depends only on each scope's
+own body slice and flags, never on sibling or child plans. Collecting
+`(facts, locals)` per scope in a `rayon::par_iter` pre-pass (rayon is
+already a dependency; collectors hold no `NameInterner` and only borrow
+the shared AST) while plan assembly stays sequential preserves every
+semantic exactly — same code, reordered execution — at the cost of
+splitting each `build` into collect/assemble phases (~hundreds of lines
+moved). Expected saving is modest: context ≈52 ms of ≈470 ms compile,
+parallel across ~10 cores minus dispatch overhead, plausibly ~1–2% of
+compile CPU — below the semantic merge's ~4% but far lower risk.
+Related finding: asserting functions at -O1/-O2 already pay a *second*
+`LocalCollector::collect_suite` on an `elide_assertions` clone
+(scope.rs ~1090), so the locals walk is occasionally doubled today.
 bar: 3,436-file corpus digest parity + 30,318-case census + 1260 lib
 tests + synthetic scope edge cases, then the locked C3 gate.
 **Module-bindings trigger narrowing — measured, reverted (`3b06f18`→`6eb94cb`).**
