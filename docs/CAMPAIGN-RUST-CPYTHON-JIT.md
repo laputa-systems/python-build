@@ -397,6 +397,25 @@ unboxing breadth and guard/store micro-costs; the dominant
 local-churn shares (`_STORE_FAST_FUSED_FLOAT*` ~16% nbody,
 `_STORE_SUBSCR_LIST_INT_FLOAT` ~19%) are the object model itself.
 
+**Serc pipeline structure measured (2026-11-18).** Sub-phase timers on
+`compileall_source` (`SERC_PROFILE=1`, `perf-rust-serc`): `pipeline-
+optimize` ≈27% of compile, emission/lowering ≈25%, `context` ≈15%,
+`parse` ≈8%, `rules` ≈8%, `owners-retain` ≈0.8% (ruled out — the
+~30 `timed_retain_owners` checkpoints are cheap). `optimize()` is not
+a list of independent passes: ~50 transformations interleave with
+`FusionOwnerCertificates` capture/retain and exception-owner provenance
+rewrites that later passes consume — the bookkeeping IS the
+correctness mechanism for exception regions and fusion views, so
+pass fusion is a research project, not a traversal dedup. `context`
+is already fused (`ModuleNameCollector::collect_with_source` feeds
+`SourceAnalysis` in one walk; `LocalCollector` adds a second only when
+module bindings require). Emission self-time is diffuse
+(`compile_statement/expression/call`, `name_index_with_id`,
+`LayoutAssembler::finish`, individual pipeline passes each <3%).
+No bounded Serc lever remains: every measured probe
+(scan-consolidation, token pre-filters, Py316 linear gate) was
+neutral-to-sub-floor or incorrect.
+
 - `campaign/jit-subscr-virtual` `da402d9` — stack tip, worktree
   `.work/wt/jit-subscr-virtual` (closeout-allowed). Evals 7+8: fused
   unpack-to-locals (`_UNPACK_SEQUENCE_TWO_TUPLE_TO_FAST`,
