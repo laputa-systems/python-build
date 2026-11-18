@@ -267,6 +267,28 @@ the byte-parity output, and the Py316 linear path is genuinely Py314-specific
 whitelists Py314 opcodes) — a real port with unmeasured eligibility, not a
 gate flip; `emit` ~71% needs a profile-targeted allocation/build pass.
 
+**P2 linear-path port scoped (2026-11-18).** The Py316 exclusion is two
+independent gates, not one: `finish_code_with_constants` requires
+`python_version == Py314` before any linear predicate runs
+(`passes/mod.rs:295`), and `has_terminal_guard_metadata` hard-requires
+Py314 (`mod.rs:1274`) — the latter also disables the
+`used_constant_indices` linear-scan shortcut, so every non-straight-line
+Py316 function builds a `BlockGraph` during constant admission (the graph
+is reused by the pipeline, so it is not double-built, but linear-eligible
+functions can never skip it). The recognizers encode Py314 bytecode
+shapes — `POP_JUMP_IF_*` + `NOT_TAKEN` marker pairs, `LOAD_SMALL_INT`,
+`RESUME` argument forms, and the `has_only_linear_instructions` opcode
+whitelist — so a Py316 port must first verify which of those shapes
+CPython 3.16 actually emits; opcode names resolve through
+`crate::target::opcodes` but the patterns are version-specific.
+`optimize_linear_assertion_side_exits` itself lives in the pinned archive
+(`passes/linear.rs`, not overlaid) and needs a version-assumption audit.
+Open questions before any edit: fraction of compileall functions that are
+linear-eligible under Py316 shapes, and whether skipping graph construction
+plus the linear finish recovers enough of the ~28% `pipeline-optimize`
+bucket to matter against the ~12% C3 gap. Reject the port if eligibility
+is low or the shape audit shows the patterns do not transfer.
+
 - `campaign/jit-subscr-virtual` `da402d9` — stack tip, worktree
   `.work/wt/jit-subscr-virtual` (closeout-allowed). Evals 7+8: fused
   unpack-to-locals (`_UNPACK_SEQUENCE_TWO_TUPLE_TO_FAST`,
