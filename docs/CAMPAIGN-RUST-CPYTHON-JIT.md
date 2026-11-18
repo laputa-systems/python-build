@@ -401,6 +401,30 @@ django corpus: 0.4875->0.4816 s (-1.2%, 4/4 interleaved pairs faster).
 C3 remains REJECTED (gap was ~6-16%); this is an incremental Serc
 compiler win, not a gate pass. `perf-rust-serc` rebuilt at `5c64210`.
 
+**JIT unboxed-locals feasibility spike (2026-11-18).** Scoped the
+campaign's last identified headroom mechanism before committing sessions
+to it. Findings: (1) `_STORE_FAST_FUSED_FLOAT{,_OR_NULL,_INT}` write an
+already-boxed `_PyStackRef` into `GETLOCAL` and close the old box via
+`_PyFloat_ExactDeallocTstate` (`bytecodes.c:344-370`); the alloc happens
+in the producing uop, and stack temporaries are already unboxed via
+`_PyUnboxedSlots` — so the residual boxed-float churn is exclusively
+named locals, confirming the frame-representation ceiling. (2) A narrower
+variant — reusing the old PyFloat box in place (`ob_fval` mutation when
+`Py_REFCNT==1`) — still fails on two observation points: deopt/materialization
+reads frame locals, so skipping a box write corrupts deopt state unless
+writes happen at every deopt-visible point anyway (leaving only
+alloc/free churn to attack); and float object identity (`id()`, `is`)
+is observable, so in-place mutation changes semantics unless the trace
+proves no identity observation — the same escape-analysis requirement as
+full unboxing. (3) This build uses immediate refcounting (`Py_TAG_REFCNT`
+stackrefs; deferred refcounting is the free-threading path), so a
+refcount check would be reliable — the blocker is observation proofs,
+not the refcount model. Conclusion: no bounded JIT shortcut exists; the
+remaining gap needs the escape-synced frame-representation project or is
+unreachable. Serc side is likewise saturated: ~53% of django code objects
+are no-jump (linear-eligible ceiling already reached at 911/1822 asm-linear
+units); the jumped remainder requires graph-pipeline work.
+
 **Emission attribution limit (2026-11-18).** A 60-iteration `sample`
 profile of `compileall_source` on `perf-rust-serc` is dominated by
 process-level filesystem syscalls (`open`/`rename`/`unlinkat`/`mkdir`/
