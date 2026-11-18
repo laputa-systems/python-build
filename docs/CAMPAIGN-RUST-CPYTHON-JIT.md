@@ -4866,6 +4866,37 @@ splitting each `build` into collect/assemble phases (~hundreds of lines
 moved). Expected saving is modest: context ≈52 ms of ≈470 ms compile,
 parallel across ~10 cores minus dispatch overhead, plausibly ~1–2% of
 compile CPU — below the semantic merge's ~4% but far lower risk.
+**Scope-merge ceiling re-measured (2026-11-18).** Symbolized 25 s
+`sample` of release-profile `fb_probe` over the 907-file django corpus
+(300+ reps), offsets resolved through `atos` against the profiling
+build: the `analyze_*` sub-analyses inside `ScopeBodyFactsCollector`
+(`analyze_lambda_scope`, `analyze_expression_scope`,
+`generator_parent_requirements`, `annotation_comprehension_requirements`)
+account for <0.1% of samples — collector cost is traversal dispatch plus
+set updates, not sub-analysis. But the same profile shows the facts and
+locals collectors invoke *helper sub-traversals* per node
+(`comprehension_cell_names*`, `collect_target_names`,
+`comprehension_bindings*`, `collect_nested_comprehension_saves`) that a
+traversal merge would NOT eliminate — only ruff `walk_*` dispatch
+(~15–25% of walk cost by inspection) is removed. Realistic merge ceiling
+is therefore ~1–2% of compile CPU, below the ~3.5% C3 cpu gap, before
+counting that `ModuleNameCollector` gets slower per node. Three-way
+traversal-order conflicts confirmed in source: `Assign` visits
+value→targets (locals), targets→value (facts), Ruff order (module
+names); `Dict` keys-then-values vs interleaved; comprehension
+first-iter/target/ifs/value custom orders differ per collector.
+Globals/nonlocals could be pre-seeded from the module walk (they are
+complete before `build_scopes`), satisfying locals' insert-time consult
+— but every other facts field stays entangled with the facts
+collector's own visitation order. Worktree `.work/wt/serc-merge` on
+branch `campaign/serc-scope-merge` holds the merge scaffolding point;
+implementation is a multi-session refactor with a now-lower expected
+ceiling. C3 verdict mechanics confirmed: for serc pairs under
+`memory-only` policy peak RSS is recorded-not-deciding and physical
+footprint rejects above +8%; the all-metrics cold gate still requires
+the candidate to match or beat the non-Serc compile path on
+`cold_python_startup`/`cold_import_django`/`compileall_source`.
+
 **Parallel per-scope collection — evaluated, rejected.** Implemented a
 `rayon::par_iter` pre-pass over `definitions` collecting
 `ScopeBodyFacts` before the sequential plan-build loop (with the flat-
