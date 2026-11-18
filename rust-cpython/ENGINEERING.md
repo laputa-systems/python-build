@@ -3,10 +3,9 @@
 The lane is an isolated CPython 3.16 research interpreter with a Rust overlay,
 pinned by [`sources.lock.json`](sources.lock.json). It is not the shipping
 3.15.1 product. The [campaign](../docs/CAMPAIGN-RUST-CPYTHON-JIT.md) owns the
-current epoch, execution status, and native macOS arm64 qualification. Linux
-research work is deferred until a native host is available and the owner
-explicitly reopens it; Linux arm64 is not implemented. Build and benchmark
-commands are in [README.md](README.md); route suites are in [ROUTES.md](ROUTES.md);
+current epoch, execution status, and native Linux x86-64 qualification (OD20,
+2026-11-18). macOS arm64 receipts are historical and do not qualify the
+current epoch; Linux arm64 is not implemented. Build and benchmark commands are in [README.md](README.md); route suites are in [ROUTES.md](ROUTES.md);
 remaining work is in [../docs/open-work.md](../docs/open-work.md).
 
 ## Rules
@@ -54,8 +53,9 @@ differently under calibration.
 ## Findings
 
 These receipts describe their recorded source epochs and hosts. Historical
-Linux or 3.16.0a1 results do not qualify the current macOS campaign; use its
-same-epoch evidence for current acceptance.
+Linux, macOS or 3.16.0a1 results do not qualify the current campaign on the
+Linux x86-64 host; use same-epoch, same-host evidence for current
+acceptance.
 
 - Startup and Django RSS debt is dyld fixup residency proportional to Rust
   text in `libpython`. Moving `_ssl_rs` to a shared extension cut `libpython`
@@ -145,4 +145,5 @@ The campaign's epoch-e891 macOS baseline records five failed files:
 Use the campaign's source-matched baseline and exact failure attribution;
 each candidate must reproduce its control's failures without introducing
 new ones. Historical counts or a matching filename alone do not establish
-parity. Current Linux qualification is deferred.
+parity. The macOS baseline does not transfer; the Linux host re-derives its
+same-epoch failed-file baseline during bring-up.

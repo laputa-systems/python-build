@@ -35,19 +35,22 @@ doing, P4 is optional. A debt entry is not success.
 
 JIT work, 3.16 source epochs, the Serc compiler port, and compiler-parity fixes
 belong to the [rust-cpython JIT campaign](CAMPAIGN-RUST-CPYTHON-JIT.md) and
-are not tracked here. That campaign owns its execution state and current
-macOS-only scope. None of it gates a production release.
+are not tracked here. That campaign runs on the native Linux x86-64 host
+(OD20, 2026-11-18) and owns its execution state. None of it gates a production
+release.
 
-- [ ] **P3 — deferred Linux qualification and timing.** Reopen only when the
-  owner supplies a native Linux host and explicitly requests this work.
-  Rebuild source-matched controls and qualify the selected epoch before
-  measuring it. Historical Linux receipts do not qualify the current stack;
-  Linux is not a completion gate for the macOS campaign.
+- [ ] **P3 — Linux qualification baseline.** The campaign re-derives its
+  whole qualification baseline on the native Linux x86-64 host (bring-up
+  checklist in the campaign doc): rebuilt controls, fresh A/A, re-measured
+  guards, memory map and code-size denominator. Historical macOS receipts
+  do not qualify the current stack; Linux is where the campaign closes
+  (OD20).
 - [ ] **P3 — cold application-stack input closure.** Lock the unavailable
   `cold_import_app_stack` / `import_app_stack` dependencies in a future
   authorized benchmark-input change. The campaign's C2 exception excludes
-  this unavailable workload from its current locked macOS gate; it remains
-  unmeasured, not passed. Do not change the current gate while optimizing.
+  this unavailable workload from its current locked gate (set on macOS); it
+  remains unmeasured, not passed. Do not change the current gate while
+  optimizing.
 - [ ] **P3 — S5 route comparison on macOS.** The private compression routes were
   kept on Linux evidence; re-run the private-versus-upstream-compression
   comparison on macOS if the route decision is revisited.

@@ -1,21 +1,29 @@
 # rust-cpython JIT campaign — results
 
 **Current state (2026-11-18): campaign ACTIVE, not closed.** The owner
-resumed it under OD18/OD19 after the closeouts recorded below. Live
-scorecard, blockers and next experiments are in the campaign's
-[Status](CAMPAIGN-RUST-CPYTHON-JIT.md#status). Two caveats apply to every
-J number on this page:
+resumed it under OD18/OD19 after the closeouts recorded below, and under
+OD20 (2026-11-18) reopened the campaign host as native Linux x86-64
+(Ubuntu 24.04). Live scorecard, blockers and next experiments are in the
+campaign's [Status](CAMPAIGN-RUST-CPYTHON-JIT.md#status). Three caveats
+apply to every number on this page:
 
+- **OD20 (2026-11-18): the campaign host is now native Linux x86-64.**
+  Every number below is a macOS arm64 receipt and is historical; none of
+  it qualifies the Linux host. The fresh host re-derives baselines before
+  any gate (see the campaign's **Fresh Linux host bring-up** section).
 - **Eval 9 is unqualified.** Its recorded ACCEPT came from a 4-run retry
   after a 5-run INCONCLUSIVE under the same policy. A predetermined 5-run
-  requalification is pending.
+  requalification is pending, and on the Linux host it must re-run against
+  a Linux-rebuilt reference.
 - **The scores cross build configurations.** `S = 0.7258` and the guard
   REJECT compare a fat-LTO incumbent against a thin-LTO reference
   (`perf-climb-ref`). The first qualified score of the current build epoch
-  is pending against a fat-LTO reference built from the same source.
+  is pending against a fat-LTO reference built from the same source — on
+  Linux, after bring-up.
 
 The Serc numbers are same-configuration (`perf-rust` and `perf-rust-serc`
-are both fat LTO at `5e09c5f`) and stand: C3 REJECTED at attempt 3.
+are both fat LTO at `5e09c5f`) as measured on macOS; C3 REJECTED at
+attempt 3 there. Linux re-verifies.
 
 ## Historical closeout (2026-11-18 03:00, superseded)
 

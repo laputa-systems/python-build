@@ -12,13 +12,17 @@ It replaces `CAMPAIGN-JIT.md` (J0-J9, closed 2026-11-01),
 collected asynchronously (see **Owner queue**) and blocks only the lane
 that needs it.
 
-**Operating contract updated 2026-11-18 (OD18, OD19):** the campaign runs
-and closes on native **macOS arm64 only**; Linux is deferred future work
-that blocks nothing. It runs unattended toward M4 and C3, ranks work by
+**Operating contract updated 2026-11-18 (OD18, OD19, OD20):** the campaign
+runs on a native **Linux x86-64** host (Ubuntu 24.04, per
+`rust-cpython/linux-toolchain.lock.json`); the macOS arm64 era (through
+OD18/OD19) is closed history and its measurements do not qualify this
+campaign. The campaign runs unattended toward M4 and C3, ranks work by
 measured whole-workload cost, and keeps the predetermined-protocol,
 correctness and review rules below. Historical receipts retain their
 original verdicts; `CORRECT` never becomes `ACCEPT` because the policy
-changed.
+changed. Every baseline, reference and kept stage measured on macOS is
+invalid on the Linux host; see [Fresh Linux host bring-up](#fresh-linux-host-bring-up-2026-11-18-od20)
+for the required rebuilds and re-measurements before any gate.
 
 Read [Status](#status), [Execution model](#execution-model), and the active
 item first. The long implementation narratives and ledger are evidence to
@@ -30,14 +34,20 @@ Rewrite this section at each checkpoint. Keep it short: scorecard, blockers,
 next experiments. Receipts go to the [Ledger](#ledger); the pre-2026-11-18
 narrative is preserved verbatim under [Status history](#status-history-2026-11-15-to-2026-11-18).
 
-**ACTIVE — resumed under OD18/OD19 (checkpoint 2026-11-18, `main` after
-`536b933`).** Native macOS arm64 only; Linux is deferred future work and
-blocks nothing. The historical **PAUSED** (2026-11-15), **BLOCKED**
+**ACTIVE — reopened for native Linux x86-64 (OD20, 2026-11-18, `main` after
+`e291795`).** The campaign will run and close on a native Linux x86-64 host
+(Ubuntu 24.04, `x86_64-unknown-linux-gnu`, glibc 2.39); macOS arm64 is closed
+history and its measurements, kept stages and qualification debt do not
+transfer. The historical **PAUSED** (2026-11-15), **BLOCKED**
 (2026-11-17) and **INCOMPLETE_PLATEAU** (2026-11-18 03:00) closeouts are
-superseded records, not the campaign outcome. Execution is in **WAIT**: the
-host is lent to other work, so no timing, profile or gate runs until a quiet
-window. The first quiet window runs the P0 protocol below before any new
-candidate is gated.
+superseded records, not the campaign outcome. Execution is in **WAIT —
+bring-up required.** A fresh Linux host must first complete the baseline
+refresh listed under **Fresh Linux host bring-up**; no timing, profile or
+gate runs against macOS-derived references. Once the bring-up checklist is
+green, the first quiet window runs the P0 protocol below (re-expressed
+against Linux-rebuilt references) before any new candidate is gated. The
+scorecard below preserves the 2026-11-18 macOS receipts as historical
+evidence; none of those numbers is a Linux measurement.
 
 **Owner queue:** empty. Nothing in this checkpoint needs an owner decision.
 
@@ -71,6 +81,14 @@ linear-path eligibility) reduced instructions; none addressed front-end or
 memory stalls. This reorders the C queue below.
 
 ### P0 — qualification debt (first quiet window, predetermined)
+
+**OD20 note.** Every build, reference and receipt in this section was made
+on macOS arm64 and does not transfer. On the Linux host the protocol below
+is re-run in full against Linux-rebuilt stages (see **Fresh Linux host
+bring-up**, step 6): B1–B6 are rebuilt clean at their recorded commits,
+G1–G5 re-run with the same predetermined rules, and no row in the macOS
+ledger is cited as Linux qualification. The steps below remain the
+predetermined shape of the protocol; the host identities change.
 
 Status of the owner's P0 list:
 
@@ -118,7 +136,9 @@ outcome stands. No step is retried to change a verdict.
 | G4 | `bench --baseline perf-rust-jit-thin --candidate perf-rust-jit --jit-set --gate --runs 5`, plus build seconds and libpython segment sizes | Justifies or reverts global fat LTO for the JIT build. |
 | G5 | `bench --baseline perf-rust-serc-thin --candidate perf-rust-serc` on the locked C3 set, `--gate --runs 5`, plus the IPC counters above | Same for Serc in-process (the 8% gain was CLI-only). If fat LTO does not win in-process on both tracks, revert `bfc2e23`. |
 
-Estimated host time ≈ 6 h of gates plus ≈ 30 min of builds. G1–G3 decide
+Estimated host time ≈ 6 h of gates plus ≈ 2–6 h of clean builds on the
+fresh Linux host (macOS caches and stages do not transfer; every B1–B6
+image is built from scratch). G1–G3 decide
 the J incumbent; G4–G5 decide the build profile. If G4/G5 revert fat LTO,
 G3 is repeated at the reverted profile against `perf-climb-ref` instead.
 
@@ -147,14 +167,17 @@ access, other runtime helpers. Provisional ranking from the 11-15 profiles:
    with materialization at every exit, measured with a whole-kernel probe
    (not mergeable). Risks: deopt/frame observability (`f_locals`, tracing,
    `sys._getframe`), identity of floats, refcount balance.
-2. **macOS TLS access (`_tlv_get_addr`)**, up to 26% on fannkuch and 13% on
-   float and also present in alloc paths of other kernels. Eval 11 mirrored
+2. **TLS access** (macOS: `_tlv_get_addr`, up to 26% on fannkuch and 13% on
+   float; the Linux equivalents are `__tls_get_addr` for dynamic TLS and
+   errno reads — re-derive the bucket from Linux profiles before acting). The
+   macOS receipt showed the term also present in alloc paths of other
+   kernels. Eval 11 mirrored
    the interpreter state globally and lost (GIL-transition stores and a
    changed inline shape cost more than they saved). Different mechanism:
    pass `tstate` explicitly into the hot alloc/dealloc paths the JIT and its
    helpers call (as `_PyFloat_FromDoubleTstate` already does) instead of
    changing global state. The first falsifier is a call-site census: count
-   which callers reach `_tlv_get_addr` in the fresh profiles. If ≥ 80% come
+   which callers reach the TLS stub in the fresh profiles. If ≥ 80% come
    from ≤ 5 call sites, prototype those; otherwise drop it.
 3. **Per-uop bookkeeping and guards** (bookkeeping 3–14% and guards 3–18% of
    kernel CPU): `_SET_IP`, `_CHECK_VALIDITY`, `_CHECK_PERIODIC`, spill/reload,
@@ -171,11 +194,15 @@ one above 3% of aggregate kernel CPU.
 **C — next experiment is IPC attribution, then layout or allocation.**
 
 1. **C-IPC (diagnostic, decides between 2 and 3):** hardware counters
-   (`xctrace record --template 'CPU Counters'`, or `kperf`-based sampling) on
+   (macOS: `xctrace record --template 'CPU Counters'` or `kperf`-based
+   sampling; Linux: `perf stat` / `perf record` with `L1i`/`iTLB`/`branch-misses`
+   events, `perf record -F` and `perf annotate` for symbol attribution) on
    the six-package cold compile, Serc vs C: L1I/iTLB misses, branch
    mispredicts, L1D/L2 misses, attributed to `serc`/`ruff_python_parser`
    symbols. Run it in the first quiet window after P0, or under light load
-   since counter ratios tolerate it.
+   since counter ratios tolerate it. Note the 2026-11-18 receipt used
+   `/usr/bin/time -l`; on Linux use `/usr/bin/time -v` (or `perf stat`), and
+   re-measure before citing any number.
 2. **Code locality:** if front-end misses dominate, try per-package
    `opt-level = "s"` for `serc`/`ruff_*` in the lane release profile, and
    measure binary size, IPC and the C3 cold set. Then try
@@ -208,6 +235,13 @@ Kept stages: incumbent, A/A twin, `perf-climb-ref`, `perf-guard-*`,
 improvement pair for gate controls). Kept scratch:
 `rust-cpython/.work/serc-test` (live Serc checkout).
 
+**OD20:** every stage listed above was built on macOS arm64 and none of
+them exists on the fresh Linux campaign host. The host starts from a clean
+clone with no kept stages; each required stage is rebuilt clean from its
+recorded commit during the **Fresh Linux host bring-up** baseline refresh,
+and parked or rebuilt stages never silently stand in for measured Linux
+builds.
+
 ## Goal and end state
 
 On one pinned CPython 3.16 epoch, make the lane's tier-2 JIT four times faster than the
@@ -222,7 +256,7 @@ The campaign is **done** when all of these hold at one commit on `main`:
 
 1. The lane builds one pinned 3.16 `main` commit (see **Source epochs**) with
    the unchanged LLVM pins.
-2. On macOS arm64 the JIT incumbent meets **M4**: `S ≤ 0.25`, every training
+2. On the native Linux x86-64 host the JIT incumbent meets **M4**: `S ≤ 0.25`, every training
    kernel ≤ 0.45, held-out geomean ≤ `S^0.5`, no guard regression, and the
    memory and code-size bars in **Targets**.
 3. Every new measured track J landing passed **J acceptance**, and new
@@ -239,15 +273,16 @@ The campaign is **done** when all of these hold at one commit on `main`:
    zero. No widening of fallback routes to make a candidate pass.
 5. The combined build `perf-final-jit-serc` reproduces the M4 score within the
    A/A spread, the C3 corpus parity, and the J targeted suites.
-6. On native macOS arm64, the four same-revision variants (neither feature,
+6. On the native Linux x86-64 host, the four same-revision variants (neither feature,
    JIT only, Serc only, both) pass their complete applicable suites with no
    unexplained difference from their matched controls. The combined build
    matches every kernel digest and passes the differential fuzzer, C1/C3
    corpus, and Serc verify suite. Account for known-red tests individually;
    a failed-file count alone is not parity.
 7. The ledger has M4, C3, and closing rows, and every deliverable below is
-   complete at that revision. Linux evidence is explicitly **not collected**
-   for this closeout.
+   complete at that revision. All qualification evidence is collected on the
+   native Linux x86-64 host; the macOS receipts are retained as history and
+   never cited as qualification.
 
 The campaign **ends incomplete** when the bounded J search exhausts T4
 without M4, or track C exhausts its attempts without C3. Preserve and deliver
@@ -255,13 +290,14 @@ the best qualified result with the remaining gap and measured ceilings. A
 stopped, blocked, or host-busy run is never a met goal.
 
 Out of scope: any change to the production 3.15.1 build, a JIT- or
-Serc-enabled distribution, all Linux execution/qualification, Intel macOS,
+Serc-enabled distribution, macOS arm64 execution/qualification from this
+host epoch onward (historical receipts stay), Intel macOS,
 free-threading, PGO, BOLT, the
 tail-call interpreter, and a method-based JIT frontend (PEP 836, parked).
 
 ### Deliverables and outcomes
 
-The deliverable is a reproducible, opt-in macOS research interpreter and its
+The deliverable is a reproducible, opt-in Linux x86-64 research interpreter and its
 evidence, not a production release or a claim that CPython is now all Rust.
 
 | Deliverable | Required contents |
@@ -280,8 +316,10 @@ runtime/input bytes change. A source change invalidates affected receipts.
 
 Use one of these explicit outcomes:
 
-- **COMPLETE_MACOS:** every macOS done criterion passes, with no performance
-  debt. This says nothing about Linux or production readiness.
+- **COMPLETE:** every done criterion passes on the native Linux x86-64
+  host, with no performance
+  debt. This says nothing about macOS, Linux arm64 or production readiness.
+  (Pre-2026-11-18 name: COMPLETE_MACOS.)
 - **INCOMPLETE_PLATEAU:** the bounded search or C attempts are exhausted;
   deliver the best measured incumbent and the unmet bars without lowering them.
 - **PERFORMANCE_DEFERRED:** valid quiet-host measurements are unavailable;
@@ -300,11 +338,12 @@ the active item's section, and **Boundary**. It then continues every unblocked
 lane without requesting approval at each iteration. It never repeats a closed
 experiment without new evidence or treats historical local paths as proof.
 
-Run from the repository root on the owner's Mac:
+Run from the repository root on the Linux x86-64 campaign host:
 
 ```sh
 uname -s
 uname -m
+. /etc/os-release && echo "$ID $VERSION_ID"
 git status --short
 git rev-parse HEAD
 git worktree list --porcelain
@@ -313,14 +352,19 @@ python3 rust-cpython/perf.py status
 command -v perf-gate-ready
 ```
 
-Require `Darwin`/`arm64` and the locked host/SDK/toolchain prerequisites;
-do not substitute Rosetta, a Linux VM, Docker, or this document editor's
-host. Preserve unrelated dirty work. Inventory the recorded refs, stages,
-logs and helpers before using them. Use `setup-worktree` in each new isolated
-worktree. Missing verified input caches can be fetched through the existing
-locked fetch commands; missing unpushed source or review evidence cannot be
-invented. Reconstruct receipts from available committed sources, and park
-only the candidate whose source is unavailable.
+Require `Linux`/`x86_64` with `ID=ubuntu` and `VERSION_ID=24.04` (glibc 2.39)
+and the locked `rust-cpython/linux-toolchain.lock.json` host/toolchain
+prerequisites; do not substitute a VM, Docker, emulation, or another
+distribution. (This replaces the pre-2026-11-18 Darwin/arm64 requirement; see
+**Boundary → Hosts** and OD20.) A fresh host must first complete
+[Fresh Linux host bring-up](#fresh-linux-host-bring-up-2026-11-18-od20),
+which is what makes `perf.py doctor` pass. Preserve unrelated dirty work.
+Inventory the recorded refs, stages, logs and helpers before using them.
+Use `setup-worktree` in each new isolated worktree. Missing verified input
+caches can be fetched through the existing locked fetch commands; missing
+unpushed source or review evidence cannot be invented. Reconstruct receipts
+from available committed sources, and park only the candidate whose source is
+unavailable.
 
 `perf-gate-ready` is an external host prerequisite, not supplied by this
 repository. If missing, record BLOCKED for timing; do not replace it with a
@@ -329,6 +373,89 @@ successful stub or disable the quietness checks. The old handoff's
 and this campaign's actual scheduling state before using it on an explicit
 resume. Never cancel an unrelated campaign or assume any process still runs.
 
+### Fresh Linux host bring-up (2026-11-18, OD20)
+
+Run once per fresh campaign host, in order. Nothing from the macOS host
+carries over: every build, baseline and kept stage is rebuilt and
+re-measured before any gate, milestone or closeout claim. macOS receipts are
+preserved as history and are never Linux evidence. Bring-up itself produces
+no qualification evidence.
+
+1. **OS.** Native x86-64 Linux, Ubuntu 24.04, glibc 2.39; no VM, Docker,
+   emulation or remote execution. `unshare -U -n true` must exit 0 — the
+   sealed build boundary runs in fresh user and network namespaces, and the
+   build fails its boundary self-test without them. Check with
+   `perf-gate-ready -s .` (needs ≥ 20 GiB free; plan for ≥ 60 GiB over the
+   campaign: locked LLVM ≈ 2 GiB, the source caches and several kept perf
+   stages at ~3 GiB each).
+2. **Pinned host packages.** Install the `system_packages` entries from
+   `rust-cpython/linux-toolchain.lock.json` plus `make=4.3-4.1build2` and
+   `pkgconf=1.8.1-2build1` (the lane's doctor checks the exact installed
+   versions):
+
+   ```sh
+   sudo apt-get update
+   sudo apt-get install -y make=4.3-4.1build2 pkgconf=1.8.1-2build1 \
+     $(jaq --from json -r '.system_packages[]' rust-cpython/linux-toolchain.lock.json)
+   ```
+
+   The pins were refreshed on 2026-11-18 (`e291795`) because noble superseded
+   the previous set; doctor reports any future drift. A pin refresh is its
+   own build-tooling commit, never a gate change. `libc6-dev` stays within
+   glibc 2.39; do not accept a new major glibc.
+3. **Rust.** rustup with no default toolchain, then the lane's pinned
+   channel `nightly-2026-09-15` (`RUST_CHANNEL` in `rust-cpython/build.py`)
+   with `rust-src`:
+
+   ```sh
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+   rustup toolchain install nightly-2026-09-15 --profile minimal --component rust-src
+   ```
+
+   The root `rust-toolchain.toml` pins `nightly-2026-11-09` for interactive
+   Cargo use; the lane deliberately builds with `nightly-2026-09-15`. Do not
+   unify them by editing either file. `RUSTUP_TOOLCHAIN` must not force a
+   different toolchain (an exported override silently retargets every
+   `rustup` call; this host's global `nightly-2026-09-15-x86_64-unknown-linux-musl`
+   override is exactly the failure mode to avoid).
+4. **Fetch and doctor.** Clone or copy the repo, then:
+
+   ```sh
+   python3 rust-cpython/build.py doctor    # expect: caches pending
+   python3 rust-cpython/build.py fetch     # locked CPython source, Serc,
+                                           # LLVM 23.1.2 + ICU 70, mpdecimal,
+                                           # private Cargo home (~2 GiB)
+   python3 rust-cpython/build.py doctor    # must be ok: true
+   python3 rust-cpython/perf.py doctor     # harness side, must agree
+   ```
+
+5. **Dev environment proof.** A full pydebug dev build
+   (`python3 rust-cpython/build.py build`) must succeed and install
+   `stage/bin/python3.16d`; `python3 -c 'import sys'` on it works;
+   `python3 rust-cpython/perf.py status` lists no builds;
+   `command -v perf-gate-ready` resolves. Do not run `perf.py` timing
+   commands for qualification here; they belong to the measured phases.
+6. **Baseline refresh (mandatory before any gate; record each item in
+   Status/Ledger as the Linux re-baseline).** Rebuild clean at `main` head:
+   `perf-upstream`, `perf-upstream-jit`, `perf-rust`, `perf-rust-jit`,
+   `perf-rust-serc`, `perf-final-jit`, `perf-final-jit-serc`. Reconstruct
+   `perf-climb-ref` from the recorded M0 source and flags — never from a
+   newer overlay under yesterday's name. Build a fresh A/A twin
+   (`perf-rust-jit-aa`) and run the A/A gate. Re-run the entire P0 protocol
+   (B1–B6, G1–G5) against Linux-rebuilt references: eval-9 requalification,
+   the fat-LTO epoch check, guard attribution and `S` are all platform
+   identities, not source identities, and every macOS number is void. The
+   M0 code-size denominator is re-measured on ELF — Mach-O `code_b` does not
+   transfer; `jit-stats` reports ELF text/data sizes. The C3 IPC diagnosis
+   re-runs with Linux counters (`perf stat`/`perf record` with
+   L1I/iTLB/branch-misses; `/usr/bin/time -v` replaces `-l`); the TLS bucket
+   in kernel profiles is `__tls_get_addr`/errno, not `_tlv_get_addr`.
+   Null-probe and `perf-rust-jit-vc{2,3}` controls rebuild from their
+   recorded commits for gate calibration. Until this checklist is recorded,
+   Status stays **WAIT — bring-up** and no candidate is gated; the macOS-era
+   P0 debt is recorded unpaid, not payable on macOS, and not payable on
+   Linux until the references above exist.
+
 ### Phases and selection priority
 
 | Phase | Work | Exit / next action |
@@ -336,7 +463,7 @@ resume. Never cancel an unrelated campaign or assume any process still runs.
 | RECOVER | Inventory candidate/control identities and pending evidence; audit measurement prerequisites (H0) | Reproducible controls and exact pending state; candidate still unmerged |
 | QUALIFY | Measure the already integrated OD14/OD16 stack, isolate JIT/Serc costs, resolve regressions by bisection | A measured incumbent and finite debt list; no new performance feature lands beforehand |
 | CLIMB | Profile → rank → one hypothesis → explore → clean gate → accept/reject → checkpoint | Advance the best measured incumbent or consume the bounded attempt budget |
-| CLOSE | Run the final same-epoch matrix and write deliverables | COMPLETE_MACOS or INCOMPLETE_PLATEAU |
+| CLOSE | Run the final same-epoch matrix and write deliverables | COMPLETE or INCOMPLETE_PLATEAU |
 | WAIT | A measurement prerequisite or quiet host is unavailable | Do bounded independent correctness/review work, then checkpoint PERFORMANCE_DEFERRED/BLOCKED |
 
 Priority is an incumbent correctness regression, then missing qualification
@@ -484,7 +611,7 @@ not prevent recoverable source review or semantic checks.
 | J | R0 → T1 → M1 → T2 → M2 → T3 → M3 → T4 → M4 | T2 ceilings need R1's catalog |
 | R1 | CinderX study (complete) | reuse catalog; rebuild only for a concrete missing receipt |
 | C | C0 → marshal parity; C1 → C2 → C3 | C1 needs R0's chosen SHA, not R0's exit |
-| Close | combined build, native macOS qualification and deliverables | M4 and C3 on one epoch |
+| Close | combined build, native Linux x86-64 qualification and deliverables | M4 and C3 on one epoch |
 
 Each lane works in its own worktree `.work/wt/<item>` on branch
 `campaign/<item>`, created with `perf.py setup-worktree` so caches are shared.
@@ -577,13 +704,13 @@ and an LLVM incompatibility that patching `Tools/jit` cannot fix.
   `release-budgets.json`, or CI. Reading them, or building a production input
   archive into `.work/`, is allowed.
 - **LLVM is fixed (OD1).** Stencils use the locked LLVM: 23.1.4 on macOS arm64
-  (`bootstrap.lock.json`) and 23.1.2 on Linux x86-64
-  (`rust-cpython/linux-toolchain.lock.json`), through configure's
-  `LLVM_VERSION` and `LLVM_TOOLS_INSTALL_DIR`. Upstream's "LLVM 21" warning is
-  accepted. No other LLVM, system clang, runtime LLVM, asmjit, or GCC enters a
-  lane build. Spikes may extract further members of the locked archive into
-  `.work/`. R1's CinderX build is scratch and may use the toolchain CinderX
-  documents; nothing it builds enters the lane.
+  (`bootstrap.lock.json`, historical) and 23.1.2 on Linux x86-64
+  (`rust-cpython/linux-toolchain.lock.json`, the campaign host), through
+  configure's `LLVM_VERSION` and `LLVM_TOOLS_INSTALL_DIR`. Upstream's
+  "LLVM 21" warning is accepted. No other LLVM, system clang, runtime LLVM,
+  asmjit, or GCC enters a lane build. Spikes may extract further members of
+  the locked archive into `.work/`. R1's CinderX build is scratch and may
+  use the toolchain CinderX documents; nothing it builds enters the lane.
 - **Locks.** R0 and later epoch refreshes edit the CPython record in
   `rust-cpython/sources.lock.json`; C0 adds the Serc record. Vetted crates for
   the **Rust rule** and track C update the overlay `Cargo.lock` with their
@@ -601,10 +728,12 @@ and an LLVM incompatibility that patching `Tools/jit` cannot fix.
 - **TLS stays out.** `_ssl_rs`, `_hashlib_rs`, RTLS/Graviola, and trust-store
   code are untouched. Serc's SipHash `.pyc` source hashing is unrelated.
 - **Hosts.** All active correctness, performance, and closeout work runs
-  natively on macOS arm64. No Linux execution, container/image work, remote
-  Linux job, or emulation is part of this campaign. Preserve historical
-  Linux receipts as historical; reopen qualification only with a native
-  host and an explicit owner instruction.
+  natively on Linux x86-64 (Ubuntu 24.04, glibc 2.39, per
+  `rust-cpython/linux-toolchain.lock.json`; OD20). No VM, Docker, emulation,
+  or remote execution is part of this campaign. Native macOS arm64 is closed
+  history for this campaign; preserve its receipts as history. macOS and
+  Linux arm64 are out of scope. Reopening any other host takes an explicit
+  owner decision.
 - **Network.** Allowed reads: lane `fetch` and `perf.py fetch` of locked
   inputs, `git ls-remote`/archive downloads of `python/cpython`, and clones of
   pinned CinderX and Serc commits into `.work/`. No pushes, PRs, issues, or
@@ -757,8 +886,10 @@ can be an OD4 recorded cost while the separate +8% milestone bar still
 passes. Preserve that raw verdict and the metric-level attribution; no
 timing, guard, unexplained resource rejection, or +8%/2x miss is waived.
 OD15's isolated Serc physical-footprint check is additional, not a waiver
-of the combined milestone. `jit-stats --ref <build> --jit-set` supplies
-macOS `code_b` per kernel; Linux-only residency columns are not required.
+of the combined milestone. `jit-stats --ref <build> --jit-set` reports
+the kernel text/data sizes (ELF on the Linux host; Mach-O `code_b` on
+historical macOS hosts). Re-measure the M0 denominator on the Linux host;
+it does not transfer.
 
 Re-run the milestone after four accepted optimization steps, at the end of
 a tier, and at Close. The same measured `S` is reported after every accepted
@@ -806,9 +937,11 @@ old next-step instructions.
    guard baselines.
 
 **Exit:** the lock change and M0 ledger row land on `main`, with native
-macOS evidence. R0 is already complete for e891; a restart reconstructs its
-references instead of chasing a new upstream pin. Linux parity is deferred
-outside this campaign.
+Linux x86-64 evidence (per OD20; the e891 M0 receipt was measured on macOS
+and is retained as historical evidence, so the Linux host re-derives its
+M0 denominator and A/A spread before the milestone is met). R0 is already
+complete for e891; a restart reconstructs its references instead of chasing
+a new upstream pin.
 
 ### P1: ceilings (start of each tier)
 
@@ -2853,9 +2986,11 @@ compiler by mode. A Serc error raises; it is never retried on the C compiler.
 `PYTHONSERCVERIFY=1` compiles with both and raises on any difference.
 
 The cold-import workloads run with `-B`, `-X frozen_modules=off`, and a fresh
-empty `PYTHONPYCACHEPREFIX`, so source compilation is exercised. The active
-locked macOS acceptance set is **`cold_python_startup`, `cold_import_django`,
-and `compileall_source`**. `cold_import_app_stack` is registered but
+empty `PYTHONPYCACHEPREFIX`, so source compilation is exercised. The locked
+acceptance set is **`cold_python_startup`, `cold_import_django`,
+and `compileall_source`** (recorded as the macOS acceptance set; the same
+three workloads carry over to the Linux host and are re-measured there).
+`cold_import_app_stack` is registered but
 unavailable in `perf.py` because its 3.16 input closure is not locked. The
 existing C2 exception below defers it; do not invoke it, invent its inputs,
 count it as passed, or quietly remove another workload after seeing a loss.
@@ -3374,7 +3509,7 @@ after another unlimited optimization campaign.
    can hide a loss. Recheck training, held-out, application guards, RSS, and
    code bytes. Run the C2 timing and isolated footprint gates for Serc-only
    and combined variants with the proper matched controls.
-3. Run the complete native macOS suite matrix in done criterion 6, targeted
+3. Run the complete native Linux x86-64 suite matrix in done criterion 6, targeted
    native/Rust/unsafe regressions, and 2,000 differential programs per seed
    for seeds 0-2 on the final JIT-only and combined builds. Record JIT-active
    coverage; skipped execution is not evidence. Run the C1/C3 census and
@@ -3387,10 +3522,10 @@ after another unlimited optimization campaign.
    report. Reconcile provisional landings as measured, reverted, or still
    incomplete; do not advertise individual speedups from one aggregate win.
 5. Write every **Deliverable**, a closing ledger row, and the final Status.
-   COMPLETE_MACOS requires all bars. Otherwise deliver INCOMPLETE_PLATEAU
-   with best measured builds and exact gaps. Mark Linux deferred with no
-   native host, and leave production promotion and unresolved owner reviews
-   explicit. No publishing a JIT/Serc product or reopening a completed tier.
+   COMPLETE requires all bars. Otherwise deliver INCOMPLETE_PLATEAU
+   with best measured builds and exact gaps. Leave production promotion and
+   unresolved owner reviews explicit. No publishing a JIT/Serc product or
+   reopening a completed tier.
 
 The comparison command family is below; substitute the recorded final stage
 for `perf-final-jit` and repeat for `perf-final-jit-serc`. Record both external
@@ -3437,9 +3572,10 @@ owner explicitly requests an epoch change:
 ## Owner decisions
 
 Historical decisions below explain their original receipts. OD18 and
-OD19 are the current operating contract. They preserve feature semantics,
-numeric targets, LLVM pins, the production boundary, and OD17's reviewer
-restriction.
+OD19 are the current operating contract where OD20 does not supersede them;
+OD20 reopens the campaign host as native Linux x86-64 (2026-11-18). The
+contract preserves feature semantics, numeric targets, LLVM pins, the
+production boundary, and OD17's reviewer restriction.
 
 - **OD1 (2026-11-01):** keep the pinned LLVM; see **Boundary**.
 - **OD4:** memory gates stay as written; JIT against no-JIT keeps its peak RSS
@@ -3500,6 +3636,22 @@ restriction.
   compact scorecard; receipts go to the ledger. The Rust optimizer
   requirement and all semantic, deopt, refcount, observability and
   byte-exactness requirements are unchanged.
+- **OD20 (2026-11-18):** reopen Linux as the campaign host. The campaign
+  runs and closes on a native x86-64 Linux host (Ubuntu 24.04, per
+  `rust-cpython/linux-toolchain.lock.json`; no VM, Docker, emulation, or
+  remote execution). OD18's macOS-only contract and "Linux is indefinitely
+  out of scope" are superseded by this decision; Linux arm64 remains
+  unimplemented and out of scope. All builds, baselines, kept stages,
+  references and qualification are re-established on the Linux host: no
+  macOS-measured reference, stage, code-size denominator or gate calibration
+  transfers. Historical macOS receipts are preserved verbatim and remain
+  evidence for what they measured on macOS; the done criterion's outcome is
+  renamed COMPLETE (formerly COMPLETE_MACOS). The P0 protocol re-runs
+  against Linux-rebuilt references before any candidate is gated, and no
+  baseline is remeasured on any host until the fresh-host bring-up
+  checklist lands in the ledger. Targets M1–M4, the guard/memory/code-size
+  bars, the 1% floor, the Rust rule, the correctness, parity, fuzzer and
+  review requirements are unchanged.
 - **Parked:** a method-based frontend (withdrawn PEP 836 prototype, observed
   head `04a79098`) opens only by owner decision.
 

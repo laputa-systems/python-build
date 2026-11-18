@@ -2,14 +2,15 @@
 
 JIT work in this lane follows one campaign,
 [rust-cpython JIT](../docs/CAMPAIGN-RUST-CPYTHON-JIT.md). Resume from its
-Status and current source epoch; R0 has already opened epoch e891. Campaign
-execution remains paused until resumed by the owner. The next resume starts
-with the campaign's H0 recovery checkpoint: calibrate the evidence path and
-audit the pending stack before another optimization or eval-8 timing retry.
-The recorded S = 0.7463 is not a qualified milestone; A/A and guard debt
-remain open. Current qualification is native macOS arm64 only. Linux research
-execution and qualification await a native Linux host and an explicit
-reopening; they do not gate this macOS campaign.
+Status and current source epoch; R0 has already opened epoch e891. The
+campaign runs on the native Linux x86-64 host (Ubuntu 24.04; owner reopened
+Linux 2026-11-18, campaign decision OD20). Resume directly from the
+campaign's Status: if the fresh host has not completed the **Fresh Linux
+host bring-up** checklist, that comes first — no qualification runs against
+macOS-derived references. macOS arm64 receipts are historical and do not
+qualify the current epoch. The recorded S = 0.7463 is not a qualified
+milestone; A/A and guard debt remain open, now as Linux re-derivation
+debt.
 
 This isolated lane builds upstream CPython **3.16.0a1+dev** with a Rust overlay.
 It is not the shipping 3.15.1 product. JIT experiments run only in this lane:
@@ -29,7 +30,10 @@ The current source is upstream `python/cpython` `main`, commit
 workspace and the `cpython-sys`/`cpython-build-helper` bridge crates; the
 overlay lockfile is the build lock, and its digest is pinned in the same
 source record. The Rust toolchain is pinned in
-[`rust-toolchain.toml`](../rust-toolchain.toml). The private Cargo home is used
+[`rust-toolchain.toml`](../rust-toolchain.toml) for interactive Cargo use;
+the lane itself builds with `nightly-2026-09-15` (`RUST_CHANNEL` in
+[`build.py`](build.py)) with the `rust-src` component, deliberately separate
+from that file. The private Cargo home is used
 offline after fetching. Release perf builds build std from the pinned
 `rust-src` with ThinLTO; `fetch` caches the toolchain's std crates with the
 workspace crates. Do not update the source, toolchain, or Cargo lock accidentally; a
@@ -135,6 +139,40 @@ macOS lane uses the root `bootstrap.lock.json` LLVM 23.1.4 and Xcode SDK
 identity. `fetch` verifies inputs; build and install use an offline boundary
 with a network-denial self-test. The Linux boundary uses user and network
 namespaces; macOS uses `sandbox-exec`.
+
+## Fresh Linux host setup
+
+Native x86-64 Ubuntu 24.04 (glibc 2.39) — no VM, Docker, emulation, or
+another distribution. On a fresh host, in order:
+
+```sh
+# 1. Pinned host packages (exact versions; lane doctor checks them)
+sudo apt-get update
+sudo apt-get install -y make=4.3-4.1build2 pkgconf=1.8.1-2build1 \
+  $(jaq --from json -r '.system_packages[]' rust-cpython/linux-toolchain.lock.json)
+
+# 2. Rustup with no default toolchain, then the lane's pinned channel
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+  sh -s -- -y --profile minimal --default-toolchain none
+rustup toolchain install nightly-2026-09-15 --profile minimal --component rust-src
+
+# 3. Fetch locked inputs, then confirm the environment is green
+python3 rust-cpython/build.py doctor    # caches pending on a fresh host
+python3 rust-cpython/build.py fetch     # ~2 GiB: CPython source, Serc,
+                                         # LLVM 23.1.2 + ICU 70, mpdecimal,
+                                         # private Cargo home
+python3 rust-cpython/build.py doctor    # must be ok: true
+python3 rust-cpython/perf.py doctor
+```
+
+`unshare -U -n true` must exit 0 (the offline build boundary runs in fresh
+user and network namespaces). `make` and `pkgconf` are checked at the
+`/usr/bin` paths the lock names; `RUSTUP_TOOLCHAIN` must not force another
+channel. The pins were refreshed 2026-11-18 because noble superseded the
+previous set; if doctor reports a superseded package, refresh the pin in its
+own commit — never to make a gate pass. Full bring-up, including the
+baseline re-measurement every macOS-derived reference needs, is in the
+campaign's **Fresh Linux host bring-up** section.
 
 ## Performance harness
 
