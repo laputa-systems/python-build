@@ -4953,5 +4953,21 @@ and `push_cold_blocks_to_end` (~0.1% each) — while the dominant cost is
 the per-node lowering itself (`compile_expression`, `compile_call`,
 `compile_suite_inner`, `finish_inner`), i.e. inherent code generation,
 not a skippable pass. No bounded emit-side target exists either.
+
+**Rust `target-cpu` parity — measured, no-op (2026-11-19).** The C side
+of every lane build compiles with `-mcpu=apple-m1`
+(`cpu_baseline_cflag`), while Cargo received no `-C target-cpu`, so the
+hypothesis was that the whole Rust surface (`serc`, `_jit_opt_rs`, all
+`Modules/_*_rs`) ran on a generic arm64 baseline and was leaving M1 ISA
+on the table. It is not: `rustc --print cfg` for plain
+`aarch64-apple-darwin` already enables all 34 Apple target features
+(`lse`, `lse2`, `fcma`, `fp16`, `dotprod`, `flagm2`, `rcpc2`, …) —
+rustc's Apple-darwin baseline is armv8.5+/M1-class, unlike clang's
+default arm64 target which is why the C flag exists. Confirmed by A/B:
+`fb_probe` rebuilt with `RUSTFLAGS="-Ctarget-cpu=apple-m1"` over the
+907-file django corpus ×20 reps at -O0 read user 8.97 s vs 8.95 s
+baseline (noise), with byte-identical per-file marshal hashes. There is
+no Rust codegen-flag headroom on this host; `-Ctarget-cpu=native`
+resolves to the same `apple-m1` CPU. Closed without a build change.
 | 2026-11-17 | e891 | J | diagnostic | `perf.py profile --jit-map` on `spectral_norm` (400 iterations, incumbent `perf-rust-jit`): 6,323 JIT-attributed samples, 100% uop coverage; `_CHECK_VALIDITY` alone 7.36% (926 samples), `_SET_IP` 1.19%, `_TIER2_RESUME_CHECK`/`_CHECK_PERIODIC`/`_CHECK_FUNCTION_VERSION`/`_CHECK_RECURSION_REMAINING`/`_CHECK_STACK_SPACE_OPERAND` ~4.4% combined, guard family ~10%; emitted once per translated bytecode via `ADD_TO_TRACE(_CHECK_VALIDITY)` in `optimizer.c` | `perf-rust-jit` @ `d525d5c` | unmeasured (profiling only) | — | DIAGNOSTIC: checks+guards+validity ≈ 20% of JIT samples; `_CHECK_VALIDITY` is load-bearing for memory safety — `executor_invalidate` frees executor exits (`executor_clear_exits`) at any time, so a running trace must observe `vm_data.valid == 0` before touching exit state; reducing check frequency risks UAF, not just stale semantics; tracemalloc polling shares the same uop; no bounded frequency reduction identified; M4 (S ≤ 0.25 vs incumbent 0.7278) needs ~3× and no single uop mechanism approaches it | `rust-cpython/results/perf-profile/20261117T111906Z-perf-rust-jit-spectral_norm-sample` |
 | 2026-11-17 | e891 | J | T1 | post-specialization `_CHECK_VALIDITY` pruning: second escape scan after `unbox_values` NOPs validity checks that `guard_loop_locals`/`specialize_stores`/`specialize_attribute_loads`/unboxing made redundant — the stale pair the earlier T1 row predicted | `perf-rust-jit` @ `2eb4dfa` vs `perf-rust-jit-vc2` @ `2f6284b` (clean `--jit` build) | gate `climb-step --runs 5`, `perf-gate-ready` clean both sides | point 0.9977; nbody cpu/wall improved in all 5 runs | ACCEPT: gate ACCEPT, no kernel CI95 regression, training+held-out digests equal, 2,000-program fuzz 0 mismatches at 97.45% coverage, targeted suites match modulo named superseded uop assertions; nbody `_CHECK_VALIDITY` samples 10.23% → 4.35% at 100% named coverage; JIT code bytes never grow (nbody 43,860 vs 54,900); peak RSS within budget | `rust-cpython/results/perf-bench/20261117T222329Z-perf-rust-jit-vs-perf-rust-jit-vc2`; held-out `20261117T232755Z-perf-rust-jit-vs-perf-rust-jit-vc2` |
