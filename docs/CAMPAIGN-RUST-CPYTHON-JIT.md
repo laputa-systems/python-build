@@ -510,10 +510,15 @@ needs each collector split into fact-extraction vs recursion, or a
 combined visitor that recurses once and dispatches to all collectors per
 node. That is a mechanical but wide refactor across `scope.rs`,
 `syntax_warning.rs`, `syntax.rs`, `static_blocks.rs`, `cpython_only.rs`,
-with byte-parity + warning-order verification via the census. **Next
-concrete project:** measure per-collector cost (phase timers exist; a
-visitor-count census would size it), then fuse compatible collectors into
-shared traversals —
+with byte-parity + warning-order verification via the census. Scope
+sizing: `ScopeBodyFactsCollector::collect` is invoked per function/class
+*definition body* during scope planning (scope.rs ~2567/~2602), so scope
+facts are re-collected for every nested scope on top of the module-level
+walks — traversal count scales with scope count, not just module size.
+`ModuleNameCollector::collect_with_source` is the fused module-level
+exception. **Next concrete project:** measure per-collector cost (phase
+timers exist; a visitor-count census would size it), then fuse compatible
+collectors into shared traversals —
 the first bounded-looking lever with enough headroom (~10%+) to matter
 for C3, provided each collector's facts and warning/error ordering stay
 byte- and diagnostic-identical. Parity census + `test_serc_compile`
