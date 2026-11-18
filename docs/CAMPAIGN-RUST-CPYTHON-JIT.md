@@ -296,6 +296,27 @@ spectral_norm 0.691, richards 0.648, raytrace 0.818, float 0.836,
 fannkuch 0.853, chaos 0.860, nqueens 0.887, deltablue 0.902, hexiom
 0.907, go 0.915. M4 also requires every kernel ≤0.45 — none qualifies.
 
+**Close-phase suite matrix on the new epoch (2026-11-18, HEAD `32e9286`).**
+All four variants rebuilt clean at the frozen revision and ran the full
+52,102-test suite; failure sets match the documented epoch expectations
+exactly. `perf-rust`: 4 files/5 failures (`test_asyncio.test_sendfile`,
+`test_asyncio.test_sslproto`, `test_ssl`, `test_support`).
+`perf-rust-serc`: identical 4/5 under both `--all` and `--all
+--serc-verify` — Serc verification introduces no failed-test difference.
+`perf-rust-jit` and `perf-final-jit-serc`: identical 5 files/24 failures
+under both modes — the same four plus `test_capi`'s 19 known superseded
+`test_opt` uop-shape assertions. Combined-build evidence on this epoch:
+all 16 training-kernel digests equal `perf-rust-jit`
+(`20261118T035428Z`); differential fuzz seeds 0–2 clean on both JIT
+builds (2,000 programs each, 0 mismatches, ~97.4% JIT coverage);
+`test_serc_compile.py` linked verification 11/11 on both Serc builds.
+The C1/C3 census carries from `fb131e1`: `serc-overlay` changed only by
+env-gated `SERC_PROFILE` timers since, which cannot alter emitted
+bytecode. Still open for Close: fresh A/A twin at this epoch
+(`perf-rust-jit-aa` predates the accepted landings), the C2/footprint
+timing gates, the independent final review, and the deliverables
+rewrite toward INCOMPLETE_PLATEAU.
+
 **P2 linear-path port scoped (2026-11-18).** The Py316 exclusion is two
 independent gates, not one: `finish_code_with_constants` requires
 `python_version == Py314` before any linear predicate runs
