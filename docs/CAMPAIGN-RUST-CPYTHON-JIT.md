@@ -702,6 +702,22 @@ Verification gate: `test_serc_compile` 11/11, `serc_parity` 30,318-case
 census with 0 mismatches, per-file marshal digests at -O0/-O1/-O2, and
 a `SERC_PROFILE` re-run expecting `rules` phase ≈ 8.5% → ~4–5% of
 compile.
+**Stage-1 rules fusion landed (2026-11-18, `b07381c`).** `RulesScan`
+replaces the five cpython_only AST walks with one traversal computing
+all latch/max facts; `source_rules`/`compiler_rules` consume
+`RulesFacts` with unchanged reason priority. A/B verification on the
+staging build: marshal hashes and error strings byte-identical to the
+prior implementation on all 907 django files at -O0/-O1/-O2 plus
+synthetic rule cases; 1,260 serc lib tests pass (compatibility-suite
+oracle tests need `SERC_TEST_PYTHON`, unavailable in scratch). Measured:
+`rules` phase 42.8 → 31.5 ms on the django corpus (−26% of phase,
+≈ −2.3% of compile CPU). Pending before acceptance claims: the full
+30,318-case parity census, per-file marshal digests, and the
+`perf-rust-serc` rebuild + locked C3 gate. Stage 2 remains:
+`validate_with_integer_limit` (9.2 ms) + `static_blocks::validate`
+(3.5 ms) + `may_warn` Scan behind the same error-priority discipline,
+then the per-scope planning walks (`ScopeBodyFactsCollector` +
+`LocalCollector`, ≈ 18 ms).
 
 - `campaign/jit-subscr-virtual` `da402d9` — stack tip, worktree
   `.work/wt/jit-subscr-virtual` (closeout-allowed). Evals 7+8: fused
