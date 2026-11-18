@@ -300,6 +300,19 @@ therefore needs per-shape equivalence fixes inside the pinned archive
 `passes/linear.rs`, not a version-gate change; parked unless a cheaper
 Serc lever appears first.
 
+**Emission attribution limit (2026-11-18).** A 60-iteration `sample`
+profile of `compileall_source` on `perf-rust-serc` is dominated by
+process-level filesystem syscalls (`open`/`rename`/`unlinkat`/`mkdir`/
+`stat`/`write` ≈ 400+ of ~1k leaf samples) because the workload writes
+`.pyc` files; it is a poor proxy for compiler CPU. Within compilation,
+self-time is diffuse — `OptimizationPipeline::optimize` is the largest
+single leaf (~27 samples, matching the ~28% `pipeline-optimize` phase
+share) and every other serc leaf is under ~10, spread across
+`compile_statement_inner`/`compile_expression_inner`/`compile_call` and
+assembler layout/finally passes. No single bounded emission hotspot
+emerged; the coherent remaining target is the graph pipeline itself,
+whose passes produce the byte-parity output.
+
 - `campaign/jit-subscr-virtual` `da402d9` — stack tip, worktree
   `.work/wt/jit-subscr-virtual` (closeout-allowed). Evals 7+8: fused
   unpack-to-locals (`_UNPACK_SEQUENCE_TWO_TUPLE_TO_FAST`,
