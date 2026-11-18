@@ -111,6 +111,11 @@ proceed before another quiet calibration window. Run ID:
 `20261118T211238Z-calibrate-perf-rust-jit`. Receipt SHA-256:
 `938bf9aee332a75face612f634539e6e43e704cd352c464a8c3b4cd11d820374`.
 
+The first full-suite attempt was interrupted after the container retained
+orphaned test subprocesses as zombies. A fork-and-exit probe reproduced
+the leak and verified reaping with Docker's init process. The cloud runner
+now uses `--init`. The partial run remains diagnostic evidence.
+
 ### Scorecard
 
 | Track | Measure | Current | Qualified? | Target / gap |
@@ -462,7 +467,8 @@ bash rust-cpython/tools/cloud-ubuntu.sh offline rust-cpython/stage/bin/python3.1
 The image uses a digest-pinned Ubuntu 24.04 base and installs the locked
 packages. Fetch uses the host's CA bundle for TLS verification. Build and
 test commands run as the calling UID with Docker's network disabled and
-all capabilities dropped. The Linux builder checks for a loopback-only
+all capabilities dropped. Docker's init process reaps orphaned child
+processes. The Linux builder checks for a loopback-only
 namespace and proves there is no external IPv4 route before sealed
 commands. The native workflow continues to use the namespace self-test.
 

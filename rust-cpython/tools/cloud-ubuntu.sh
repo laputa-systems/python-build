@@ -21,7 +21,7 @@ case "${1:-}" in
         shift
         mkdir -p "$lane_home"
         lane_home=$(cd -- "$lane_home" && pwd)
-        runner=(docker run --rm --platform linux/amd64 --cap-drop ALL
+        runner=(docker run --rm --init --platform linux/amd64 --cap-drop ALL
             --security-opt no-new-privileges --user "$(id -u):$(id -g)"
             --volume "$primary:$primary" --volume "$lane_home:$lane_home"
             --workdir "$repo" --env "HOME=$lane_home" --env PYTHONDONTWRITEBYTECODE=1
