@@ -1379,10 +1379,11 @@ def test(*, name: str, suites: list[str], all_suites: bool = False,
     workers = jobs if jobs is not None else lb._test_jobs()
     with host_lease("test", f"test {_tag(name)} {label}"), contextlib.ExitStack() as scratch:
         if serc_verify:
-            SCRATCH.mkdir(parents=True, exist_ok=True)
+            cache_root = Path(env["TMPDIR"]) if lb.IS_LINUX and lb.lane_linux.docker_offline() else SCRATCH
+            cache_root.mkdir(parents=True, exist_ok=True)
             env["PYTHONSERCVERIFY"] = "1"
             env["PYTHONPYCACHEPREFIX"] = scratch.enter_context(
-                tempfile.TemporaryDirectory(prefix="serc-verify-pycache-", dir=SCRATCH))
+                tempfile.TemporaryDirectory(prefix="serc-verify-pycache-", dir=cache_root))
         for stale in (paths["build"] / "build").glob("test_python_*"):
             _remove_tree(stale)
         result = lb._run_python_test(

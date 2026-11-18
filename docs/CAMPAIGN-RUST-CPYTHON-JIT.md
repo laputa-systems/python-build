@@ -121,6 +121,18 @@ fallback in `test_forkserver_requires_writeable_tempdir`. The same built
 interpreter passed that test with the container's private `/tmp`. Cloud
 suite runs now use that short path. The probe still reproduced the separate
 `test_support` hashlib failures.
+Python's bytecode cache now shares the container's `/tmp` filesystem with
+the suites, including the empty cache for `--serc-verify`. This preserves
+the atomic renames exercised by `test_import` and `test_compileall`.
+The pristine CPython control reproduced the `test_profiling` timeout in
+`test_script_error_treatment` and the `test_external_inspection` dead-process
+read error.
+
+Cloud PMU profiling is deferred. A self-only user-mode CPU-cycle
+`perf_event_open` probe returned `EPERM` in both the agent host shell and the
+offline container. The synthetic timing controls on the quiet A/A receipt
+also found that a +2% injected shift was rejected in only 3 of 23 entity
+trials. The cloud timing path remains unqualified.
 
 ### Scorecard
 

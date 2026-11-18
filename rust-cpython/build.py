@@ -973,6 +973,8 @@ def _test_environment(toolchain) -> dict[str, str]:
     if IS_LINUX and lane_linux.docker_offline():
         # The container's private /tmp gives tests room for Unix socket paths.
         env["TMPDIR"] = "/tmp"
+        # Import tests rename bytecode between the cache and their temp trees.
+        env["PYTHONPYCACHEPREFIX"] = "/tmp/python-build-pycache"
     # A host egress proxy changes urllib/http.client test behavior; CPython's
     # module suites use direct loopback servers.
     for name in tuple(env):
