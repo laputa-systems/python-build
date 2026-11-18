@@ -4890,8 +4890,24 @@ complete before `build_scopes`), satisfying locals' insert-time consult
 — but every other facts field stays entangled with the facts
 collector's own visitation order. Worktree `.work/wt/serc-merge` on
 branch `campaign/serc-scope-merge` holds the merge scaffolding point;
-implementation is a multi-session refactor with a now-lower expected
-ceiling. C3 verdict mechanics confirmed: for serc pairs under
+**Dispatch-cost probe — merge ceiling measured, not estimated
+(2026-11-18).** A `#[test]` probe (since reverted) timed, over 400
+django files / 2,595 scope bodies / 86,931 AST nodes on the release
+build: a generic null `Visitor` full-module walk = **0.58 ms**;
+`ModuleNameCollector::collect_with_source` = 4.24 ms;
+`ScopeBodyFactsCollector::collect` summed over all bodies = 2.61 ms.
+The null walk approximates pure traversal dispatch: facts collection
+spends only ~22% of its time in dispatch — the rest is per-node update
+logic and helper sub-traversals that survive any traversal merge.
+Extrapolating the same dispatch fraction to `LocalCollector` (heavier
+per-node updates, so a *lower* dispatch share), fusing facts+locals
+into the module walk saves ≈ **2.5–3 ms of ~450 ms compile ≈ 0.5%** —
+decisively below the ~3.5% C3 cpu gap and below the campaign floor.
+The scope-planning merge is therefore measured-sub-floor, not merely
+risky: even a perfect implementation cannot close C3. This closes the
+last identified Serc lever. Worktree `.work/wt/serc-merge` /
+`campaign/serc-scope-merge` retained but unneeded; probe reverted
+uncommitted. C3 verdict mechanics confirmed: for serc pairs under
 `memory-only` policy peak RSS is recorded-not-deciding and physical
 footprint rejects above +8%; the all-metrics cold gate still requires
 the candidate to match or beat the non-Serc compile path on
