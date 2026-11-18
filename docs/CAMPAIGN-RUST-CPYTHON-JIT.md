@@ -4801,6 +4801,36 @@ bounded experiment. Bounded AST-walk fusion is therefore exhausted:
 rules-phase walks are fused to their floor (the `Validator` replay
 machinery and `static_blocks` bespoke `BlockLimit` traversal were
 analyzed and rejected), and the context-phase collectors need the
+**Scope-planning merge — implementation sketch for the research project.**
+Measured buckets (907-file django, release `fb_probe`): `context` ≈ 52 ms
+of ≈ 470 ms compile, decomposed as `walk-scope-inputs` ≈ 21 ms (incl. the
+`ModuleNameCollector` walk), `walk-locals` ≈ 11 ms (**per-scope**
+`LocalCollector::collect_suite` runs inside `build_scopes`, one per
+function/class body — the module-level bindings walk gated by
+`requires_module_bindings` is shallow and negligible, proven by the
+reverted narrowing A/B), `walk-scope-facts` ≈ 7.5 ms
+(`ScopeBodyFactsCollector::collect` per body, call sites
+`build_function`/`build_class` plus `for_function`/`for_class` wrappers).
+Merge shape: `ModuleNameCollector` already performs one full traversal
+with scope context (`current_scope`, `nested_scope_depth`,
+`in_module_header`, per-scope annotation flags). A per-scope facts frame
+stack driven from its existing `visit_stmt`/`visit_expr` dispatch could
+accumulate `ScopeBodyFacts` and the `LocalCollector` binding stream during
+the same walk, eliminating two additional full-tree traversals (~18 ms,
+≈4% of compile CPU — roughly the remaining C3 cpu gap). Hard parts:
+(1) `ScopeBodyFactsCollector`'s ~500-line Visitor uses generic
+`walk_expr` recursion and stops at nested scope boundaries per body —
+its fact hooks must be replayed inside `ModuleNameCollector`'s manual
+dispatch on the identical node set, including inlined-comprehension
+depth tracking, `private_name` mangling, `skip_annotations`/
+`eager`/`deferred` per-scope flags, and `class_comprehension_targets`;
+(2) `LocalCollector` is order-sensitive binding analysis — its
+`collect_suite_with_unwind` statement-order semantics and
+`candidate_bindings`/`unwind` machinery must be reproduced exactly or the
+symbol-table local ordering diverges; (3) name-interning order must stay
+identical because `NameId`s feed marshal-visible ordering. Verification
+bar: 3,436-file corpus digest parity + 30,318-case census + 1260 lib
+tests + synthetic scope edge cases, then the locked C3 gate.
 **Module-bindings trigger narrowing — measured, reverted (`3b06f18`→`6eb94cb`).**
 The `requires_module_bindings` gate was narrowed so `super` interned only
 inside nested bodies no longer triggers the module-local `LocalCollector`
