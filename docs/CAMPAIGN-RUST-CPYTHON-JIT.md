@@ -639,6 +639,32 @@ module bindings require). Emission self-time is diffuse
 No bounded Serc lever remains: every measured probe
 (scan-consolidation, token pre-filters, Py316 linear gate) was
 neutral-to-sub-floor or incorrect.
+**Per-collector census measured (2026-11-18).** `WalkTimer` buckets
+(env-gated `SERC_PROFILE` sub-totals, profiling build, 907 django
+files, 451.5 ms total compile): `walk-scope-inputs` 20.4 ms (4.5%),
+`walk-module-names` 19.5 ms (4.3%), `walk-locals` 10.6 ms (2.4%),
+`walk-validator` 9.2 ms (2.0%), `walk-scope-facts` 7.5 ms (1.7%),
+`walk-may-warn` 6.6 ms (1.5%), `walk-expr-blocks` 3.5 ms (0.8%);
+`walk-dup-keys` absent (gated, ~0). Sum ≈ 17% of compile. Nesting:
+`ScopeInputs::collect` (scope.rs:2814) internally drives
+`ModuleNameCollector::collect_with_source` (2837) and one
+`LocalCollector` (2844), so `walk-scope-inputs` already contains most
+of `walk-module-names`; the other `LocalCollector` sites
+(6434/9021/9112) run per-scope during planning/emission, as do the
+per-body `ScopeBodyFactsCollector::collect` calls (2567/2602).
+Distinct-traversal estimate ≈ 55–58 ms ≈ 12–13% of compile, split into
+~5 module-level walks (rules/validate phase: `may_warn` Scan,
+`validate_with_integer_limit`, `static_blocks::validate`, the four
+`source_rules` AST checks, `compiler_rules`) and the per-scope
+planning walks (`ScopeBodyFactsCollector` + `LocalCollector` per
+function/class body). Rules-phase fusion is the most bounded slice:
+all seven walks run back-to-back on the same `parsed.suite()` before
+`frontend`, facts are independent, and error priority is fixed
+(validator → static_blocks → source_rules → compiler_rules), so a
+single dispatching visitor preserving per-collector visit order keeps
+observable behavior identical. Expected capture roughly half the
+rules-phase walk cost ≈ 3–5% of compile — the largest remaining
+bounded lever toward C3.
 
 - `campaign/jit-subscr-virtual` `da402d9` — stack tip, worktree
   `.work/wt/jit-subscr-virtual` (closeout-allowed). Evals 7+8: fused
