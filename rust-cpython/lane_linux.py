@@ -443,6 +443,10 @@ def package_report(toolchain: LinuxToolchain) -> dict[str, str]:
     return _dpkg_versions(list(toolchain.system_packages))
 
 
+def docker_offline() -> bool:
+    return os.environ.get(_DOCKER_OFFLINE) == "1"
+
+
 def _docker_network_proof() -> dict[str, Any]:
     if not Path("/.dockerenv").is_file():
         raise LinuxHostError(f"{_DOCKER_OFFLINE} requires a Docker container")
@@ -510,7 +514,7 @@ class SealedRun:
         log: Path | None = None,
     ) -> subprocess.CompletedProcess:
         self.prepare()
-        if os.environ.get(_DOCKER_OFFLINE) == "1":
+        if docker_offline():
             _docker_network_proof()
             full = command
         else:
@@ -536,7 +540,7 @@ print("CONNECTED")
 
 def network_boundary_selftest(python: Path, workdir: Path) -> dict[str, Any]:
     """Run one loopback probe outside and inside the namespace."""
-    if os.environ.get(_DOCKER_OFFLINE) == "1":
+    if docker_offline():
         return _docker_network_proof()
     if not Path(UNSHARE).is_file():
         raise LinuxHostError(f"{UNSHARE} is not present")
@@ -579,7 +583,7 @@ def network_boundary_selftest(python: Path, workdir: Path) -> dict[str, Any]:
 
 
 def describe() -> dict[str, str]:
-    if os.environ.get(_DOCKER_OFFLINE) == "1":
+    if docker_offline():
         return {
             "mechanism": "docker --network none",
             "isolation": "Docker network namespace shared by commands in the build container",

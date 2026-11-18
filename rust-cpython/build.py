@@ -970,6 +970,9 @@ def _test_environment(toolchain) -> dict[str, str]:
     """Let CPython's test runner populate its isolated bytecode cache."""
     env = _environment(toolchain, offline=True)
     env.pop("PYTHONDONTWRITEBYTECODE", None)
+    if IS_LINUX and lane_linux.docker_offline():
+        # The container's private /tmp gives tests room for Unix socket paths.
+        env["TMPDIR"] = "/tmp"
     # A host egress proxy changes urllib/http.client test behavior; CPython's
     # module suites use direct loopback servers.
     for name in tuple(env):

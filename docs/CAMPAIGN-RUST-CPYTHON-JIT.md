@@ -115,6 +115,12 @@ The first full-suite attempt was interrupted after the container retained
 orphaned test subprocesses as zombies. A fork-and-exit probe reproduced
 the leak and verified reaping with Docker's init process. The cloud runner
 now uses `--init`. The partial run remains diagnostic evidence.
+The retry exposed a second setup issue. The checkout-local temporary path
+exceeded CPython's Unix-socket path budget and triggered its system-temp
+fallback in `test_forkserver_requires_writeable_tempdir`. The same built
+interpreter passed that test with the container's private `/tmp`. Cloud
+suite runs now use that short path. The probe still reproduced the separate
+`test_support` hashlib failures.
 
 ### Scorecard
 
