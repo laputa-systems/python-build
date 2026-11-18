@@ -3077,12 +3077,10 @@ impl<'a, 'ast> ModuleNameCollector<'a, 'ast> {
         name: &str,
         intern: impl FnOnce(&mut NameInterner) -> NameId,
     ) -> NameId {
-        // The module-local bindings walk never descends into nested bodies, so `super`
-        // occurrences there cannot affect its result; only module-level names and
-        // definition headers (plus `global` declarations and comprehension walrus
-        // targets, tracked through `module_globals`) can mark the module symbol table.
-        self.requires_module_bindings |=
-            name == "super" && (self.nested_scope_depth == 0 || self.in_module_header);
+        // A module symbol named `super` disables specialized super calls. Be conservative
+        // about nested/header occurrences so the module-local walk can be skipped
+        // only when the sentinel is definitely irrelevant.
+        self.requires_module_bindings |= name == "super";
         if self.private_name.is_none() {
             return intern(self.names);
         }
@@ -9814,16 +9812,7 @@ def function():
                 true,
             ),
             ("(lambda value=[item for item in values]: value)()\n", true),
-            ("def nested():\n    return super()\n", false),
-            ("def nested(g=super()):\n    return g\n", true),
-            (
-                "class Outer:\n    def method(self):\n        return super()\n",
-                false,
-            ),
-            (
-                "def nested():\n    global super\n    super = object()\n",
-                false,
-            ),
+            ("def nested():\n    return super()\n", true),
         ];
 
         for (source, expected) in cases {
