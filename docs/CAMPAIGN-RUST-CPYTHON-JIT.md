@@ -4801,6 +4801,16 @@ bounded experiment. Bounded AST-walk fusion is therefore exhausted:
 rules-phase walks are fused to their floor (the `Validator` replay
 machinery and `static_blocks` bespoke `BlockLimit` traversal were
 analyzed and rejected), and the context-phase collectors need the
+**Fusion-series parity census — complete (2026-11-18, HEAD `581872f`).**
+`tests/serc_parity.py --oracle rust-cpython/stage-perf-rust/bin/python3.16`
+over the full corpus: **30,318 cases, 0 mismatches, 9,678 exact
+matches** — exec 10,029 (9,183 exact, 813 intentional finally-route
+refusals, 11 oracle refusals), eval 10,143 (129 exact, 3,338 oracle
+refusals), single 10,146 (366 exact, 3,260 oracle refusals). Totals are
+identical to the incumbent census; the rules-phase fusion
+(`b07381c`+`47e5f71`) and Py316 linear path (`5c64210`) series is now
+fully verified at all three optimization levels and all three source
+modes. Evidence: `rust-cpython/.work/census-fusion.json`.
 **Scope-planning merge — implementation sketch for the research project.**
 Measured buckets (907-file django, release `fb_probe`): `context` ≈ 52 ms
 of ≈ 470 ms compile, decomposed as `walk-scope-inputs` ≈ 21 ms (incl. the
