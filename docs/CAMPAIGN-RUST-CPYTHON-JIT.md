@@ -163,6 +163,30 @@ offline container. The synthetic timing controls on the quiet A/A receipt
 also found that a +2% injected shift was rejected in only 3 of 23 entity
 trials. The cloud timing path remains unqualified.
 
+**Cloud H0 — PERFORMANCE_DEFERRED.** The self-calibration retry completed
+all five runs. Both host checks passed with 99.8% minimum CPU idle and
+zero observed steal. The verdict remained `CALIBRATION-INCONCLUSIVE`
+with 18 unbounded metrics on identical interpreters. Retain the quiet
+verdict and resume timing qualification on a host that demonstrates
+`CALIBRATION-OK` and bounds a clean A/A pair at the existing 1% floor.
+P0 timing and candidate acceptance remain pending. Run ID:
+`20261119T010102Z-calibrate-perf-rust-jit`. Receipt SHA-256:
+`0c004d7c6bf7ac3b712bae4874a632af9d04824226bcacfb46792e3f1d0ecba3`.
+
+All eight held-out digests and operation counts matched across upstream
+JIT, Rust JIT and combined stages. Both Rust JIT stages emitted identical
+code sizes on each of the 16 training kernels (2,567,273 bytes in total).
+The combined libpython ELF text grew by 7,381,792 bytes over the Rust JIT
+sibling.
+
+Both matched-prefix, five-run Serc resource comparisons completed with
+`REJECT` under `memory-only-serc-cost`. Cold-start peak PSS ratios were
+1.297 without JIT and 1.317 with JIT. Compileall peak PSS ratios were 1.384
+and 1.383. The Linux receipts measured RSS, private memory and PSS. OD15's
+physical-footprint metric remains unavailable in the Linux collector.
+Resource run IDs: `20261119T023344Z-perf-rust-vs-perf-rust-serc` and
+`20261119T024611Z-perf-rust-jit-vs-perf-final-jit-serc`.
+
 ### Scorecard
 
 | Track | Measure | Current | Qualified? | Target / gap |
