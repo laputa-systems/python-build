@@ -145,7 +145,10 @@ cases across all optimization levels with zero mismatches and no
 uncovered mode. The Serc-only full suite without verification matched
 the no-JIT six-file failure set. The combined full suite without
 verification matched the Rust JIT seven-file failure set. The two full
-`--serc-verify` runs are pending. Census receipt SHA-256:
+`--serc-verify` runs are being compared against their unverified siblings.
+The Serc-only verification run finished with the same six failed files
+and the same test and skip counts as its sibling.
+Census receipt SHA-256:
 `c3e7546d5755b6abbaf2a8ad79c3290402fae5c562554578cfd7be05a54cc652`.
 
 Cloud PMU profiling is deferred. A self-only user-mode CPU-cycle
