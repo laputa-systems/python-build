@@ -151,6 +151,14 @@ and the same test and skip counts as its sibling.
 Census receipt SHA-256:
 `c3e7546d5755b6abbaf2a8ad79c3290402fae5c562554578cfd7be05a54cc652`.
 
+The first combined verification run added one failed file:
+`test_multiprocessing_fork.test_processes`. Its `test_interrupt` child
+exceeded the 30-second join limit. Focused trials reproduced the same
+intermittent timeout in Serc-only builds with verification both enabled
+and disabled. The original concurrent full run is retained. A solo
+combined verification run is checking whether the full-suite difference
+persists without concurrent suites.
+
 Cloud PMU profiling is deferred. A self-only user-mode CPU-cycle
 `perf_event_open` probe returned `EPERM` in both the agent host shell and the
 offline container. The synthetic timing controls on the quiet A/A receipt
