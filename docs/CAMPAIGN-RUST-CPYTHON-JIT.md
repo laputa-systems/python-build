@@ -137,17 +137,15 @@ nondeterministic cases). The full `perf-rust-jit` run reported 52,220
 tests and the same six failed files plus `test_capi`. A verbose
 `test_capi.test_opt` run matched all 19 existing uop assertion failures
 across the 18 catalogued tests, including the two copied-globals subtests.
-Full Serc-only and combined suite parity remains pending.
 
 The Serc CLI census built offline with the pinned Clang and LLD. Against
 the pristine Linux CPython stage, the three-mode corpus covered 30,138
 cases across all optimization levels with zero mismatches and no
 uncovered mode. The Serc-only full suite without verification matched
 the no-JIT six-file failure set. The combined full suite without
-verification matched the Rust JIT seven-file failure set. The two full
-`--serc-verify` runs are being compared against their unverified siblings.
-The Serc-only verification run finished with the same six failed files
-and the same test and skip counts as its sibling.
+verification matched the Rust JIT seven-file failure set. The solo full
+`--serc-verify` runs matched their unverified siblings' failed files and
+test and skip counts. Each run reported 52,220 tests.
 Census receipt SHA-256:
 `c3e7546d5755b6abbaf2a8ad79c3290402fae5c562554578cfd7be05a54cc652`.
 
@@ -155,9 +153,9 @@ The first combined verification run added one failed file:
 `test_multiprocessing_fork.test_processes`. Its `test_interrupt` child
 exceeded the 30-second join limit. Focused trials reproduced the same
 intermittent timeout in Serc-only builds with verification both enabled
-and disabled. The original concurrent full run is retained. A solo
-combined verification run is checking whether the full-suite difference
-persists without concurrent suites.
+and disabled. The original concurrent full run is retained. The solo
+combined verification run passed the interrupt test and matched the
+seven-file failure set, with 2,477 skips as in its unverified sibling.
 
 Cloud PMU profiling is deferred. A self-only user-mode CPU-cycle
 `perf_event_open` probe returned `EPERM` in both the agent host shell and the
