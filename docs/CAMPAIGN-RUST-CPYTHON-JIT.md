@@ -188,6 +188,24 @@ physical-footprint metric remains unavailable in the Linux collector.
 Resource run IDs: `20261119T023344Z-perf-rust-vs-perf-rust-serc` and
 `20261119T024611Z-perf-rust-jit-vs-perf-final-jit-serc`.
 
+A bounded H0 diagnostic compared default scheduling with affinity to
+guest CPU 2 on the same interpreter. Two standard-sampling runs over
+`float`, `deltablue` and `gzip_extract_1m` left three timing metrics
+unbounded under default scheduling. The pinned diagnostic bounded all
+three workloads, but the external post-check failed at 0.398% CPU steal.
+The exploratory run IDs are `20261119T064503Z-calibrate-perf-rust-jit`
+and `20261119T064659Z-calibrate-perf-rust-jit`. This motivates a full
+five-run affinity calibration under the unchanged gates.
+
+A paired cold-start memory probe held each initialized interpreter at
+the same point in a fresh subprocess. In six observations per stage,
+median file-backed PSS rose from 6.04 to 10.15 MiB with Serc and from
+6.36 to 10.40 MiB with JIT and Serc. Anonymous PSS rose from 3.34 to
+3.71 MiB and from 3.46 to 3.83 MiB, respectively. The extra resident
+`libpython` mappings explain most of the sampled PSS increase. These
+are point samples. The container cgroup mount is read-only, so a
+dedicated workload cgroup charge probe needs a platform change.
+
 The current Rust JIT and combined baselines each passed 2,000
 differential cases for each of seeds 0, 1 and 2, with no mismatches or
 nondeterministic cases. JIT-active coverage was 97.45%, 97.75% and 97.25%,
