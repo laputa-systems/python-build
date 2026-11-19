@@ -139,6 +139,15 @@ tests and the same six failed files plus `test_capi`. A verbose
 across the 18 catalogued tests, including the two copied-globals subtests.
 Full Serc-only and combined suite parity remains pending.
 
+The Serc CLI census built offline with the pinned Clang and LLD. Against
+the pristine Linux CPython stage, the three-mode corpus covered 30,138
+cases across all optimization levels with zero mismatches and no
+uncovered mode. The Serc-only full suite without verification matched
+the no-JIT six-file failure set. The combined full suite without
+verification matched the Rust JIT seven-file failure set. The two full
+`--serc-verify` runs are pending. Census receipt SHA-256:
+`c3e7546d5755b6abbaf2a8ad79c3290402fae5c562554578cfd7be05a54cc652`.
+
 Cloud PMU profiling is deferred. A self-only user-mode CPU-cycle
 `perf_event_open` probe returned `EPERM` in both the agent host shell and the
 offline container. The synthetic timing controls on the quiet A/A receipt
