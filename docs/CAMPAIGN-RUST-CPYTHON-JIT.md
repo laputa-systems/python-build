@@ -143,7 +143,7 @@ the pristine Linux CPython stage, the three-mode corpus covered 30,138
 cases across all optimization levels with zero mismatches and no
 uncovered mode. The Serc-only full suite without verification matched
 the no-JIT six-file failure set. The combined full suite without
-verification matched the Rust JIT seven-file failure set. The solo full
+verification matched the Rust JIT seven-file failure set. The completed full
 `--serc-verify` runs matched their unverified siblings' failed files and
 test and skip counts. Each run reported 52,220 tests.
 Census receipt SHA-256:
