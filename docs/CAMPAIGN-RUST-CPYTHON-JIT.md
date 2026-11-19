@@ -195,7 +195,14 @@ unbounded under default scheduling. The pinned diagnostic bounded all
 three workloads, but the external post-check failed at 0.398% CPU steal.
 The exploratory run IDs are `20261119T064503Z-calibrate-perf-rust-jit`
 and `20261119T064659Z-calibrate-perf-rust-jit`. This motivates a full
-five-run affinity calibration under the unchanged gates.
+five-run affinity calibration under the unchanged gates. The full pinned
+run passed both host checks and remained `CALIBRATION-INCONCLUSIVE` with
+16 unbounded metrics. Retain run `20261119T065010Z-calibrate-perf-rust-jit`
+(SHA-256 `9e227dd4094cad6872256aa7d271d7ced0761ba07b5d3e4ccbd4fec74eb29900`).
+A separate deterministic native C loop on CPU 2 reported CPU-time p10
+and p90 at 0.954 and 1.063 times its median across 30 fresh processes.
+The control ran without Python or the JIT. Affinity alone did not qualify
+the cloud timing path. P0 control artifact preparation can proceed offline.
 
 A paired cold-start memory probe held each initialized interpreter at
 the same point in a fresh subprocess. In six observations per stage,
@@ -580,6 +587,18 @@ to an isolated worktree's absolute path to select it. The runner mounts
 both checkouts at their original paths so Git's shared metadata and the
 cache links from `perf.py setup-worktree` resolve inside the container.
 The runner puts the primary checkout's `perf-gate-ready` on PATH.
+
+On a fresh worktree, link the primary verified object cache before the
+first offline `perf.py setup-worktree` invocation. Importing the controller
+loads the pinned build-library wheel before it can create the link itself.
+Leave an existing cache in place.
+
+```sh
+mkdir -p "$worktree/.cache"
+ln -s "$PWD/.cache/objects" "$worktree/.cache/objects"
+RUST_CPYTHON_CLOUD_CHECKOUT="$worktree" bash rust-cpython/tools/cloud-ubuntu.sh \
+  offline python3 rust-cpython/perf.py setup-worktree
+```
 
 1. **Provision and preflight on the actual Linux host.** From a clean
    `main` clone, run the checked-in phased bootstrap:
