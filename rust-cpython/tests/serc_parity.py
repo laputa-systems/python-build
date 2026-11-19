@@ -153,8 +153,6 @@ def build_cli(work: Path) -> Path:
     toolchain, _target = lb._toolchain()
     env = lb._environment(toolchain, offline=True, build_dir=work)
     env[lb._cargo_linker_variable()] = env["HOST_CC"]
-    if lb.IS_LINUX:
-        env["RUSTFLAGS"] = "-C link-arg=-fuse-ld=lld"
     command = [
         str(lb.CARGO_HOME / "bin" / "cargo"), "build", "--release", "--locked", "--offline",
         "-p", "serc-cli", "--manifest-path", str(source / "serc" / "Cargo.toml"),
