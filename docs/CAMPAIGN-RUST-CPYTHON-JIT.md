@@ -213,6 +213,32 @@ median file-backed PSS rose from 6.04 to 10.15 MiB with Serc and from
 are point samples. The container cgroup mount is read-only, so a
 dedicated workload cgroup charge probe needs a platform change.
 
+#### Linux P0 control artifacts
+
+Two isolated cloud worktrees preserve the B1 and thin-profile controls.
+All four stages verify the pinned e891 source and installed stage digest.
+Both no-JIT references passed compression and SQLite smoke checks. The
+ThinLTO JIT passed seven leaf-call traces, and the ThinLTO Serc stage
+passed all 11 source-mode routing tests.
+
+| Stage | Upstream source or campaign parent | Local recipe commit | libpython ELF text, bytes |
+| --- | --- | --- | ---: |
+| `perf-climb-ref` | `3bd21f6`, thin LTO, JIT off | `52149a9` | 3,118,623 |
+| `perf-ref-lto` | `3bd21f6` plus the fat profile, JIT off | `8fa9edd` | 3,198,655 |
+| `perf-rust-jit-thin` | `df2d3e6` with the pre-`bfc2e23` release profile | `ff40336` | 3,496,751 |
+| `perf-rust-serc-thin` | `df2d3e6` with the same thin profile | `ff40336` | 11,947,631 |
+
+The historical checkout `/workspace/cp316-p0-history` uses the exact
+`build.py`, `lane_linux.py`, `linux-toolchain.lock.json`, and `perf.py`
+from `df2d3e6`. Its historical overlay comes from the stated source
+revision. The fat profile is the `overlay/Cargo.toml` patch from
+`bfc2e23`. The B2/B3 JIT worktrees additionally apply the trace-map-only
+`overlay/Python/jit.c` patch from `a4a8934`. The thin controls live in
+`/workspace/cp316-p0-thin`. The stage `results/perf-*.json` reports
+record full commit IDs and stage hashes. Build elapsed times include
+overlapping compiles. The controls are ready for later measurement
+against a qualified setup.
+
 The current Rust JIT and combined baselines each passed 2,000
 differential cases for each of seeds 0, 1 and 2, with no mismatches or
 nondeterministic cases. JIT-active coverage was 97.45%, 97.75% and 97.25%,
