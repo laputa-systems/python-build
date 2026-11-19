@@ -449,6 +449,24 @@ class LinuxSetupTests(unittest.TestCase):
 
 
 class CargoLockTests(unittest.TestCase):
+    def test_online_fetch_preserves_cargo_and_git_ca_settings(self):
+        ca_settings = {
+            "CARGO_HTTP_SSL_CAINFO": "/run/cargo-ca.pem",
+            "GIT_SSL_CAINFO": "/run/git-ca.pem",
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary)
+            (source / "Cargo.lock").write_text("locked")
+            with mock.patch.dict(os.environ, {**ca_settings, "RUSTFLAGS": "ambient"}), \
+                    mock.patch.object(perf.lb, "_environment", return_value={"PATH": "/usr/bin"}), \
+                    mock.patch.object(perf.lb, "_require_command") as command:
+                perf.lb._fetch_cargo_dependencies(
+                    source / "Cargo.toml", mock.Mock(), log=source / "fetch.log"
+                )
+        environment = command.call_args.kwargs["env"]
+        self.assertEqual({key: environment[key] for key in ca_settings}, ca_settings)
+        self.assertNotIn("RUSTFLAGS", environment)
+
     def test_assembled_lock_must_match_the_source_pin(self):
         with tempfile.TemporaryDirectory() as temporary:
             source = Path(temporary)

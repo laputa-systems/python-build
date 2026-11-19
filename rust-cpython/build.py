@@ -1080,6 +1080,9 @@ def _fetch_cargo_dependencies(
     source = manifest.parent
     env = _environment(toolchain, offline=False)
     env["PATH"] = f"{CARGO_HOME / 'bin'}:{env['PATH']}"
+    for variable in ("CARGO_HTTP_SSL_CAINFO", "GIT_SSL_CAINFO"):
+        if variable in os.environ:
+            env[variable] = os.environ[variable]
     command = [
         str(CARGO_HOME / "bin" / "cargo"), "fetch", "--locked",
         "--manifest-path", str(manifest), *LANE_CARGO_SOURCE_ARGS, *extra_args,
