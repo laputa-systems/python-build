@@ -227,6 +227,22 @@ The eight original Linux benchmark receipt trees are archived at
 (SHA-256
 `e1f0cf4823bde448cd55ab5e3556390bf7e5b712431b5a4e4069366694fcc34f`).
 
+The live two-workload timing smoke of `b3f896a` recorded CPU for
+`gzip_extract_1m` and `python_startup` in both runs. The exploratory
+verdict was `CALIBRATION-OK` with passing pre/post checks. It used
+`--timing-only` and two runs. Full H0 qualification remains pending.
+Receipt: `20261119T092659Z-calibrate-perf-rust-jit` (SHA-256
+`78b371bffb2bb8293aa9cc0ce0263f07e79fde0fb57883b560c9cf0a1b4b0f25`).
+
+Two round-robin sweeps of the deterministic native C loop tested every
+guest vCPU with 20 fresh samples per CPU per sweep. The digest matched on
+all 200 runs, and both external host checks passed for the completed
+probe. Across the ten CPU/sweep rows, CPU-time p10 was 0.923–0.977 times
+the median and p90 was 1.038–1.100 times the median. No vCPU had a stable
+native control at the 1% scale. This leaves the controlled host and its
+full five-run calibration and equal-length A/A pair as the timing
+reopening conditions.
+
 A paired cold-start memory probe held each initialized interpreter at
 the same point in a fresh subprocess. In six observations per stage,
 median file-backed PSS rose from 6.04 to 10.15 MiB with Serc and from
@@ -294,6 +310,11 @@ The five Git recipe refs are retained in
 (SHA-256
 `e491a74be79ead2c6df78539c9ac44e8e83fc78b167d633113097844af0b82de`).
 The bundle applies to a clone containing `df2d3e6` and its history.
+The verified build reports, suite logs, P0 proof, Git bundle, CPU probe
+sources and Linux H0 live receipt are archived in
+`rust-cpython/results/cloud-ubuntu-e891-20261119-support.tar.zst`
+(SHA-256
+`9f431851a822082b5a7830fb8a2037256c5343517a23bab5fb53f16c95630a5a`).
 
 The current Rust JIT and combined baselines each passed 2,000
 differential cases for each of seeds 0, 1 and 2, with no mismatches or
