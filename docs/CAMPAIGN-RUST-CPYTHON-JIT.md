@@ -419,6 +419,14 @@ this provisional Linux M0 reference, their largest increase was
 `raytrace`, 669,543 versus 387,774 bytes (1.727×), below the 2×
 code-size bar. H0, the A/A pair and milestone timing remain pending.
 
+All 16 training workloads also matched operation counts and digests
+across the reconstructed stage with JIT enabled, the same stage with
+JIT disabled, and the current JIT incumbent. The stage hashes were
+checked before and after. The output-only check and receipt are in
+`rust-cpython/results/cloud-ubuntu-e891-20261119-m0-training-parity.tar.zst`
+(SHA-256
+`eea6578b1f6d6d614be8164ea5d50f285f422329116a08650350d5738b497414`).
+
 The per-kernel values, recipe bundle, attempts and build report are in
 `rust-cpython/results/cloud-ubuntu-e891-20261119-m0-evidence.tar.zst`
 (SHA-256
