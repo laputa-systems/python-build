@@ -173,8 +173,9 @@ P0 timing and candidate acceptance remain pending. Run ID:
 `20261119T010102Z-calibrate-perf-rust-jit`. Receipt SHA-256:
 `0c004d7c6bf7ac3b712bae4874a632af9d04824226bcacfb46792e3f1d0ecba3`.
 
-All eight held-out digests and operation counts matched across upstream
-JIT, Rust JIT and combined stages. Both Rust JIT stages emitted identical
+All 16 training and eight held-out digests and operation counts matched
+across upstream JIT, Rust JIT and combined stages. The installed stage
+digests matched their build reports after testing. Both Rust JIT stages emitted identical
 code sizes on each of the 16 training kernels (2,567,273 bytes in total).
 The combined libpython ELF text grew by 7,381,792 bytes over the Rust JIT
 sibling.
@@ -186,6 +187,12 @@ and 1.383. The Linux receipts measured RSS, private memory and PSS. OD15's
 physical-footprint metric remains unavailable in the Linux collector.
 Resource run IDs: `20261119T023344Z-perf-rust-vs-perf-rust-serc` and
 `20261119T024611Z-perf-rust-jit-vs-perf-final-jit-serc`.
+
+The current Rust JIT and combined baselines each passed 2,000
+differential cases for each of seeds 0, 1 and 2, with no mismatches or
+nondeterministic cases. JIT-active coverage was 97.45%, 97.75% and 97.25%,
+respectively, on both stages. The locked offline `_jit_opt_rs` unit run
+passed all 114 tests. These checks validate the current baseline stages.
 
 ### Scorecard
 
