@@ -384,6 +384,43 @@ Log: `rust-cpython/logs/cloud-bringup/linux-jit-optimizer-asan.log`
 (SHA-256
 `0c3a4cf48e150dad73425900010a513ecd16b22b84ad6453021b5373b894550c`).
 
+#### Reconstructed Linux M0 code-size reference
+
+`perf-m0-e891` uses the published e891 M0-era overlay at `d107f38`.
+Its overlay is identical to `de32325` and to the overlay at the M0
+ledger commit `5c0ac5d`. The earlier R0 suite report names `99cce2b`,
+which is unavailable in this checkout. Recipe `e1f97ed` preserves
+the historical release ThinLTO profile and Cargo lock. It adds the
+Linux trace-map guards from `a4a8934` and the locked cloud build
+helpers. The older workspace required a source-lock schema field
+and skipping Serc extraction when Serc is disabled.
+
+The first attempts exposed a legacy build-helper import and
+uncached historical Cargo inputs. The successful input fetch kept
+the historical lock digest and used the configured CA for Cargo
+and Git. The build then passed its offline Cargo check and verified
+58 release Rust extensions. Its installed stage SHA-256 is
+`e3216fd1361284fc4bb3518dea5b47e35a01fbaf7e8b026db51e9302825c7aae`.
+
+Two Linux `jit-stats --jit-set` probes reported the same code bytes
+for all 16 kernels, totaling 2,205,538. The existing JIT-only and
+combined stages have identical per-kernel byte counts. Relative to
+this provisional Linux M0 reference, their largest increase was
+`raytrace`, 669,543 versus 387,774 bytes (1.727×), below the 2×
+code-size bar. H0, the A/A pair and milestone timing remain pending.
+
+The per-kernel values, recipe bundle, attempts and build report are in
+`rust-cpython/results/cloud-ubuntu-e891-20261119-m0-evidence.tar.zst`
+(SHA-256
+`aeb00e65e9a91048b72005010e5c61cb7785b52a5d2d8909ef8b2d572eee9927`).
+The installed stage remains in the historical worktree. The verified
+build-tree archive can be extracted into that worktree's
+`rust-cpython/work/perf` directory before using build-tree commands
+on this stage. Archive:
+`rust-cpython/results/cloud-ubuntu-e891-20261119-m0-build-tree.tar.zst`
+(SHA-256
+`45c1252459e66a0fb8a2aa34e7963910357cfb93be51250ce5498958f050e5e4`).
+
 ### Scorecard
 
 | Track | Measure | Current | Qualified? | Target / gap |
