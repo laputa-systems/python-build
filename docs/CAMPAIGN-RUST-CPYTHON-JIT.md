@@ -13,8 +13,8 @@ collected asynchronously (see **Owner queue**) and blocks only the lane
 that needs it.
 
 **Operating contract updated 2026-11-19 (OD21):** continuous **Linux x86-64**
-research, with Ubuntu 24.04 cloud/container development authorized and native
-Linux performance qualification required. Start with the short
+research, with Ubuntu 24.04 cloud/container execution authorized and Linux
+performance qualification determined by unchanged H0/A/A/P0 evidence. Start with the short
 [continuous runbook](CAMPAIGN-RUST-CPYTHON-RUNBOOK.md), then [Status](#status)
 and the active acceptance section. OD21 supersedes older finite closeout,
 global timing-stop and no-scheduler instructions. Hypotheses stay bounded;
@@ -677,7 +677,7 @@ integrated source revision (the active campaign branch until integration into
 
 1. The lane builds one pinned 3.16 `main` commit (see **Source epochs**) with
    the unchanged LLVM pins.
-2. On the native Linux x86-64 host the JIT incumbent meets **M4**: `S ≤ 0.25`, every training
+2. On the qualified Linux x86-64 host the JIT incumbent meets **M4**: `S ≤ 0.25`, every training
    kernel ≤ 0.45, held-out geomean ≤ `S^0.5`, no guard regression, and the
    memory and code-size bars in **Targets**.
 3. Every new measured track J landing passed **J acceptance**, and new
@@ -694,7 +694,7 @@ integrated source revision (the active campaign branch until integration into
    zero. No widening of fallback routes to make a candidate pass.
 5. The combined build `perf-final-jit-serc` reproduces the M4 score within the
    A/A spread, the C3 corpus parity, and the J targeted suites.
-6. On the native Linux x86-64 host, the four same-revision variants (neither feature,
+6. On the qualified Linux x86-64 host, the four same-revision variants (neither feature,
    JIT only, Serc only, both) pass their complete applicable suites with no
    unexplained difference from their matched controls. The combined build
    matches every kernel digest and passes the differential fuzzer, C1/C3
@@ -702,7 +702,7 @@ integrated source revision (the active campaign branch until integration into
    a failed-file count alone is not parity.
 7. The ledger has M4, C3, and closing rows, and every deliverable below is
    complete at that revision. All qualification evidence is collected on the
-   native Linux x86-64 host; the macOS receipts are retained as history and
+   qualified Linux x86-64 host; the macOS receipts are retained as history and
    never cited as qualification.
 
 A bounded search round that exhausts T4 without M4, or a C mechanism that
@@ -739,7 +739,7 @@ runtime/input bytes change. A source change invalidates affected receipts.
 
 Use one of these explicit outcomes:
 
-- **COMPLETE:** every done criterion passes on the native Linux x86-64
+- **COMPLETE:** every done criterion passes on the qualified Linux x86-64
   host, with no performance
   debt. This completes the milestone, not the OD21 continuous mandate. It
   says nothing about macOS, Linux arm64 or production readiness.
@@ -779,13 +779,14 @@ python3 rust-cpython/perf.py status
 command -v perf-gate-ready
 ```
 
-For native qualification require `Linux`/`x86_64`, `ID=ubuntu`,
-`VERSION_ID=24.04` (glibc 2.39) and the locked
+Require Linux x86-64 execution with the locked Ubuntu 24.04 userspace
+(`ID=ubuntu`, `VERSION_ID=24.04`, glibc 2.39) and
 `rust-cpython/linux-toolchain.lock.json` prerequisites. For authorized cloud
-development, run lane commands through **Cloud execution** below and inspect
+work, run lane commands through **Cloud execution** below and inspect
 the container userspace as well as the host; the agent shell need not itself
-be Ubuntu. OD21 permits ongoing cloud/container work and keeps qualification
-eligibility separate. See **Boundary → Hosts**. A genuinely fresh host first completes
+be Ubuntu. OD21 permits cloud/container qualification when the complete
+unchanged gates support it; this instance has not qualified. See
+**Boundary → Hosts**. A genuinely fresh host first completes
 [Fresh Linux host bring-up](#fresh-linux-host-bring-up-2026-11-18-od20),
 which is what makes `perf.py doctor` pass. Preserve unrelated dirty work.
 Inventory the recorded refs, stages, logs and helpers before using them.
@@ -808,10 +809,11 @@ resume. Never cancel an unrelated campaign or assume any process still runs.
 
 **Fresh platform baseline, not a CPython source epoch change.** Keep the
 pinned e891 CPython source and historical attempt ledger unless an explicit
-source-refresh decision is made. A new native Linux x86-64/Ubuntu 24.04
+source-refresh decision is made. A new Linux x86-64/Ubuntu 24.04
 host invalidates every macOS build, control, code-size receipt, A/A spread,
 and performance score. Preserve those receipts as historical evidence.
-Nothing is Linux-qualified until the native host records successful steps.
+Nothing is Linux-qualified until the selected host records the required
+evidence, regardless of whether it is bare metal, a VM or containerized.
 
 #### Cloud execution
 
@@ -1111,7 +1113,7 @@ not prevent recoverable source review or semantic checks.
 | J | R0 → T1 → M1 → T2 → M2 → T3 → M3 → T4 → M4 | T2 ceilings need R1's catalog |
 | R1 | CinderX study (complete) | reuse catalog; rebuild only for a concrete missing receipt |
 | C | C0 → marshal parity; C1 → C2 → C3 | C1 needs R0's chosen SHA, not R0's exit |
-| Close | combined build, native Linux x86-64 qualification and deliverables | M4 and C3 on one epoch |
+| Close | combined build, qualified Linux x86-64 measurements and deliverables | M4 and C3 on one epoch |
 
 Each lane works in its own worktree `.work/wt/<item>` on branch
 `campaign/<item>`, created with `perf.py setup-worktree` so caches are shared.
@@ -1237,17 +1239,17 @@ and an LLVM incompatibility that patching `Tools/jit` cannot fix.
   semantics, fuzzer coverage, or failure exclusions to pass a candidate.
 - **TLS stays out.** `_ssl_rs`, `_hashlib_rs`, RTLS/Graviola, and trust-store
   code are untouched. Serc's SipHash `.pyc` source hashing is unrelated.
-- **Hosts.** Native qualification runs
-  natively on Linux x86-64 (Ubuntu 24.04, glibc 2.39, per
-  `rust-cpython/linux-toolchain.lock.json`; OD20). No VM, Docker, emulation,
-  or remote execution substitutes for native qualification. Under OD21 the
-  authorized cloud workflow also permits ongoing containerized builds,
-  semantic tests, source experiments and isolated prototypes. H0 failure
-  blocks timing acceptance, not these development activities.
-  Native macOS arm64 is closed
-  history for this campaign; preserve its receipts as history. macOS and
-  Linux arm64 are out of scope. Reopening any other host takes an explicit
-  owner decision.
+- **Hosts.** OD21 permits the owner-selected Linux x86-64 worker to be bare
+  metal, a cloud VM or the pinned Ubuntu 24.04 container (glibc 2.39 and
+  `rust-cpython/linux-toolchain.lock.json`). This supersedes OD20's blanket
+  VM/Docker/remote qualification ban. Full unchanged H0 self-calibration,
+  clean same-host A/A and P0 with its prescribed verdict handling determine
+  performance eligibility. Idle checks or host type alone do not qualify it.
+  Record virtualization, CPU/cgroup limits and configuration; changes
+  invalidate affected qualification. The current cloud host remains
+  PERFORMANCE_DEFERRED. H0 failure blocks timing acceptance, not independent
+  development. Claims apply to the measured host only. Emulation, macOS and
+  Linux arm64 remain out of scope; preserve macOS receipts as history.
 - **Network.** Allowed reads: lane `fetch` and `perf.py fetch` of locked
   inputs, `git ls-remote`/archive downloads of `python/cpython`, and clones of
   pinned CinderX and Serc commits into `.work/`. The owner authorized
@@ -4027,7 +4029,7 @@ would skip it). Serc's own tests remain required when its source changes.
 
 ## Close
 
-Close is a finite milestone qualification and delivery phase on native Linux
+Close is a finite milestone qualification and delivery phase on qualified Linux
 x86-64. Enter it when M4/C3 appear met or a measured research round needs a
 report. If measurements are unavailable, checkpoint PERFORMANCE_DEFERRED for
 that gate and continue independent work. Existing qualification debt still
@@ -4044,7 +4046,7 @@ keeps the research campaign active afterward.
    can hide a loss. Recheck training, held-out, application guards, RSS, and
    code bytes. Run the C2 timing and isolated footprint gates for Serc-only
    and combined variants with the proper matched controls.
-3. Run the complete native Linux x86-64 suite matrix in done criterion 6, targeted
+3. Run the complete Linux x86-64 suite matrix in done criterion 6, targeted
    native/Rust/unsafe regressions, and 2,000 differential programs per seed
    for seeds 0-2 on the final JIT-only and combined builds. Record JIT-active
    coverage; skipped execution is not evidence. Run the C1/C3 census and
@@ -4109,8 +4111,9 @@ owner explicitly requests an epoch change:
 
 Historical decisions below explain their original receipts. OD21 and the
 continuous runbook govern current execution; earlier decisions apply where
-they are not superseded. OD20 establishes native Linux qualification and OD21
-also authorizes continuous cloud development. Feature semantics, numeric
+they are not superseded. OD20 establishes Linux qualification and OD21
+permits the selected cloud/container worker when the same evidence requirements
+are met, as well as continuous development. Feature semantics, numeric
 targets, LLVM pins, the production boundary and OD17's reviewer restriction
 remain unchanged.
 
@@ -4192,8 +4195,11 @@ remain unchanged.
 - **OD21 (2026-11-19):** the owner requests indefinite Linux hillclimbing and
   authorizes a campaign steering fix after reviewing cloud checkpoint
   `af2371d`. The [continuous runbook](CAMPAIGN-RUST-CPYTHON-RUNBOOK.md) governs
-  execution. Ongoing Ubuntu x86-64 cloud/container development is authorized;
-  native Linux performance qualification and all acceptance bars remain.
+  execution. Ongoing Ubuntu x86-64 cloud/container execution is authorized;
+  OD20's blanket VM/container/remote qualification prohibition is superseded.
+  The selected worker qualifies only through full unchanged H0/A/A and P0
+  with prescribed verdict handling. This noisy instance remains deferred;
+  all acceptance bars remain unchanged and results are host-specific.
   Checkpoints, finite-round exhaustion, unavailable PMU and deferred timing
   do not terminate independent research. Keep bounded hypotheses and an
   isolated candidate queue; never advance the measured incumbent without

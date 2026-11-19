@@ -119,11 +119,19 @@ candidate, and repeat other checks only for a changed risk or required gate.
 
 ## Separate development from qualification
 
-The Ubuntu 24.04 x86-64 cloud/container setup is authorized for ongoing
-development and correctness, not just initial bring-up. Use the checked-in
-`rust-cpython/tools/cloud-ubuntu.sh` runner and existing host leases. Final
-native Linux qualification retains the campaign's host and gate contract.
-Record any worker change; no Mac result transfers to Linux.
+The owner-selected Linux x86-64 worker may be bare metal, a cloud VM, or the
+pinned Ubuntu 24.04 container. This supersedes OD20's blanket VM/container/
+remote qualification prohibition. Emulation and other architectures stay out
+of scope. Use the checked-in `rust-cpython/tools/cloud-ubuntu.sh` runner for
+cloud work and preserve the existing host leases and sealed build boundary.
+
+Qualification depends on evidence: full unchanged H0 self-calibration, a
+clean same-host A/A pair, and P0 completed with each verdict handled as
+prescribed. Successful builds, idle checks or a particular host type confer
+no performance qualification. Record virtualization, CPU allocation, relevant
+cgroup limits and exact host/toolchain identity. Host or configuration changes
+invalidate affected qualification; claims apply only to the measured setup.
+No Mac result transfers to Linux. The current cloud instance remains deferred.
 
 The current shared cloud host failed full H0 despite passing some idle checks;
 pinning a vCPU did not fix it, and native C controls varied well above the 1%
