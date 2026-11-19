@@ -236,6 +236,17 @@ median file-backed PSS rose from 6.04 to 10.15 MiB with Serc and from
 are point samples. The container cgroup mount is read-only, so a
 dedicated workload cgroup charge probe needs a platform change.
 
+A second six-observation probe ran the same startup payload from a
+precompiled `.pyc` and from `-c` source. Serc-only executable
+`libpython` mapping PSS rose from 2.50 to 5.99 MiB. Combined executable
+mapping PSS rose from 2.65 to 5.89 MiB. The corresponding no-Serc
+controls rose from 2.52 to 2.64 MiB and from 2.62 to 2.82 MiB. Dirty
+`libpython` bytes stayed at 1.02 MiB on Serc-only and 1.14 MiB on the
+combined build in both modes. Loader statistics also show 37,380
+relative relocations on Serc-only versus 16,407 on its no-Serc control.
+This separates compilation-driven executable residency from the
+baseline link cost. The resource verdicts and OD15 evidence gap remain.
+
 #### Linux P0 control artifacts
 
 Two isolated cloud worktrees preserve the B1 and thin-profile controls.
