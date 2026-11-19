@@ -338,6 +338,27 @@ non-pristine stages. The earlier fat builds and the reconstructed
 controls therefore used the same linker version. Fresh qualification
 still needs matched build inputs and paths.
 
+For G4/G5 preparation, the existing fat and thin JIT stages matched
+operation counts and digests for all 16 training kernels. The Serc-only
+stages matched on `cold_python_startup`, `cold_import_django`, and
+`compileall_source` using the locked Linux Django inputs. The installed
+stage digests were reverified before and after the check. These runs
+collected output parity across the existing worktrees. G4/G5 timing
+and IPC remain pending.
+
+| Existing stage | Build elapsed, s | ELF text, bytes | ELF data, bytes | ELF rodata, bytes |
+| --- | ---: | ---: | ---: | ---: |
+| `perf-rust-jit` | 609.7 | 3,513,871 | 600,628 | 2,267,424 |
+| `perf-rust-jit-thin` | 685.8 | 3,496,751 | 600,580 | 2,270,470 |
+| `perf-rust-serc` | 814.6 | 10,581,567 | 604,148 | 3,639,344 |
+| `perf-rust-serc-thin` | 788.8 | 11,947,631 | 604,100 | 3,695,414 |
+
+Build elapsed values are recorded for provenance from separate builds.
+The parity receipt and its driver are archived at
+`rust-cpython/results/cloud-ubuntu-e891-20261119-p0-profile-parity.tar.zst`
+(SHA-256
+`40dc3ebe3796d647601c15c01ac1f9893643586737ca42e50d1a41654d6e1185`).
+
 The verified build reports, suite logs, P0 proof, Git bundle, CPU probe
 sources and Linux H0 live receipt are archived in
 `rust-cpython/results/cloud-ubuntu-e891-20261119-support.tar.zst`
