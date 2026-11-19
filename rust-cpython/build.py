@@ -963,6 +963,10 @@ def _environment(toolchain, *, offline: bool, build_dir: Path | None = None) -> 
         "TMPDIR": str(temp_dir),
         "PKG_CONFIG": str(toolchain.pkgconf),
     })
+    if IS_LINUX:
+        # clang's Linux driver defaults to GNU ld, which a minimal Ubuntu
+        # image does not have; -fuse-ld=lld selects the locked lld, as in LDFLAGS
+        env[_cargo_rustflags_variable()] = "-C link-arg=-fuse-ld=lld"
     return env
 
 
@@ -1215,6 +1219,10 @@ def _platform_flags(toolchain, target, prefix: Path | None = None) -> dict[str, 
 
 def _cargo_linker_variable() -> str:
     return f"CARGO_TARGET_{TARGET.upper().replace('-', '_')}_LINKER"
+
+
+def _cargo_rustflags_variable() -> str:
+    return f"CARGO_TARGET_{TARGET.upper().replace('-', '_')}_RUSTFLAGS"
 
 
 @dataclasses.dataclass(frozen=True)
