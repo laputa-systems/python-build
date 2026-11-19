@@ -769,6 +769,19 @@ class DecideTests(unittest.TestCase):
                              summary([0.9, 1.1], wall_ratios=[0.98] * 6))}
         self.assertEqual(pv.calibration(wide, runs=2, quiet=True, gate=True)["decision"],
                          "CALIBRATION-INCONCLUSIVE")
+
+    def test_calibration_uses_complete_cpu_evidence_and_fails_closed(self):
+        for cpu_status, ratio, expected in (
+                ("compared", 1.0, "CALIBRATION-OK"),
+                ("compared", 1.02, "CALIBRATION-FAILED"),
+                ("incomplete", 1.0, "CALIBRATION-INCONCLUSIVE"),
+                ("unsupported", 1.0, "CALIBRATION-INCONCLUSIVE")):
+            with self.subTest(cpu_status=cpu_status, ratio=ratio):
+                row = summary([1.0, 1.0], cpu=([1.0] * 3, [ratio] * 3))
+                row["comparison"]["timing"]["cpu"]["status"] = cpu_status
+                entities = {"w": verdict(row, row)}
+                self.assertEqual(pv.calibration(entities, runs=2, quiet=True,
+                                                gate=True)["decision"], expected)
         split = {"w": verdict(summary([0.95, 0.98]), summary([1.03, 1.05]))}
         calibration = pv.calibration(split, runs=2, quiet=True, gate=True)
         self.assertEqual(calibration["decision"], "CALIBRATION-FAILED")

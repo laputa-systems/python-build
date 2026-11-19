@@ -205,11 +205,13 @@ def run_observation(workload: Mapping[str, Any], *, floor: float = PRACTICAL_FLO
                             timing.get("median_ratio_ci95")),
         }
         cpu = timing.get("cpu")
-        cpu_metric = cpu.get("metrics", {}).get("total_seconds_per_operation") \
-            if isinstance(cpu, Mapping) and cpu.get("status") == "compared" else None
-        if isinstance(cpu_metric, Mapping):
-            metrics["cpu"] = _metric(_paired(cpu_metric.get("baseline_samples") or [],
-                                             cpu_metric.get("candidate_samples") or []))
+        if isinstance(cpu, Mapping):
+            cpu_metric = cpu.get("metrics", {}).get("total_seconds_per_operation") \
+                if cpu.get("status") == "compared" else None
+            ratios = (_paired(cpu_metric.get("baseline_samples") or [],
+                              cpu_metric.get("candidate_samples") or [])
+                      if isinstance(cpu_metric, Mapping) else [])
+            metrics["cpu"] = _metric(ratios)
     memory = workload["comparison"].get("memory", {})
     for name in BENCH_MEMORY_METRICS:
         metric = memory.get("metrics", {}).get(name) if isinstance(memory, Mapping) else None
