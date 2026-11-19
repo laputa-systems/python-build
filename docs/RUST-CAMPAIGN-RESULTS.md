@@ -1,19 +1,27 @@
 # rust-cpython JIT campaign — results
 
-**Current state (2026-11-18): campaign ACTIVE, not closed.** The owner
-resumed it under OD18/OD19 after the closeouts recorded below, and under
-OD20 (2026-11-18) reopened the campaign host as native Linux x86-64
-(Ubuntu 24.04). Live scorecard, blockers and next experiments are in the
-campaign's [Status](CAMPAIGN-RUST-CPYTHON-JIT.md#status). Three caveats
-apply to every number on this page:
+**Current state (2026-11-18): ACTIVE.** The campaign reopened for Linux
+x86-64 under OD20. The owner authorized build and baseline bring-up in
+an Ubuntu 24.04 container on the x86-64 cloud host. Live progress and
+receipt IDs are in the campaign's [Status](CAMPAIGN-RUST-CPYTHON-JIT.md#status).
 
-- **OD20 (2026-11-18): the campaign host is now native Linux x86-64.**
-  Every number below is a macOS arm64 receipt and is historical; none of
-  it qualifies the Linux host. Linux bootstrap and JIT trace-map support
-  were committed at `a4a8934`, but **no Linux-native build or performance
-  qualification has yet been verified here**. The fresh host must execute
-  the checked-in bootstrap and re-derive baselines before any gate (see
-  the campaign's **Fresh Linux host bring-up** section).
+## Linux cloud evidence
+
+| Area | Outcome |
+| --- | --- |
+| Build | Debug smoke, all six optimized stages, and an independent Rust JIT twin built with the locked Ubuntu userspace and verified offline boundary. |
+| Correctness | Full suites matched the explained failure sets, including Serc verification. The Serc corpus had zero mismatches over 30,138 cases. Rust JIT and combined differential fuzz each found zero mismatches over 2,000 programs. All eight held-out workload digests matched. |
+| Track J timing | PERFORMANCE_DEFERRED. The quiet five-run self-calibration left 18 metrics unbounded at the 1% floor. P0 timing and the Linux milestone score remain pending. |
+| Track C memory | Both five-run resource gates rejected on Linux PSS and private-memory regressions. The collector did not report the OD15 physical-footprint metric. |
+| Profiling | The host and container denied a self-only hardware CPU-cycle counter, so IPC qualification is deferred. |
+
+The historical figures below were measured on macOS arm64. Three
+conditions apply to those receipts:
+
+- **OD20 (2026-11-18): qualification moves to Linux x86-64.** The Linux
+  build and correctness results above apply to the authorized cloud
+  environment. A host with bounded self-calibration and A/A evidence is
+  required for timing qualification.
 - **Eval 9 is unqualified.** Its recorded ACCEPT came from a 4-run retry
   after a 5-run INCONCLUSIVE under the same policy. A predetermined 5-run
   requalification is pending, and on the Linux host it must re-run against
