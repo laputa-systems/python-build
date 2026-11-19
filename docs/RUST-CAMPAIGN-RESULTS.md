@@ -11,7 +11,7 @@ receipt IDs are in the campaign's [Status](CAMPAIGN-RUST-CPYTHON-JIT.md#status).
 | --- | --- |
 | Build | Debug smoke, all six optimized stages, and an independent Rust JIT twin built with the locked Ubuntu userspace and verified offline boundary. |
 | Correctness | Full suites matched the explained failure sets, including Serc verification. The Serc corpus had zero mismatches over 30,138 cases. Rust JIT and combined differential fuzz each found zero mismatches over 6,000 programs across three seeds. All 16 training and eight held-out workload digests matched. All 114 Rust JIT optimizer unit tests passed. |
-| Track J timing | PERFORMANCE_DEFERRED. The quiet five-run self-calibration left 18 metrics unbounded at the 1% floor. P0 timing and the Linux milestone score remain pending. |
+| Track J timing | PERFORMANCE_DEFERRED. Quiet five-run self-calibrations left 18 metrics unbounded with default scheduling and 16 with CPU 2 affinity. The proposed Linux CPU-accounting repair at `b3f896a` restores seven guard CPU measurements, and diagnostic replay leaves both calibrations and the A/A inconclusive. P0 timing and the Linux milestone score remain pending. |
 | Track C memory | Both five-run resource gates rejected on Linux PSS and private-memory regressions. The collector did not report the OD15 physical-footprint metric. |
 | Profiling | The host and container denied a self-only hardware CPU-cycle counter, so IPC qualification is deferred. |
 

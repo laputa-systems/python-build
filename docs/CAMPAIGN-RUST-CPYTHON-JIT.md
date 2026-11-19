@@ -204,6 +204,29 @@ and p90 at 0.954 and 1.063 times its median across 30 fresh processes.
 The control ran without Python or the JIT. Affinity alone did not qualify
 the cloud timing path. P0 control artifact preparation can proceed offline.
 
+The archived Linux receipts also exposed a CPU coverage defect. Seven
+process-scoped guards had numeric wait4 samples that the controller
+excluded from CPU verdicts. A locked Ubuntu probe measured 0.025148 s of
+root CPU, 0.186341 s of reaped-descendant CPU and 0.216423 s in the
+root wait4 result, including process exit. The isolated harness repair at
+`b3f896a` on `campaign/cloud-h0-linux-cpu` restores that coverage,
+prevents cold ZIP child CPU from being added twice, accepts matched
+cgroup CPU coverage and keeps incomplete paired CPU inconclusive. The
+1% floor, workload sets and replication are unchanged. The benchmark
+suite ran 176 tests with nine skips under the staged CPython, and the
+perf controller suite ran 188 tests with seven skips. Both passed.
+
+Replaying the stored samples with corrected wait4 coverage restored
+seven CPU metrics per comparison. The unpinned calibration remained
+inconclusive at 18 unbounded metrics. The CPU 2 calibration went from
+16 to 19 unbounded metrics, and the A/A comparison went from 23 to 29.
+The live verdicts remain the original archived records. Independent
+review and a fresh qualifying self-calibration and A/A are pending.
+The eight original Linux benchmark receipt trees are archived at
+`rust-cpython/results/cloud-ubuntu-e891-20261119-raw-gates.tar.zst`
+(SHA-256
+`e1f0cf4823bde448cd55ab5e3556390bf7e5b712431b5a4e4069366694fcc34f`).
+
 A paired cold-start memory probe held each initialized interpreter at
 the same point in a fresh subprocess. In six observations per stage,
 median file-backed PSS rose from 6.04 to 10.15 MiB with Serc and from
@@ -232,7 +255,7 @@ The historical checkout `/workspace/cp316-p0-history` uses the exact
 `build.py`, `lane_linux.py`, `linux-toolchain.lock.json`, and `perf.py`
 from `df2d3e6`. Its historical overlay comes from the stated source
 revision. The fat profile is the `overlay/Cargo.toml` patch from
-`bfc2e23`. The B2/B3 JIT worktrees additionally apply the trace-map-only
+`bfc2e23`. The B2/B3 JIT recipes additionally apply the trace-map-only
 `overlay/Python/jit.c` patch from `a4a8934`. The thin controls live in
 `/workspace/cp316-p0-thin`. The stage `results/perf-*.json` reports
 record full commit IDs and stage hashes. Build elapsed times include
