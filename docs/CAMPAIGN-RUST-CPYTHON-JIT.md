@@ -310,6 +310,34 @@ The five Git recipe refs are retained in
 (SHA-256
 `e491a74be79ead2c6df78539c9ac44e8e83fc78b167d633113097844af0b82de`).
 The bundle applies to a clone containing `df2d3e6` and its history.
+All five refs were restored into clean detached worktrees from a fresh
+single-branch clone that lacked the recipe objects. To restore them from
+the primary checkout, point `bundle` at the verified archive member:
+
+```sh
+git bundle verify "$bundle"
+git fetch "$bundle" 'refs/heads/campaign/cloud-p0-*:refs/remotes/p0/cloud-p0-*'
+git worktree add --detach "$history" refs/remotes/p0/cloud-p0-climb-ref
+git worktree add --detach "$thin" refs/remotes/p0/cloud-p0-thin
+```
+
+After bootstrapping each worktree as described in Fresh Linux host
+bring-up, use the clean `perf.py build` command with the table's stage
+name and JIT/Serc flags. In the historical worktree, switch to each
+successive restored recipe (`ref-lto`, `q9-base`, `q9-cand`) before
+building its stage. G1 and G2 operands are then together in that worktree.
+Keep both operands of each LTO comparison on one build controller and
+record their actual runtime prefixes. The current G3/G4 fat JIT stage
+resolves from another worktree through `@incumbent-jit`. G5's two named
+references resolve only in one worktree, so its fat and thin stages
+must be built together at their recorded profiles before timing.
+
+An ELF inspection found the locked LLD 23.1.2 linker stamp in
+`libpython` and all 58 recorded Rust extensions for each of the 11
+non-pristine stages. The earlier fat builds and the reconstructed
+controls therefore used the same linker version. Fresh qualification
+still needs matched build inputs and paths.
+
 The verified build reports, suite logs, P0 proof, Git bundle, CPU probe
 sources and Linux H0 live receipt are archived in
 `rust-cpython/results/cloud-ubuntu-e891-20261119-support.tar.zst`
