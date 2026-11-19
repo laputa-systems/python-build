@@ -149,6 +149,16 @@ test and skip counts. Each run reported 52,220 tests.
 Census receipt SHA-256:
 `c3e7546d5755b6abbaf2a8ad79c3290402fae5c562554578cfd7be05a54cc652`.
 
+The Serc compiler library also passed all 1,261 native Rust unit tests
+with zero skips in the locked offline Ubuntu runner. The release test
+used `cargo test --release --locked --offline --package serc --lib`.
+The census checkout verified Serc source pin `bc563167`, the
+Serc Cargo lock digest and all overlay file contents before the run.
+The command and full log are in
+`rust-cpython/results/cloud-ubuntu-e891-20261119-serc-unit.tar.zst`
+(SHA-256
+`2e0bc0b23c5821c59837b9c10527582903eef096d6c0aa0e7aa99750ecc74419`).
+
 The first combined verification run added one failed file:
 `test_multiprocessing_fork.test_processes`. Its `test_interrupt` child
 exceeded the 30-second join limit. Focused trials reproduced the same
