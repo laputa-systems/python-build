@@ -249,8 +249,8 @@ baseline link cost. The resource verdicts and OD15 evidence gap remain.
 
 #### Linux P0 control artifacts
 
-Two isolated cloud worktrees preserve the B1 and thin-profile controls.
-All four stages verify the pinned e891 source and installed stage digest.
+Two isolated cloud worktrees preserve B1 through B3 and the thin-profile
+controls. All six stages verify the pinned e891 source and installed stage digest.
 Both no-JIT references passed compression and SQLite smoke checks. The
 ThinLTO JIT passed seven leaf-call traces, and the ThinLTO Serc stage
 passed all 11 source-mode routing tests.
@@ -259,6 +259,8 @@ passed all 11 source-mode routing tests.
 | --- | --- | --- | ---: |
 | `perf-climb-ref` | `3bd21f6`, thin LTO, JIT off | `52149a9` | 3,118,623 |
 | `perf-ref-lto` | `3bd21f6` plus the fat profile, JIT off | `8fa9edd` | 3,198,655 |
+| `perf-q9-base` | `f19fb2f` plus the fat profile, JIT on | `1eb2c9d` | 3,508,399 |
+| `perf-q9-cand` | `574946e` plus the fat profile, JIT on | `bf2db2b` | 3,513,551 |
 | `perf-rust-jit-thin` | `df2d3e6` with the pre-`bfc2e23` release profile | `ff40336` | 3,496,751 |
 | `perf-rust-serc-thin` | `df2d3e6` with the same thin profile | `ff40336` | 11,947,631 |
 
@@ -272,6 +274,26 @@ revision. The fat profile is the `overlay/Cargo.toml` patch from
 record full commit IDs and stage hashes. Build elapsed times include
 overlapping compiles. The controls are ready for later measurement
 against a qualified setup.
+
+The eval-9 pair built cleanly in 758.0 s and 660.2 s, respectively. Both
+verified 58 release Rust extensions and reverified their stage digests
+around the workload and JIT-code probes. All 16 training and eight
+held-out operation counts and digests matched. Each stage passed 2,000
+differential programs at seed 0 with 97.45% JIT coverage and zero
+mismatches or nondeterministic programs. Both passed the native list-read
+and array-index fixtures with their respective trace expectations. The
+candidate also passed the native array-store fixture.
+
+Both stages emitted 30,246 JIT bytes on `spectral_norm`. Their summed
+emitted bytes across the 16 kernels were 2,539,577 for B2 and 2,583,334
+for B3. These are the artifact and correctness portions of G1. The
+five-run timing verdict is pending.
+
+The five Git recipe refs are retained in
+`rust-cpython/results/cloud-ubuntu-e891-20261119-p0-recipes.bundle`
+(SHA-256
+`e491a74be79ead2c6df78539c9ac44e8e83fc78b167d633113097844af0b82de`).
+The bundle applies to a clone containing `df2d3e6` and its history.
 
 The current Rust JIT and combined baselines each passed 2,000
 differential cases for each of seeds 0, 1 and 2, with no mismatches or
