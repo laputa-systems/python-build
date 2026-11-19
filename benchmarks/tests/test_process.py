@@ -75,17 +75,21 @@ class UnmonitoredProcessTests(unittest.TestCase):
         self.assertGreater(result.duration_seconds, 0)
 
     def test_cpu_usage_includes_waited_grandchild(self):
-        code = (
-            "import subprocess,sys; "
-            "subprocess.run([sys.executable, '-c', 'sum(range(12000000))'], check=True)"
+        burner = (
+            "import time\n"
+            "deadline = time.process_time() + 0.10\n"
+            "while time.process_time() < deadline: pass\n"
         )
-        result = run_command(
-            [sys.executable, "-c", code], timeout=5, sample_interval_seconds=None
-        )
+        spawn = "import subprocess,sys; subprocess.run([sys.executable, '-c', *sys.argv[1:]], check=True)"
+        with patch.object(process_module.CgroupV2CpuScope, "detect_and_create", return_value=None):
+            result = run_command(
+                [sys.executable, "-c", spawn, spawn, burner], timeout=10, sample_interval_seconds=None
+            )
         self.assertEqual(result.returncode, 0)
         self.assertIsNotNone(result.cpu_user_seconds)
         assert result.cpu_user_seconds is not None
-        self.assertGreater(result.cpu_user_seconds, 0.05)
+        self.assertGreaterEqual(result.cpu_user_seconds + (result.cpu_system_seconds or 0), 0.10)
+        self.assertEqual(result.cpu_coverage, process_module.REAPED_CPU_COVERAGE)
         self.assertGreaterEqual(result.cpu_system_seconds or 0, 0)
 
     def test_timing_command_cleans_descendant_after_parent_exits(self):
@@ -107,6 +111,7 @@ class UnmonitoredProcessTests(unittest.TestCase):
         self.assertTrue(_wait_until_not_running(child_pid), f"child {child_pid} survived cleanup")
         self.assertTrue(result.cleanup_complete)
         self.assertEqual(result.remaining_pids, ())
+        self.assertEqual(result.cpu_coverage, "incomplete: workload left descendants at completion")
 
 
 @unittest.skipUnless(sys.platform == "darwin", "native macOS RSS sampler")

@@ -19,7 +19,7 @@ from .models import (
     RESULT_SCHEMA_VERSION,
     validate_workload_result,
 )
-from .process import KERNEL_REGION_CPU_COVERAGE
+from .process import CGROUP_TREE_CPU_COVERAGE, KERNEL_REGION_CPU_COVERAGE, REAPED_CPU_COVERAGE
 
 PAGE_SIZE_FLOOR_BYTES = 4096
 TIMING_RESOLUTION_FLOOR_SECONDS = 0.001
@@ -436,11 +436,19 @@ def _compare_cpu(
         }
     coverages = [item.get("coverage", "") for item in [*baseline_rounds, *candidate_rounds]
                  if isinstance(item, Mapping)]
+    coverage = coverages[0] if coverages else None
+    comparable_coverage = coverage in (
+        CGROUP_TREE_CPU_COVERAGE,
+        KERNEL_REGION_CPU_COVERAGE,
+        REAPED_CPU_COVERAGE,
+        "wait4 root only; descendants excluded",
+        "wait4 root plus workload-reported RUSAGE_CHILDREN direct reaped children; "
+        "grandchildren and unreaped descendants excluded",
+    )
     if result["metrics"]:
         result["status"] = (
             "compared" if len(baseline_rounds) == len(candidate_rounds)
-            and (all(coverage.startswith("wait4 root") for coverage in coverages)
-                 or all(coverage == KERNEL_REGION_CPU_COVERAGE for coverage in coverages))
+            and comparable_coverage and all(item == coverage for item in coverages)
             and all(len(metric["baseline_samples"]) == len(baseline_rounds)
                     and len(metric["candidate_samples"]) == len(candidate_rounds)
                     for metric in result["metrics"].values()) else "incomplete"

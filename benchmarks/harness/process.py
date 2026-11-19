@@ -42,11 +42,10 @@ from .memory import (
     sum_rollups,
 )
 
-MAC_REAPED_CPU_COVERAGE = (
+REAPED_CPU_COVERAGE = (
     "wait4 root plus reaped descendants; detached or unreaped children excluded"
 )
 CGROUP_TREE_CPU_COVERAGE = "cgroup v2 workload process tree, including descendants"
-LINUX_ROOT_CPU_COVERAGE = "incomplete: wait4 root only; descendants excluded"
 KERNEL_REGION_CPU_COVERAGE = "kernel region: workload getrusage(RUSAGE_SELF) across its timed loop"
 
 
@@ -100,8 +99,7 @@ def _wait4(
 ) -> _WaitResult:
     """Reap one workload root and return kernel-accounted CPU usage.
 
-    The kernel's treatment of descendants reaped by that root differs across
-    supported hosts; callers label the recorded coverage accordingly.
+    Linux and macOS include descendants reaped through the workload root.
     """
     if not hasattr(os, "wait4"):
         process.wait(timeout=timeout)
@@ -542,8 +540,7 @@ class ProcessSampler:
         cpu_coverage = (
             "unsupported" if wait_result.usage is None else
             "incomplete: workload left descendants at completion" if boundary_remaining else
-            MAC_REAPED_CPU_COVERAGE if sys.platform == "darwin" else
-            LINUX_ROOT_CPU_COVERAGE
+            REAPED_CPU_COVERAGE
         )
         if (self._final_cpu_snapshot is not None and wait_result.usage is not None
                 and not boundary_remaining and not self._remaining_pids
@@ -964,6 +961,5 @@ def _run_unmonitored(
         cpu_system_seconds=None if wait_result.usage is None else wait_result.usage.ru_stime,
         cpu_coverage=("unsupported" if wait_result.usage is None else
                       "incomplete: workload left descendants at completion" if boundary_remaining else
-                      MAC_REAPED_CPU_COVERAGE if sys.platform == "darwin" else
-                      "wait4 root only; descendants excluded"),
+                      REAPED_CPU_COVERAGE),
     )

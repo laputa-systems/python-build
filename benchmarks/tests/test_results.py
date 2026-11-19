@@ -14,8 +14,9 @@ from benchmarks.harness.models import (
     summary_from_json,
 )
 from benchmarks.harness.process import (
+    CGROUP_TREE_CPU_COVERAGE,
     KERNEL_REGION_CPU_COVERAGE,
-    MAC_REAPED_CPU_COVERAGE,
+    REAPED_CPU_COVERAGE,
 )
 from benchmarks.harness.report import build_summary, render_summary, save_summary
 from benchmarks.harness.statistics import (
@@ -110,17 +111,24 @@ class ResultSchemaTests(unittest.TestCase):
         self.assertAlmostEqual(cpu["metrics"]["total_seconds_per_operation"]["change_percent"], 50)
         self.assertEqual(compared["comparison"]["timing"]["change_percent"], 0)
 
-    def test_kernel_region_cpu_compares_only_against_kernel_region_cpu(self):
+    def test_cpu_comparison_requires_matching_complete_coverage(self):
         def rounds(coverage):
             return [{"user_seconds_per_operation": 0.001, "system_seconds_per_operation": 0.0,
                      "total_seconds_per_operation": 0.001, "coverage": coverage}
                     for _ in range(3)]
         record = workload()
-        record["baseline"]["timing"]["cpu_rounds"] = rounds(KERNEL_REGION_CPU_COVERAGE)
-        record["candidate"]["timing"]["cpu_rounds"] = rounds(KERNEL_REGION_CPU_COVERAGE)
-        self.assertEqual(compare_workload(record)["comparison"]["timing"]["cpu"]["status"], "compared")
-        record["candidate"]["timing"]["cpu_rounds"] = rounds(MAC_REAPED_CPU_COVERAGE)
-        self.assertEqual(compare_workload(record)["comparison"]["timing"]["cpu"]["status"], "incomplete")
+        coverages = (KERNEL_REGION_CPU_COVERAGE, REAPED_CPU_COVERAGE, CGROUP_TREE_CPU_COVERAGE)
+        for coverage in coverages:
+            with self.subTest(coverage=coverage):
+                record["baseline"]["timing"]["cpu_rounds"] = rounds(coverage)
+                record["candidate"]["timing"]["cpu_rounds"] = rounds(coverage)
+                self.assertEqual(compare_workload(record)["comparison"]["timing"]["cpu"]["status"], "compared")
+        record["baseline"]["timing"]["cpu_rounds"] = rounds(CGROUP_TREE_CPU_COVERAGE)
+        for coverage in (REAPED_CPU_COVERAGE, KERNEL_REGION_CPU_COVERAGE,
+                         "incomplete: workload left descendants at completion"):
+            with self.subTest(coverage=coverage):
+                record["candidate"]["timing"]["cpu_rounds"] = rounds(coverage)
+                self.assertEqual(compare_workload(record)["comparison"]["timing"]["cpu"]["status"], "incomplete")
 
     def test_macos_rss_gate_keeps_pss_and_private_unavailable(self):
         record = workload()

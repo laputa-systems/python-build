@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from benchmarks.harness import runner
+from benchmarks.harness.process import CGROUP_TREE_CPU_COVERAGE, REAPED_CPU_COVERAGE
 from benchmarks.workloads.registry import Workload
 
 
@@ -33,28 +34,27 @@ class TimingOnlyRunnerTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             runner._timing_elapsed(measured, {}, warm)
 
-    def test_cold_import_adds_reported_direct_child_cpu_once(self) -> None:
-        measured = SimpleNamespace(
-            cpu_user_seconds=0.2, cpu_system_seconds=0.1,
-            cpu_coverage=runner.LINUX_ROOT_CPU_COVERAGE,
-        )
+    def test_cold_import_never_adds_already_reaped_child_cpu(self) -> None:
         payload = {"operation_count": 2, "reaped_child_cpu": {
-            "user_seconds": 0.4, "system_seconds": 0.2, "process_count": 2,
+            "user_seconds": 0.1, "system_seconds": 0.04, "process_count": 2,
         }}
-        cpu = runner._cpu_dict(measured, payload, "zipimport_cold")
-        self.assertAlmostEqual(cpu["user_seconds"], 0.6)
-        self.assertAlmostEqual(cpu["system_seconds"], 0.3)
-        self.assertAlmostEqual(cpu["total_seconds_per_operation"], 0.45)
-        self.assertEqual(cpu["root_user_seconds"], 0.2)
-        self.assertEqual(cpu["root_system_seconds"], 0.1)
-        self.assertEqual(cpu["reaped_child_cpu"], payload["reaped_child_cpu"])
-        self.assertIn("direct reaped children", cpu["coverage"])
+        for coverage in (REAPED_CPU_COVERAGE, CGROUP_TREE_CPU_COVERAGE,
+                         "incomplete: workload left descendants at completion"):
+            with self.subTest(coverage=coverage):
+                measured = SimpleNamespace(cpu_user_seconds=0.2, cpu_system_seconds=0.1,
+                                           cpu_coverage=coverage)
+                cpu = runner._cpu_dict(measured, payload, "zipimport_cold")
+                self.assertAlmostEqual(cpu["total_seconds_per_operation"], 0.15)
+                self.assertIsNone(cpu["root_user_seconds"])
+                self.assertIsNone(cpu["root_system_seconds"])
+                self.assertEqual(cpu["reaped_child_cpu"], payload["reaped_child_cpu"])
+                self.assertEqual(cpu["coverage"], coverage)
 
     def test_internal_cpu_boundary_uses_the_kernel_region_not_the_process(self) -> None:
         kernel = Workload("nbody", "interpreter", "jit_kernels", "advance", 1, 1,
                           cpu_boundary="internal")
         measured = SimpleNamespace(cpu_user_seconds=0.15, cpu_system_seconds=0.02,
-                                   cpu_coverage=runner.MAC_REAPED_CPU_COVERAGE)
+                                   cpu_coverage=REAPED_CPU_COVERAGE)
         payload = {"operation_count": 4, "cpu_user_seconds": 0.04, "cpu_system_seconds": 0.004}
         cpu = runner._workload_cpu(measured, payload, kernel)
         self.assertAlmostEqual(cpu["total_seconds_per_operation"], 0.011)
@@ -68,7 +68,7 @@ class TimingOnlyRunnerTests(unittest.TestCase):
         kernel = Workload("nbody", "interpreter", "jit_kernels", "advance", 1, 1,
                           cpu_boundary="internal")
         measured = SimpleNamespace(cpu_user_seconds=0.15, cpu_system_seconds=0.02,
-                                   cpu_coverage=runner.MAC_REAPED_CPU_COVERAGE)
+                                   cpu_coverage=REAPED_CPU_COVERAGE)
         for payload in ({"operation_count": 1},
                         {"operation_count": 1, "cpu_user_seconds": 0.1},
                         {"operation_count": 1, "cpu_user_seconds": -0.1, "cpu_system_seconds": 0.0},
@@ -79,7 +79,7 @@ class TimingOnlyRunnerTests(unittest.TestCase):
 
     def test_cold_import_rejects_missing_or_invalid_child_cpu(self) -> None:
         measured = SimpleNamespace(cpu_user_seconds=0.2, cpu_system_seconds=0.1,
-                                   cpu_coverage="wait4 root only; descendants excluded")
+                                   cpu_coverage=REAPED_CPU_COVERAGE)
         for child in (None, {"user_seconds": math.nan, "system_seconds": 0.1,
                              "process_count": 2},
                       {"user_seconds": 0.1, "system_seconds": math.inf,

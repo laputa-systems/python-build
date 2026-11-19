@@ -17,10 +17,7 @@ from typing import Any
 
 from benchmarks.harness.environment import interpreter_environment
 from benchmarks.harness.process import (
-    CGROUP_TREE_CPU_COVERAGE,
     KERNEL_REGION_CPU_COVERAGE,
-    LINUX_ROOT_CPU_COVERAGE,
-    MAC_REAPED_CPU_COVERAGE,
     run_command,
 )
 from benchmarks.workloads.registry import Workload
@@ -217,13 +214,11 @@ def _workload_cpu(measured: Any, payload: dict[str, Any], workload: Workload) ->
 
 
 def _cpu_dict(measured: Any, payload: dict[str, Any], workload_name: str) -> dict[str, Any]:
-    """Account for reported child CPU only when kernel totals exclude it."""
+    """Keep the cold ZIP child ledger as a cross-check of kernel totals."""
     operation_count = payload["operation_count"]
     user = getattr(measured, "cpu_user_seconds", None)
     system = getattr(measured, "cpu_system_seconds", None)
     coverage = getattr(measured, "cpu_coverage", "unsupported")
-    root_user = None if coverage == CGROUP_TREE_CPU_COVERAGE else user
-    root_system = None if coverage == CGROUP_TREE_CPU_COVERAGE else system
     child_cpu = None
     if workload_name == "zipimport_cold":
         child_cpu = payload.get("reaped_child_cpu")
@@ -234,19 +229,6 @@ def _cpu_dict(measured: Any, payload: dict[str, Any], workload_name: str) -> dic
             value = child_cpu.get(key)
             if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
                 raise RuntimeError(f"zipimport_cold: invalid direct child {key}")
-        if user is not None and system is not None and coverage in (
-            MAC_REAPED_CPU_COVERAGE, CGROUP_TREE_CPU_COVERAGE
-        ):
-            # Both kernel totals already include these children. Keep the
-            # workload ledger as a cross-check without adding it twice.
-            pass
-        elif user is not None and system is not None and coverage == LINUX_ROOT_CPU_COVERAGE:
-            user += child_cpu["user_seconds"]
-            system += child_cpu["system_seconds"]
-            coverage = ("wait4 root plus workload-reported RUSAGE_CHILDREN direct reaped children; "
-                        "grandchildren and unreaped descendants excluded")
-        else:
-            coverage = "incomplete: direct child CPU reported but root CPU unavailable"
     elif "reaped_child_cpu" in payload:
         raise RuntimeError(f"{workload_name}: unexpected direct child CPU ledger")
     return {
@@ -258,8 +240,8 @@ def _cpu_dict(measured: Any, payload: dict[str, Any], workload_name: str) -> dic
         "total_seconds_per_operation": None if user is None or system is None else (user + system) / operation_count,
         "operation_count": operation_count,
         "coverage": coverage,
-        "root_user_seconds": root_user,
-        "root_system_seconds": root_system,
+        "root_user_seconds": None,
+        "root_system_seconds": None,
         "reaped_child_cpu": child_cpu,
     }
 
