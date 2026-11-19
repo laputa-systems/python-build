@@ -1,16 +1,17 @@
 # Rust-for-CPython research lane
 
 JIT work in this lane follows one campaign,
-[rust-cpython JIT](../docs/CAMPAIGN-RUST-CPYTHON-JIT.md). Resume from its
-Status and current source epoch; R0 has already opened epoch e891. The
-campaign runs on the native Linux x86-64 host (Ubuntu 24.04; owner reopened
-Linux 2026-11-18, campaign decision OD20). Resume directly from the
-campaign's Status: if the fresh host has not completed the **Fresh Linux
-host bring-up** checklist, that comes first — no qualification runs against
-macOS-derived references. macOS arm64 receipts are historical and do not
-qualify the current epoch. The recorded S = 0.7463 is not a qualified
-milestone; A/A and guard debt remain open, now as Linux re-derivation
-debt.
+[rust-cpython JIT](../docs/CAMPAIGN-RUST-CPYTHON-JIT.md). Start with the
+[continuous runbook](../docs/CAMPAIGN-RUST-CPYTHON-RUNBOOK.md), then its
+Status and current source epoch; R0 has already opened epoch e891. OD21
+(2026-11-19) keeps the Linux x86-64 campaign active across checkpoints and
+search rounds. The authorized Ubuntu 24.04 cloud runner supports builds,
+correctness work and isolated candidate development. Its timing path remains
+unqualified; qualified performance work needs full H0 and P0 on a controlled
+Linux host. A timing deferral parks that gate while independent experiments
+continue. Reuse verified Linux stages; only a genuinely fresh or changed host
+needs the applicable **Fresh Linux host bring-up** steps. macOS arm64
+receipts are historical and do not qualify the current epoch.
 
 This isolated lane builds upstream CPython **3.16.0a1+dev** with a Rust overlay.
 It is not the shipping 3.15.1 product. JIT experiments run only in this lane:

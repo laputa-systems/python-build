@@ -10,12 +10,17 @@ The 3.15.1 product is stable and is not modified for lane work.
 `rust-cpython/` is a separate CPython 3.16 Rust research lane whose frontier
 is the Rust JIT and a Rust source compiler ported from Serc: one campaign,
 [rust-cpython JIT](docs/CAMPAIGN-RUST-CPYTHON-JIT.md), owns their goal, end
-state, gates, and execution status. The 3.16 Rust research lane's current scope is native Linux x86-64 (Ubuntu
-24.04): the owner reopened Linux qualification and execution on 2026-11-18
-(campaign OD20), superseding the macOS arm64-only contract. Follow the
-campaign's Status, including any execution pause or bring-up state. Neither
-the lane's source pin nor its results affect production targets; Linux arm64
-is not implemented there.
+state, gates, and execution status. For campaign work, first read the short
+[continuous runbook](docs/CAMPAIGN-RUST-CPYTHON-RUNBOOK.md), then the campaign's
+Status and the relevant acceptance section. The owner's 2026-11-19 direction
+(OD21) is continuous Linux x86-64 hillclimbing: a checkpoint, exhausted search
+round, or deferred timing gate does not finish the campaign. Continue the next
+unblocked experiment; preserve per-hypothesis limits and every acceptance bar.
+Ubuntu 24.04 cloud/container development is authorized. Performance claims
+require a qualified Linux measurement host; the current cloud host is not
+qualified. Keep unqualified candidates separate from the measured incumbent.
+Neither the lane's source pin nor its results affect production targets;
+Linux arm64 is not implemented there.
 
 ## Commands
 
@@ -73,6 +78,7 @@ and defaults to the host. Releases come from `.github/workflows/release.yml`; th
 | CI and releases | [docs/ci-and-releases.md](docs/ci-and-releases.md) |
 | Remaining production and lane work | [docs/open-work.md](docs/open-work.md) |
 | rust-cpython JIT campaign: goal, gates, ledger | [docs/CAMPAIGN-RUST-CPYTHON-JIT.md](docs/CAMPAIGN-RUST-CPYTHON-JIT.md) |
+| Continuous campaign: next work, checkpoints, resumption | [docs/CAMPAIGN-RUST-CPYTHON-RUNBOOK.md](docs/CAMPAIGN-RUST-CPYTHON-RUNBOOK.md) |
 | RTLS backend | [backend/README.md](backend/README.md) |
 | Rust lane build and harness | [rust-cpython/README.md](rust-cpython/README.md) |
 | Rust lane contract and verdicts | [rust-cpython/ENGINEERING.md](rust-cpython/ENGINEERING.md) |

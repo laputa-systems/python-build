@@ -1,9 +1,20 @@
 # rust-cpython JIT campaign — results
 
-**Current state (2026-11-18): ACTIVE.** The campaign reopened for Linux
-x86-64 under OD20. The owner authorized build and baseline bring-up in
-an Ubuntu 24.04 container on the x86-64 cloud host. Live progress and
-receipt IDs are in the campaign's [Status](CAMPAIGN-RUST-CPYTHON-JIT.md#status).
+**Current state (2026-11-19): ACTIVE — continuous Linux research (OD21).**
+The owner authorized ongoing Ubuntu 24.04 cloud/container development and
+indefinite hillclimbing. The last operational checkpoint reviewed is
+`af2371d` on `campaign/cloud-ubuntu-baseline`. It records substantial baseline
+and correctness preparation, **zero qualified Linux optimization gains**, and
+an unqualified timing host. See the
+[continuous runbook](CAMPAIGN-RUST-CPYTHON-RUNBOOK.md) and the campaign's
+[Status](CAMPAIGN-RUST-CPYTHON-JIT.md#status) for the next experiments.
+
+The observations below are recorded by the original cloud worker. Its cited
+raw archives and recipe bundle are not in the published Git tree; `results/`
+and `logs/` are ignored. A fresh clone recovers source and reports, not those
+raw artifacts. Verify their hashes and durable location on the original
+worker before claiming portable recovery. This steering update does not
+revalidate the measurements or establish that the cloud worker is running.
 
 ## Linux cloud evidence
 
