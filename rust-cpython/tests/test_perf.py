@@ -2314,6 +2314,8 @@ class SercVerifySuiteTests(unittest.TestCase):
                 prefix = env["PYTHONPYCACHEPREFIX"]
                 runs.append({"verify": env.get("PYTHONSERCVERIFY"), "log": log.name,
                              "prefix": prefix,
+                             "cache_root": Path(prefix).parent.relative_to(build).as_posix()
+                             if env.get("PYTHONSERCVERIFY") else None,
                              "empty_prefix": Path(prefix).is_dir() and not any(Path(prefix).iterdir())})
                 return {"returncode": 0}
             patches.enter_context(mock.patch.object(perf, "_paths", return_value={
@@ -2324,7 +2326,8 @@ class SercVerifySuiteTests(unittest.TestCase):
             patches.enter_context(mock.patch.object(perf.lb, "_toolchain",
                                                     return_value=(mock.Mock(), mock.Mock())))
             patches.enter_context(mock.patch.object(perf.lb, "_test_environment",
-                                                    return_value={"PYTHONPYCACHEPREFIX": "/shared"}))
+                                                    return_value={"PYTHONPYCACHEPREFIX": "/shared",
+                                                                  "TMPDIR": str(build / "tmp")}))
             patches.enter_context(mock.patch.object(perf.lb, "_run_python_test", side_effect=run))
             patches.enter_context(mock.patch.object(perf, "host_lease", return_value=nullcontext()))
             patches.enter_context(mock.patch.object(perf, "_git_state", return_value={}))
@@ -2337,6 +2340,8 @@ class SercVerifySuiteTests(unittest.TestCase):
         runs, tests = self.run_suite({"status": "built", "serc": True}, serc_verify=True)
         self.assertEqual(len(runs), 1)
         self.assertEqual(runs[0]["verify"], "1")
+        expected_root = "tmp" if perf.lb.IS_LINUX and perf.lb.lane_linux.docker_offline() else "scratch"
+        self.assertEqual(runs[0]["cache_root"], expected_root)
         self.assertTrue(runs[0]["empty_prefix"])
         self.assertFalse(Path(runs[0]["prefix"]).exists())
         self.assertEqual(runs[0]["log"], "perf-fixture-test_compile-serc-verify.log")
