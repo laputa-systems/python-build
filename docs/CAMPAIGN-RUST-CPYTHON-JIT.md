@@ -371,6 +371,19 @@ nondeterministic cases. JIT-active coverage was 97.45%, 97.75% and 97.25%,
 respectively, on both stages. The locked offline `_jit_opt_rs` unit run
 passed all 114 tests. These checks validate the current baseline stages.
 
+The same optimizer sources also passed all 114 Rust unit tests on
+Linux x86-64 under AddressSanitizer with leak detection enabled. The
+offline run used the locked Rust nightly, Clang and LLD. It built
+`overlay/Modules/_jit_opt_rs/src/lib.rs` with `rustc --test --edition=2024
+--target x86_64-unknown-linux-gnu -Zsanitizer=address -Cdebuginfo=1`,
+the locked Clang linker and `-Clink-arg=-fuse-ld=lld`. The test binary
+contained `__asan_init`. This covers the optimizer crate and its
+unsafe FFI unit fixtures. Linked interpreter and emitted-code coverage
+comes from the separate native integration and differential runs.
+Log: `rust-cpython/logs/cloud-bringup/linux-jit-optimizer-asan.log`
+(SHA-256
+`0c3a4cf48e150dad73425900010a513ecd16b22b84ad6453021b5373b894550c`).
+
 ### Scorecard
 
 | Track | Measure | Current | Qualified? | Target / gap |
