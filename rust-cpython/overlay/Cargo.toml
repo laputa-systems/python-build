@@ -26,7 +26,8 @@ panic = "abort"
 
 [profile.release]
 panic = "abort"
-lto = "thin"
+lto = "fat"
+codegen-units = 1
 
 # The TLS engine's rustls and rustls-webpki forks carry the maintained
 # session-API and policy patches. Every workspace requirement resolves to
