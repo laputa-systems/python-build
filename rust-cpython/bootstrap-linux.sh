@@ -17,9 +17,25 @@ require_host() {
     echo 'ERROR: native Linux x86_64 host required' >&2; exit 1;
   }
   source /etc/os-release
-  [[ $ID == ubuntu && $VERSION_ID == 24.04 ]] || {
-    echo 'ERROR: exact Ubuntu 24.04 host required by linux-toolchain.lock.json' >&2; exit 1;
+  [[ $ID == ubuntu ]] || {
+    echo 'ERROR: Ubuntu host required by linux-toolchain.lock.json' >&2; exit 1;
   }
+  python3 - "$VERSION_ID" <<'PY' || {
+import json
+import sys
+
+document = json.load(open("rust-cpython/linux-toolchain.lock.json"))
+allowed = {document["host"]["os_version_id"]}
+allowed.update(entry["os_version_id"] for entry in document.get("provisional_hosts", ()))
+sys.exit(0 if sys.argv[1] in allowed else 1)
+PY
+    echo 'ERROR: host must run Ubuntu 24.04 or a provisional_hosts entry in linux-toolchain.lock.json' >&2; exit 1;
+  }
+  HOST_SPEC=lock
+  if [[ $VERSION_ID != 24.04 ]]; then
+    HOST_SPEC=provisional
+    echo "NOTE: Ubuntu $VERSION_ID is a provisional interim host; receipts are PROVISIONAL pending 24.04 re-measurement" >&2
+  fi
   [[ -z ${RUSTUP_TOOLCHAIN:-} ]] || {
     echo 'ERROR: unset RUSTUP_TOOLCHAIN; the lane pins nightly-2026-09-15 itself' >&2; exit 1;
   }
@@ -40,13 +56,38 @@ EOF
 }
 
 install_packages() {
-  # Python stdlib avoids a jaq/jq bootstrap dependency.
-  mapfile -t pinned < <(python3 -c 'import json; print("\n".join(json.load(open("rust-cpython/linux-toolchain.lock.json"))["system_packages"]))')
+  # Python stdlib avoids a jaq/jq bootstrap dependency. The selected host
+  # spec (lock or provisional) supplies the make/pkgconf and package pins.
+  mapfile -t spec_lines < <(python3 - "$VERSION_ID" <<'PY'
+import json
+import sys
+
+document = json.load(open("rust-cpython/linux-toolchain.lock.json"))
+version = sys.argv[1]
+if version == document["host"]["os_version_id"]:
+    spec = {
+        "system_packages": document["system_packages"],
+        "make_package": document["make"]["package"].split("=", 1)[1],
+        "pkgconf_package": document["pkgconf"]["package"].split("=", 1)[1],
+    }
+else:
+    spec = next(
+        entry for entry in document.get("provisional_hosts", ())
+        if entry["os_version_id"] == version
+    )
+print(spec["make_package"])
+print(spec["pkgconf_package"])
+print("\n".join(spec["system_packages"]))
+PY
+)
+  make_pin=${spec_lines[0]}
+  pkgconf_pin=${spec_lines[1]}
+  pinned=("${spec_lines[@]:2}")
   [[ ${#pinned[@]} -gt 0 ]] || { echo 'ERROR: empty package pin list' >&2; exit 1; }
   sudo apt-get update
   sudo apt-get install -y \
     git curl ca-certificates python3 tar xz-utils util-linux procps time dpkg-dev \
-    make=4.3-4.1build2 pkgconf=1.8.1-2build1 "${pinned[@]}"
+    make="$make_pin" pkgconf="$pkgconf_pin" "${pinned[@]}"
 }
 
 install_rust() {
