@@ -560,11 +560,17 @@ def _linux_doctor_report(
         failures.append("the locked LLVM 23.1.2 toolchain is not provisioned; run fetch")
     if not _mpdecimal_cached():
         failures.append("the locked mpdecimal source is not verified in .cache; run fetch")
+    spec_kind, spec = lane_linux.host_spec(toolchain)
     return {
         "host": {
             "os": platform.system(),
             "architecture": platform.machine(),
             "libc": list(platform.libc_ver()),
+            "spec": spec_kind,
+            # Receipts recorded on a provisional host are PROVISIONAL:
+            # re-measure on the lock's pinned host before gates qualify.
+            "provisional": spec_kind == "provisional",
+            "provisional_reason": spec.get("reason", ""),
         },
         "target": target.triple,
         "source": {
@@ -956,14 +962,39 @@ def _environment(toolchain, *, offline: bool, build_dir: Path | None = None) -> 
         "RUSTUP_TOOLCHAIN": RUST_CHANNEL,
         "RUST_SHARED_BUILD": "1",
         "LLVM_TARGET": TARGET,
-        "BINDGEN_EXTRA_CLANG_ARGS": f"-resource-dir={toolchain.llvm_resource_dir}",
+        "BINDGEN_EXTRA_CLANG_ARGS": f"-resource-dir={getattr(toolchain, 'bindgen_resource_dir', toolchain.llvm_resource_dir)}",
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONNOUSERSITE": "1",
         "PYTHONPYCACHEPREFIX": str(WORK / "pycache"),
         "TMPDIR": str(temp_dir),
         "PKG_CONFIG": str(toolchain.pkgconf),
     })
+    if IS_LINUX:
+        # clang's Linux driver defaults to GNU ld, which a minimal Ubuntu
+        # image does not have; -fuse-ld=lld selects the locked lld, as in LDFLAGS
+        env[_cargo_rustflags_variable()] = "-C link-arg=-fuse-ld=lld"
+    # Regeneration needs >= 3.11; a distro may only ship an older python3 on
+    # the sealed PATH. Bind the newest versioned python3.N the host's ambient
+    # PATH offers when it is new enough.
+    if "PYTHON_FOR_REGEN" not in env:
+        regen = _regen_python(os.environ.get("PATH", ""))
+        if regen:
+            env["PYTHON_FOR_REGEN"] = regen
     return env
+
+
+def _regen_python(path_env: str) -> str | None:
+    """Newest versioned python3.N on PATH satisfying the >= 3.11 regen floor."""
+    candidates: list[tuple[int, Path]] = []
+    for directory in path_env.split(os.pathsep):
+        for entry in Path(directory).glob("python3.*"):
+            match = re.fullmatch(r"python3\.(\d+)", entry.name)
+            if match and entry.is_file():
+                candidates.append((int(match.group(1)), entry))
+    for minor, candidate in sorted(candidates, reverse=True):
+        if minor >= 11:
+            return str(candidate)
+    return None
 
 
 def _test_environment(toolchain) -> dict[str, str]:
@@ -1210,6 +1241,10 @@ def _platform_flags(toolchain, target, prefix: Path | None = None) -> dict[str, 
 
 def _cargo_linker_variable() -> str:
     return f"CARGO_TARGET_{TARGET.upper().replace('-', '_')}_LINKER"
+
+
+def _cargo_rustflags_variable() -> str:
+    return f"CARGO_TARGET_{TARGET.upper().replace('-', '_')}_RUSTFLAGS"
 
 
 @dataclasses.dataclass(frozen=True)
