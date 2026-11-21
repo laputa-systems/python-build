@@ -14,3 +14,9 @@ four Rust tests. Build `perf-jes1-pystats` 325.3 s.
 
 Retired as preregistered. The refusal cause is diagnosed separately; that diagnosis is
 evidence only and does not reset this mechanism's budget.
+
+## Refusal diagnosis (instrumented stage `perf-jes1-diag`, not committed)
+`guard_loop_locals` reaches the line-62 inner-loop trace (no precondition skip). The array
+reads and guards now pass; `plan_loop_types` returns `Ok(None)` at uop 51,
+`_BINARY_OP_MULTIPLY_FLOAT_INPLACE`, an in-place float variant the transfer function does
+not know (`_BINARY_OP_ADD_FLOAT_INPLACE_RIGHT` follows at 58). Log: `jes1-diag/loop-types.log.xz`.
