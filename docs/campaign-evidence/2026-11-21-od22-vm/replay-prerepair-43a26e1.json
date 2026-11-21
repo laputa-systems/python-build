@@ -1,0 +1,662 @@
+{
+ "diagnostic": true,
+ "runs": {
+  "20261120T192519Z-perf-rust-jit-vs-perf-rust-jit-aa": {
+   "cpu_inconclusive_entities": [
+    "deltablue",
+    "scimark_monte_carlo"
+   ],
+   "entities_without_cpu_metric": [
+    "django_template_realistic",
+    "django_wsgi_request",
+    "gzip_extract_1m",
+    "import_django",
+    "python_startup",
+    "serialization_roundtrip",
+    "zlib_decode_1m"
+   ],
+   "original_decision": "INCONCLUSIVE",
+   "replay_decision": "INCONCLUSIVE",
+   "replay_inconclusive": [
+    "deltablue wall",
+    "deltablue cpu",
+    "django_wsgi_request wall",
+    "float peak_rss",
+    "float peak_private",
+    "float peak_pss",
+    "scimark_monte_carlo wall",
+    "scimark_monte_carlo cpu",
+    "zlib_decode_1m wall",
+    "zlib_decode_1m peak_rss",
+    "zlib_decode_1m peak_private",
+    "zlib_decode_1m peak_pss"
+   ],
+   "replay_regressions": []
+  },
+  "20261120T212227Z-calibrate-perf-rust-jit": {
+   "cpu_inconclusive_entities": [],
+   "entities_without_cpu_metric": [
+    "catalog_json_export",
+    "catalog_request_path",
+    "catalog_search_form",
+    "catalog_toml_load",
+    "catalog_url_normalize",
+    "cold_import_django",
+    "cold_python_startup",
+    "compileall_source",
+    "difflib_unified_mostly_equal",
+    "difflib_unified_reordered",
+    "django_asgi_request",
+    "django_orm_10k",
+    "django_template_realistic",
+    "django_wsgi_first_request",
+    "django_wsgi_request",
+    "gzip_extract_1m",
+    "import_django",
+    "multiprocess_pool",
+    "python_startup",
+    "rust_base64_large",
+    "rust_base64_small",
+    "serialization_roundtrip",
+    "zip_read_wheel",
+    "zlib_decode_1m",
+    "zlib_stream_4k"
+   ],
+   "original_decision": "CALIBRATION-INCONCLUSIVE",
+   "replay_decision": "CALIBRATION-INCONCLUSIVE",
+   "replay_inconclusive": [],
+   "replay_regressions": []
+  },
+  "20261120T235150Z-perf-ref-lto-vs-perf-rust-jit": {
+   "cpu_inconclusive_entities": [
+    "go"
+   ],
+   "entities_without_cpu_metric": [],
+   "original_decision": "REJECT",
+   "replay_decision": "REJECT",
+   "replay_inconclusive": [
+    "chaos peak_private",
+    "chaos peak_pss",
+    "deltablue peak_rss",
+    "deltablue peak_private",
+    "deltablue peak_pss",
+    "fannkuch peak_private",
+    "fannkuch peak_pss",
+    "float peak_rss",
+    "float peak_private",
+    "float peak_pss",
+    "go wall",
+    "go cpu",
+    "go peak_private",
+    "go peak_pss",
+    "hexiom peak_rss",
+    "hexiom peak_private",
+    "hexiom peak_pss",
+    "nbody peak_private",
+    "nbody peak_pss",
+    "nqueens peak_rss",
+    "nqueens peak_private",
+    "nqueens peak_pss",
+    "raytrace peak_private",
+    "raytrace peak_pss",
+    "richards peak_rss",
+    "richards peak_private",
+    "richards peak_pss",
+    "scimark_fft peak_private",
+    "scimark_fft peak_pss",
+    "scimark_lu peak_private",
+    "scimark_lu peak_pss",
+    "scimark_monte_carlo peak_rss",
+    "scimark_monte_carlo peak_private",
+    "scimark_monte_carlo peak_pss",
+    "scimark_sor peak_private",
+    "scimark_sor peak_pss",
+    "scimark_sparse_mat_mult peak_private",
+    "scimark_sparse_mat_mult peak_pss",
+    "spectral_norm peak_private",
+    "spectral_norm peak_pss"
+   ],
+   "replay_regressions": [
+    "nbody wall",
+    "nbody cpu"
+   ]
+  },
+  "20261121T010734Z-perf-ref-lto-vs-perf-rust-jit": {
+   "cpu_inconclusive_entities": [
+    "coroutines"
+   ],
+   "entities_without_cpu_metric": [],
+   "original_decision": "REJECT",
+   "replay_decision": "REJECT",
+   "replay_inconclusive": [
+    "barnes_hut peak_rss",
+    "barnes_hut peak_private",
+    "barnes_hut peak_pss",
+    "coroutines wall",
+    "coroutines cpu",
+    "coroutines peak_rss",
+    "coroutines peak_private",
+    "coroutines peak_pss",
+    "meteor_contest peak_rss",
+    "meteor_contest peak_private",
+    "meteor_contest peak_pss",
+    "pidigits peak_private",
+    "pidigits peak_pss",
+    "pyflate peak_rss",
+    "pyflate peak_private",
+    "pyflate peak_pss",
+    "richards_super peak_rss",
+    "richards_super peak_private",
+    "richards_super peak_pss"
+   ],
+   "replay_regressions": [
+    "comprehensions peak_rss",
+    "comprehensions peak_private",
+    "comprehensions peak_pss",
+    "generators wall",
+    "generators cpu",
+    "generators peak_rss",
+    "generators peak_private",
+    "generators peak_pss"
+   ]
+  },
+  "20261121T020240Z-perf-q9-base-vs-perf-q9-cand": {
+   "cpu_inconclusive_entities": [
+    "go",
+    "richards"
+   ],
+   "entities_without_cpu_metric": [
+    "django_template_realistic",
+    "django_wsgi_request",
+    "gzip_extract_1m",
+    "import_django",
+    "python_startup",
+    "serialization_roundtrip",
+    "zlib_decode_1m"
+   ],
+   "original_decision": "REJECT",
+   "replay_decision": "REJECT",
+   "replay_inconclusive": [
+    "django_template_realistic wall",
+    "go wall",
+    "go cpu",
+    "richards wall",
+    "richards cpu",
+    "zlib_decode_1m peak_private",
+    "zlib_decode_1m peak_pss"
+   ],
+   "replay_regressions": [
+    "nbody wall",
+    "nbody cpu",
+    "scimark_sparse_mat_mult wall",
+    "scimark_sparse_mat_mult cpu"
+   ]
+  },
+  "20261121T033612Z-perf-climb-ref-vs-perf-ref-lto": {
+   "cpu_inconclusive_entities": [],
+   "entities_without_cpu_metric": [
+    "django_template_realistic",
+    "django_wsgi_request",
+    "gzip_extract_1m",
+    "import_django",
+    "python_startup",
+    "serialization_roundtrip",
+    "zlib_decode_1m"
+   ],
+   "original_decision": "REJECT",
+   "replay_decision": "REJECT",
+   "replay_inconclusive": [],
+   "replay_regressions": [
+    "fannkuch wall",
+    "fannkuch cpu"
+   ]
+  },
+  "20261121T051047Z-perf-rust-jit-vs-perf-q9-cand": {
+   "cpu_inconclusive_entities": [
+    "raytrace",
+    "scimark_lu"
+   ],
+   "entities_without_cpu_metric": [],
+   "original_decision": "INCONCLUSIVE",
+   "replay_decision": "INCONCLUSIVE",
+   "replay_inconclusive": [
+    "raytrace wall",
+    "raytrace cpu",
+    "scimark_lu wall",
+    "scimark_lu cpu"
+   ],
+   "replay_regressions": []
+  },
+  "20261121T052500Z-perf-ref-lto-vs-perf-rust-jit": {
+   "cpu_inconclusive_entities": [
+    "go"
+   ],
+   "entities_without_cpu_metric": [],
+   "original_decision": "REJECT",
+   "replay_decision": "REJECT",
+   "replay_inconclusive": [
+    "chaos peak_rss",
+    "chaos peak_private",
+    "chaos peak_pss",
+    "deltablue peak_private",
+    "deltablue peak_pss",
+    "fannkuch peak_private",
+    "fannkuch peak_pss",
+    "go wall",
+    "go cpu",
+    "go peak_private",
+    "go peak_pss",
+    "hexiom peak_private",
+    "hexiom peak_pss",
+    "nbody peak_rss",
+    "nbody peak_private",
+    "nbody peak_pss",
+    "nqueens peak_rss",
+    "nqueens peak_private",
+    "nqueens peak_pss",
+    "raytrace peak_rss",
+    "raytrace peak_private",
+    "raytrace peak_pss",
+    "richards peak_rss",
+    "richards peak_private",
+    "richards peak_pss",
+    "scimark_fft peak_rss",
+    "scimark_fft peak_pss",
+    "scimark_lu peak_private",
+    "scimark_lu peak_pss",
+    "scimark_monte_carlo peak_private",
+    "scimark_monte_carlo peak_pss",
+    "scimark_sor peak_private",
+    "scimark_sor peak_pss",
+    "scimark_sparse_mat_mult peak_rss",
+    "scimark_sparse_mat_mult peak_private",
+    "scimark_sparse_mat_mult peak_pss",
+    "spectral_norm peak_rss",
+    "spectral_norm peak_private",
+    "spectral_norm peak_pss"
+   ],
+   "replay_regressions": [
+    "float peak_rss",
+    "float peak_private",
+    "float peak_pss",
+    "nbody wall",
+    "nbody cpu",
+    "scimark_fft peak_private"
+   ]
+  },
+  "20261121T062625Z-perf-rust-jit-vs-perf-q9-cand": {
+   "cpu_inconclusive_entities": [],
+   "entities_without_cpu_metric": [],
+   "original_decision": "REJECT",
+   "replay_decision": "REJECT",
+   "replay_inconclusive": [],
+   "replay_regressions": [
+    "generators wall",
+    "generators cpu"
+   ]
+  },
+  "20261121T063007Z-perf-climb-ref-vs-perf-ref-lto": {
+   "cpu_inconclusive_entities": [
+    "deltablue",
+    "nqueens"
+   ],
+   "entities_without_cpu_metric": [
+    "django_template_realistic",
+    "django_wsgi_request",
+    "gzip_extract_1m",
+    "import_django",
+    "python_startup",
+    "serialization_roundtrip",
+    "zlib_decode_1m"
+   ],
+   "original_decision": "REJECT",
+   "replay_decision": "REJECT",
+   "replay_inconclusive": [
+    "deltablue wall",
+    "deltablue cpu",
+    "gzip_extract_1m peak_rss",
+    "gzip_extract_1m peak_private",
+    "gzip_extract_1m peak_pss",
+    "nqueens wall",
+    "nqueens cpu"
+   ],
+   "replay_regressions": [
+    "nbody wall",
+    "nbody cpu",
+    "raytrace wall",
+    "raytrace cpu",
+    "scimark_fft wall",
+    "scimark_fft cpu",
+    "scimark_monte_carlo wall",
+    "scimark_monte_carlo cpu",
+    "scimark_sor wall",
+    "scimark_sor cpu",
+    "scimark_sparse_mat_mult wall",
+    "scimark_sparse_mat_mult cpu",
+    "spectral_norm wall",
+    "spectral_norm cpu"
+   ]
+  },
+  "20261121T080956Z-perf-ref-lto-vs-perf-rust-jit": {
+   "cpu_inconclusive_entities": [
+    "coroutines"
+   ],
+   "entities_without_cpu_metric": [],
+   "original_decision": "REJECT",
+   "replay_decision": "REJECT",
+   "replay_inconclusive": [
+    "barnes_hut peak_private",
+    "barnes_hut peak_pss",
+    "coroutines wall",
+    "coroutines cpu",
+    "coroutines peak_private",
+    "coroutines peak_pss",
+    "meteor_contest peak_private",
+    "meteor_contest peak_pss",
+    "pidigits peak_private",
+    "pidigits peak_pss",
+    "pyflate peak_rss",
+    "pyflate peak_private",
+    "pyflate peak_pss",
+    "richards_super peak_rss",
+    "richards_super peak_private",
+    "richards_super peak_pss"
+   ],
+   "replay_regressions": [
+    "comprehensions peak_rss",
+    "comprehensions peak_private",
+    "comprehensions peak_pss",
+    "generators wall",
+    "generators cpu",
+    "generators peak_rss",
+    "generators peak_private",
+    "generators peak_pss"
+   ]
+  },
+  "20261121T083651Z-perf-rust-jit-vs-perf-q9-cand": {
+   "cpu_inconclusive_entities": [
+    "nbody",
+    "scimark_sor"
+   ],
+   "entities_without_cpu_metric": [],
+   "original_decision": "REJECT",
+   "replay_decision": "REJECT",
+   "replay_inconclusive": [
+    "nbody wall",
+    "nbody cpu",
+    "raytrace wall",
+    "scimark_sor wall",
+    "scimark_sor cpu"
+   ],
+   "replay_regressions": [
+    "raytrace cpu",
+    "scimark_lu wall",
+    "scimark_lu cpu"
+   ]
+  },
+  "20261121T084627Z-perf-ref-lto-vs-perf-rust-jit": {
+   "cpu_inconclusive_entities": [
+    "go"
+   ],
+   "entities_without_cpu_metric": [
+    "django_template_realistic",
+    "django_wsgi_request",
+    "gzip_extract_1m",
+    "import_django",
+    "python_startup",
+    "serialization_roundtrip",
+    "zlib_decode_1m"
+   ],
+   "original_decision": "REJECT",
+   "replay_decision": "REJECT",
+   "replay_inconclusive": [
+    "chaos peak_rss",
+    "chaos peak_private",
+    "chaos peak_pss",
+    "deltablue peak_private",
+    "deltablue peak_pss",
+    "fannkuch peak_rss",
+    "fannkuch peak_private",
+    "fannkuch peak_pss",
+    "go wall",
+    "go cpu",
+    "go peak_rss",
+    "go peak_private",
+    "go peak_pss",
+    "gzip_extract_1m wall",
+    "gzip_extract_1m peak_rss",
+    "gzip_extract_1m peak_private",
+    "gzip_extract_1m peak_pss",
+    "hexiom peak_private",
+    "hexiom peak_pss",
+    "nbody peak_rss",
+    "nbody peak_private",
+    "nbody peak_pss",
+    "nqueens peak_private",
+    "nqueens peak_pss",
+    "raytrace peak_private",
+    "raytrace peak_pss",
+    "richards peak_rss",
+    "richards peak_private",
+    "richards peak_pss",
+    "scimark_fft peak_rss",
+    "scimark_fft peak_pss",
+    "scimark_lu peak_rss",
+    "scimark_lu peak_private",
+    "scimark_lu peak_pss",
+    "scimark_monte_carlo peak_rss",
+    "scimark_monte_carlo peak_private",
+    "scimark_monte_carlo peak_pss",
+    "scimark_sor peak_rss",
+    "scimark_sor peak_private",
+    "scimark_sor peak_pss",
+    "scimark_sparse_mat_mult peak_rss",
+    "scimark_sparse_mat_mult peak_private",
+    "scimark_sparse_mat_mult peak_pss",
+    "spectral_norm peak_rss",
+    "spectral_norm peak_private",
+    "spectral_norm peak_pss",
+    "zlib_decode_1m peak_rss",
+    "zlib_decode_1m peak_private",
+    "zlib_decode_1m peak_pss"
+   ],
+   "replay_regressions": [
+    "django_template_realistic wall",
+    "django_template_realistic peak_rss",
+    "django_template_realistic peak_private",
+    "django_template_realistic peak_pss",
+    "django_wsgi_request wall",
+    "django_wsgi_request peak_rss",
+    "django_wsgi_request peak_private",
+    "django_wsgi_request peak_pss",
+    "float peak_rss",
+    "float peak_private",
+    "float peak_pss",
+    "nbody wall",
+    "nbody cpu",
+    "python_startup peak_rss",
+    "python_startup peak_private",
+    "python_startup peak_pss",
+    "scimark_fft peak_private",
+    "serialization_roundtrip peak_rss",
+    "serialization_roundtrip peak_private",
+    "serialization_roundtrip peak_pss"
+   ]
+  },
+  "20261121T102420Z-perf-rust-jit-vs-perf-q9-cand": {
+   "cpu_inconclusive_entities": [],
+   "entities_without_cpu_metric": [],
+   "original_decision": "REJECT",
+   "replay_decision": "REJECT",
+   "replay_inconclusive": [],
+   "replay_regressions": [
+    "generators wall",
+    "generators cpu"
+   ]
+  },
+  "20261121T102845Z-perf-rust-jit-thin-vs-perf-rust-jit": {
+   "cpu_inconclusive_entities": [
+    "nbody"
+   ],
+   "entities_without_cpu_metric": [
+    "django_template_realistic",
+    "django_wsgi_request",
+    "gzip_extract_1m",
+    "import_django",
+    "python_startup",
+    "serialization_roundtrip",
+    "zlib_decode_1m"
+   ],
+   "original_decision": "REJECT",
+   "replay_decision": "REJECT",
+   "replay_inconclusive": [
+    "gzip_extract_1m wall",
+    "nbody wall",
+    "nbody cpu"
+   ],
+   "replay_regressions": [
+    "float wall",
+    "float cpu",
+    "spectral_norm wall",
+    "spectral_norm cpu"
+   ]
+  },
+  "20261121T115934Z-perf-rust-jit-vs-perf-q9-cand": {
+   "cpu_inconclusive_entities": [
+    "scimark_sor",
+    "scimark_sparse_mat_mult"
+   ],
+   "entities_without_cpu_metric": [],
+   "original_decision": "REJECT",
+   "replay_decision": "REJECT",
+   "replay_inconclusive": [
+    "scimark_sor wall",
+    "scimark_sor cpu",
+    "scimark_sparse_mat_mult wall",
+    "scimark_sparse_mat_mult cpu"
+   ],
+   "replay_regressions": [
+    "scimark_lu wall",
+    "scimark_lu cpu"
+   ]
+  },
+  "20261121T120910Z-perf-rust-serc-thin-vs-perf-rust-serc": {
+   "cpu_inconclusive_entities": [],
+   "entities_without_cpu_metric": [
+    "cold_import_django",
+    "cold_python_startup",
+    "compileall_source",
+    "django_template_realistic",
+    "django_wsgi_request",
+    "gzip_extract_1m",
+    "import_django",
+    "python_startup",
+    "serialization_roundtrip",
+    "zlib_decode_1m"
+   ],
+   "original_decision": "ACCEPT",
+   "replay_decision": "ACCEPT",
+   "replay_inconclusive": [],
+   "replay_regressions": []
+  },
+  "20261121T125152Z-perf-rust-jit-vs-perf-q9-cand": {
+   "cpu_inconclusive_entities": [],
+   "entities_without_cpu_metric": [],
+   "original_decision": "REJECT",
+   "replay_decision": "REJECT",
+   "replay_inconclusive": [],
+   "replay_regressions": [
+    "generators wall",
+    "generators cpu"
+   ]
+  },
+  "20261121T130054Z-perf-rust-jit-vs-perf-q9-cand": {
+   "cpu_inconclusive_entities": [
+    "nbody"
+   ],
+   "entities_without_cpu_metric": [],
+   "original_decision": "REJECT",
+   "replay_decision": "REJECT",
+   "replay_inconclusive": [
+    "nbody wall",
+    "nbody cpu"
+   ],
+   "replay_regressions": [
+    "scimark_lu wall",
+    "scimark_lu cpu"
+   ]
+  },
+  "20261121T131247Z-perf-rust-jit-vs-perf-q9-cand": {
+   "cpu_inconclusive_entities": [],
+   "entities_without_cpu_metric": [],
+   "original_decision": "REJECT",
+   "replay_decision": "REJECT",
+   "replay_inconclusive": [],
+   "replay_regressions": [
+    "generators wall",
+    "generators cpu"
+   ]
+  },
+  "20261121T131850Z-perf-rust-jit-vs-perf-q9-cand": {
+   "cpu_inconclusive_entities": [
+    "raytrace"
+   ],
+   "entities_without_cpu_metric": [],
+   "original_decision": "REJECT",
+   "replay_decision": "REJECT",
+   "replay_inconclusive": [
+    "raytrace wall",
+    "raytrace cpu"
+   ],
+   "replay_regressions": [
+    "scimark_lu wall",
+    "scimark_lu cpu"
+   ]
+  },
+  "20261121T132824Z-perf-rust-jit-vs-perf-q9-cand": {
+   "cpu_inconclusive_entities": [],
+   "entities_without_cpu_metric": [],
+   "original_decision": "REJECT",
+   "replay_decision": "REJECT",
+   "replay_inconclusive": [],
+   "replay_regressions": [
+    "generators wall",
+    "generators cpu"
+   ]
+  },
+  "20261121T133254Z-perf-rust-jit-vs-perf-q9-cand": {
+   "cpu_inconclusive_entities": [
+    "nbody",
+    "raytrace",
+    "scimark_sor"
+   ],
+   "entities_without_cpu_metric": [],
+   "original_decision": "REJECT",
+   "replay_decision": "REJECT",
+   "replay_inconclusive": [
+    "nbody wall",
+    "nbody cpu",
+    "raytrace wall",
+    "raytrace cpu",
+    "scimark_sor wall",
+    "scimark_sor cpu"
+   ],
+   "replay_regressions": [
+    "scimark_lu wall",
+    "scimark_lu cpu"
+   ]
+  },
+  "20261121T134227Z-perf-rust-jit-vs-perf-q9-cand": {
+   "cpu_inconclusive_entities": [],
+   "entities_without_cpu_metric": [],
+   "original_decision": "REJECT",
+   "replay_decision": "REJECT",
+   "replay_inconclusive": [],
+   "replay_regressions": [
+    "generators wall",
+    "generators cpu"
+   ]
+  }
+ },
+ "verdict_module": "/home/ubuntu/wt-prepick/rust-cpython"
+}

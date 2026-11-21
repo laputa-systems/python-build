@@ -1,0 +1,152 @@
+{
+  "build_interpreter": "/home/ubuntu/repos/python-build/rust-cpython/work/build/python",
+  "build_mode": "debug",
+  "c_toolchain": {
+    "cpu_baseline": "-march=x86-64",
+    "family": "linux-gnu",
+    "host": {
+      "glibc": "2.39",
+      "os_id": "ubuntu",
+      "os_version_id": "24.04"
+    },
+    "linker": "/home/ubuntu/repos/python-build/.cache/llvm/toolchains/23.1.2-b5ed9675149cc837c282e9b6962c276c9fa62863d5b2f91537b60848552995b7/bin/ld.lld",
+    "lld_icu_runtime": {
+      "package": "libicu70=70.1-2",
+      "sha256": "58a154f6307289813da2276f900498ef536ae7c0522d2cf31a3c3c5cf62dfd9a",
+      "size": 10581942,
+      "url": "http://archive.ubuntu.com/ubuntu/pool/main/i/icu/libicu70_70.1-2_amd64.deb"
+    },
+    "llvm_archive": {
+      "attestation_sha256": "4e2a296c15632492721c6b92132286735f4e25b897ac62efc76a266e0e09df10",
+      "attestation_size": 11071,
+      "attestation_url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.2/LLVM-23.1.2-Linux-X64.tar.xz.jsonl",
+      "license": "Apache-2.0 WITH LLVM-exception",
+      "release_tag": "llvmorg-23.1.2",
+      "sha256": "b5ed9675149cc837c282e9b6962c276c9fa62863d5b2f91537b60848552995b7",
+      "size": 2013958032,
+      "source_commit": "85ac560262434c9ccfc0c183ec22d4138ed647fb",
+      "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.2/LLVM-23.1.2-Linux-X64.tar.xz",
+      "workflow": "https://github.com/llvm/llvm-project/.github/workflows/release-binaries.yml@refs/tags/llvmorg-23.1.2",
+      "workflow_path": ".github/workflows/release-tasks.yml"
+    },
+    "llvm_prefix": "/home/ubuntu/repos/python-build/.cache/llvm/toolchains/23.1.2-b5ed9675149cc837c282e9b6962c276c9fa62863d5b2f91537b60848552995b7",
+    "llvm_profdata": "/home/ubuntu/repos/python-build/.cache/llvm/toolchains/23.1.2-b5ed9675149cc837c282e9b6962c276c9fa62863d5b2f91537b60848552995b7/bin/llvm-profdata",
+    "llvm_profdata_version": "LLVM (http://llvm.org/):",
+    "llvm_resource_dir": "/home/ubuntu/repos/python-build/.cache/llvm/toolchains/23.1.2-b5ed9675149cc837c282e9b6962c276c9fa62863d5b2f91537b60848552995b7/lib/clang/23",
+    "llvm_version": "23.1.2",
+    "lock_path": "/home/ubuntu/repos/python-build/rust-cpython/linux-toolchain.lock.json",
+    "make": "/usr/bin/make",
+    "make_version": "4.3",
+    "pkgconf": "/usr/bin/pkg-config",
+    "pkgconf_version": "1.8.1",
+    "system_packages": [
+      "libc6-dev=2.39-0ubuntu8.12",
+      "linux-libc-dev=6.8.0-149.149",
+      "libssl-dev=3.0.13-0ubuntu3.16",
+      "libsqlite3-dev=3.45.1-1ubuntu2.9",
+      "libffi-dev=3.4.6-1build1",
+      "zlib1g-dev=1:1.3.dfsg-3.1ubuntu2.3",
+      "libbz2-dev=1.0.8-5.1ubuntu0.1",
+      "liblzma-dev=5.6.1+really5.4.5-1ubuntu0.4",
+      "libzstd-dev=1.5.5+dfsg2-2build1.1",
+      "libreadline-dev=8.2-4build1",
+      "libncurses-dev=6.4+20240113-1ubuntu2.2",
+      "uuid-dev=2.39.3-9ubuntu6.6",
+      "libgdbm-dev=1.23-5.1build1",
+      "libgdbm-compat-dev=1.23-5.1build1",
+      "libexpat1-dev=2.6.1-2ubuntu0.6",
+      "libclang1-18=1:18.1.3-1ubuntu1",
+      "libllvm18=1:18.1.3-1ubuntu1",
+      "libicu74=74.2-1ubuntu3.1",
+      "libxml2=2.9.14+dfsg-1.3ubuntu3.10",
+      "libgcc-14-dev=14.2.0-4ubuntu2~24.04.1"
+    ],
+    "target": "x86_64-unknown-linux-gnu"
+  },
+  "cargo_lock_sha256": "27c9e6ba9417daab90715b72d428c0b65e27e4faf4a83402c3af533b8196f80e",
+  "cargo_profile": "dev",
+  "cflags": "-O0 -g3 -march=x86-64 -fPIC",
+  "configure_arguments": [
+    "/home/ubuntu/repos/python-build/rust-cpython/work/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/configure",
+    "--prefix=/home/ubuntu/repos/python-build/rust-cpython/stage",
+    "--enable-shared",
+    "--enable-experimental-jit=no",
+    "--with-tail-call-interp=no",
+    "--without-ensurepip",
+    "--with-pydebug"
+  ],
+  "interpreter": {
+    "base64_matches_binascii": true,
+    "base64_vectors": 8,
+    "cflags": "-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer  -fno-strict-overflow -Wsign-compare -g -Og -Wall -O0 -g3 -march=x86-64 -fPIC -O0 -g3 -march=x86-64 -fPIC",
+    "config_args": "'--prefix=/home/ubuntu/repos/python-build/rust-cpython/stage' '--enable-shared' '--enable-experimental-jit=no' '--with-tail-call-interp=no' '--without-ensurepip' '--with-pydebug' 'PKG_CONFIG=/usr/bin/pkg-config' 'PKG_CONFIG_PATH=' 'CC=/home/ubuntu/repos/python-build/.cache/llvm/toolchains/23.1.2-b5ed9675149cc837c282e9b6962c276c9fa62863d5b2f91537b60848552995b7/bin/clang' 'CFLAGS=-O0 -g3 -march=x86-64 -fPIC' 'LDFLAGS=-fuse-ld=lld -Wl,-rpath,/home/ubuntu/repos/python-build/rust-cpython/stage/lib' 'CPPFLAGS=' 'CXX=/home/ubuntu/repos/python-build/.cache/llvm/toolchains/23.1.2-b5ed9675149cc837c282e9b6962c276c9fa62863d5b2f91537b60848552995b7/bin/clang++' 'LIBMPDEC_CFLAGS=-I/home/ubuntu/repos/python-build/rust-cpython/work/deps/mpdecimal/include' 'LIBMPDEC_LIBS=/home/ubuntu/repos/python-build/rust-cpython/work/deps/mpdecimal/lib/libmpdec.a -lm'",
+    "extension_suffix": ".cpython-316d-x86_64-linux-gnu.so",
+    "gil_disabled": 0,
+    "gil_enabled": true,
+    "implementation": "cpython",
+    "ldflags": "-fuse-ld=lld -Wl,-rpath,/home/ubuntu/repos/python-build/rust-cpython/stage/lib -fuse-ld=lld -Wl,-rpath,/home/ubuntu/repos/python-build/rust-cpython/stage/lib",
+    "module_arch": "x86_64",
+    "module_dependencies": [
+      "libgcc_s.so.1",
+      "libc.so.6",
+      "ld-linux-x86-64.so.2"
+    ],
+    "module_exports": [
+      "PyInit__base64"
+    ],
+    "module_minos": "",
+    "module_path": "/home/ubuntu/repos/python-build/rust-cpython/stage/lib/python3.16/lib-dynload/_base64.cpython-316d-x86_64-linux-gnu.so",
+    "module_rpaths": [
+      "/home/ubuntu/repos/python-build/rust-cpython/stage/lib:/home/ubuntu/repos/python-build/rust-cpython/stage/lib"
+    ],
+    "version": "3.16.0a1+dev (main, Jan  1 2024, 00:00:00) [Clang 23.1.2 (https://github.com/llvm/llvm-project 85ac560262434c9ccfc0c183ec22"
+  },
+  "jit": false,
+  "overlay": {
+    "files": 527,
+    "sha256": "3762b6e8de8937a938afd7fd3cdad166cdc92478206e16e3701af08d2defe1c1"
+  },
+  "rust": {
+    "active_toolchain": "nightly-2026-09-15-x86_64-unknown-linux-gnu (overridden by environment variable RUSTUP_TOOLCHAIN)",
+    "cargo_v": "cargo 1.100.0-nightly (7941be6fb 2026-09-11)",
+    "installed": true,
+    "rustc_vv": "rustc 1.100.0-nightly (574ff7d98 2026-09-14)\nbinary: rustc\ncommit-hash: 574ff7d98bd6d037e5236a8453029173b32631fd\ncommit-date: 2026-09-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.100.0-nightly\nLLVM version: 23.1.1",
+    "rustup": "/home/ubuntu/.cargo/bin/rustup",
+    "toolchain_list": "stable-x86_64-unknown-linux-gnu (default)\nnightly-2026-09-15-x86_64-unknown-linux-gnu (active)\nnightly-2026-11-09-x86_64-unknown-linux-gnu"
+  },
+  "sdk": {
+    "host_packages": {
+      "libbz2-dev": "1.0.8-5ubuntu0.1",
+      "libc6-dev": "2.35-0ubuntu3.18",
+      "libclang-common-14-dev": "1:14.0.0-1ubuntu1.1",
+      "libclang1-14": "1:14.0.0-1ubuntu1.1",
+      "libexpat1-dev": "2.4.7-1ubuntu0.9",
+      "libffi-dev": "3.4.2-4",
+      "libgcc-11-dev": "11.4.0-1ubuntu1~22.04.3",
+      "libgdbm-compat-dev": "1.23-1",
+      "libgdbm-dev": "1.23-1",
+      "libicu70": "70.1-2",
+      "libllvm14": "1:14.0.0-1ubuntu1.1",
+      "liblzma-dev": "5.2.5-2ubuntu1.2",
+      "libncurses-dev": "6.3-2ubuntu0.3",
+      "libreadline-dev": "8.1.2-1",
+      "libsqlite3-dev": "3.37.2-2ubuntu0.8",
+      "libssl-dev": "3.0.2-0ubuntu1.30",
+      "libxml2": "2.9.13+dfsg-1ubuntu0.14",
+      "libzstd-dev": "1.4.8+dfsg-3build1",
+      "linux-libc-dev": "5.15.0-204.214",
+      "uuid-dev": "2.37.2-4ubuntu3.6",
+      "zlib1g-dev": "1:1.2.11.dfsg-2ubuntu9.2"
+    },
+    "libc": [
+      "glibc",
+      "2.35"
+    ]
+  },
+  "serc": false,
+  "source_archive_sha256": "af50f4ca750e1a28e6dc197a7f23bc1ae6ce5fe25cee6caf52eaa275065877fe",
+  "source_commit": "e891a9117985888df3e5d48145cf07ddda098335",
+  "status": "built",
+  "target": "x86_64-unknown-linux-gnu",
+  "tests": {}
+}
