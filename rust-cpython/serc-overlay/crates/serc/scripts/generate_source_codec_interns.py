@@ -199,11 +199,12 @@ def generate(checkout: Path, version: str) -> tuple[Path, str]:
         if module in mapping_exports:
             strings.update(mapping_exports[module])
             strings.update(native_strings)
-        lines.append(f"pub(super) const {module.upper()}: &[&str] = &[")
         lines.extend(
-            f"    {target.rust_string_literal(value)}," for value in sorted(strings)
+            target.render_rust_string_table(
+                module.upper(), sorted(strings), "pub(super) "
+            )
         )
-        lines.extend(["];", ""])
+        lines.append("")
     suffix = target.TARGET_TAG.removeprefix("v").replace(".", "_")
     return (
         target.CRATE_ROOT / "src/target" / f"cpython_{suffix}_source_codecs.rs",

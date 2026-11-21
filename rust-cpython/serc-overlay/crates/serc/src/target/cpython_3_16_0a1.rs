@@ -18,7 +18,6 @@
 // Python/Python-ast.c: sha256:4847f6ce1cd3b6e4549f8469138a17ae4894fa48265d2937ae367882e8ff2f21
 // Python/assemble.c: sha256:610f710fa3ae16d256b3e5514c0831425efdbfcbb12674e7667097e4b00c9313
 // Include/internal/pycore_runtime_structs.h: sha256:f84e2ec81bee8de6aeeb890c708d2d11d396a1778c895cc2558eec07b1bb5058
-// Transformed by blobify.py from the generated file.
 
 use super::{Opcode, opcodes};
 
@@ -329,86 +328,70 @@ pub(crate) const SMALL_INT_MAX: i64 = 1024;
 
 const PREINTERNED_STRINGS_BLOB: &str = "%%.<locals>.defaults.format.generic_base.kwdefaults.type_params1e309<GC><NULL><dictcomp><genexpr><lambda><listcomp><module><native><setcomp><string><unknown file><unknown function><unknown><unreadable frame>AGEN_CLOSEDAGEN_CREATEDAGEN_RUNNINGAGEN_SUSPENDEDCANCELLEDCORO_CLOSEDCORO_CREATEDCORO_RUNNINGCORO_SUSPENDEDEmaxEminFINISHEDFalseGEN_CLOSEDGEN_CREATEDGEN_RUNNINGGEN_SUSPENDEDJSONDecodeErrorPENDINGPy_ReprTextIOWrapperTrueWarningMessage_WindowsConsoleIO__IOBase_closed__abc_tpflags____abs____abstractmethods____add____aenter____aexit____aiter____all____and____anext____annotate____annotate_func____annotations____annotations_cache____args____await____bases____bool____buffer____build_class____builtins____bytes____call____cantrace____ceil____class____class_getitem____classcell____classdict____classdictcell____complex____conditional_annotations____contains____ctypes_from_outparam____del____delattr____delete____delitem____dict____dictoffset____dir____divmod____doc____enter____eq____exit____file____firstlineno____float____floor____floordiv____format____fspath____ge____get____getattr____getattribute____getinitargs____getitem____getnewargs____getnewargs_ex____getstate____gt____hash____iadd____iand____ifloordiv____ilshift____imatmul____imod____import____imul____index____init____init_subclass____instancecheck____int____invert____ior____ipow____irshift____isabstractmethod____isub____iter____itruediv____ixor____lazy_import____lazy_modules____le____len____length_hint____lltrace____loader____lshift____lt____main____match_args____matmul____missing____mod____module____mro_entries____mul____name____ne____neg____new____newobj____newobj_ex____next____notes____or____orig_class____origin____package____parameters____path____pos____pow____prepare____qualname____radd____rand____rdivmod____reduce____reduce_ex____release_buffer____repr____reversed____rfloordiv____rlshift____rmatmul____rmod____rmul____ror____round____rpow____rrshift____rshift____rsub____rtruediv____rxor____set____set_name____setattr____setitem____setstate____sizeof____slotnames____slots____spec____static_attributes____str____sub____subclasscheck____subclasshook____truediv____trunc____type_params____typing_is_unpacked_typevartuple____typing_prepare_subst____typing_subst____typing_unpacked_tuple_args____warningregistry____weaklistoffset____weakref____xor___abc_impl_abstract__active_anonymous__argtypes__as_parameter__asyncio_future_blocking_blksize_bootstrap_bootstrap_external_check_retval__dealloc_warn_feature_version_field_types_fields__filters_finalizing_find_and_load_find_and_load_lazy_submodule_fix_up_module_flags__get_sourcefile_handle_fromlist_initializing_internal_use_io_is_text_encoding_isatty_open_only_length__limbo_lock_unlock_module_loop_needs_com_addref__only_immortal_restype__showwarnmsg_shutdown_slotnames_strptime_strptime_datetime_date_strptime_datetime_datetime_strptime_datetime_time_type__uninitialized_submodules_warn_unawaited_coroutine_xoptionsabs_tolaccessacloseaddadd_done_callbackadobeafter_in_childafter_in_parentaliasalignallall_interpretersall_threadsallow_codealphabetanyappendargargdefsargsargumentsargvas_integer_ratioasendassoclenastathrowattrattributeautocommitbacktickbasebeforebigbinary_formbit_offsetbit_sizeblockblockingboundbufferbuffer_callbackbuffer_sizebufferingbuffersbufsizebuiltinsbyte_offsetbyte_sizebyteorderbytesbytes_lebytes_per_sepc_callc_exceptionc_parameter_typec_returnc_stackcache_framescached_datetime_modulecached_statementscadatacafilecallcall_exception_handlercall_sooncallablecallbackcancelcanonicalcapathcapitalscapture_featurescategorycb_typecertfilechaincheck_same_threadclampclearcloseclosedclosefdclosureco_argcountco_cellvarsco_codeco_constsco_exceptiontableco_filenameco_firstlinenoco_flagsco_freevarsco_kwonlyargcountco_linetableco_nameco_namesco_nlocalsco_posonlyargcountco_qualnameco_stacksizeco_varnamescodecol_offsetcollectorcommandcomment_factorycompile_modecompressionconfigconstscontextcontravariantconversioncookiecopycopyregcorocountcovariantctxcwdd_parameter_typedaemondatadatabasedatedaydaysdebugdecodedecoderdefaultdefaultactiondeletedepthdesired_accessdetect_typesdeterministicdevicedictdifference_updatedigestdigest_sizedigestmoddir_fddiscarddispatch_tabledisplayhookdklendocdonedont_inheritdstdst_dir_fdduration_seceager_starteffective_idselement_factoryemptyerrorencodeencodingendend_col_offsetend_linenoend_offsetendposentrypointenverror_rateerrorseventeventmaskexcexc_tbexc_typeexc_valexc_valueexcepthookexceptionexisting_file_nameexitexpexpressionextendextra_tokensfacilityfactoryfallbackfalsefamilyfanoutfdfd2fdelfgetfieldsfilefile_actionsfilenamefilenofilepathfillvaluefilterfiltersfinalfinalizerfind_classfirstiterfix_importsflagsflushfoldfoldspacesfollow_symlinksfor_retryformatformat_specframe_bufferfree_threadedfrom_paramfromlistfromtimestampfromutcfsetfullerrorfuncfunctionfuturegcgenerationgetget_debugget_loopget_sourcegetattrgetstategidglobalsgroupindexgroupshandlehandle_seqhas_locationhash_nameheaderheadershexhihookhosthourhoursididentidentity_hintignoreignorecharsimagimplieslinkimportlibin_fdinclude_aliasesincomingindexindexgroupinfinfer_varianceinherit_handleinheritableinitialinitial_bytesinitial_ownerinitial_stateinitial_valueinitvalinner_sizeinputinsert_commentsinsert_pisinstructionsintinternintersectionintervaliois_compressis_rawis_runningis_safeis_structisattyisinstanceisoformatisolation_levelistextitemitemsiteriterableiterationsivjoinjson.decoderjumpkeependskeykeyfilekeyskindkwkw1kw2kwargskwdefaultslabellastlast_exclast_nodelast_tracebacklast_typelast_valuelatin1leaf_sizelegacylenlengthlevellimitlineline_bufferinglinenolist index out of rangelittlelolocalelocalslogoptionloopmanual_resetmappingmaskmatchmax_lengthmax_threadsmaxdigitsmaxeventsmaxlenmaxmemmaxsizemaxsplitmaxvaluememLevelmemlimitmessagemetaclassmetadatamethodmicrosecondmicrosecondsmillisecondsminuteminutesmissed_samplesmodmodemodulemodule_globalsmodulesmodulomonthmromsgmutexmycmpn_fieldsn_sequence_fieldsn_unnamed_fieldsnamename_fromnamespace_separatornamespacesnativenbytesndigitsnestednew_file_namenew_limitnewlinenewlinesnextnlocalsnode_depthnode_offsetnothingnsnstypentnullnumberobjobjectoffsetoffset_dstoffset_srcon_type_readonceregistryonly_active_threadonly_keysopopargopcodeopcodesopenopeneroperationoptimizeoptionsorderoriginotherout_fdoutgoingoutpathoverlappedownerpadpaddedpagespairparameterparentpasswordpathpatternpeekpersistent_idpersistent_loadpersonpi_factorypidpidfdpointer_bitspolicyportpospos1pos2posixprecpreserve_excprint_file_and_linepriorityprogressprogress_callbackprogress_routineprotoprotocolps1ps2qidqualnamequeryqueuetypequotetabsrandom_funcrawreadread1readablereadallreadintoreadinto1readlinereadonlyrealrecursivereducer_overrideregistryrel_tolreleasereloadrepeatreplreplacereprreqrefsrequire_readyreservedresetresetidsrestrictreturnreversereversedroundingsaltsample_interval_ussample_ratesched_priorityschedulerscriptsecondsecondssecurity_attributesseekseekableselectorsselfsendsepsequenceserver_hostnameserver_sidesessionsetpgroupsetsidsetsigdefsetsigmasksetstateshapesharedshortshow_cmdsignedsignumsizesizehintskip_file_prefixesskip_non_matching_threadssleepsocksortsourcesource_tracebackspamsrcsrc_dir_fdstack_framesstacklevelstartstart_time_usstatementstatsstatusstderrstdinstdoutstepstepsstop_exceptionstop_valuestore_namestrategystrftimestrictstrict_modestringstrip_wssub_keysubcallssymmetric_difference_updatetabsizetagtake_bytestargettarget_is_directorytargetfdtasktb_frametb_lastitb_linenotb_nexttelltemplatetermtextthirdthreadingthrowtimetime_functimeouttimertimestimespectimestamptimestamp_ustimetupletimeunittoptracebacktrailerstranslatetrapstruetruncatetwicetxttypetype_paramstztzinfotznameuidunboundopunlinkunraisablehookupdatesuriusedforsecurityutcoffsetutf-8valuevaluesversionvolumewait_allwarn_on_full_bufferwarningswarnoptionswbitsweekweekdayweekswhichwhowithdatawrapcolwritablewritewrite_throughyearzdictzstd_dict{{}}";
 const PREINTERNED_STRINGS_OFFSETS: &[u32] = &[
-    0, 0, 2, 11, 20, 27, 40, 51, 63, 68, 72, 78,
-    88, 97, 105, 115, 123, 131, 140, 148, 162, 180, 189, 207,
-    218, 230, 242, 256, 265, 276, 288, 300, 314, 318, 322, 330,
-    335, 345, 356, 367, 380, 395, 402, 409, 422, 426, 440, 457,
-    472, 487, 494, 513, 520, 530, 539, 548, 555, 562, 571, 583,
-    600, 615, 636, 644, 653, 662, 670, 680, 695, 707, 716, 724,
-    736, 744, 753, 770, 783, 796, 813, 824, 851, 863, 887, 894,
-    905, 915, 926, 934, 948, 955, 965, 972, 981, 987, 995, 1003,
-    1018, 1027, 1036, 1048, 1058, 1068, 1074, 1081, 1092, 1108, 1123, 1134,
-    1148, 1165, 1177, 1183, 1191, 1199, 1207, 1220, 1231, 1242, 1250, 1260,
-    1268, 1277, 1285, 1302, 1319, 1326, 1336, 1343, 1351, 1362, 1382, 1390,
-    1398, 1410, 1418, 1433, 1449, 1455, 1462, 1477, 1488, 1498, 1508, 1514,
-    1522, 1536, 1546, 1557, 1564, 1574, 1589, 1596, 1604, 1610, 1617, 1624,
-    1634, 1647, 1655, 1664, 1670, 1684, 1694, 1705, 1719, 1727, 1734, 1741,
-    1752, 1764, 1772, 1780, 1791, 1801, 1814, 1832, 1840, 1852, 1865, 1876,
-    1887, 1895, 1903, 1910, 1919, 1927, 1938, 1948, 1956, 1968, 1976, 1983,
-    1995, 2006, 2017, 2029, 2039, 2052, 2061, 2069, 2090, 2097, 2104, 2121,
-    2137, 2148, 2157, 2172, 2207, 2231, 2247, 2277, 2296, 2314, 2325, 2332,
-    2341, 2351, 2358, 2369, 2379, 2393, 2417, 2425, 2435, 2454, 2468, 2481,
-    2497, 2509, 2517, 2525, 2536, 2550, 2579, 2593, 2600, 2615, 2631, 2644,
-    2657, 2660, 2677, 2694, 2702, 2708, 2727, 2732, 2750, 2764, 2773, 2785,
-    2794, 2804, 2813, 2836, 2863, 2886, 2892, 2917, 2942, 2951, 2958, 2964,
-    2970, 2973, 2990, 2995, 3009, 3024, 3029, 3034, 3037, 3053, 3064, 3074,
-    3082, 3085, 3091, 3094, 3101, 3105, 3114, 3118, 3134, 3139, 3147, 3150,
-    3156, 3160, 3169, 3179, 3187, 3191, 3197, 3200, 3211, 3221, 3229, 3234,
-    3242, 3247, 3253, 3268, 3279, 3288, 3295, 3302, 3310, 3321, 3330, 3339,
-    3344, 3352, 3365, 3371, 3382, 3398, 3406, 3413, 3425, 3447, 3464, 3470,
-    3476, 3480, 3502, 3511, 3519, 3527, 3533, 3542, 3548, 3556, 3572, 3580,
-    3587, 3595, 3600, 3617, 3622, 3627, 3632, 3638, 3645, 3652, 3663, 3674,
-    3681, 3690, 3707, 3718, 3732, 3740, 3751, 3768, 3780, 3787, 3795, 3805,
-    3823, 3834, 3846, 3857, 3861, 3871, 3880, 3887, 3902, 3914, 3925, 3931,
-    3937, 3944, 3957, 3967, 3973, 3977, 3984, 3988, 3993, 4002, 4005, 4008,
-    4024, 4030, 4034, 4042, 4046, 4049, 4053, 4058, 4064, 4071, 4078, 4091,
-    4097, 4102, 4116, 4128, 4141, 4147, 4151, 4168, 4174, 4185, 4194, 4200,
-    4207, 4221, 4232, 4237, 4240, 4244, 4256, 4259, 4269, 4281, 4292, 4305,
-    4320, 4330, 4336, 4344, 4347, 4361, 4371, 4381, 4387, 4397, 4400, 4410,
-    4416, 4421, 4430, 4433, 4439, 4447, 4454, 4463, 4473, 4482, 4500, 4504,
-    4507, 4517, 4523, 4535, 4543, 4550, 4558, 4563, 4569, 4575, 4577, 4580,
-    4584, 4588, 4594, 4598, 4610, 4618, 4624, 4632, 4641, 4647, 4654, 4659,
-    4668, 4678, 4687, 4698, 4703, 4708, 4712, 4722, 4737, 4746, 4752, 4763,
-    4775, 4788, 4798, 4806, 4819, 4826, 4830, 4839, 4843, 4851, 4857, 4859,
-    4869, 4872, 4881, 4889, 4899, 4906, 4914, 4917, 4924, 4934, 4940, 4946,
-    4956, 4968, 4977, 4983, 4990, 4993, 4995, 4999, 5003, 5007, 5012, 5014,
-    5019, 5032, 5038, 5049, 5053, 5064, 5073, 5078, 5093, 5101, 5106, 5116,
-    5119, 5133, 5147, 5158, 5165, 5178, 5191, 5204, 5217, 5224, 5234, 5239,
-    5254, 5264, 5276, 5279, 5285, 5297, 5305, 5307, 5318, 5324, 5334, 5341,
-    5350, 5356, 5366, 5375, 5390, 5396, 5400, 5405, 5409, 5417, 5427, 5429,
-    5433, 5445, 5449, 5457, 5460, 5467, 5471, 5475, 5477, 5480, 5483, 5489,
-    5499, 5504, 5508, 5516, 5525, 5539, 5548, 5558, 5564, 5573, 5579, 5582,
-    5588, 5593, 5598, 5602, 5616, 5622, 5645, 5651, 5653, 5659, 5665, 5674,
-    5678, 5690, 5697, 5701, 5706, 5716, 5727, 5736, 5745, 5751, 5757, 5764,
-    5772, 5780, 5788, 5796, 5803, 5812, 5820, 5826, 5837, 5849, 5861, 5867,
-    5874, 5888, 5891, 5895, 5901, 5915, 5922, 5928, 5933, 5936, 5939, 5944,
-    5949, 5957, 5974, 5990, 5994, 6003, 6022, 6032, 6038, 6044, 6051, 6057,
-    6070, 6079, 6086, 6094, 6098, 6105, 6115, 6126, 6133, 6135, 6141, 6143,
-    6147, 6153, 6156, 6162, 6168, 6178, 6188, 6200, 6212, 6230, 6239, 6241,
-    6246, 6252, 6259, 6263, 6269, 6278, 6286, 6293, 6298, 6304, 6309, 6315,
-    6323, 6330, 6340, 6345, 6348, 6354, 6359, 6363, 6372, 6378, 6386, 6390,
-    6397, 6401, 6414, 6429, 6435, 6445, 6448, 6453, 6465, 6471, 6475, 6478,
-    6482, 6486, 6491, 6495, 6507, 6526, 6534, 6542, 6559, 6575, 6580, 6588,
-    6591, 6594, 6597, 6605, 6610, 6619, 6628, 6639, 6642, 6646, 6651, 6659,
-    6666, 6674, 6683, 6691, 6699, 6703, 6712, 6728, 6736, 6743, 6750, 6756,
-    6762, 6766, 6773, 6777, 6784, 6797, 6805, 6810, 6818, 6826, 6832, 6839,
-    6847, 6855, 6859, 6877, 6888, 6902, 6911, 6917, 6923, 6930, 6949, 6953,
-    6961, 6970, 6974, 6978, 6981, 6989, 7004, 7015, 7022, 7031, 7037, 7046,
-    7056, 7064, 7069, 7075, 7080, 7088, 7094, 7100, 7104, 7112, 7130, 7155,
-    7160, 7164, 7168, 7174, 7190, 7194, 7197, 7207, 7219, 7229, 7234, 7247,
-    7256, 7261, 7267, 7273, 7278, 7284, 7288, 7293, 7307, 7317, 7327, 7335,
-    7343, 7349, 7360, 7366, 7374, 7381, 7389, 7416, 7423, 7426, 7436, 7442,
-    7461, 7469, 7473, 7481, 7489, 7498, 7505, 7509, 7517, 7521, 7525, 7530,
-    7539, 7544, 7548, 7557, 7564, 7569, 7574, 7582, 7591, 7603, 7612, 7620,
-    7623, 7632, 7640, 7649, 7654, 7658, 7666, 7671, 7674, 7678, 7689, 7691,
-    7697, 7703, 7706, 7715, 7721, 7735, 7742, 7745, 7760, 7769, 7774, 7779,
-    7785, 7792, 7798, 7806, 7825, 7833, 7844, 7849, 7853, 7860, 7865, 7870,
-    7873, 7881, 7888, 7896, 7901, 7914, 7918, 7923, 7932, 7934, 7936,
+    0, 0, 2, 11, 20, 27, 40, 51, 63, 68, 72, 78, 88, 97, 105, 115, 123, 131, 140, 148, 162, 180,
+    189, 207, 218, 230, 242, 256, 265, 276, 288, 300, 314, 318, 322, 330, 335, 345, 356, 367, 380,
+    395, 402, 409, 422, 426, 440, 457, 472, 487, 494, 513, 520, 530, 539, 548, 555, 562, 571, 583,
+    600, 615, 636, 644, 653, 662, 670, 680, 695, 707, 716, 724, 736, 744, 753, 770, 783, 796, 813,
+    824, 851, 863, 887, 894, 905, 915, 926, 934, 948, 955, 965, 972, 981, 987, 995, 1003, 1018,
+    1027, 1036, 1048, 1058, 1068, 1074, 1081, 1092, 1108, 1123, 1134, 1148, 1165, 1177, 1183, 1191,
+    1199, 1207, 1220, 1231, 1242, 1250, 1260, 1268, 1277, 1285, 1302, 1319, 1326, 1336, 1343, 1351,
+    1362, 1382, 1390, 1398, 1410, 1418, 1433, 1449, 1455, 1462, 1477, 1488, 1498, 1508, 1514, 1522,
+    1536, 1546, 1557, 1564, 1574, 1589, 1596, 1604, 1610, 1617, 1624, 1634, 1647, 1655, 1664, 1670,
+    1684, 1694, 1705, 1719, 1727, 1734, 1741, 1752, 1764, 1772, 1780, 1791, 1801, 1814, 1832, 1840,
+    1852, 1865, 1876, 1887, 1895, 1903, 1910, 1919, 1927, 1938, 1948, 1956, 1968, 1976, 1983, 1995,
+    2006, 2017, 2029, 2039, 2052, 2061, 2069, 2090, 2097, 2104, 2121, 2137, 2148, 2157, 2172, 2207,
+    2231, 2247, 2277, 2296, 2314, 2325, 2332, 2341, 2351, 2358, 2369, 2379, 2393, 2417, 2425, 2435,
+    2454, 2468, 2481, 2497, 2509, 2517, 2525, 2536, 2550, 2579, 2593, 2600, 2615, 2631, 2644, 2657,
+    2660, 2677, 2694, 2702, 2708, 2727, 2732, 2750, 2764, 2773, 2785, 2794, 2804, 2813, 2836, 2863,
+    2886, 2892, 2917, 2942, 2951, 2958, 2964, 2970, 2973, 2990, 2995, 3009, 3024, 3029, 3034, 3037,
+    3053, 3064, 3074, 3082, 3085, 3091, 3094, 3101, 3105, 3114, 3118, 3134, 3139, 3147, 3150, 3156,
+    3160, 3169, 3179, 3187, 3191, 3197, 3200, 3211, 3221, 3229, 3234, 3242, 3247, 3253, 3268, 3279,
+    3288, 3295, 3302, 3310, 3321, 3330, 3339, 3344, 3352, 3365, 3371, 3382, 3398, 3406, 3413, 3425,
+    3447, 3464, 3470, 3476, 3480, 3502, 3511, 3519, 3527, 3533, 3542, 3548, 3556, 3572, 3580, 3587,
+    3595, 3600, 3617, 3622, 3627, 3632, 3638, 3645, 3652, 3663, 3674, 3681, 3690, 3707, 3718, 3732,
+    3740, 3751, 3768, 3780, 3787, 3795, 3805, 3823, 3834, 3846, 3857, 3861, 3871, 3880, 3887, 3902,
+    3914, 3925, 3931, 3937, 3944, 3957, 3967, 3973, 3977, 3984, 3988, 3993, 4002, 4005, 4008, 4024,
+    4030, 4034, 4042, 4046, 4049, 4053, 4058, 4064, 4071, 4078, 4091, 4097, 4102, 4116, 4128, 4141,
+    4147, 4151, 4168, 4174, 4185, 4194, 4200, 4207, 4221, 4232, 4237, 4240, 4244, 4256, 4259, 4269,
+    4281, 4292, 4305, 4320, 4330, 4336, 4344, 4347, 4361, 4371, 4381, 4387, 4397, 4400, 4410, 4416,
+    4421, 4430, 4433, 4439, 4447, 4454, 4463, 4473, 4482, 4500, 4504, 4507, 4517, 4523, 4535, 4543,
+    4550, 4558, 4563, 4569, 4575, 4577, 4580, 4584, 4588, 4594, 4598, 4610, 4618, 4624, 4632, 4641,
+    4647, 4654, 4659, 4668, 4678, 4687, 4698, 4703, 4708, 4712, 4722, 4737, 4746, 4752, 4763, 4775,
+    4788, 4798, 4806, 4819, 4826, 4830, 4839, 4843, 4851, 4857, 4859, 4869, 4872, 4881, 4889, 4899,
+    4906, 4914, 4917, 4924, 4934, 4940, 4946, 4956, 4968, 4977, 4983, 4990, 4993, 4995, 4999, 5003,
+    5007, 5012, 5014, 5019, 5032, 5038, 5049, 5053, 5064, 5073, 5078, 5093, 5101, 5106, 5116, 5119,
+    5133, 5147, 5158, 5165, 5178, 5191, 5204, 5217, 5224, 5234, 5239, 5254, 5264, 5276, 5279, 5285,
+    5297, 5305, 5307, 5318, 5324, 5334, 5341, 5350, 5356, 5366, 5375, 5390, 5396, 5400, 5405, 5409,
+    5417, 5427, 5429, 5433, 5445, 5449, 5457, 5460, 5467, 5471, 5475, 5477, 5480, 5483, 5489, 5499,
+    5504, 5508, 5516, 5525, 5539, 5548, 5558, 5564, 5573, 5579, 5582, 5588, 5593, 5598, 5602, 5616,
+    5622, 5645, 5651, 5653, 5659, 5665, 5674, 5678, 5690, 5697, 5701, 5706, 5716, 5727, 5736, 5745,
+    5751, 5757, 5764, 5772, 5780, 5788, 5796, 5803, 5812, 5820, 5826, 5837, 5849, 5861, 5867, 5874,
+    5888, 5891, 5895, 5901, 5915, 5922, 5928, 5933, 5936, 5939, 5944, 5949, 5957, 5974, 5990, 5994,
+    6003, 6022, 6032, 6038, 6044, 6051, 6057, 6070, 6079, 6086, 6094, 6098, 6105, 6115, 6126, 6133,
+    6135, 6141, 6143, 6147, 6153, 6156, 6162, 6168, 6178, 6188, 6200, 6212, 6230, 6239, 6241, 6246,
+    6252, 6259, 6263, 6269, 6278, 6286, 6293, 6298, 6304, 6309, 6315, 6323, 6330, 6340, 6345, 6348,
+    6354, 6359, 6363, 6372, 6378, 6386, 6390, 6397, 6401, 6414, 6429, 6435, 6445, 6448, 6453, 6465,
+    6471, 6475, 6478, 6482, 6486, 6491, 6495, 6507, 6526, 6534, 6542, 6559, 6575, 6580, 6588, 6591,
+    6594, 6597, 6605, 6610, 6619, 6628, 6639, 6642, 6646, 6651, 6659, 6666, 6674, 6683, 6691, 6699,
+    6703, 6712, 6728, 6736, 6743, 6750, 6756, 6762, 6766, 6773, 6777, 6784, 6797, 6805, 6810, 6818,
+    6826, 6832, 6839, 6847, 6855, 6859, 6877, 6888, 6902, 6911, 6917, 6923, 6930, 6949, 6953, 6961,
+    6970, 6974, 6978, 6981, 6989, 7004, 7015, 7022, 7031, 7037, 7046, 7056, 7064, 7069, 7075, 7080,
+    7088, 7094, 7100, 7104, 7112, 7130, 7155, 7160, 7164, 7168, 7174, 7190, 7194, 7197, 7207, 7219,
+    7229, 7234, 7247, 7256, 7261, 7267, 7273, 7278, 7284, 7288, 7293, 7307, 7317, 7327, 7335, 7343,
+    7349, 7360, 7366, 7374, 7381, 7389, 7416, 7423, 7426, 7436, 7442, 7461, 7469, 7473, 7481, 7489,
+    7498, 7505, 7509, 7517, 7521, 7525, 7530, 7539, 7544, 7548, 7557, 7564, 7569, 7574, 7582, 7591,
+    7603, 7612, 7620, 7623, 7632, 7640, 7649, 7654, 7658, 7666, 7671, 7674, 7678, 7689, 7691, 7697,
+    7703, 7706, 7715, 7721, 7735, 7742, 7745, 7760, 7769, 7774, 7779, 7785, 7792, 7798, 7806, 7825,
+    7833, 7844, 7849, 7853, 7860, 7865, 7870, 7873, 7881, 7888, 7896, 7901, 7914, 7918, 7923, 7932,
+    7934, 7936,
 ];
 pub(crate) static PREINTERNED_STRINGS: std::sync::LazyLock<Box<[&'static str]>> =
     std::sync::LazyLock::new(|| {
         (0..PREINTERNED_STRINGS_OFFSETS.len() - 1)
-            .map(|i| &PREINTERNED_STRINGS_BLOB[PREINTERNED_STRINGS_OFFSETS[i] as usize..PREINTERNED_STRINGS_OFFSETS[i + 1] as usize])
+            .map(|i| {
+                &PREINTERNED_STRINGS_BLOB[PREINTERNED_STRINGS_OFFSETS[i] as usize
+                    ..PREINTERNED_STRINGS_OFFSETS[i + 1] as usize]
+            })
             .collect()
     });
 
@@ -417,20 +400,20 @@ pub(crate) static PREINTERNED_STRINGS: std::sync::LazyLock<Box<[&'static str]>> 
 const COMPILER_INTERNED_STRINGS_BLOB: &str = "__dict____doc____match_args____module___attributes_fieldsannotationargargsargtypesasnameastattrbasesbodyboundcasescauseclscol_offsetcomparatorscontext_exprconversionctxdecorator_listdefault_valuedefaultselteltsend_col_offsetend_linenoexcfinalbodyformat_specfuncgeneratorsguardhandlersidifsis_asyncis_lazyitemsiterkeykeyskeywordskindkw_defaultskwargkwd_attrskwd_patternskwonlyargsleftlevellinenolowermodulemsgnamenamesopoperandopsoptional_varsorelsepatternpatternsposonlyargsrestreturnsrightsimpleslicestepstrsubjecttagtargettargetstesttypetype_commenttype_ignorestype_paramsuppervaluevaluesvararg";
 #[cfg(test)]
 const COMPILER_INTERNED_STRINGS_OFFSETS: &[u32] = &[
-    0, 8, 15, 29, 39, 50, 57, 67, 70, 74, 82, 88,
-    91, 95, 100, 104, 109, 114, 119, 122, 132, 143, 155, 165,
-    168, 182, 195, 203, 206, 210, 224, 234, 237, 246, 257, 261,
-    271, 276, 284, 286, 289, 297, 304, 309, 313, 316, 320, 328,
-    332, 343, 348, 357, 369, 379, 383, 388, 394, 399, 405, 408,
-    412, 417, 419, 426, 429, 442, 448, 455, 463, 474, 478, 485,
-    490, 496, 501, 505, 508, 515, 518, 524, 531, 535, 539, 551,
-    563, 574, 579, 584, 590, 596,
+    0, 8, 15, 29, 39, 50, 57, 67, 70, 74, 82, 88, 91, 95, 100, 104, 109, 114, 119, 122, 132, 143,
+    155, 165, 168, 182, 195, 203, 206, 210, 224, 234, 237, 246, 257, 261, 271, 276, 284, 286, 289,
+    297, 304, 309, 313, 316, 320, 328, 332, 343, 348, 357, 369, 379, 383, 388, 394, 399, 405, 408,
+    412, 417, 419, 426, 429, 442, 448, 455, 463, 474, 478, 485, 490, 496, 501, 505, 508, 515, 518,
+    524, 531, 535, 539, 551, 563, 574, 579, 584, 590, 596,
 ];
 #[cfg(test)]
 pub(crate) static COMPILER_INTERNED_STRINGS: std::sync::LazyLock<Box<[&'static str]>> =
     std::sync::LazyLock::new(|| {
         (0..COMPILER_INTERNED_STRINGS_OFFSETS.len() - 1)
-            .map(|i| &COMPILER_INTERNED_STRINGS_BLOB[COMPILER_INTERNED_STRINGS_OFFSETS[i] as usize..COMPILER_INTERNED_STRINGS_OFFSETS[i + 1] as usize])
+            .map(|i| {
+                &COMPILER_INTERNED_STRINGS_BLOB[COMPILER_INTERNED_STRINGS_OFFSETS[i] as usize
+                    ..COMPILER_INTERNED_STRINGS_OFFSETS[i + 1] as usize]
+            })
             .collect()
     });
 
@@ -438,15 +421,16 @@ pub(crate) static COMPILER_INTERNED_STRINGS: std::sync::LazyLock<Box<[&'static s
 // Installation paths are supplied only through an explicit InitialInternState.
 const STARTUP_INTERNED_STRINGS_BLOB: &str = "500MISSINGNoneasciicachecachedcandidatedarwindateerrorevalkwargsl1l2linkmapminmissingnannewold_valueotheroutputpackagepythonquietremoverootrunsumsystemtesttimestampu7unknownupdateuservarwarnwin32";
 const STARTUP_INTERNED_STRINGS_OFFSETS: &[u32] = &[
-    0, 3, 10, 14, 19, 24, 30, 39, 45, 49, 54, 58,
-    64, 66, 68, 72, 75, 78, 85, 88, 91, 100, 105, 111,
-    118, 124, 129, 135, 139, 142, 145, 151, 155, 164, 166, 173,
-    179, 183, 186, 190, 195,
+    0, 3, 10, 14, 19, 24, 30, 39, 45, 49, 54, 58, 64, 66, 68, 72, 75, 78, 85, 88, 91, 100, 105,
+    111, 118, 124, 129, 135, 139, 142, 145, 151, 155, 164, 166, 173, 179, 183, 186, 190, 195,
 ];
 pub(crate) static STARTUP_INTERNED_STRINGS: std::sync::LazyLock<Box<[&'static str]>> =
     std::sync::LazyLock::new(|| {
         (0..STARTUP_INTERNED_STRINGS_OFFSETS.len() - 1)
-            .map(|i| &STARTUP_INTERNED_STRINGS_BLOB[STARTUP_INTERNED_STRINGS_OFFSETS[i] as usize..STARTUP_INTERNED_STRINGS_OFFSETS[i + 1] as usize])
+            .map(|i| {
+                &STARTUP_INTERNED_STRINGS_BLOB[STARTUP_INTERNED_STRINGS_OFFSETS[i] as usize
+                    ..STARTUP_INTERNED_STRINGS_OFFSETS[i + 1] as usize]
+            })
             .collect()
     });
 

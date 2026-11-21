@@ -20,7 +20,6 @@
 // Modules/cjkcodecs/cjkcodecs.h: sha256 c73cb514b08f1f0bb3be5ed675c538a8dbdb39eab5a1842849623e1331c5a323
 // Modules/cjkcodecs/multibytecodec.c: sha256 1f42e2a7d5d46978c31ad2a97c7cc6935f1f92543f80f7514c86d6238b6e9a3a
 // Modules/cjkcodecs/clinic/multibytecodec.c.h: sha256 56e3ddf537e8e56a029328baab873594a326b3485095343f84273118822829e3
-// Transformed by blobify.py from the generated file.
 
 const ASCII_BLOB: &str = "CodecCodecInfoIncrementalDecoderIncrementalDecoder.decodeIncrementalEncoderIncrementalEncoder.encodeStreamConverterStreamReaderStreamWriter__doc____firstlineno____module____name____qualname____static_attributes__asciiascii_decodeascii_encodecodecsdecodeencodeerrorsfinalgetregentryincrementaldecoderincrementalencoderinputnameselfstreamreaderstreamwriter";
 const ASCII_OFFSETS: &[u32] = &[
