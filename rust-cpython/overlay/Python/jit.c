@@ -34,7 +34,7 @@
 
 #include "pycore_jit.h"
 
-#if defined(__APPLE__) && defined(__aarch64__)
+#if (defined(__APPLE__) && defined(__aarch64__)) || (defined(__linux__) && defined(__x86_64__))
 #include "pycore_tstate.h"
 #include "pycore_uop_metadata.h"
 #include <fcntl.h>
@@ -649,7 +649,7 @@ combine_symbol_mask(const symbol_mask src, symbol_mask dest)
     }
 }
 
-#if defined(__APPLE__) && defined(__aarch64__)
+#if (defined(__APPLE__) && defined(__aarch64__)) || (defined(__linux__) && defined(__x86_64__))
 static int
 jit_write_map(const char *path, _PyExecutorObject *executor,
               const _PyUOpInstruction *trace, size_t length,
@@ -841,7 +841,7 @@ _PyJIT_Compile(_PyExecutorObject *executor, const _PyUOpInstruction trace[], siz
         jit_free(memory, total_size);
         return -1;
     }
-#if defined(__APPLE__) && defined(__aarch64__)
+#if (defined(__APPLE__) && defined(__aarch64__)) || (defined(__linux__) && defined(__x86_64__))
     const char *map_path = Py_GETENV("PYTHON_JIT_MAP");
     if (map_path != NULL &&
         jit_write_map(map_path, executor, trace, length, &state,
