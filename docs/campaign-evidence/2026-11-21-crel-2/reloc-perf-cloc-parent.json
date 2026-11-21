@@ -1,0 +1,112 @@
+{
+ "lib": "/home/ubuntu/repos/python-build/wt-cloc-parent/rust-cpython/stage-perf-cloc-parent/lib/libpython3.16.so.1.0",
+ "relative_total": 37367,
+ "unattributed": 21358,
+ "by_owner": {
+  "rust_other": 259,
+  "c_or_unmangled": 15745,
+  "serc": 5
+ },
+ "top_symbols": [
+  [
+   "posix_methods",
+   549
+  ],
+  [
+   "buckets",
+   514
+  ],
+  [
+   "slotdefs",
+   361
+  ],
+  [
+   "_PyEval_EvalFrameDefault.opcode_targets_table",
+   256
+  ],
+  [
+   "_PyOpcode_OpName",
+   247
+  ],
+  [
+   "termios_constants",
+   246
+  ],
+  [
+   "math_methods",
+   189
+  ],
+  [
+   "sys_methods",
+   177
+  ],
+  [
+   "bytearray_methods",
+   168
+  ],
+  [
+   "operator_methods",
+   165
+  ],
+  [
+   "initial",
+   158
+  ],
+  [
+   "_PyRuntime",
+   158
+  ],
+  [
+   "unicode_methods",
+   149
+  ],
+  [
+   "static_exceptions",
+   137
+  ],
+  [
+   "posix_constants_sysconf",
+   135
+  ],
+  [
+   "bytes_methods",
+   131
+  ],
+  [
+   "_mi_heap_main",
+   130
+  ],
+  [
+   "_mi_heap_empty",
+   129
+  ],
+  [
+   "builtin_methods",
+   129
+  ],
+  [
+   "_codecs_functions",
+   129
+  ],
+  [
+   "time_methods",
+   114
+  ],
+  [
+   "_PySlot_names",
+   111
+  ],
+  [
+   "module_methods",
+   93
+  ],
+  [
+   "PYCONFIG_SPEC",
+   88
+  ],
+  [
+   "socket_methods",
+   84
+  ]
+ ]
+}
