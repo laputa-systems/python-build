@@ -29,6 +29,30 @@ panic = "abort"
 lto = "fat"
 codegen-units = 1
 
+[profile.release.package.serc]
+opt-level = "s"
+
+[profile.release.package.ruff_python_parser]
+opt-level = "s"
+
+[profile.release.package.ruff_python_ast]
+opt-level = "s"
+
+[profile.release.package.ruff_python_trivia]
+opt-level = "s"
+
+[profile.release.package.ruff_python_literal]
+opt-level = "s"
+
+[profile.release.package.ruff_text_size]
+opt-level = "s"
+
+[profile.release.package.ruff_source_file]
+opt-level = "s"
+
+[profile.release.package.ruff_index]
+opt-level = "s"
+
 # The TLS engine's rustls and rustls-webpki forks carry the maintained
 # session-API and policy patches. Every workspace requirement resolves to
 # these trees so the engine, its provider, and its verifier share one copy.
