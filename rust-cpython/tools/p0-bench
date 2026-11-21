@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+LANE_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
+REPO_ROOT=$(cd -- "$LANE_DIR/.." && pwd)
+RESULTS=$LANE_DIR/results/perf-bench
+PERF_PY=${PERF_PY:-$LANE_DIR/perf.py}
+GATE_READY=${PERF_GATE_READY:-$SCRIPT_DIR/perf-gate-ready}
+
+if [[ "$PERF_PY" != /* ]]; then
+    PERF_PY=$PWD/$PERF_PY
+fi
+if [[ "$GATE_READY" != /* ]]; then
+    GATE_READY=$PWD/$GATE_READY
+fi
+
+mkdir -p "$RESULTS"
+start_stamp=$(date -u +%Y%m%dT%H%M%S%NZ)
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+find "$RESULTS" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort > "$tmpdir/before-dirs"
+
+if "$GATE_READY" > "$tmpdir/pre.out" 2>&1; then
+    pre_exit=0
+else
+    pre_exit=$?
+fi
+pre_utc=$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)
+
+set +e
+(
+    cd -- "$REPO_ROOT"
+    python3 "$PERF_PY" bench "$@"
+) 2>&1 | tee "$tmpdir/bench.log"
+pipeline_status=("${PIPESTATUS[@]}")
+set -e
+bench_exit=${pipeline_status[0]}
+
+if "$GATE_READY" -1 > "$tmpdir/post.out" 2>&1; then
+    post_exit=0
+else
+    post_exit=$?
+fi
+post_utc=$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)
+
+result_dir=
+reported_dir=$(sed -nE 's/^LOG[[:space:]]+(.+)\/verdict\.json$/\1/p' "$tmpdir/bench.log" | tail -n 1)
+if [[ -n "$reported_dir" ]]; then
+    if [[ "$reported_dir" != /* ]]; then
+        reported_dir=$REPO_ROOT/$reported_dir
+    fi
+    reported_dir=$(realpath -m -- "$reported_dir")
+    if [[ "$reported_dir" == "$RESULTS/"* && -d "$reported_dir" ]] \
+            && ! grep -Fqx -- "${reported_dir##*/}" "$tmpdir/before-dirs"; then
+        result_dir=$reported_dir
+    fi
+fi
+
+if [[ -z "$result_dir" ]]; then
+    mapfile -t after_dirs < <(find "$RESULTS" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+    new_dirs=()
+    for dir in "${after_dirs[@]}"; do
+        if ! grep -Fqx -- "$dir" "$tmpdir/before-dirs"; then
+            new_dirs+=("$dir")
+        fi
+    done
+    if ((${#new_dirs[@]})); then
+        result_dir=$RESULTS/$(printf '%s\n' "${new_dirs[@]}" | sort | tail -n 1)
+    fi
+fi
+
+if [[ -n "$result_dir" ]]; then
+    record_path=$result_dir/external-host-checks.json
+    log_path=$result_dir/p0-bench.log
+else
+    record_path=$RESULTS/external-host-checks-$start_stamp.json
+    log_path=$RESULTS/p0-bench-$start_stamp.log
+fi
+mv -- "$tmpdir/bench.log" "$log_path"
+
+python3 - "$record_path" "$tmpdir/pre.out" "$pre_exit" "$pre_utc" \
+    "$tmpdir/post.out" "$post_exit" "$post_utc" "$bench_exit" "$@" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+record_path, pre_path, pre_exit, pre_utc, post_path, post_exit, post_utc, bench_exit, *args = sys.argv[1:]
+pre_exit = int(pre_exit)
+post_exit = int(post_exit)
+bench_exit = int(bench_exit)
+record = {
+    "pre": {
+        "exit": pre_exit,
+        "output": Path(pre_path).read_text(encoding="utf-8", errors="replace"),
+        "utc": pre_utc,
+    },
+    "post": {
+        "exit": post_exit,
+        "output": Path(post_path).read_text(encoding="utf-8", errors="replace"),
+        "utc": post_utc,
+    },
+    "bench_exit": bench_exit,
+    "eligible": pre_exit == 0 and post_exit == 0 and bench_exit == 0,
+    "args": args,
+}
+Path(record_path).write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+
+printf 'p0-bench evidence: %s\n' "$record_path" >&2
+printf 'p0-bench log: %s\n' "$log_path" >&2
+
+if ((bench_exit != 0)); then
+    exit "$bench_exit"
+fi
+if ((pre_exit != 0 || post_exit != 0)); then
+    printf 'NOT ELIGIBLE: perf-gate-ready pre exit=%d, post exit=%d\n' \
+        "$pre_exit" "$post_exit" >&2
+    exit 3
+fi
