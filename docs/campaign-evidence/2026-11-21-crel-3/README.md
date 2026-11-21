@@ -19,3 +19,16 @@ Heap for lazily built tables in source mode is not covered by the probe (unmeasu
 
 Outcome: prepared UNQUALIFIED candidate (track C slot 2 of 2). Not timed. Landing moves
 the representation into Serc's generators instead of transformed overlay copies.
+
+## Landing preparation (`8a57de4`)
+`generate_cpython_target.py` and `generate_source_codec_interns.py` now emit the blob form
+directly, with outer attributes on all three declarations. Checks:
+- an emitter check (`emitter_check.py`) re-renders all 56 original tables to the `ef48b04`
+  declarations (10/10 files PASS);
+- `table_equality.py` PASS (56 tables, 18,420 elements);
+- Serc `target::` 10 tests pass.
+
+The generated files differ from `ef48b04` only by the removed transformer marker and
+rustfmt layout. A full regeneration of 3.12–3.15 needs the pinned CPython sources, which
+are not on this host. Regenerating 3.16 against the local tree changed only the
+input-hash headers, which were restored.
