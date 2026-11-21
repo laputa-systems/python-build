@@ -212,6 +212,8 @@ def run_observation(workload: Mapping[str, Any], *, floor: float = PRACTICAL_FLO
                               cpu_metric.get("candidate_samples") or [])
                       if isinstance(cpu_metric, Mapping) else [])
             metrics["cpu"] = _metric(ratios)
+        else:
+            metrics["cpu"] = _metric([])
     memory = workload["comparison"].get("memory", {})
     for name in BENCH_MEMORY_METRICS:
         metric = memory.get("metrics", {}).get(name) if isinstance(memory, Mapping) else None

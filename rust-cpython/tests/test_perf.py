@@ -787,6 +787,38 @@ class DecideTests(unittest.TestCase):
         self.assertEqual(calibration["decision"], "CALIBRATION-FAILED")
         self.assertEqual(calibration["differences"], ["w wall: unstable"])
 
+    def test_gate_requires_complete_cpu_evidence_for_timing_observations(self):
+        improved = summary([0.89, 0.91], wall_ratios=(0.9,) * 3,
+                           cpu=([1.0] * 3, [0.9] * 3))
+        decision = pv.decide({"w": verdict(improved, improved)}, targets=["w"], runs=2,
+                             quiet=True, gate=True)
+        self.assertEqual(decision["decision"], pv.ACCEPT)
+
+        regressed = summary([0.89, 0.91], wall_ratios=(0.9,) * 3,
+                            cpu=([1.0] * 3, [1.1] * 3))
+        decision = pv.decide({"w": verdict(regressed, regressed)}, targets=["w"], runs=2,
+                             quiet=True, gate=True)
+        self.assertEqual(decision["decision"], pv.REJECT)
+        self.assertIn("w cpu", decision["regressions"])
+
+        missing = summary([0.89, 0.91], wall_ratios=(0.9,) * 3)
+        decision = pv.decide({"w": verdict(missing, missing)}, targets=["w"], runs=2,
+                             quiet=True, gate=True)
+        self.assertEqual(decision["decision"], pv.INCONCLUSIVE)
+        self.assertIn("w cpu", decision["inconclusive"])
+
+        incomplete = summary([0.89, 0.91], wall_ratios=(0.9,) * 3,
+                             cpu=([1.0] * 3, [0.9] * 3))
+        incomplete["comparison"]["timing"]["cpu"]["status"] = "incomplete"
+        decision = pv.decide({"w": verdict(incomplete, incomplete)}, targets=["w"], runs=2,
+                             quiet=True, gate=True)
+        self.assertEqual(decision["decision"], pv.INCONCLUSIVE)
+
+    def test_memory_only_observation_omits_cpu_metric(self):
+        row = summary([0.89, 0.91], cpu=([1.0] * 3, [0.9] * 3))
+        observation = pv.run_observation(row, memory_only=True)
+        self.assertNotIn("cpu", observation["metrics"])
+
     def test_inconclusive_guard_blocks_a_target_win(self):
         workloads = {"zlib_decode_1m": verdict(summary([0.90, 0.95]), summary([0.91, 0.96])),
                      "python_startup": verdict(summary([0.9, 1.3], wall_ratios=[1.05] * 6),
