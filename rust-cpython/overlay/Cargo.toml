@@ -1,3 +1,5 @@
+cargo-features = ["profile-rustflags"]
+
 [workspace]
 resolver = "3"
 members = [
@@ -28,6 +30,30 @@ panic = "abort"
 panic = "abort"
 lto = "fat"
 codegen-units = 1
+
+[profile.release.package.serc]
+rustflags = ["-Zlocation-detail=none"]
+
+[profile.release.package.ruff_python_parser]
+rustflags = ["-Zlocation-detail=none"]
+
+[profile.release.package.ruff_python_ast]
+rustflags = ["-Zlocation-detail=none"]
+
+[profile.release.package.ruff_python_trivia]
+rustflags = ["-Zlocation-detail=none"]
+
+[profile.release.package.ruff_python_literal]
+rustflags = ["-Zlocation-detail=none"]
+
+[profile.release.package.ruff_text_size]
+rustflags = ["-Zlocation-detail=none"]
+
+[profile.release.package.ruff_source_file]
+rustflags = ["-Zlocation-detail=none"]
+
+[profile.release.package.ruff_index]
+rustflags = ["-Zlocation-detail=none"]
 
 # The TLS engine's rustls and rustls-webpki forks carry the maintained
 # session-API and policy patches. Every workspace requirement resolves to
