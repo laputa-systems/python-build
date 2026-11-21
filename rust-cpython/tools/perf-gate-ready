@@ -108,13 +108,32 @@ def collect(path: Path) -> dict[str, object]:
         key, sep, value = line.partition("=")
         if sep:
             release[key] = value.strip().strip('"')
-    if (release.get("ID"), release.get("VERSION_ID")) != ("ubuntu", "24.04"):
-        raise ValueError("requires Ubuntu 24.04; another distro is not a comparable host")
+    allowed_versions = {"24.04"}
+    # Provisional interim hosts authorized in the lane lock (OD21).
+    for base in (Path.cwd(), *Path.cwd().parents):
+        lock = base / "rust-cpython" / "linux-toolchain.lock.json"
+        if lock.is_file():
+            try:
+                doc = json.loads(lock.read_text())
+                allowed_versions.update(
+                    entry["os_version_id"]
+                    for entry in doc.get("provisional_hosts", ())
+                )
+            except (OSError, json.JSONDecodeError, KeyError):
+                pass
+            break
+    if release.get("ID") != "ubuntu" or release.get("VERSION_ID") not in allowed_versions:
+        raise ValueError(
+            f"requires Ubuntu 24.04 (or a provisional_hosts entry); "
+            f"{release.get('ID')} {release.get('VERSION_ID')} is not a comparable host"
+        )
+    provisional = release.get("VERSION_ID") != "24.04"
     counters = sample_cpu()
     usage = shutil.disk_usage(path)
     return {**counters, "cores": len(os.sched_getaffinity(0)),
             "load1": os.getloadavg()[0],
             "available_gib": round(available_memory_gib(), 2),
+            "provisional": provisional,
             "disk_free_gib": round(usage.free / GIB, 2),
             "ac_online": ac_online(), "path": str(path.resolve())}
 
