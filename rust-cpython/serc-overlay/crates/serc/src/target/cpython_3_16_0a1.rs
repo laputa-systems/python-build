@@ -415,6 +415,7 @@ pub(crate) static PREINTERNED_STRINGS: std::sync::LazyLock<Box<[&'static str]>> 
 // Builtin compile() initializes these AST identifiers before compiling source.
 #[cfg(test)]
 const COMPILER_INTERNED_STRINGS_BLOB: &str = "__dict____doc____match_args____module___attributes_fieldsannotationargargsargtypesasnameastattrbasesbodyboundcasescauseclscol_offsetcomparatorscontext_exprconversionctxdecorator_listdefault_valuedefaultselteltsend_col_offsetend_linenoexcfinalbodyformat_specfuncgeneratorsguardhandlersidifsis_asyncis_lazyitemsiterkeykeyskeywordskindkw_defaultskwargkwd_attrskwd_patternskwonlyargsleftlevellinenolowermodulemsgnamenamesopoperandopsoptional_varsorelsepatternpatternsposonlyargsrestreturnsrightsimpleslicestepstrsubjecttagtargettargetstesttypetype_commenttype_ignorestype_paramsuppervaluevaluesvararg";
+#[cfg(test)]
 const COMPILER_INTERNED_STRINGS_OFFSETS: &[u32] = &[
     0, 8, 15, 29, 39, 50, 57, 67, 70, 74, 82, 88,
     91, 95, 100, 104, 109, 114, 119, 122, 132, 143, 155, 165,
@@ -425,6 +426,7 @@ const COMPILER_INTERNED_STRINGS_OFFSETS: &[u32] = &[
     490, 496, 501, 505, 508, 515, 518, 524, 531, 535, 539, 551,
     563, 574, 579, 584, 590, 596,
 ];
+#[cfg(test)]
 pub(crate) static COMPILER_INTERNED_STRINGS: std::sync::LazyLock<Box<[&'static str]>> =
     std::sync::LazyLock::new(|| {
         (0..COMPILER_INTERNED_STRINGS_OFFSETS.len() - 1)

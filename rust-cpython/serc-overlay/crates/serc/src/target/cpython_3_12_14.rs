@@ -269,6 +269,7 @@ pub(crate) static PREINTERNED_STRINGS: std::sync::LazyLock<Box<[&'static str]>> 
 
 #[cfg(test)]
 const COMPILER_INTERNED_STRINGS_BLOB: &str = "__dict____doc____match_args____module___attributes_fieldsannotationargargsargtypesasnameastattrbasesbodyboundcasescauseclscol_offsetcomparatorscontext_exprconversionctxdecorator_listdefaultselteltsend_col_offsetend_linenoexcfinalbodyformat_specfuncgeneratorsguardhandlersidifsis_asyncitemsiterkeykeyskeywordskindkw_defaultskwargkwd_attrskwd_patternskwonlyargsleftlevellinenolowermodulemsgnamenamesopoperandopsoptional_varsorelsepatternpatternsposonlyargsrestreturnsrightsimpleslicestepsubjecttagtargettargetstesttypetype_commenttype_ignorestype_paramsuppervaluevaluesvararg";
+#[cfg(test)]
 const COMPILER_INTERNED_STRINGS_OFFSETS: &[u32] = &[
     0, 8, 15, 29, 39, 50, 57, 67, 70, 74, 82, 88,
     91, 95, 100, 104, 109, 114, 119, 122, 132, 143, 155, 165,
@@ -279,6 +280,7 @@ const COMPILER_INTERNED_STRINGS_OFFSETS: &[u32] = &[
     481, 485, 492, 495, 501, 508, 512, 516, 528, 540, 551, 556,
     561, 567, 573,
 ];
+#[cfg(test)]
 pub(crate) static COMPILER_INTERNED_STRINGS: std::sync::LazyLock<Box<[&'static str]>> =
     std::sync::LazyLock::new(|| {
         (0..COMPILER_INTERNED_STRINGS_OFFSETS.len() - 1)
