@@ -34,3 +34,11 @@ premise, so it is **not re-attempted**. Removing this traffic needs the
 escape-synced frame-representation project (materialize locals on the
 eval-breaker slow path, at exits, tracing/monitoring, `f_locals`/`locals()`,
 tracebacks and GC traversal), which is a scope decision, not a bounded prototype.
+
+## Spill/reload share on Linux (parent `perf-jit-pystats`, `da74796`)
+`_SPILL_OR_RELOAD*` is 3.6% (monte_carlo) to 10.6% (sor) of executed uops across the 16
+JIT_SET kernels; sparse_mat_mult is 6.3%, nbody 7.2%, hexiom 9.6%. These are execution
+counts, not time. The mechanism is not new: T4 whole-trace cache-depth planning was
+accepted 2026-11-11, and a whole-trace register cache was INCONCLUSIVE (ledger). No new
+premise, so no prototype; recorded as Linux structure for a future attempt on a
+qualified host.
