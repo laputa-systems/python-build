@@ -11,6 +11,9 @@ d8b591b3b20bd91251d71027b8ce27778630554d031f0fc0524056e61d5316c9  ./collect-jes1
 c8e058e38a907b9462363d0c25578194e61eeb2e743ea625f6a1a53f3deb6db2  ./jes1-diag/loop-types.log.xz
 8f1fabec55b7b0f48fef678bf5f8a83953725720caaa1ab5f27194107cc22809  ./jit-fuzz-jes1.log.xz
 8f1fabec55b7b0f48fef678bf5f8a83953725720caaa1ab5f27194107cc22809  ./jit-fuzz-jlt2.log.xz
+82f15c90ff4199dececd5594f98cc0ca3e744cd813278207fc41c10c9e4e648d  ./ltcensus/README.md
+d83eb3bbfc3d395a3d03fdb2375aa5df0aa01c1596b523f57eca46cef80137a1  ./ltcensus/closure.txt
+4909acfef44ad9e815d99965fb317567c41dc05325e394c4b4d5364b975bc4df  ./ltcensus/loop-types-jsonl.tar.xz
 7fc803a1600aebf935baf27b5ee9ed9fdb9d43dc6465708b3dee318bebfe5e9b  ./summary-jes1.json
 caf769da4a786b73444edb756c7ee44473c228ccac5d5ec20de0f87529e44687  ./summary-jlt2.json
 67e3b0e39c09fa91fa34495c70bea0c02fd075952245d530762c2a17ce81f97a  ./test-jes1.log.xz
