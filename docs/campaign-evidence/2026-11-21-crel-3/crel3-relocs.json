@@ -1,0 +1,16 @@
+{
+  "perf-cloc-parent": {
+    "lib": "/home/ubuntu/repos/python-build/wt-cloc-parent/rust-cpython/stage-perf-cloc-parent/lib/libpython3.16.so.1.0",
+    ".data.rel.ro": [
+      24486,
+      111
+    ]
+  },
+  "perf-crel3-cand": {
+    "lib": "/home/ubuntu/repos/python-build/wt-crel3-cand/rust-cpython/stage-perf-crel3-cand/lib/libpython3.16.so.1.0",
+    ".data.rel.ro": [
+      9059,
+      51
+    ]
+  }
+}

@@ -1,0 +1,169 @@
+{
+ "modes": {
+  "pyc": {
+   "median_kib": {
+    "r--p Private_Dirty": 320.0,
+    "r--p Pss": 3072.0,
+    "r--p Rss": 3072.0,
+    "r-xp Private_Dirty": 0.0,
+    "r-xp Pss": 7636.0,
+    "r-xp Rss": 7636.0,
+    "rw-p Private_Dirty": 496.0,
+    "rw-p Pss": 524.0,
+    "rw-p Rss": 524.0
+   },
+   "samples_kib": [
+    {
+     "r--p Private_Dirty": 320,
+     "r--p Pss": 3072,
+     "r--p Rss": 3072,
+     "r-xp Private_Dirty": 0,
+     "r-xp Pss": 7636,
+     "r-xp Rss": 7636,
+     "rw-p Private_Dirty": 496,
+     "rw-p Pss": 524,
+     "rw-p Rss": 524
+    },
+    {
+     "r--p Private_Dirty": 320,
+     "r--p Pss": 3072,
+     "r--p Rss": 3072,
+     "r-xp Private_Dirty": 0,
+     "r-xp Pss": 7636,
+     "r-xp Rss": 7636,
+     "rw-p Private_Dirty": 496,
+     "rw-p Pss": 524,
+     "rw-p Rss": 524
+    },
+    {
+     "r--p Private_Dirty": 320,
+     "r--p Pss": 3072,
+     "r--p Rss": 3072,
+     "r-xp Private_Dirty": 0,
+     "r-xp Pss": 7636,
+     "r-xp Rss": 7636,
+     "rw-p Private_Dirty": 496,
+     "rw-p Pss": 524,
+     "rw-p Rss": 524
+    },
+    {
+     "r--p Private_Dirty": 320,
+     "r--p Pss": 3072,
+     "r--p Rss": 3072,
+     "r-xp Private_Dirty": 0,
+     "r-xp Pss": 7636,
+     "r-xp Rss": 7636,
+     "rw-p Private_Dirty": 496,
+     "rw-p Pss": 524,
+     "rw-p Rss": 524
+    },
+    {
+     "r--p Private_Dirty": 320,
+     "r--p Pss": 3072,
+     "r--p Rss": 3072,
+     "r-xp Private_Dirty": 0,
+     "r-xp Pss": 7636,
+     "r-xp Rss": 7636,
+     "rw-p Private_Dirty": 496,
+     "rw-p Pss": 524,
+     "rw-p Rss": 524
+    },
+    {
+     "r--p Private_Dirty": 320,
+     "r--p Pss": 3072,
+     "r--p Rss": 3072,
+     "r-xp Private_Dirty": 0,
+     "r-xp Pss": 7636,
+     "r-xp Rss": 7636,
+     "rw-p Private_Dirty": 496,
+     "rw-p Pss": 524,
+     "rw-p Rss": 524
+    }
+   ]
+  },
+  "source": {
+   "median_kib": {
+    "r--p Private_Dirty": 320.0,
+    "r--p Pss": 3136.0,
+    "r--p Rss": 3136.0,
+    "r-xp Private_Dirty": 0.0,
+    "r-xp Pss": 9108.0,
+    "r-xp Rss": 9108.0,
+    "rw-p Private_Dirty": 496.0,
+    "rw-p Pss": 524.0,
+    "rw-p Rss": 524.0
+   },
+   "samples_kib": [
+    {
+     "r--p Private_Dirty": 320,
+     "r--p Pss": 3136,
+     "r--p Rss": 3136,
+     "r-xp Private_Dirty": 0,
+     "r-xp Pss": 9108,
+     "r-xp Rss": 9108,
+     "rw-p Private_Dirty": 496,
+     "rw-p Pss": 524,
+     "rw-p Rss": 524
+    },
+    {
+     "r--p Private_Dirty": 320,
+     "r--p Pss": 3136,
+     "r--p Rss": 3136,
+     "r-xp Private_Dirty": 0,
+     "r-xp Pss": 9108,
+     "r-xp Rss": 9108,
+     "rw-p Private_Dirty": 496,
+     "rw-p Pss": 524,
+     "rw-p Rss": 524
+    },
+    {
+     "r--p Private_Dirty": 320,
+     "r--p Pss": 3136,
+     "r--p Rss": 3136,
+     "r-xp Private_Dirty": 0,
+     "r-xp Pss": 9108,
+     "r-xp Rss": 9108,
+     "rw-p Private_Dirty": 496,
+     "rw-p Pss": 524,
+     "rw-p Rss": 524
+    },
+    {
+     "r--p Private_Dirty": 320,
+     "r--p Pss": 3136,
+     "r--p Rss": 3136,
+     "r-xp Private_Dirty": 0,
+     "r-xp Pss": 9108,
+     "r-xp Rss": 9108,
+     "rw-p Private_Dirty": 496,
+     "rw-p Pss": 524,
+     "rw-p Rss": 524
+    },
+    {
+     "r--p Private_Dirty": 320,
+     "r--p Pss": 3136,
+     "r--p Rss": 3136,
+     "r-xp Private_Dirty": 0,
+     "r-xp Pss": 9108,
+     "r-xp Rss": 9108,
+     "rw-p Private_Dirty": 496,
+     "rw-p Pss": 524,
+     "rw-p Rss": 524
+    },
+    {
+     "r--p Private_Dirty": 320,
+     "r--p Pss": 3136,
+     "r--p Rss": 3136,
+     "r-xp Private_Dirty": 0,
+     "r-xp Pss": 9108,
+     "r-xp Rss": 9108,
+     "rw-p Private_Dirty": 496,
+     "rw-p Pss": 524,
+     "rw-p Rss": 524
+    }
+   ]
+  }
+ },
+ "observations": 6,
+ "payload": "/home/ubuntu/exp-serc/payload-perf-cloc-parent-argparse.py",
+ "python": "/home/ubuntu/repos/python-build/wt-crel3-cand/rust-cpython/stage-perf-crel3-cand/bin/python3.16"
+}
