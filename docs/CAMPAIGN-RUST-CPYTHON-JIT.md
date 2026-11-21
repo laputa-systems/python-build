@@ -20,6 +20,17 @@ and the active acceptance section. OD21 supersedes older finite closeout,
 global timing-stop and no-scheduler instructions. Hypotheses stay bounded;
 the campaign renews its work instead of ending at a checkpoint or plateau.
 
+**Interim host provision (OD22, 2026-11-20):** the owner authorized
+provisional operation on the session's Ubuntu 22.04 / glibc 2.35 Devin VM
+until a pinned Ubuntu 24.04 host is available. `linux-toolchain.lock.json`'s
+`provisional_hosts` carries the jammy package pins; `bootstrap-linux.sh`
+and `lane_linux.py` accept the matching host and label it `provisional` in
+the doctor report. Every receipt recorded on this host is **PROVISIONAL**
+and must be re-measured on the pinned 24.04 host before any gate counts as
+qualified. OD22 changes only host eligibility; OD21's continuous
+operating contract is unchanged, and moving to 24.04 alone does not
+establish a stable measurement host.
+
 M4/C3, the 1% floor, predetermined protocols, production boundary, Rust rule,
 correctness and reviews are unchanged. Historical receipts retain their
 verdicts; `CORRECT` never becomes `ACCEPT` because execution policy changed.
@@ -35,11 +46,76 @@ next experiments. Receipts go to the [Ledger](#ledger); the pre-2026-11-18
 narrative is preserved verbatim under [Status history](#status-history-2026-11-15-to-2026-11-18).
 
 **ACTIVE — continuous Linux research (OD21, 2026-11-19).** Integration branch:
-`campaign/cloud-ubuntu-baseline`. Last operational checkpoint reviewed:
-`af2371da5351f449e665981fc84bc133ec642a7c`. The steering update changes no
-runtime or measurement result. The original cloud worker has not been observed
-or restarted by this repository review. Historical PAUSED/BLOCKED/plateau
-closeouts do not end the current campaign.
+`campaign/cloud-ubuntu-baseline`. Two Linux hosts have run the campaign: the
+original cloud worker (Ubuntu 24.04 container, checkpoints through
+`e8f2b8e`, not observed from the OD22 session) and the OD22 interim Devin VM
+(Ubuntu 22.04, 2026-11-20/21). Neither is a qualified measurement host;
+qualified Linux gains: **0**. Historical PAUSED/BLOCKED/plateau closeouts
+do not end the current campaign.
+
+### Linux provisional checkpoint (2026-11-21, OD22 host)
+
+**Host.** Ubuntu 22.04.5 LTS, glibc 2.35, kernel 6.8.0-1060-aws, KVM guest,
+Intel Xeon (microcode `0x1`), 8 vCPUs, no cpufreq governor exposed, 124 GiB
+root (54.9 GiB free at close). Toolchain: locked LLVM 23.1.2, Rust
+`nightly-2026-09-15` (build) and `nightly-2026-11-09` (`rust-toolchain.toml`),
+libclang 14 for bindgen. `unshare --user --map-root-user --net` works.
+`perf_event_paranoid` is 4, so hardware counters are unavailable:
+**IPC is PROFILING_DEFERRED** (C3/G5 counters not collected; setting not
+changed). `perf-gate-ready` failed on CPU steal (1.1–6.8%) through most of
+the run and passed at close (steal 0.0%); every bench verdict records
+`quiet=yes` from the harness's own samples. Receipts stay under the
+git-ignored `rust-cpython/results/` of `/home/ubuntu/repos/python-build`
+on this host; retention ends with the VM.
+
+**Stages** (all clean, `verified=True`, `dirty=False`):
+
+| Stage | Commit | Profile / flags |
+| --- | --- | --- |
+| `perf-upstream`, `perf-upstream-jit`, `perf-rust`, `perf-rust-jit` (B4), `perf-rust-serc`, `perf-final-jit-serc`, `perf-rust-jit-aa` | `main` `ffeca5f` + uncommitted OD22 files (overlay clean) | fat/cgu1 |
+| `perf-climb-ref` | `de51884` = `3bd21f6` + OD22 files | thin/cgu16, no JIT |
+| B1 `perf-ref-lto` | `631da59` = `3bd21f6` + fat profile | fat/cgu1, no JIT |
+| B2 `perf-q9-base` | `f39e98a` = `f19fb2f` + fat profile + OD22 files | `--jit` |
+| B3 `perf-q9-cand` | `052dd68` = `574946e` + fat profile + OD22 files | `--jit` |
+| B5 `perf-rust-jit-thin`, B6 `perf-rust-serc-thin` | `281af0c` = `ffeca5f` + thin profile + OD22 files | thin/cgu16, `--jit` / `--serc` |
+| `perf-q9-{base,cand}-map` | `6f9a8d8` / `68cf58f` = B2 / B3 + `a4a8934`'s Linux JIT-map guard | instrumentation twins for `jit-stats` only |
+
+B2/B3 predate `a4a8934`, whose `jit.c` change enables the JIT map writer on
+Linux, so `jit-stats` on the measured stages writes no map; the twins carry
+only that guard. `perf-ref-lto` is a non-JIT build and has no JIT code bytes.
+
+**Results** (5 runs each; run IDs under `rust-cpython/results/perf-bench/`):
+
+| Step | Run | Verdict | Deciding entities |
+| --- | --- | --- | --- |
+| A/A `perf-rust-jit` vs `-aa` | `20261120T192519Z` | INCONCLUSIVE | 12 unbounded: deltablue wall/cpu, django_wsgi_request wall, float RSS/private/PSS, scimark_monte_carlo wall/cpu, zlib_decode_1m wall/RSS/private/PSS |
+| calibrate `perf-rust-jit` | `20261120T212227Z` | CALIBRATION-INCONCLUSIVE | 8: catalog_toml_load, compileall_source, django_asgi_request wall; rust_base64_small wall/private; zlib_decode_1m private/PSS/RSS |
+| G1 q9-base → q9-cand | `20261121T020240Z` | REJECT | nbody, scimark_sparse_mat_mult wall/cpu regressed; hexiom, scimark_lu/monte_carlo/sor improved |
+| G1 correctness | `20261121T131247Z`, `…132824Z`, `…134227Z` | CORRECT | seeds 0–2 × 2,000 programs, 0 mismatches, coverage 97.45/97.75/97.25%; training + held-out digests equal; targeted suites equal |
+| G1 jit-stats (twins) | `perf-q9-{base,cand}-map` | MEASURED | code bytes: nbody 53,469 → 73,785, scimark_fft 54,429 → 72,579, sparse_mat_mult 16,586 → 18,552; lu, sor, monte_carlo grow ≤ 1,575; 10 kernels equal; all JIT-active |
+| G2 climb-ref (thin) → ref-lto (fat) | `20261121T063007Z` | REJECT (recorded size) | fat reference slower on nbody, raytrace, spectral_norm, scimark_fft/monte_carlo/sor/sparse_mat_mult; Rust extensions 15,098,272 → 13,753,224 bytes |
+| G3 jit-set / held-out (explore) | `20261121T052500Z` / `20261121T080956Z` | REJECT | `S` 0.8728, held-out 0.8826 (CPU geomeans); nbody wall/cpu, float memory / generators wall/cpu/memory, comprehensions memory |
+| G3 gate ref-lto → rust-jit | `20261121T084627Z` | REJECT | `S` 0.8726; nbody wall/cpu; django_wsgi_request, django_template_realistic wall + memory; float, python_startup, serialization_roundtrip memory |
+| G4 jit-thin → rust-jit (fat) | `20261121T102845Z` | REJECT | float, spectral_norm wall/cpu regressed; libpython text 3,496,351 → 3,513,471; build 353 s → 322 s |
+| G5 serc-thin → rust-serc (fat), C3 set | `20261121T120910Z` | ACCEPT | cold_python_startup, cold_import_django, compileall_source wall + peak RSS improved; libpython text 11,947,343 → 10,581,279 |
+| `test --all` parity | `rust-cpython/logs/perf-*-all.log` | PARITY | `perf-rust-jit` fails a subset of `perf-upstream-jit`'s files (no overlay-only failure); `perf-rust` adds only the known RTLS red (`test_ssl`, `test_support`, asyncio `test_sendfile`/`test_sslproto`); `test_zstd` and `test_buffer` are upstream-only red; multiprocessing `test_misc` and `test_socket` red on all four |
+| Serc verify | `perf-rust-serc` | PASS | `--serc-verify` on test_compile/marshal/dis/import, no dual-compile difference |
+
+The `perf-rust-jit` targeted run fails only the 19 known superseded
+`test_capi.test_opt` uop assertions. An earlier G2 (`20261121T033612Z`)
+compared two fat builds by mistake and is **invalid**.
+
+**Pending consequences (not executed, provisional).** G1 REJECT would
+revert `574946e`; G4 REJECT with G5 ACCEPT means fat LTO does not win on
+both tracks, which would revert `bfc2e23` and repeat G3 against
+`perf-climb-ref`. A/A and calibration are INCONCLUSIVE on this host, so its
+noise floor is not established. All three decisions wait for valid
+predetermined qualification. Timing reopens only after a material,
+documented host/control change or an independently reviewed harness repair
+(runbook); independent source work continues under OD21.
+
+### Cloud worker state (through `e8f2b8e`)
+
 
 | Area | Current evidence / next decision |
 | --- | --- |
@@ -4209,6 +4285,14 @@ remain unchanged.
   platform access/budget controls. No statement that a worker resumed is
   valid without observing it. Existing campaign-branch push authorization
   remains; no upstream publication or production scope is added.
+- **OD22 (2026-11-20; recorded as "OD21" on `main` at `3917a45`/`294b19a`
+  before reconciliation with this branch):** the owner authorizes provisional
+  lane operation on the session's Ubuntu 22.04 / glibc 2.35 Devin VM
+  (`linux-toolchain.lock.json` `provisional_hosts`). Its receipts are
+  PROVISIONAL; it changes host eligibility only. The owner's 2026-11-21
+  steering confirms `main@294b19a` is a diagnostic checkpoint that
+  establishes no qualified Linux win, does not meet M4/C3 and does not close
+  the campaign; OD21's continuous mandate governs.
 - **Parked:** a method-based frontend (withdrawn PEP 836 prototype, observed
   head `04a79098`) opens only by owner decision.
 
@@ -5903,3 +5987,4 @@ resolves to the same `apple-m1` CPU. Closed without a build change.
 | 2026-11-18 | e891 | J/C | audit | build-epoch audit: `bfc2e23` moved all lane Rust crates to fat LTO/1 codegen unit; `perf-climb-ref` (`3bd21f6`) is thin/16, every build after 11-17 03:48 is fat; build reports' `lto` field records CPython's clang LTO only | `perf-climb-ref` vs `perf-rust-jit` | `S` 0.7258 and the guard REJECT cross build configurations | — | PROVISIONAL: rebaseline per Status P0 G2–G5 | `rust-cpython/results/perf-*.json` (`cargo_profile`, `lto` fields); `rust-cpython/overlay/Cargo.toml` |
 | 2026-11-18 | e891 | C | diagnostic | cold-compile hardware counters, `/usr/bin/time -l`, 8 runs per build, six stdlib packages compiled from source (`-B -X frozen_modules=off`, empty `PYTHONPYCACHEPREFIX`); warm-cache control 4 runs | `perf-rust` vs `perf-rust-serc` @ `5e09c5f` | — | instructions 1,981M → 1,740M (−12%); cycles ~698M → ~765M (+9%); IPC 2.84 → 2.28; warm-cache cycles ~150–170M on both; page reclaims +~300; libpython `__TEXT` 5.2 → 12.9 MB; startup max RSS 16.8 → 23.3 MB with dirty footprint 9.3 → 10.6 MB | MEASURED: the C3 gap is compile-path IPC (front-end or memory stalls), not instruction work; reorders the C queue to C-IPC attribution then code locality or allocation locality | reproduce: `PYTHONPYCACHEPREFIX=$(mktemp -d) /usr/bin/time -l rust-cpython/work/perf/<build>/build/python.exe -B -X frozen_modules=off -c 'import json, argparse, email.parser, http.client, decimal, unittest'` |
 | 2026-11-18 | e891 | J | H0 | injected-control validation of the repaired policy (`f29d45e`, OD18): `rust-cpython/gate_controls.py` scales one entity's per-run wall/cpu ratios and intervals by a known factor and re-judges, over 3 same-source A/A receipts and 2 null-binary probes (115 entity decisions, 230 timing metrics) | current `perf_verdict.py` | — | factor 1.0: 100% metrics within budget, 115/115 WITHIN-BUDGET (no false ACCEPT/REJECT); 1.02: 98.3% metrics regressed, 115/115 REJECT; 1.015: 80.9% regressed, 100 REJECT / 15 INCONCLUSIVE, none accepted; 0.98: 94.8% improved, ACCEPT whenever the shifted entity is a target | VALIDATED: no policy change; limitation: shifts are synthetic over real noise, so cross-build layout offsets are covered only by the two null probes | `python3 rust-cpython/gate_controls.py rust-cpython/results/perf-bench/20261116T192836Z-perf-rust-jit-vs-perf-rust-jit-aa …/20261116T223944Z-… …/20261118T044154Z-… rust-cpython/results/lane-jit-subscr-virtual/perf-bench/20261117T004023Z-perf-rust-jit-vs-perf-probe-layout …/20261117T015234Z-perf-rust-jit-vs-perf-probe-rust --factor 0.98 --factor 1.0 --factor 1.015 --factor 1.02` |
+| 2026-11-21 | e891 | J/C | P0 (provisional) | OD22 Ubuntu 22.04 VM bring-up: A/A, calibrate, B1–B6 rebuilt clean, G1–G5, fuzz seeds 0–2, `test --all` parity | `perf-climb-ref` `de51884`, `perf-ref-lto` `631da59` | — | see Status checkpoint | PROVISIONAL: A/A INCONCLUSIVE, calibrate INCONCLUSIVE, G1 REJECT (correctness CORRECT), G2 REJECT, G3 REJECT, G4 REJECT, G5 ACCEPT; IPC PROFILING_DEFERRED; consequences wait for 24.04 | `rust-cpython/results/perf-bench/20261120T192519Z-…` through `20261121T134227Z-…` (host-local) |

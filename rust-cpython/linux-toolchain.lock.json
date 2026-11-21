@@ -83,5 +83,40 @@
     "libxml2=2.9.14+dfsg-1.3ubuntu3.10",
     "libgcc-14-dev=14.2.0-4ubuntu2~24.04.1"
   ],
-  "system_packages_note": "Mirrors the macOS lane's platform/Homebrew dependency set (OpenSSL 3, SQLite, libffi, xz, bzip2, zstd, zlib, readline/ncurses, uuid, dbm). libzstd-dev is not in the default image and is installed with apt-get install libzstd-dev. The pinned 3.16 sources no longer bundle libmpdec and Ubuntu 24.04 main has no libmpdec-dev (the only candidate on this image is a third-party PPA), so the lane builds the product's locked mpdecimal 4.0.0 source (root sources.lock.json entry `mpdecimal`, verified by SHA-256; fetched from bytereef.org or its byte-identical Ubuntu universe orig tarball) into a private static PIC libmpdec.a under work/deps, and configures _decimal against it. The pinned libclang runtime packages provide the shared libclang dependency used by bindgen on Ubuntu 24.04. libgcc-14-dev is pinned for the GCC CRT startup objects (crtbeginS.o/crtbeginT.o) clang links against on glibc; it carries no compiler or stdlib C++ headers, and the locked LLVM clang+lld remain the only compiler and linker in every lane build. A minimal fresh Ubuntu 24.04 otherwise cannot link a single executable with the locked clang."
+  "system_packages_note": "Mirrors the macOS lane's platform/Homebrew dependency set (OpenSSL 3, SQLite, libffi, xz, bzip2, zstd, zlib, readline/ncurses, uuid, dbm). libzstd-dev is not in the default image and is installed with apt-get install libzstd-dev. The pinned 3.16 sources no longer bundle libmpdec and Ubuntu 24.04 main has no libmpdec-dev (the only candidate on this image is a third-party PPA), so the lane builds the product's locked mpdecimal 4.0.0 source (root sources.lock.json entry `mpdecimal`, verified by SHA-256; fetched from bytereef.org or its byte-identical Ubuntu universe orig tarball) into a private static PIC libmpdec.a under work/deps, and configures _decimal against it. The pinned libclang runtime packages provide the shared libclang dependency used by bindgen on Ubuntu 24.04. libgcc-14-dev is pinned for the GCC CRT startup objects (crtbeginS.o/crtbeginT.o) clang links against on glibc; it carries no compiler or stdlib C++ headers, and the locked LLVM clang+lld remain the only compiler and linker in every lane build. A minimal fresh Ubuntu 24.04 otherwise cannot link a single executable with the locked clang.",
+  "provisional_hosts": [
+    {
+      "os_version_id": "22.04",
+      "glibc": "2.35",
+      "reason": "Interim Devin VM host authorized by owner 2026-11-20 (OD22). Receipts recorded on this host are PROVISIONAL and must be re-measured on the pinned Ubuntu 24.04/glibc 2.39 host before any gate counts as qualified.",
+      "make_version": "4.3",
+      "make_package": "4.3-4.1build1",
+      "pkgconf_version": "1.8.0",
+      "pkgconf_package": "1.8.0-1",
+      "libclang_lib": "/usr/lib/llvm-14/lib",
+      "system_packages": [
+        "libc6-dev=2.35-0ubuntu3.18",
+        "linux-libc-dev=5.15.0-204.214",
+        "libssl-dev=3.0.2-0ubuntu1.30",
+        "libsqlite3-dev=3.37.2-2ubuntu0.8",
+        "libffi-dev=3.4.2-4",
+        "zlib1g-dev=1:1.2.11.dfsg-2ubuntu9.2",
+        "libbz2-dev=1.0.8-5ubuntu0.1",
+        "liblzma-dev=5.2.5-2ubuntu1.2",
+        "libzstd-dev=1.4.8+dfsg-3build1",
+        "libreadline-dev=8.1.2-1",
+        "libncurses-dev=6.3-2ubuntu0.3",
+        "uuid-dev=2.37.2-4ubuntu3.6",
+        "libgdbm-dev=1.23-1",
+        "libgdbm-compat-dev=1.23-1",
+        "libexpat1-dev=2.4.7-1ubuntu0.9",
+        "libclang-common-14-dev=1:14.0.0-1ubuntu1.1",
+        "libclang1-14=1:14.0.0-1ubuntu1.1",
+        "libllvm14=1:14.0.0-1ubuntu1.1",
+        "libicu70=70.1-2",
+        "libxml2=2.9.13+dfsg-1ubuntu0.14",
+        "libgcc-11-dev=11.4.0-1ubuntu1~22.04.3"
+      ]
+    }
+  ]
 }

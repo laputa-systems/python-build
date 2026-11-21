@@ -117,6 +117,7 @@ class LinuxToolchain:
     host_os_version: str
     glibc: str
     system_packages: tuple[str, ...]
+    provisional_hosts: tuple[dict[str, Any], ...]
     icu_runtime: dict[str, Any]
     # Fields the macOS toolchain carries; empty on Linux by construction.
     deployment_target: str = ""
@@ -133,7 +134,46 @@ class LinuxToolchain:
 
     @property
     def libclang_path(self) -> Path:
-        return Path("/usr/lib/llvm-18/lib")
+        """The distribution libclang directory for bindgen.
+
+        Ubuntu 24.04 pins /usr/lib/llvm-18/lib; provisional hosts (e.g.
+        22.04) carry a different llvm-N. Prefer the lock's pin, then the
+        newest /usr/lib/llvm-N/lib that ships libclang.so.1.
+        """
+        pinned = Path("/usr/lib/llvm-18/lib")
+        if (pinned / "libclang.so.1").is_file():
+            return pinned
+        versions = []
+        for candidate in Path("/usr/lib").glob("llvm-*/lib"):
+            try:
+                versions.append((int(candidate.parent.name.removeprefix("llvm-")), candidate))
+            except ValueError:
+                continue
+        for _version, candidate in sorted(versions, reverse=True):
+            if (candidate / "libclang.so.1").is_file():
+                return candidate
+        return pinned
+
+    @property
+    def bindgen_resource_dir(self) -> Path:
+        """clang resource dir matching the libclang bindgen will load.
+
+        libclang-14 crashes parsing clang-23 built-in headers, so on hosts
+        whose distro libclang ships its own resource dir
+        (/usr/lib/llvm-N/lib/clang/N) that dir wins; otherwise the locked
+        LLVM toolchain's resource dir is used, as upstream intends when the
+        distro headers are broken (libclang-18 on Ubuntu 24.04).
+        """
+        clang_dirs = []
+        for candidate in self.libclang_path.glob("clang/*"):
+            try:
+                clang_dirs.append((int(candidate.name.split(".")[0]), candidate))
+            except ValueError:
+                continue
+        for _version, candidate in sorted(clang_dirs, reverse=True):
+            if (candidate / "include").is_dir():
+                return candidate
+        return self.llvm_resource_dir
 
     def llvm_input(self) -> Input:
         return Input(
@@ -293,8 +333,50 @@ def load_linux_toolchain(path: Path, cache_root: Path) -> LinuxToolchain:
         host_os_version=_require(host, "os_version_id", "host"),
         glibc=_require(host, "glibc", "host"),
         system_packages=tuple(_require(document, "system_packages", "lock")),
+        provisional_hosts=tuple(document.get("provisional_hosts", ())),
         icu_runtime=_require(document, "lld_icu_runtime", "lock"),
     )
+
+
+def host_spec(toolchain: LinuxToolchain) -> tuple[str, dict[str, Any]]:
+    """The host spec this host satisfies: ('lock', spec) or ('provisional', spec).
+
+    Provisional specs come from the lock's `provisional_hosts` entries and
+    carry their own make/pkgconf versions and package pins. When nothing
+    matches, the primary spec is returned so problems() reports against it.
+    """
+    release = _os_release()
+    libc = platform.libc_ver()
+    primary = {
+        "os_version_id": toolchain.host_os_version,
+        "glibc": toolchain.glibc,
+        "make_version": toolchain.make_version,
+        "pkgconf_version": toolchain.pkgconf_version,
+        "system_packages": list(toolchain.system_packages),
+    }
+    if (
+        release.get("ID") == toolchain.host_os_id
+        and release.get("VERSION_ID") == primary["os_version_id"]
+        and libc == ("glibc", primary["glibc"])
+    ):
+        return "lock", primary
+    for entry in toolchain.provisional_hosts:
+        if (
+            release.get("ID") == toolchain.host_os_id
+            and release.get("VERSION_ID") == entry.get("os_version_id")
+            and libc == ("glibc", entry.get("glibc"))
+        ):
+            return "provisional", {
+                "os_version_id": entry["os_version_id"],
+                "glibc": entry["glibc"],
+                "reason": entry.get("reason", ""),
+                "make_version": entry.get("make_version", toolchain.make_version),
+                "pkgconf_version": entry.get("pkgconf_version", toolchain.pkgconf_version),
+                "system_packages": entry.get(
+                    "system_packages", list(toolchain.system_packages)
+                ),
+            }
+    return "lock", primary
 
 
 def problems(toolchain: LinuxToolchain) -> list[str]:
@@ -305,17 +387,18 @@ def problems(toolchain: LinuxToolchain) -> list[str]:
             f"the Linux lane requires native x86_64 Linux (found {platform.system()} "
             f"{platform.machine()})"
         )
+    spec_kind, spec = host_spec(toolchain)
     release = _os_release()
-    if (release.get("ID"), release.get("VERSION_ID")) != (
-        toolchain.host_os_id, toolchain.host_os_version
+    if release.get("ID") != toolchain.host_os_id or (
+        release.get("VERSION_ID") != spec["os_version_id"]
     ):
         found.append(
             f"host distribution is {release.get('ID')} {release.get('VERSION_ID')}; "
-            f"lock requires {toolchain.host_os_id} {toolchain.host_os_version}"
+            f"lock requires {toolchain.host_os_id} {spec['os_version_id']}"
         )
     libc = platform.libc_ver()
-    if libc != ("glibc", toolchain.glibc):
-        found.append(f"host C library is {libc}; lock requires glibc {toolchain.glibc}")
+    if libc != ("glibc", spec["glibc"]):
+        found.append(f"host C library is {libc}; lock requires glibc {spec['glibc']}")
     marker = toolchain.llvm_prefix / ".verified.json"
     try:
         marker_data = json.loads(marker.read_text())
@@ -346,12 +429,12 @@ def problems(toolchain: LinuxToolchain) -> list[str]:
         found.append("ICU 70 runtime for ld.lld is not provisioned; run fetch")
     if not (toolchain.libclang_path / "libclang.so.1").is_file():
         found.append(f"{toolchain.libclang_path / 'libclang.so.1'} is missing")
-    if f"GNU Make {toolchain.make_version}" not in _tool_output([str(toolchain.make), "--version"]):
-        found.append(f"{toolchain.make} does not report GNU Make {toolchain.make_version}")
-    if _tool_output([str(toolchain.pkgconf), "--version"]) != toolchain.pkgconf_version:
-        found.append(f"{toolchain.pkgconf} does not report {toolchain.pkgconf_version}")
-    installed = _dpkg_versions(list(toolchain.system_packages))
-    for pinned in toolchain.system_packages:
+    if f"GNU Make {spec['make_version']}" not in _tool_output([str(toolchain.make), "--version"]):
+        found.append(f"{toolchain.make} does not report GNU Make {spec['make_version']}")
+    if _tool_output([str(toolchain.pkgconf), "--version"]) != spec["pkgconf_version"]:
+        found.append(f"{toolchain.pkgconf} does not report {spec['pkgconf_version']}")
+    installed = _dpkg_versions(list(spec["system_packages"]))
+    for pinned in spec["system_packages"]:
         name, _separator, version = pinned.partition("=")
         if installed.get(name) != version:
             found.append(
@@ -440,7 +523,8 @@ def setup_local_with_shared_ssl_rs(contents: str) -> str:
 
 
 def package_report(toolchain: LinuxToolchain) -> dict[str, str]:
-    return _dpkg_versions(list(toolchain.system_packages))
+    _kind, spec = host_spec(toolchain)
+    return _dpkg_versions(list(spec["system_packages"]))
 
 
 def docker_offline() -> bool:
