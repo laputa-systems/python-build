@@ -26,10 +26,14 @@ import perf
 import perf_verdict as pv
 
 
-def summary(wall_ci, *, wall_ratios=(1.0, 1.0, 1.0), cpu=None, status="pass", memory=None):
+NO_CPU = object()
+
+
+def summary(wall_ci, *, wall_ratios=(1.0, 1.0, 1.0),
+            cpu=((1.0,) * 3, (1.0,) * 3), status="pass", memory=None):
     timing = {"paired_ratio_samples": list(wall_ratios), "median_ratio_ci95": wall_ci,
               "status": status}
-    if cpu is not None:
+    if cpu is not NO_CPU:
         base, cand = cpu
         timing["cpu"] = {"status": "compared", "metrics": {"total_seconds_per_operation": {
             "baseline_samples": list(base), "candidate_samples": list(cand)}}}
@@ -801,7 +805,7 @@ class DecideTests(unittest.TestCase):
         self.assertEqual(decision["decision"], pv.REJECT)
         self.assertIn("w cpu", decision["regressions"])
 
-        missing = summary([0.89, 0.91], wall_ratios=(0.9,) * 3)
+        missing = summary([0.89, 0.91], wall_ratios=(0.9,) * 3, cpu=NO_CPU)
         decision = pv.decide({"w": verdict(missing, missing)}, targets=["w"], runs=2,
                              quiet=True, gate=True)
         self.assertEqual(decision["decision"], pv.INCONCLUSIVE)
