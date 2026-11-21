@@ -1,0 +1,432 @@
+{
+ "lib": "/home/ubuntu/repos/python-build/wt-cloc-parent/rust-cpython/stage-perf-cloc-parent/lib/libpython3.16.so.1.0",
+ "n": 60,
+ "total": {
+  "size": 2438066,
+  "stub_bytes": 60964,
+  "stubs": 2664,
+  "stub_bytes_first_half": 10874
+ },
+ "functions": [
+  {
+   "name": "<serc::assembler::ir::LayoutAssembler>::dynamic_exception_owners_with_replay::<true>",
+   "size": 286294,
+   "stubs": 241,
+   "stub_bytes": 4867,
+   "stub_bytes_first_half": 715
+  },
+  {
+   "name": "<serc::assembler::ir::OptimizationPipeline>::optimize",
+   "size": 205884,
+   "stubs": 305,
+   "stub_bytes": 7572,
+   "stub_bytes_first_half": 3170
+  },
+  {
+   "name": "<serc::assembler::ir::OptimizationPipeline>::duplicate_exit_blocks_with_store_origins",
+   "size": 194575,
+   "stubs": 572,
+   "stub_bytes": 10248,
+   "stub_bytes_first_half": 1727
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_try_finally_inner",
+   "size": 130824,
+   "stubs": 55,
+   "stub_bytes": 1344,
+   "stub_bytes_first_half": 77
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_statement_inner",
+   "size": 126928,
+   "stubs": 64,
+   "stub_bytes": 1572,
+   "stub_bytes_first_half": 155
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_try_except",
+   "size": 107571,
+   "stubs": 29,
+   "stub_bytes": 623,
+   "stub_bytes_first_half": 56
+  },
+  {
+   "name": "<serc::assembler::ir::OptimizationPipeline>::thread_forward_jumps_with_source_gates::<true, true>",
+   "size": 93859,
+   "stubs": 145,
+   "stub_bytes": 2661,
+   "stub_bytes_first_half": 149
+  },
+  {
+   "name": "<serc::compiler::scope::FunctionPlan>::build",
+   "size": 57649,
+   "stubs": 10,
+   "stub_bytes": 473,
+   "stub_bytes_first_half": 381
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_suite_inner",
+   "size": 54151,
+   "stubs": 45,
+   "stub_bytes": 1168,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_if",
+   "size": 53669,
+   "stubs": 37,
+   "stub_bytes": 815,
+   "stub_bytes_first_half": 15
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_inlined_comprehension",
+   "size": 51228,
+   "stubs": 15,
+   "stub_bytes": 767,
+   "stub_bytes_first_half": 430
+  },
+  {
+   "name": "<serc::assembler::ir::OptimizationPipeline>::prepare_normal_try_copy_plan_with_discards",
+   "size": 48725,
+   "stubs": 94,
+   "stub_bytes": 1858,
+   "stub_bytes_first_half": 216
+  },
+  {
+   "name": "<serc::assembler::ir::OptimizationPipeline>::optimize_legacy",
+   "size": 44310,
+   "stubs": 102,
+   "stub_bytes": 1999,
+   "stub_bytes_first_half": 154
+  },
+  {
+   "name": "<serc::assembler::ir::OptimizationPipeline>::push_cold_blocks_to_end",
+   "size": 35829,
+   "stubs": 95,
+   "stub_bytes": 1737,
+   "stub_bytes_first_half": 197
+  },
+  {
+   "name": "<serc::assembler::exception_owners::ExceptionOwnerProvenance>::visit_legacy_seed_captures_mut::<<serc::assembler::ir::OptimizationPipeline>::initialize_legacy_n",
+   "size": 34592,
+   "stubs": 3,
+   "stub_bytes": 82,
+   "stub_bytes_first_half": 34
+  },
+  {
+   "name": "<serc::assembler::ir::OptimizationPipeline>::remove_redundant_forward_jumps",
+   "size": 33699,
+   "stubs": 70,
+   "stub_bytes": 1309,
+   "stub_bytes_first_half": 198
+  },
+  {
+   "name": "<serc::assembler::ir::Assembler>::into_optimization_pipeline",
+   "size": 33580,
+   "stubs": 64,
+   "stub_bytes": 1418,
+   "stub_bytes_first_half": 338
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_loop_tail_if",
+   "size": 31962,
+   "stubs": 12,
+   "stub_bytes": 320,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<serc::assembler::ir::Assembler>::prepare_copied_finally_iterator_break",
+   "size": 31817,
+   "stubs": 13,
+   "stub_bytes": 1206,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "serc::target::is_preinterned_string_for",
+   "size": 31539,
+   "stubs": 0,
+   "stub_bytes": 0,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<serc::assembler::exception_owners::ExceptionOwnerProvenance>::visit_legacy_seed_captures_mut::<<serc::assembler::ir::OptimizationPipeline>::initialize_legacy_n",
+   "size": 31230,
+   "stubs": 2,
+   "stub_bytes": 48,
+   "stub_bytes_first_half": 24
+  },
+  {
+   "name": "<serc::assembler::ir::OptimizationPipeline>::optimize_load_fast_with_retained_entries_inner::<true, true>",
+   "size": 31072,
+   "stubs": 64,
+   "stub_bytes": 1320,
+   "stub_bytes_first_half": 34
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_generator_expression",
+   "size": 26897,
+   "stubs": 13,
+   "stub_bytes": 588,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<serc::compiler::scope::ClassPlan>::build",
+   "size": 26035,
+   "stubs": 3,
+   "stub_bytes": 111,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_plain_class_definition",
+   "size": 25920,
+   "stubs": 21,
+   "stub_bytes": 863,
+   "stub_bytes_first_half": 443
+  },
+  {
+   "name": "<serc::assembler::ir::OptimizationPipeline>::prepare_normal_try_copy_plan",
+   "size": 25613,
+   "stubs": 47,
+   "stub_bytes": 932,
+   "stub_bytes_first_half": 480
+  },
+  {
+   "name": "<serc::assembler::ir::OptimizationPipeline>::remove_redundant_nops_scoped",
+   "size": 25241,
+   "stubs": 19,
+   "stub_bytes": 312,
+   "stub_bytes_first_half": 12
+  },
+  {
+   "name": "<serc::compiler::scope::ScopeBodyFactsCollector as ruff_python_ast::visitor::Visitor>::visit_stmt",
+   "size": 24699,
+   "stubs": 1,
+   "stub_bytes": 20,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_generic_class_definition",
+   "size": 23717,
+   "stubs": 10,
+   "stub_bytes": 340,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_match_with_context",
+   "size": 23216,
+   "stubs": 17,
+   "stub_bytes": 425,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<ruff_python_codegen::generator::Generator>::unparse_expr",
+   "size": 21955,
+   "stubs": 4,
+   "stub_bytes": 151,
+   "stub_bytes_first_half": 24
+  },
+  {
+   "name": "<serc::assembler::ir::LayoutAssembler>::finish",
+   "size": 21836,
+   "stubs": 22,
+   "stub_bytes": 610,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<serc::assembler::ir::OptimizationPipeline>::optimize_swap_runs",
+   "size": 21335,
+   "stubs": 48,
+   "stub_bytes": 969,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_type_parameter_thunk",
+   "size": 20967,
+   "stubs": 12,
+   "stub_bytes": 1025,
+   "stub_bytes_first_half": 120
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_terminal_if",
+   "size": 20541,
+   "stubs": 14,
+   "stub_bytes": 274,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<serc::assembler::ir::OptimizationPipeline>::prepare_conditional_normal_try_joins",
+   "size": 19440,
+   "stubs": 44,
+   "stub_bytes": 801,
+   "stub_bytes_first_half": 75
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_lambda",
+   "size": 19275,
+   "stubs": 13,
+   "stub_bytes": 838,
+   "stub_bytes_first_half": 387
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_comprehension",
+   "size": 18916,
+   "stubs": 7,
+   "stub_bytes": 289,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<serc::assembler::ir::OptimizationPipeline>::legacy_repeated_tail_predecessors",
+   "size": 17566,
+   "stubs": 38,
+   "stub_bytes": 701,
+   "stub_bytes_first_half": 103
+  },
+  {
+   "name": "<serc::assembler::exception_owners::ExceptionOwnerProvenance>::bind_copied_borrow_exits",
+   "size": 17351,
+   "stubs": 21,
+   "stub_bytes": 386,
+   "stub_bytes_first_half": 34
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_plain_function_definition",
+   "size": 17335,
+   "stubs": 13,
+   "stub_bytes": 642,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<serc::compiler::Compiler>::emit_loop_control_finally_unwind",
+   "size": 16845,
+   "stubs": 16,
+   "stub_bytes": 405,
+   "stub_bytes_first_half": 24
+  },
+  {
+   "name": "<serc::compiler::scope::ScopeArena>::build_scopes",
+   "size": 16711,
+   "stubs": 19,
+   "stub_bytes": 348,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<serc::compiler::Compiler>::module_with_scopes::<serc::code_object::CodeFilename>",
+   "size": 16637,
+   "stubs": 11,
+   "stub_bytes": 653,
+   "stub_bytes_first_half": 319
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_generic_function_definition",
+   "size": 16579,
+   "stubs": 5,
+   "stub_bytes": 179,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<serc::assembler::ir::Assembler>::current_normal_finally_condition_slot_owner",
+   "size": 15850,
+   "stubs": 10,
+   "stub_bytes": 521,
+   "stub_bytes_first_half": 24
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_while",
+   "size": 15408,
+   "stubs": 13,
+   "stub_bytes": 666,
+   "stub_bytes_first_half": 391
+  },
+  {
+   "name": "<serc::assembler::exception_owners::ExceptionOwnerProvenance>::visit_legacy_seed_captures_mut::<<serc::assembler::ir::Instruction>::clear_legacy_initial_jump_ar",
+   "size": 14902,
+   "stubs": 1,
+   "stub_bytes": 89,
+   "stub_bytes_first_half": 89
+  },
+  {
+   "name": "<ruff_python_parser::parser::Parser>::parse_statement",
+   "size": 14870,
+   "stubs": 3,
+   "stub_bytes": 183,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<ruff_python_parser::parser::Parser>::parse_match_pattern_lhs::{closure#0}",
+   "size": 14592,
+   "stubs": 2,
+   "stub_bytes": 184,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<serc::assembler::ir::OptimizationPipeline>::prepare_plain_tuple_copy_plan",
+   "size": 13887,
+   "stubs": 42,
+   "stub_bytes": 846,
+   "stub_bytes_first_half": 64
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_try_star_except",
+   "size": 13569,
+   "stubs": 8,
+   "stub_bytes": 295,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<serc::compiler::scope::ModuleNameCollector as ruff_python_ast::visitor::Visitor>::visit_stmt",
+   "size": 12893,
+   "stubs": 5,
+   "stub_bytes": 328,
+   "stub_bytes_first_half": 203
+  },
+  {
+   "name": "<serc::assembler::exception_owners::ExceptionOwnerProvenance>::uncompacted_prefix_inner",
+   "size": 12850,
+   "stubs": 20,
+   "stub_bytes": 351,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "ruff_python_ast::visitor::walk_body::<serc::compiler::syntax::Validator<false, false>>",
+   "size": 12572,
+   "stubs": 17,
+   "stub_bytes": 252,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_stack_pattern",
+   "size": 12304,
+   "stubs": 11,
+   "stub_bytes": 437,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<serc::assembler::ir::OptimizationPipeline>::preserve_shared_try_return_joins",
+   "size": 12298,
+   "stubs": 38,
+   "stub_bytes": 623,
+   "stub_bytes_first_half": 12
+  },
+  {
+   "name": "<serc::assembler::ir::OptimizationPipeline>::apply_static_swaps",
+   "size": 12256,
+   "stubs": 32,
+   "stub_bytes": 637,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "<serc::compiler::Compiler>::compile_type_alias",
+   "size": 12153,
+   "stubs": 5,
+   "stub_bytes": 191,
+   "stub_bytes_first_half": 0
+  },
+  {
+   "name": "serc::compiler::scope::analyze_expression_scope_with_cache",
+   "size": 12048,
+   "stubs": 2,
+   "stub_bytes": 92,
+   "stub_bytes_first_half": 0
+  }
+ ]
+}
