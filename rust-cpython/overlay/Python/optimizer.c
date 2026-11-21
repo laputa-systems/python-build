@@ -2783,6 +2783,7 @@ typedef struct {
     uint16_t float_compare, int_compare, bool_bool, bool_int;
     uint16_t iter_check, iter_exhaustion, iter_next, globals, builtins, entry_globals;
     uint16_t local_int, local_float, push_null;
+    uint16_t guard_nos_object_type_version, subscr_array_d, subscr_array_i;
 } _PyJitLocalOpcodes;
 
 typedef struct {
@@ -2794,7 +2795,7 @@ typedef struct {
     uint32_t source;
 } _PyJitLocalStep;
 
-static_assert(sizeof(_PyJitLocalOpcodes) == 116, "local opcode map matches Rust");
+static_assert(sizeof(_PyJitLocalOpcodes) == 122, "local opcode map matches Rust");
 static_assert(sizeof(_PyJitLocalUop) == 6, "local descriptors match Rust");
 static_assert(sizeof(_PyJitLocalStep) == 8, "local steps match Rust");
 static_assert(offsetof(_PyJitLocalStep, source) == 4, "local source offset matches Rust");
@@ -2850,6 +2851,9 @@ guard_loop_locals(_PyUOpInstruction *buffer, int length, _PyInterpreterFrame *fr
         .builtins = _GUARD_BUILTINS_IS_CANONICAL, .entry_globals = _GUARD_LOOP_GLOBALS_VERSION,
         .local_int = _GUARD_LOCAL_INT, .local_float = _GUARD_LOCAL_FLOAT,
         .push_null = _PUSH_NULL,
+        .guard_nos_object_type_version = _GUARD_NOS_OBJECT_TYPE_VERSION,
+        .subscr_array_d = _BINARY_OP_SUBSCR_ARRAY_D,
+        .subscr_array_i = _BINARY_OP_SUBSCR_ARRAY_I,
     };
     size_t locals = (size_t)code->co_nlocalsplus;
     size_t capacity = (size_t)length + locals;
