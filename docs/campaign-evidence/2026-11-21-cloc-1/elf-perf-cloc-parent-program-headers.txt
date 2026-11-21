@@ -1,0 +1,30 @@
+
+Elf file type is DYN (Shared object file)
+Entry point 0x0
+There are 10 program headers, starting at offset 64
+
+Program Headers:
+  Type           Offset   VirtAddr           PhysAddr           FileSiz  MemSiz   Flg Align
+  PHDR           0x000040 0x0000000000000040 0x0000000000000040 0x000230 0x000230 R   0x8
+  LOAD           0x000000 0x0000000000000000 0x0000000000000000 0x58e814 0x58e814 R   0x1000
+  LOAD           0x58e820 0x000000000058f820 0x000000000058f820 0xa1dec0 0xa1dec0 R E 0x1000
+  LOAD           0xfac6e0 0x0000000000fae6e0 0x0000000000fae6e0 0x0a7d90 0x0a8920 RW  0x1000
+  LOAD           0x1054480 0x0000000001057480 0x0000000001057480 0x08c8e8 0x0d437c RW  0x1000
+  TLS            0xfac6e0 0x0000000000fae6e0 0x0000000000fae6e0 0x000050 0x0000b8 R   0x8
+  DYNAMIC        0x1053638 0x0000000001055638 0x0000000001055638 0x0001d0 0x0001d0 RW  0x8
+  GNU_RELRO      0xfac6e0 0x0000000000fae6e0 0x0000000000fae6e0 0x0a7d90 0x0a8920 R   0x1
+  GNU_EH_FRAME   0x4a94f0 0x00000000004a94f0 0x00000000004a94f0 0x01f2a4 0x01f2a4 R   0x4
+  GNU_STACK      0x000000 0x0000000000000000 0x0000000000000000 0x000000 0x000000 RW  0
+
+ Section to Segment mapping:
+  Segment Sections...
+   00     
+   01     .dynsym .gnu.version .gnu.version_r .gnu.hash .dynstr .rela.dyn .rela.plt .rodata .eh_frame_hdr .eh_frame 
+   02     .text .init .fini .plt 
+   03     .tdata .fini_array .init_array .data.rel.ro .dynamic .got .relro_padding 
+   04     .data .tm_clone_table .PyRuntime .AsyncioDebug .got.plt .bss 
+   05     .tdata .tbss 
+   06     .dynamic 
+   07     .tdata .fini_array .init_array .data.rel.ro .dynamic .got .relro_padding 
+   08     .eh_frame_hdr 
+   09     

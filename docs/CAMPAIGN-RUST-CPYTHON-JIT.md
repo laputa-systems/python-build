@@ -53,6 +53,19 @@ original cloud worker (Ubuntu 24.04 container, checkpoints through
 qualified Linux gains: **0**. Historical PAUSED/BLOCKED/plateau closeouts
 do not end the current campaign.
 
+### Continuous checkpoint (2026-11-21, OD22 host)
+
+| Field | State |
+| --- | --- |
+| Source | Branch `integ/od22-reconcile`; CPU-accounting repair `85a982e` (cherry-pick of `b3f896a`), missing-CPU fail-closed `d4029e5` + fixtures `b09a995`, external host-check wrapper `tools/p0-bench` `21ef748`, evidence `da74796`. Measured incumbent unchanged; no accepted optimization. |
+| Hypothesis | C-LOC-1 Serc/parser package-local `opt-level="s"`, parent `da74796`, candidate `6e5568c` (`campaign/recipes/od22/cloc-cand`). |
+| Result | Prediction failed: Serc+ruff text -25.97% and source-mode executable PSS -1,340 KiB, but the `.pyc` control also fell 764 KiB (limit 100). Compile parity 2,103/2,103, `--serc-verify` suites OK. Mechanism retired, attempt 1/1. |
+| Counts | Hypotheses tested since steering: 1. Prepared unqualified candidates: 0. Accepted: 0. Qualified score: not established. |
+| Evidence | `docs/campaign-evidence/2026-11-21-od22-vm/` (24 verdicts, build reports, logs, recipe bundle, raw-tree digests, diagnostic CPU replay) and `docs/campaign-evidence/2026-11-21-cloc-1/`; each has `copies.sha256`. Raw trees host-only on the VM; no external pre/post host checks were retained for any earlier P0 run. |
+| Harness | Diagnostic replay under the repair changes only G5 `20261121T120910Z`, ACCEPT -> INCONCLUSIVE (all 10 workloads had incomplete CPU coverage). Future P0 runs use `rust-cpython/tools/p0-bench`. Tests: `tests.test_perf` 183 OK; benchmarks process/results/runner 53 OK. |
+| Next | Cold error-path outlining in Serc (runbook step 3 fallback), then one JIT allocation/materialization hypothesis from a `--jit --pystats` Linux build (step 4). |
+| Blocker | No qualified Linux timing host and no PMU counters on this VM; timing reopens only on a controlled worker with fresh H0/P0. |
+
 ### Linux provisional checkpoint (2026-11-21, OD22 host)
 
 **Host.** Ubuntu 22.04.5 LTS, glibc 2.35, kernel 6.8.0-1060-aws, KVM guest,
