@@ -35,6 +35,7 @@ pub struct LocalOpcodes {
     pub tos_overflow: u16,
     pub nos_overflow: u16,
     pub float_binary: [u16; 4],
+    pub float_binary_inplace: [u16; 8],
     pub int_binary: [u16; 3],
     pub float_compare: u16,
     pub int_compare: u16,
@@ -226,12 +227,15 @@ pub fn plan_loop_types(uops: &[LocalUop], ops: &LocalOpcodes, local_kinds: &[u16
             let depth = if opcode == ops.nos_overflow { 2 } else { 1 };
             if at(&stack, depth)? != Kind::Int { return Ok(None) }
         }
-        else if ops.float_binary.contains(&opcode) || ops.int_binary.contains(&opcode)
+        else if ops.float_binary.contains(&opcode) || ops.float_binary_inplace.contains(&opcode)
+            || ops.int_binary.contains(&opcode)
             || opcode == ops.float_compare || opcode == ops.int_compare
         {
             let right = stack.pop().ok_or(Inconsistent)?;
             let left = stack.pop().ok_or(Inconsistent)?;
-            let expected = if ops.float_binary.contains(&opcode) || opcode == ops.float_compare {
+            let expected = if ops.float_binary.contains(&opcode)
+                || ops.float_binary_inplace.contains(&opcode) || opcode == ops.float_compare
+            {
                 Kind::Float
             } else { Kind::Int };
             if left != expected || right != expected { return Ok(None) }
@@ -292,7 +296,8 @@ mod tests {
             pop_int: 94, pop_float: 95, pop_unicode: 96,
             tos_float: 97, nos_float: 98, tos_int: 99, nos_int: 100, tos_exact_int: 101,
             tos_overflow: 102, nos_overflow: 103,
-            float_binary: [104, 105, 106, 107], int_binary: [108, 109, 110],
+            float_binary: [104, 105, 106, 107], float_binary_inplace: [124, 125, 126, 127, 128, 129, 130, 131],
+            int_binary: [108, 109, 110],
             float_compare: 111, int_compare: 112, bool_bool: 113, bool_int: 114,
             iter_check: 115, iter_exhaustion: 116, iter_next: 117,
             globals: 118, builtins: 119, entry_globals: 120, local_int: 121, local_float: 122,
@@ -315,6 +320,39 @@ mod tests {
              uop(if integer { o.int_binary[0] } else { o.float_binary[0] }, 0),
              uop(o.pop_borrow, 0), uop(o.pop_borrow, 0), uop(o.store.first, 0),
              uop(o.pop, 0), uop(o.jump, 0)]
+    }
+
+    fn float_inplace_loop(opcode: u16) -> Vec<LocalUop> {
+        let o = opcodes();
+        vec![uop(o.start, 0), uop(o.warm, 0), uop(o.set_ip, 0), uop(o.periodic, 0),
+             uop(o.borrow.first, 0), uop(o.borrow.first, 1), uop(opcode, 0),
+             uop(o.pop_borrow, 0), uop(o.pop_borrow, 0), uop(o.tos_float, 0), uop(o.store.first, 0),
+             uop(o.pop_float, 0), uop(o.jump, 0)]
+    }
+
+    #[test]
+    fn every_float_inplace_form_proves_a_warm_cycle() {
+        let ops = opcodes();
+        let seeds = [ops.local_float, ops.local_float];
+        for opcode in ops.float_binary_inplace {
+            let input = float_inplace_loop(opcode);
+            let Some(plan) = plan_loop_types(&input, &ops, &seeds, 0).unwrap() else {
+                panic!("opcode {opcode}");
+            };
+            assert_eq!(plan[1].opcode, ops.local_float);
+            assert_eq!(plan[2].opcode, ops.local_float);
+            assert_eq!(plan[5].opcode, ops.resume);
+            assert_eq!(plan[8].opcode, opcode);
+            assert_eq!(plan[11].opcode, ops.nop);
+        }
+    }
+
+    #[test]
+    fn float_inplace_form_refuses_a_non_float_operand() {
+        let ops = opcodes();
+        let input = float_inplace_loop(ops.float_binary_inplace[0]);
+        let seeds = [ops.local_float, ops.local_int];
+        assert!(plan_loop_types(&input, &ops, &seeds, 0).unwrap().is_none());
     }
 
     #[test]
@@ -396,7 +434,7 @@ mod tests {
         assert_eq!(status, -1);
         assert!(output.iter().all(|step| *step == untouched));
         assert!(matches!(plan_loop_types(&input, &ops, &seeds, 0), Err(Inconsistent)));
-        assert_eq!(std::mem::size_of::<LocalOpcodes>(), 116);
+        assert_eq!(std::mem::size_of::<LocalOpcodes>(), 132);
         assert_eq!(std::mem::size_of::<LocalUop>(), 6);
         assert_eq!(std::mem::size_of::<LocalStep>(), 8);
     }
