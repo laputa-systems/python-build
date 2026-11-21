@@ -1,0 +1,1625 @@
+{
+ "chaos": {
+  "files": 1,
+  "totals": {
+   "Object allocations": 401354,
+   "Object allocations from freelist": 1279103,
+   "Object frees": 426018,
+   "Object frees to freelist": 1291869,
+   "Optimization traces created": 13,
+   "Optimization traces executed": 155899,
+   "Optimization uops executed": 30224778,
+   "Executors invalidated": 8
+  },
+  "uops_executed_total": 30224778,
+  "top_uops": [
+   [
+    "_CHECK_VALIDITY_r00",
+    1693574
+   ],
+   [
+    "_POP_TOP_NOP_r21",
+    1511990
+   ],
+   [
+    "_POP_TOP_NOP_r32",
+    1350668
+   ],
+   [
+    "_SET_IP_r11",
+    1286988
+   ],
+   [
+    "_SET_IP_r00",
+    798721
+   ],
+   [
+    "_CHECK_VALIDITY_r11",
+    697712
+   ],
+   [
+    "_POP_TOP_r10",
+    571451
+   ],
+   [
+    "_POP_TOP_INT_r32",
+    565335
+   ],
+   [
+    "_SET_IP_r22",
+    554886
+   ],
+   [
+    "_STORE_FAST_FUSED_r10",
+    544591
+   ],
+   [
+    "_POP_TOP_NOP_r10",
+    524382
+   ],
+   [
+    "_BINARY_OP_SUBSCR_LIST_INT_r23",
+    473003
+   ],
+   [
+    "_POP_TOP_INT_r21",
+    471704
+   ],
+   [
+    "_LOAD_CONST_INLINE_BORROW_r12",
+    465946
+   ],
+   [
+    "_LOAD_FAST_BORROW_0_r01",
+    465059
+   ]
+  ],
+  "arith_uops": {
+   "_BINARY_OP_ADD_FLOAT_INPLACE_r13": 6808,
+   "_BINARY_OP_ADD_FLOAT_UNBOXED_r21": 188875,
+   "_BINARY_OP_ADD_FLOAT_r23": 6808,
+   "_BINARY_OP_ADD_INT_INPLACE_r23": 204098,
+   "_BINARY_OP_ADD_INT_UNBOXED_r21": 447,
+   "_BINARY_OP_ADD_INT_r13": 188,
+   "_BINARY_OP_ADD_INT_r23": 176208,
+   "_BINARY_OP_MULTIPLY_FLOAT_UNBOXED_r21": 191144,
+   "_BINARY_OP_MULTIPLY_FLOAT_UNBOXED_r32": 186606,
+   "_BINARY_OP_MULTIPLY_INT_r23": 61294,
+   "_BINARY_OP_SUBTRACT_FLOAT_UNBOXED_r32": 2269,
+   "_BINARY_OP_SUBTRACT_FLOAT_r23": 1996,
+   "_BINARY_OP_SUBTRACT_INT_INPLACE_r23": 186606,
+   "_BINARY_OP_SUBTRACT_INT_r23": 374974,
+   "_BINARY_OP_TRUEDIV_FLOAT_INPLACE_r23": 1996,
+   "_BINARY_OP_TRUEDIV_FLOAT_UNBOXED_r21": 2269,
+   "_COMPARE_OP_INT_UNBOXED_r21": 447,
+   "_COMPARE_OP_INT_r23": 2516
+  },
+  "traces": 15,
+  "traces_with_2plus_arith": 9,
+  "top_arith_shapes": [
+   [
+    "_GUARD_NOT_EXHAUSTED_RANGE_r22 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_0_r01 _GUARD_TYPE_VERSION_r11 _LOAD_FAST_BORROW_3_r12 _LOAD_FAST_BORROW_0_r23 _GUARD_TOS_INT_r22 _GUARD_NOS_INT_r22 _BINARY_OP_SUBTRACT_INT_r23 _BINARY_OP_ADD_INT_INPLACE_r23 _LOAD_FAST_BORROW_4_r12 _GUARD_TOS_OVERFLOWED_r22 _BINARY_OP_ADD_INT_INPLACE_r23 _GUARD_NOS_LIST_r12",
+    1
+   ],
+   [
+    "_GUARD_NOT_EXHAUSTED_RANGE_r22 _STORE_FAST_FUSED_r10 _GUARD_GLOBALS_VERSION_r00 _GUARD_BUILTINS_IS_CANONICAL_r00 _LOAD_FAST_BORROW_3_r01 _LOAD_FAST_BORROW_0_r12 _GUARD_TYPE_VERSION_r22 _GUARD_TOS_INT_r22 _GUARD_NOS_INT_r22 _BINARY_OP_SUBTRACT_INT_r23 _LOAD_FAST_BORROW_7_r12 _GUARD_TOS_OVERFLOWED_r22 _BINARY_OP_ADD_INT_INPLACE_r23 _BINARY_OP_ADD_INT_INPLACE_r23 _LOAD_FAST_BORROW_3_r01 _BINARY_OP_AD",
+    1
+   ],
+   [
+    "_GUARD_NOT_EXHAUSTED_RANGE_r22 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_6_r01 _LOAD_FAST_BORROW_4_r01 _LOAD_FAST_BORROW_0_r12 _GUARD_TYPE_VERSION_r22 _GUARD_TOS_INT_r22 _GUARD_NOS_OVERFLOWED_r22 _BINARY_OP_ADD_INT_r23 _LOAD_FAST_BORROW_7_r12 _GUARD_TOS_INT_r22 _BINARY_OP_SUBTRACT_INT_INPLACE_r23 _GUARD_NOS_LIST_r12 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_6_r01 _LOAD_FAST_BORROW_4_r01 _BINARY_OP_SUB",
+    1
+   ]
+  ]
+ },
+ "deltablue": {
+  "files": 1,
+  "totals": {
+   "Object allocations": 230731,
+   "Object allocations from freelist": 213229,
+   "Object frees": 262304,
+   "Object frees to freelist": 226044,
+   "Optimization traces created": 28,
+   "Optimization traces executed": 400380,
+   "Optimization uops executed": 28869956,
+   "Executors invalidated": 28
+  },
+  "uops_executed_total": 28869956,
+  "top_uops": [
+   [
+    "_SET_IP_r11",
+    1681923
+   ],
+   [
+    "_LOAD_FAST_BORROW_0_r01",
+    1310482
+   ],
+   [
+    "_LOAD_ATTR_INSTANCE_VALUE_CHECKED_r12",
+    1218864
+   ],
+   [
+    "_CHECK_VALIDITY_r00",
+    1139598
+   ],
+   [
+    "_CHECK_VALIDITY_r11",
+    1102126
+   ],
+   [
+    "_POP_TOP_r10",
+    974667
+   ],
+   [
+    "_POP_TOP_NOP_r21",
+    938109
+   ],
+   [
+    "_GUARD_TYPE_VERSION_r11",
+    783029
+   ],
+   [
+    "_TIER2_RESUME_CHECK_r00",
+    701978
+   ],
+   [
+    "_RETURN_VALUE_r11",
+    692610
+   ],
+   [
+    "_LOAD_CONST_INLINE_BORROW_r01",
+    690333
+   ],
+   [
+    "_SET_IP_r00",
+    678010
+   ],
+   [
+    "_SET_IP_r22",
+    627164
+   ],
+   [
+    "_CHECK_RECURSION_REMAINING_r00",
+    586530
+   ],
+   [
+    "_PUSH_FRAME_r10",
+    586530
+   ]
+  ],
+  "arith_uops": {
+   "_BINARY_OP_ADD_INT_INPLACE_r13": 24878,
+   "_BINARY_OP_MULTIPLY_INT_r23": 24878,
+   "_COMPARE_OP_INT_r23": 480777
+  },
+  "traces": 30,
+  "traces_with_2plus_arith": 19,
+  "top_arith_shapes": [
+   [
+    "_LOAD_FAST_BORROW_0_r01 _GUARD_TYPE_VERSION_r11 _GUARD_GLOBALS_VERSION_r11 _GUARD_NOS_INT_r12 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_UNSET_POP_5_r10 _LOAD_FAST_BORROW_0_r01 _GUARD_IP_RETURN_VALUE_r11 _GUARD_CODE_VERSION_RETURN_VALUE_r11 _GUARD_TYPE_VERSION_LOCKED_r11 _GUARD_DORV_NO_DICT_r11 _GUARD_IP_RETURN_VALUE_r11 _GUARD_CODE_VERSION_RETURN_VALUE_r11 _GUARD_NOS_TYPE_r02 _STORE_FAST_FUSED_r10 _LOAD_F",
+    4
+   ],
+   [
+    "_GUARD_NOS_TYPE_r02 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_1_r01 _GUARD_TYPE_VERSION_r11 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_BORROW_0_r01 _GUARD_GLOBALS_VERSION_r11 _GUARD_NOS_INT_r12 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_UNSET_POP_5_r10 _LOAD_FAST_BORROW_0_r01 _GUARD_TYPE_VERSION_r11 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_BORROW_0_r01 _GUARD_GLOBALS_VERSION_r11 _GUARD_NOS_INT_r12 _COMPARE_OP_INT_r23 _GUA",
+    1
+   ],
+   [
+    "_LOAD_FAST_BORROW_0_r01 _GUARD_TYPE_VERSION_r11 _GUARD_GLOBALS_VERSION_r11 _GUARD_NOS_INT_r12 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_UNSET_POP_5_r10 _LOAD_FAST_BORROW_0_r01 _GUARD_TYPE_VERSION_r11 _LOAD_FAST_BORROW_0_r01 _GUARD_TYPE_VERSION_r11 _GUARD_TOS_INT_r01 _GUARD_NOS_INT_r12 _BINARY_OP_MULTIPLY_INT_r23 _LOAD_FAST_BORROW_0_r12 _GUARD_TYPE_VERSION_r22 _GUARD_TOS_INT_r01 _BINARY_OP_ADD_INT_INPLACE_",
+    1
+   ]
+  ]
+ },
+ "fannkuch": {
+  "files": 1,
+  "totals": {
+   "Object allocations": 2381116,
+   "Object allocations from freelist": 5544741,
+   "Object frees": 2390902,
+   "Object frees to freelist": 5557431,
+   "Optimization traces created": 15,
+   "Optimization traces executed": 2034008,
+   "Optimization uops executed": 174140477,
+   "Executors invalidated": 0
+  },
+  "uops_executed_total": 174140477,
+  "top_uops": [
+   [
+    "_POP_TOP_NOP_r21",
+    12213478
+   ],
+   [
+    "_POP_TOP_NOP_r32",
+    11426077
+   ],
+   [
+    "_LOAD_CONST_INLINE_BORROW_r12",
+    10548047
+   ],
+   [
+    "_CHECK_VALIDITY_r00",
+    9327833
+   ],
+   [
+    "_LOAD_FAST_BORROW_r01",
+    6293841
+   ],
+   [
+    "_SET_IP_r00",
+    5984853
+   ],
+   [
+    "_CHECK_VALIDITY_r11",
+    5779131
+   ],
+   [
+    "_SET_IP_r11",
+    5764096
+   ],
+   [
+    "_LOAD_FAST_BORROW_6_r01",
+    5432500
+   ],
+   [
+    "_GUARD_NOS_INT_r22",
+    4918906
+   ],
+   [
+    "_SET_IP_r22",
+    4060848
+   ],
+   [
+    "_POP_TOP_NOP_r00",
+    3997359
+   ],
+   [
+    "_GUARD_BIT_IS_UNSET_POP_5_r10",
+    3916866
+   ],
+   [
+    "_BINARY_OP_SUBSCR_LIST_INT_r23",
+    3783197
+   ],
+   [
+    "_STORE_FAST_FUSED_INT_r10",
+    3617496
+   ]
+  ],
+  "arith_uops": {
+   "_BINARY_OP_ADD_INT_r23": 3380303,
+   "_BINARY_OP_SUBTRACT_INT_r23": 1044155,
+   "_COMPARE_OP_INT_r23": 2660599
+  },
+  "traces": 17,
+  "traces_with_2plus_arith": 12,
+  "top_arith_shapes": [
+   [
+    "_LOAD_FAST_BORROW_4_r01 _LOAD_FAST_BORROW_0_r12 _GUARD_TOS_INT_r22 _GUARD_NOS_INT_r22 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_UNSET_POP_5_r10 _LOAD_FAST_BORROW_7_r01 _LOAD_FAST_BORROW_4_r23 _LOAD_FAST_BORROW_r01 _GUARD_CALLABLE_BUILTIN_FAST_r00 _GUARD_CALLABLE_BUILTIN_FAST_r00 _LOAD_FAST_BORROW_1_r01 _LOAD_FAST_BORROW_4_r12 _GUARD_NOS_LIST_r22 _GUARD_NOS_INT_r22 _BINARY_OP_SUBTRACT_INT_r23 _LOAD_FAST_BO",
+    3
+   ],
+   [
+    "_LOAD_FAST_BORROW_4_r01 _GUARD_NOS_INT_r22 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_SET_POP_5_r10 _LOAD_FAST_BORROW_5_r01 _GUARD_NOS_LIST_r22 _GUARD_NOS_INT_r22 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_UNSET_POP_5_r10 _LOAD_FAST_BORROW_5_r01 _LOAD_FAST_BORROW_3_r12 _GUARD_TOS_INT_r22 _LOAD_FAST_BORROW_3_r12 _GUARD_NOS_INT_r22 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_SET_POP_5_r10 _LOAD_FAST_BORROW_4_r01 _LOAD_FAST_BOR",
+    2
+   ],
+   [
+    "_LOAD_FAST_BORROW_4_r01 _GUARD_NOS_INT_r22 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_SET_POP_5_r10 _LOAD_FAST_BORROW_5_r01 _GUARD_NOS_LIST_r22 _GUARD_NOS_INT_r22 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_SET_POP_5_r10 _LOAD_FAST_BORROW_4_r01 _LOAD_FAST_BORROW_0_r12 _GUARD_TOS_INT_r22 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_UNSET_POP_5_r10 _LOAD_FAST_BORROW_7_r01 _LOAD_FAST_BORROW_4_r23 _LOAD_FAST_BORROW_r01 _GUARD_CALL",
+    1
+   ]
+  ]
+ },
+ "float": {
+  "files": 1,
+  "totals": {
+   "Object allocations": 581644,
+   "Object allocations from freelist": 562918,
+   "Object frees": 591602,
+   "Object frees to freelist": 575703,
+   "Optimization traces created": 2,
+   "Optimization traces executed": 323,
+   "Optimization uops executed": 19959259,
+   "Executors invalidated": 1
+  },
+  "uops_executed_total": 19959259,
+  "top_uops": [
+   [
+    "_CHECK_VALIDITY_r00",
+    1439366
+   ],
+   [
+    "_POP_TOP_NOP_r32",
+    863608
+   ],
+   [
+    "_POP_TOP_NOP_r21",
+    767523
+   ],
+   [
+    "_LOAD_FAST_BORROW_0_r01",
+    767386
+   ],
+   [
+    "_SET_IP_r33",
+    671843
+   ],
+   [
+    "_POP_TOP_NOP_r10",
+    671523
+   ],
+   [
+    "_SET_IP_r22",
+    575619
+   ],
+   [
+    "_LOAD_ATTR_SLOT_r12",
+    575574
+   ],
+   [
+    "_STORE_ATTR_SLOT_r21",
+    575572
+   ],
+   [
+    "_SET_IP_r11",
+    575526
+   ],
+   [
+    "_CHECK_VALIDITY_r11",
+    479712
+   ],
+   [
+    "_SET_IP_r00",
+    383946
+   ],
+   [
+    "_SPILL_OR_RELOAD_r30",
+    383897
+   ],
+   [
+    "_TIER2_RESUME_CHECK_r00",
+    383897
+   ],
+   [
+    "_GUARD_TOS_FLOAT_r22",
+    383806
+   ]
+  ],
+  "arith_uops": {
+   "_BINARY_OP_MULTIPLY_FLOAT_r23": 95951,
+   "_COMPARE_OP_FLOAT_r23": 287855
+  },
+  "traces": 4,
+  "traces_with_2plus_arith": 1,
+  "top_arith_shapes": [
+   [
+    "_GUARD_NOT_EXHAUSTED_LIST_r22 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_1_r01 _GUARD_TYPE_VERSION_r11 _LOAD_FAST_BORROW_2_r23 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_BORROW_1_r12 _GUARD_TYPE_VERSION_r22 _GUARD_TOS_FLOAT_r22 _GUARD_NOS_FLOAT_r22 _COMPARE_OP_FLOAT_r23 _GUARD_BIT_IS_UNSET_POP_5_r10 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_BORROW_0_r12 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_BORROW_1_r12 _GUARD_TOS_FLO",
+    1
+   ]
+  ]
+ },
+ "go": {
+  "files": 1,
+  "totals": {
+   "Object allocations": 342714,
+   "Object allocations from freelist": 348158,
+   "Object frees": 355623,
+   "Object frees to freelist": 360949,
+   "Optimization traces created": 45,
+   "Optimization traces executed": 655651,
+   "Optimization uops executed": 44366763,
+   "Executors invalidated": 37
+  },
+  "uops_executed_total": 44366763,
+  "top_uops": [
+   [
+    "_CHECK_VALIDITY_r00",
+    2380568
+   ],
+   [
+    "_POP_TOP_NOP_r21",
+    2101547
+   ],
+   [
+    "_LOAD_ATTR_INSTANCE_VALUE_CHECKED_r12",
+    1698069
+   ],
+   [
+    "_SET_IP_r11",
+    1690994
+   ],
+   [
+    "_LOAD_FAST_BORROW_2_r01",
+    1318817
+   ],
+   [
+    "_GUARD_TYPE_VERSION_r11",
+    1289383
+   ],
+   [
+    "_STORE_FAST_FUSED_r10",
+    1035588
+   ],
+   [
+    "_LOAD_FAST_BORROW_0_r01",
+    996772
+   ],
+   [
+    "_POP_TOP_r10",
+    982253
+   ],
+   [
+    "_SET_IP_r00",
+    947655
+   ],
+   [
+    "_POP_TOP_NOP_r32",
+    915773
+   ],
+   [
+    "_POP_TOP_NOP_r10",
+    912669
+   ],
+   [
+    "_MAKE_WARM_r00",
+    869296
+   ],
+   [
+    "_LOAD_ATTR_INSTANCE_VALUE_CHECKED_r23",
+    859572
+   ],
+   [
+    "_TIER2_RESUME_CHECK_r00",
+    782766
+   ]
+  ],
+  "arith_uops": {
+   "_BINARY_OP_ADD_FLOAT_r13": 8321,
+   "_BINARY_OP_ADD_INT_r23": 64458,
+   "_BINARY_OP_MULTIPLY_INT_r23": 8321,
+   "_BINARY_OP_SUBTRACT_INT_r23": 84531,
+   "_COMPARE_OP_FLOAT_r23": 8321,
+   "_COMPARE_OP_INT_r23": 682564
+  },
+  "traces": 47,
+  "traces_with_2plus_arith": 29,
+  "top_arith_shapes": [
+   [
+    "_GUARD_NOT_EXHAUSTED_LIST_r22 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_3_r01 _GUARD_TYPE_VERSION_r11 _GUARD_TOS_INT_r11 _GUARD_NOS_INT_r12 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_UNSET_POP_5_r10 _LOAD_FAST_BORROW_3_r01 _GUARD_TOS_INT_r11 _GUARD_NOS_INT_r12 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_UNSET_POP_5_r10 _LOAD_FAST_BORROW_3_r01 _LOAD_FAST_BORROW_2_r23 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_BORROW_2_r01 _GUA",
+    3
+   ],
+   [
+    "_LOAD_FAST_BORROW_2_r01 _LOAD_FAST_BORROW_0_r12 _GUARD_TYPE_VERSION_r22 _LOAD_FAST_BORROW_1_r23 _GUARD_TOS_INT_r33 _GUARD_NOS_LIST_r33 _LOAD_FAST_BORROW_1_r01 _LOAD_FAST_BORROW_0_r12 _LOAD_FAST_BORROW_2_r23 _GUARD_TOS_INT_r33 _GUARD_NOS_LIST_r33 _GUARD_IP_RETURN_VALUE_r11 _GUARD_CODE_VERSION_RETURN_VALUE_r11 _LOAD_FAST_BORROW_0_r01 _GUARD_TYPE_VERSION_r11 _GUARD_TYPE_VERSION_r11 _GUARD_IP_RETURN_V",
+    2
+   ],
+   [
+    "_GUARD_NOT_EXHAUSTED_LIST_r22 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_2_r01 _GUARD_TYPE_VERSION_r11 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_3_r01 _GUARD_TOS_INT_r11 _GUARD_NOS_INT_r12 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_SET_POP_5_r10 _LOAD_FAST_BORROW_2_r01 _LOAD_FAST_BORROW_0_r01 _GUARD_TYPE_VERSION_r11 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_2_r01 _GUARD_TYPE_VERSION_r11 _LOAD_FAST_BORROW_0_r12 _G",
+    2
+   ]
+  ]
+ },
+ "hexiom": {
+  "files": 1,
+  "totals": {
+   "Object allocations": 431259,
+   "Object allocations from freelist": 332258,
+   "Object frees": 452743,
+   "Object frees to freelist": 345060,
+   "Optimization traces created": 60,
+   "Optimization traces executed": 2972212,
+   "Optimization uops executed": 185092081,
+   "Executors invalidated": 47
+  },
+  "uops_executed_total": 185092081,
+  "top_uops": [
+   [
+    "_CHECK_VALIDITY_r00",
+    13561705
+   ],
+   [
+    "_SET_IP_r00",
+    10774675
+   ],
+   [
+    "_POP_TOP_r10",
+    8241321
+   ],
+   [
+    "_POP_TOP_NOP_r21",
+    6645658
+   ],
+   [
+    "_SPILL_OR_RELOAD_r31",
+    5004566
+   ],
+   [
+    "_SET_IP_r22",
+    4816042
+   ],
+   [
+    "_POP_TOP_NOP_r32",
+    4782806
+   ],
+   [
+    "_CHECK_VALIDITY_r11",
+    4149530
+   ],
+   [
+    "_SET_IP_r11",
+    3918381
+   ],
+   [
+    "_STORE_FAST_FUSED_r10",
+    3717270
+   ],
+   [
+    "_MAKE_WARM_r00",
+    3701664
+   ],
+   [
+    "_SPILL_OR_RELOAD_r32",
+    3549775
+   ],
+   [
+    "_BINARY_OP_SUBSCR_LIST_INT_r23",
+    3404134
+   ],
+   [
+    "_LOAD_FAST_BORROW_1_r12",
+    3335347
+   ],
+   [
+    "_CHECK_PERIODIC_r00",
+    3212760
+   ]
+  ],
+  "arith_uops": {
+   "_BINARY_OP_ADD_INT_r23": 274396,
+   "_BINARY_OP_SUBTRACT_INT_r23": 205712,
+   "_COMPARE_OP_INT_r23": 2401289
+  },
+  "traces": 62,
+  "traces_with_2plus_arith": 28,
+  "top_arith_shapes": [
+   [
+    "_GUARD_NOT_EXHAUSTED_LIST_r22 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_4_r01 _GUARD_TYPE_VERSION_r11 _LOAD_FAST_BORROW_r23 _GUARD_GLOBALS_VERSION_r00 _GUARD_BUILTINS_IS_CANONICAL_r00 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_BORROW_1_r12 _GUARD_TOS_INT_r22 _GUARD_NOS_LIST_r22 _GUARD_NOS_OVERFLOWED_r12 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_UNSET_POP_5_r10 _LOAD_FAST_BORROW_4_r01 _LOAD_FAST_BORROW_r12 _GUARD_IP",
+    5
+   ],
+   [
+    "_GUARD_NOT_EXHAUSTED_LIST_r22 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_5_r01 _GUARD_TYPE_VERSION_r11 _LOAD_FAST_BORROW_r23 _GUARD_GLOBALS_VERSION_r00 _GUARD_BUILTINS_IS_CANONICAL_r00 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_BORROW_1_r12 _GUARD_TOS_INT_r22 _GUARD_NOS_LIST_r22 _GUARD_NOS_OVERFLOWED_r12 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_UNSET_POP_5_r10 _LOAD_FAST_BORROW_5_r01 _LOAD_FAST_BORROW_r12 _GUARD_IP",
+    3
+   ],
+   [
+    "_GUARD_NOT_EXHAUSTED_RANGE_r22 _STORE_FAST_FUSED_r10 _GUARD_GLOBALS_VERSION_r00 _GUARD_BUILTINS_IS_CANONICAL_r00 _LOAD_FAST_BORROW_5_r01 _LOAD_FAST_BORROW_r12 _GUARD_IP__PUSH_FRAME_r00 _GUARD_CODE_VERSION__PUSH_FRAME_r00 _LOAD_FAST_BORROW_0_r01 _GUARD_TYPE_VERSION_r11 _LOAD_FAST_BORROW_1_r12 _GUARD_TOS_OVERFLOWED_r22 _GUARD_NOS_LIST_r22 _GUARD_NOS_OVERFLOWED_r12 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_S",
+    3
+   ]
+  ]
+ },
+ "nbody": {
+  "files": 1,
+  "totals": {
+   "Object allocations": 181960,
+   "Object allocations from freelist": 3089930,
+   "Object frees": 192380,
+   "Object frees to freelist": 3102674,
+   "Optimization traces created": 5,
+   "Optimization traces executed": 93605,
+   "Optimization uops executed": 58847427,
+   "Executors invalidated": 0
+  },
+  "uops_executed_total": 58847427,
+  "top_uops": [
+   [
+    "_SET_IP_r33",
+    3163945
+   ],
+   [
+    "_SPILL_OR_RELOAD_r32",
+    3055549
+   ],
+   [
+    "_SET_IP_r00",
+    2916754
+   ],
+   [
+    "_COPY_2_r23",
+    2863152
+   ],
+   [
+    "_POP_TOP_NOP_r21",
+    2585958
+   ],
+   [
+    "_LOAD_FAST_BORROW_r12",
+    2501161
+   ],
+   [
+    "_LOAD_FAST_BORROW_r23",
+    2201164
+   ],
+   [
+    "_BINARY_OP_MULTIPLY_FLOAT_UNBOXED_r32",
+    2008767
+   ],
+   [
+    "_UNBOX_FLOAT_NOS_r33",
+    2008767
+   ],
+   [
+    "_UNBOX_FLOAT_TOS_r33",
+    2008767
+   ],
+   [
+    "_CHECK_VALIDITY_r00",
+    1947569
+   ],
+   [
+    "_LOAD_FAST_BORROW_r01",
+    1816370
+   ],
+   [
+    "_STORE_FAST_FUSED_FLOAT_OR_NULL_r00",
+    1732369
+   ],
+   [
+    "_BOX_FLOAT_r11",
+    1623973
+   ],
+   [
+    "_LOAD_CONST_INLINE_BORROW_r12",
+    1623973
+   ]
+  ],
+  "arith_uops": {
+   "_BINARY_OP_ADD_FLOAT_UNBOXED_r21": 1239179,
+   "_BINARY_OP_MULTIPLY_FLOAT_INPLACE_RIGHT_r23": 192397,
+   "_BINARY_OP_MULTIPLY_FLOAT_UNBOXED_r32": 2008767,
+   "_BINARY_OP_MULTIPLY_FLOAT_r23": 384794,
+   "_BINARY_OP_POWER_FLOAT_r23": 192397,
+   "_BINARY_OP_SUBTRACT_FLOAT_UNBOXED_r21": 577191,
+   "_BINARY_OP_SUBTRACT_FLOAT_r23": 577191
+  },
+  "traces": 7,
+  "traces_with_2plus_arith": 4,
+  "top_arith_shapes": [
+   [
+    "_GUARD_NOT_EXHAUSTED_LIST_r22 _GUARD_TOS_TUPLE_r33 _GUARD_TOS_TUPLE_r22 _GUARD_TOS_LIST_r01 _STORE_FAST_FUSED_r10 _STORE_FAST_FUSED_FLOAT_OR_NULL_r00 _STORE_FAST_FUSED_FLOAT_OR_NULL_r00 _STORE_FAST_FUSED_r10 _STORE_FAST_FUSED_FLOAT_OR_NULL_r00 _GUARD_TOS_TUPLE_r01 _GUARD_TOS_LIST_r01 _STORE_FAST_FUSED_FLOAT_OR_NULL_r00 _STORE_FAST_FUSED_FLOAT_OR_NULL_r00 _STORE_FAST_FUSED_FLOAT_OR_NULL_r00 _STORE_",
+    1
+   ],
+   [
+    "_GUARD_NOT_EXHAUSTED_LIST_r22 _GUARD_TOS_TUPLE_r33 _STORE_FAST_FUSED_r10 _GUARD_TOS_LIST_r01 _STORE_FAST_FUSED_FLOAT_OR_NULL_r00 _STORE_FAST_FUSED_FLOAT_OR_NULL_r00 _STORE_FAST_FUSED_FLOAT_OR_NULL_r00 _STORE_FAST_FUSED_FLOAT_OR_NULL_r00 _LOAD_FAST_BORROW_r01 _GUARD_NOS_LIST_r33 _LOAD_FAST_BORROW_0_r12 _LOAD_FAST_BORROW_r23 _GUARD_TOS_FLOAT_r33 _GUARD_NOS_FLOAT_r33 _BINARY_OP_MULTIPLY_FLOAT_UNBOXED",
+    1
+   ],
+   [
+    "_GUARD_NOT_EXHAUSTED_RANGE_r22 _STORE_FAST_FUSED_r10 _LOAD_FAST_3_r01 _GUARD_TYPE_r11 _GUARD_NOT_EXHAUSTED_LIST_r22 _GUARD_TOS_TUPLE_r33 _GUARD_TOS_TUPLE_r22 _GUARD_TOS_LIST_r01 _STORE_FAST_FUSED_FLOAT_OR_NULL_r00 _STORE_FAST_FUSED_FLOAT_OR_NULL_r00 _STORE_FAST_FUSED_FLOAT_OR_NULL_r00 _STORE_FAST_FUSED_r10 _STORE_FAST_FUSED_FLOAT_OR_NULL_r00 _GUARD_TOS_TUPLE_r01 _GUARD_TOS_LIST_r01 _STORE_FAST_FUS",
+    1
+   ]
+  ]
+ },
+ "nqueens": {
+  "files": 1,
+  "totals": {
+   "Object allocations": 637986,
+   "Object allocations from freelist": 708760,
+   "Object frees": 688264,
+   "Object frees to freelist": 721548,
+   "Optimization traces created": 9,
+   "Optimization traces executed": 310743,
+   "Optimization uops executed": 48153780,
+   "Executors invalidated": 2
+  },
+  "uops_executed_total": 48153780,
+  "top_uops": [
+   [
+    "_SET_IP_r00",
+    3919555
+   ],
+   [
+    "_CHECK_VALIDITY_r00",
+    3644356
+   ],
+   [
+    "_CHECK_VALIDITY_r11",
+    2094365
+   ],
+   [
+    "_POP_TOP_NOP_r32",
+    1699409
+   ],
+   [
+    "_SPILL_OR_RELOAD_r31",
+    1627606
+   ],
+   [
+    "_CHECK_PERIODIC_r00",
+    1435830
+   ],
+   [
+    "_SET_IP_r22",
+    1286564
+   ],
+   [
+    "_SET_IP_r11",
+    1193723
+   ],
+   [
+    "_POP_TOP_r10",
+    1047775
+   ],
+   [
+    "_SET_IP_r33",
+    971175
+   ],
+   [
+    "_POP_TOP_NOP_r00",
+    966776
+   ],
+   [
+    "_TIER2_RESUME_CHECK_r00",
+    896469
+   ],
+   [
+    "_MAKE_WARM_r00",
+    891443
+   ],
+   [
+    "_POP_TOP_NOP_r21",
+    869278
+   ],
+   [
+    "_SPILL_OR_RELOAD_r21",
+    847989
+   ]
+  ],
+  "arith_uops": {
+   "_BINARY_OP_ADD_INT_r23": 441771,
+   "_BINARY_OP_SUBTRACT_INT_r23": 176494,
+   "_COMPARE_OP_INT_r23": 137416
+  },
+  "traces": 11,
+  "traces_with_2plus_arith": 2,
+  "top_arith_shapes": [
+   [
+    "_GUARD_NOT_EXHAUSTED_RANGE_r22 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_4_r01 _LOAD_FAST_BORROW_5_r12 _GUARD_TOS_OVERFLOWED_r22 _GUARD_NOS_LIST_r22 _GUARD_NOS_INT_r22 _BINARY_OP_SUBTRACT_INT_r23 _LOAD_FAST_BORROW_4_r01 _LOAD_FAST_BORROW_5_r12 _GUARD_NOS_INT_r22 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_UNSET_POP_5_r10 _LOAD_FAST_BORROW_3_r01 _LOAD_FAST_BORROW_5_r01 _BINARY_OP_ADD_INT_r23 _LOAD_FAST_BORROW_",
+    1
+   ],
+   [
+    "_LOAD_FAST_BORROW_2_r01 _GUARD_TOS_EXACT_INT_r11 _GUARD_BIT_IS_UNSET_POP_5_r10 _GUARD_GLOBALS_VERSION_r00 _GUARD_BUILTINS_IS_CANONICAL_r00 _LOAD_FAST_BORROW_1_r12 _GUARD_TYPE_r01 _GUARD_NOT_EXHAUSTED_RANGE_r22 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_4_r01 _LOAD_FAST_BORROW_5_r12 _GUARD_TOS_OVERFLOWED_r22 _GUARD_NOS_LIST_r22 _GUARD_NOS_INT_r22 _BINARY_OP_SUBTRACT_INT_r23 _LOAD_FAST_BORROW_4_r01 _LO",
+    1
+   ]
+  ]
+ },
+ "raytrace": {
+  "files": 1,
+  "totals": {
+   "Object allocations": 764195,
+   "Object allocations from freelist": 3321367,
+   "Object frees": 797189,
+   "Object frees to freelist": 3334289,
+   "Optimization traces created": 30,
+   "Optimization traces executed": 1046102,
+   "Optimization uops executed": 113340101,
+   "Executors invalidated": 18
+  },
+  "uops_executed_total": 113340101,
+  "top_uops": [
+   [
+    "_CHECK_VALIDITY_r00",
+    5414930
+   ],
+   [
+    "_POP_TOP_NOP_r32",
+    3905031
+   ],
+   [
+    "_POP_TOP_r10",
+    3350896
+   ],
+   [
+    "_SET_IP_r00",
+    3036626
+   ],
+   [
+    "_POP_TOP_NOP_r21",
+    2953270
+   ],
+   [
+    "_SET_IP_r11",
+    2795265
+   ],
+   [
+    "_SET_IP_r22",
+    2777155
+   ],
+   [
+    "_CHECK_MANAGED_OBJECT_HAS_VALUES_r11",
+    2484814
+   ],
+   [
+    "_LOAD_FAST_BORROW_0_r12",
+    2209440
+   ],
+   [
+    "_CHECK_VALIDITY_r11",
+    2186309
+   ],
+   [
+    "_GUARD_TOS_FLOAT_r22",
+    2145532
+   ],
+   [
+    "_CHECK_RECURSION_REMAINING_r00",
+    2115301
+   ],
+   [
+    "_POP_TOP_NOP_r10",
+    2046819
+   ],
+   [
+    "_LOAD_ATTR_INSTANCE_VALUE_r23",
+    2007675
+   ],
+   [
+    "_CHECK_MANAGED_OBJECT_HAS_VALUES_r22",
+    1927658
+   ]
+  ],
+  "arith_uops": {
+   "_BINARY_OP_ADD_FLOAT_INPLACE_RIGHT_r23": 21798,
+   "_BINARY_OP_ADD_FLOAT_INPLACE_r03": 7844,
+   "_BINARY_OP_ADD_FLOAT_INPLACE_r13": 533,
+   "_BINARY_OP_ADD_FLOAT_UNBOXED_r11": 843418,
+   "_BINARY_OP_ADD_FLOAT_r23": 37764,
+   "_BINARY_OP_ADD_INT_INPLACE_r23": 7806,
+   "_BINARY_OP_ADD_INT_r23": 10754,
+   "_BINARY_OP_MULTIPLY_FLOAT_UNBOXED_r21": 1324749,
+   "_BINARY_OP_MULTIPLY_FLOAT_r23": 628153,
+   "_BINARY_OP_MULTIPLY_INT_INPLACE_r23": 3616,
+   "_BINARY_OP_MULTIPLY_INT_r23": 28121,
+   "_BINARY_OP_SUBTRACT_FLOAT_INPLACE_RIGHT_r23": 55081,
+   "_BINARY_OP_SUBTRACT_FLOAT_INPLACE_r13": 234149,
+   "_BINARY_OP_SUBTRACT_FLOAT_INPLACE_r23": 13228,
+   "_BINARY_OP_SUBTRACT_FLOAT_r13": 128,
+   "_BINARY_OP_SUBTRACT_FLOAT_r23": 146077,
+   "_BINARY_OP_SUBTRACT_INT_INPLACE_r23": 1808,
+   "_BINARY_OP_SUBTRACT_INT_r23": 5962,
+   "_BINARY_OP_TRUEDIV_FLOAT_r23": 107810,
+   "_COMPARE_OP_FLOAT_r13": 1574,
+   "_COMPARE_OP_FLOAT_r23": 16614,
+   "_COMPARE_OP_INT_r23": 7140
+  },
+  "traces": 32,
+  "traces_with_2plus_arith": 21,
+  "top_arith_shapes": [
+   [
+    "_GUARD_NOT_EXHAUSTED_RANGE_r22 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_0_r12 _GUARD_TYPE_VERSION_r22 _LOAD_FAST_BORROW_3_r01 _GUARD_NOS_OVERFLOWED_r22 _BINARY_OP_MULTIPLY_INT_r23 _BINARY_OP_ADD_INT_INPLACE_r23",
+    1
+   ],
+   [
+    "_LOAD_FAST_BORROW_0_r01 _GUARD_IP_RETURN_VALUE_r11 _GUARD_CODE_VERSION_RETURN_VALUE_r11 _LOAD_FAST_BORROW_0_r01 _GUARD_TYPE_VERSION_r11 _LOAD_FAST_BORROW_1_r12 _GUARD_TYPE_VERSION_r22 _GUARD_TOS_FLOAT_r22 _GUARD_NOS_FLOAT_r22 _BINARY_OP_MULTIPLY_FLOAT_UNBOXED_r21 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_BORROW_1_r12 _GUARD_TOS_FLOAT_r22 _GUARD_NOS_FLOAT_r22 _BINARY_OP_MULTIPLY_FLOAT_UNBOXED_r21 _BINARY_",
+    1
+   ],
+   [
+    "_LOAD_FAST_BORROW_1_r01 _GUARD_TYPE_VERSION_r11 _LOAD_FAST_BORROW_0_r01 _GUARD_TYPE_VERSION_r11 _LOAD_FAST_BORROW_1_r12 _GUARD_TOS_FLOAT_r22 _GUARD_NOS_FLOAT_r22 _BINARY_OP_MULTIPLY_FLOAT_UNBOXED_r21 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_BORROW_1_r12 _GUARD_TOS_FLOAT_r22 _GUARD_NOS_FLOAT_r22 _BINARY_OP_MULTIPLY_FLOAT_UNBOXED_r21 _BINARY_OP_ADD_FLOAT_UNBOXED_r11 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_BORR",
+    1
+   ]
+  ]
+ },
+ "richards": {
+  "files": 1,
+  "totals": {
+   "Object allocations": 185759,
+   "Object allocations from freelist": 121970,
+   "Object frees": 197229,
+   "Object frees to freelist": 134748,
+   "Optimization traces created": 19,
+   "Optimization traces executed": 251687,
+   "Optimization uops executed": 12743634,
+   "Executors invalidated": 14
+  },
+  "uops_executed_total": 12743634,
+  "top_uops": [
+   [
+    "_CHECK_MANAGED_OBJECT_HAS_VALUES_r11",
+    675882
+   ],
+   [
+    "_CHECK_VALIDITY_r00",
+    574003
+   ],
+   [
+    "_LOAD_FAST_BORROW_0_r01",
+    487793
+   ],
+   [
+    "_POP_TOP_NOP_r21",
+    474191
+   ],
+   [
+    "_POP_TOP_NOP_r10",
+    464047
+   ],
+   [
+    "_SET_IP_r11",
+    431956
+   ],
+   [
+    "_LOAD_ATTR_INSTANCE_VALUE_r12",
+    431567
+   ],
+   [
+    "_SET_IP_r00",
+    418107
+   ],
+   [
+    "_LOAD_VIRTUAL_ARGUMENT_r01",
+    289774
+   ],
+   [
+    "_CHECK_FUNCTION_VERSION_r00",
+    280366
+   ],
+   [
+    "_CHECK_RECURSION_REMAINING_r00",
+    280366
+   ],
+   [
+    "_CHECK_STACK_SPACE_OPERAND_r00",
+    280366
+   ],
+   [
+    "_COPY_1_r12",
+    267272
+   ],
+   [
+    "_GUARD_TYPE_VERSION_r11",
+    251721
+   ],
+   [
+    "_LOAD_CONST_INLINE_r12",
+    244315
+   ]
+  ],
+  "arith_uops": {
+   "_BINARY_OP_ADD_INT_r23": 24356,
+   "_BINARY_OP_SUBTRACT_INT_INPLACE_r23": 3878,
+   "_BINARY_OP_SUBTRACT_INT_r23": 9025,
+   "_COMPARE_OP_INT_r23": 45234
+  },
+  "traces": 21,
+  "traces_with_2plus_arith": 4,
+  "top_arith_shapes": [
+   [
+    "_LOAD_FAST_BORROW_0_r01 _GUARD_IS_NOT_NONE_POP_r10 _GUARD_GLOBALS_VERSION_r00 _LOAD_FAST_BORROW_0_r01 _GUARD_TYPE_VERSION_r11 _GUARD_BIT_IS_SET_POP_5_r21 _GUARD_BIT_IS_UNSET_POP_5_r21 _GUARD_BIT_IS_SET_POP_5_r10 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_BORROW_0_r01 _GUARD_BIT_IS_SET_POP_5_r21 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_BORROW_1_r23 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_2_r01 _GUARD_GLOBALS_VERSION_",
+    1
+   ],
+   [
+    "_LOAD_FAST_2_r01 _STORE_FAST_FUSED_r10 _GUARD_GLOBALS_VERSION_r00 _GUARD_BUILTINS_IS_CANONICAL_r00 _LOAD_FAST_BORROW_3_r23 _GUARD_BIT_IS_UNSET_POP_5_r10 _LOAD_FAST_BORROW_1_r01 _GUARD_IS_NOT_NONE_POP_r10 _LOAD_FAST_BORROW_1_r01 _GUARD_TYPE_VERSION_r11 _GUARD_NOS_INT_r22 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_UNSET_POP_5_r10 _LOAD_FAST_BORROW_3_r01 _GUARD_TYPE_VERSION_r11 _LOAD_FAST_BORROW_1_r23 _LOAD_F",
+    1
+   ],
+   [
+    "_GUARD_LOOP_GLOBALS_VERSION_r00 _GUARD_NOT_EXHAUSTED_RANGE_r22 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_3_r01 _GUARD_TYPE_VERSION_r22 _GUARD_NOS_INT_r33 _BINARY_OP_ADD_INT_r23 _GUARD_DORV_NO_DICT_r22 _LOAD_FAST_BORROW_3_r01 _GUARD_NOS_INT_r22 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_SET_POP_5_r10 _LOAD_FAST_BORROW_3_r12 _GUARD_TOS_INT_r22 _BINARY_OP_ADD_INT_r23 _BINARY_OP_SUBTRACT_INT_INPLACE_r23 _LOAD_FA",
+    1
+   ]
+  ]
+ },
+ "scimark_fft": {
+  "files": 1,
+  "totals": {
+   "Object allocations": 187397,
+   "Object allocations from freelist": 6185653,
+   "Object frees": 199317,
+   "Object frees to freelist": 6198512,
+   "Optimization traces created": 11,
+   "Optimization traces executed": 543323,
+   "Optimization uops executed": 104462779,
+   "Executors invalidated": 1
+  },
+  "uops_executed_total": 104462779,
+  "top_uops": [
+   [
+    "_POP_TOP_NOP_r21",
+    7506478
+   ],
+   [
+    "_LOAD_FAST_BORROW_r12",
+    7331778
+   ],
+   [
+    "_POP_TOP_NOP_r32",
+    6442950
+   ],
+   [
+    "_CHECK_VALIDITY_r00",
+    4774430
+   ],
+   [
+    "_SET_IP_r11",
+    4525793
+   ],
+   [
+    "_LOAD_FAST_BORROW_1_r01",
+    3174104
+   ],
+   [
+    "_GUARD_NOS_OBJECT_TYPE_VERSION_r22",
+    3075754
+   ],
+   [
+    "_LOAD_FAST_BORROW_r01",
+    2298314
+   ],
+   [
+    "_SPILL_OR_RELOAD_r32",
+    2227322
+   ],
+   [
+    "_STORE_SUBSCR_ARRAY_D_r30",
+    2207010
+   ],
+   [
+    "_BINARY_OP_SUBSCR_ARRAY_D_r23",
+    2119774
+   ],
+   [
+    "_STORE_FAST_FUSED_r10",
+    2081851
+   ],
+   [
+    "_BOX_FLOAT_r11",
+    2019628
+   ],
+   [
+    "_BINARY_OP_ADD_INT_r23",
+    2017301
+   ],
+   [
+    "_STORE_FAST_FUSED_FLOAT_OR_NULL_r10",
+    1976010
+   ]
+  ],
+  "arith_uops": {
+   "_BINARY_OP_ADD_FLOAT_INPLACE_r23": 967094,
+   "_BINARY_OP_ADD_FLOAT_UNBOXED_r21": 482649,
+   "_BINARY_OP_ADD_INT_INPLACE_r23": 386215,
+   "_BINARY_OP_ADD_INT_UNBOXED_r32": 1054330,
+   "_BINARY_OP_ADD_INT_r23": 2017301,
+   "_BINARY_OP_MULTIPLY_FLOAT_INPLACE_r23": 98350,
+   "_BINARY_OP_MULTIPLY_FLOAT_UNBOXED_r21": 772430,
+   "_BINARY_OP_MULTIPLY_FLOAT_UNBOXED_r32": 1158166,
+   "_BINARY_OP_MULTIPLY_INT_INPLACE_RIGHT_r13": 869762,
+   "_BINARY_OP_MULTIPLY_INT_r23": 193766,
+   "_BINARY_OP_SUBTRACT_FLOAT_INPLACE_r23": 483547,
+   "_BINARY_OP_SUBTRACT_FLOAT_UNBOXED_r21": 1159064,
+   "_BINARY_OP_SUBTRACT_INT_r23": 86288,
+   "_COMPARE_OP_INT_r23": 289702
+  },
+  "traces": 13,
+  "traces_with_2plus_arith": 6,
+  "top_arith_shapes": [
+   [
+    "_GUARD_NOT_EXHAUSTED_RANGE_r22 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_5_r01 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_4_r01 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_2_r01 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_5_r01 _LOAD_FAST_BORROW_4_r12 _GUARD_TOS_INT_r22 _GUARD_NOS_OVERFLOWED_r22 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_SET_POP_5_r10 _LOAD_FAST_BORROW_r01 _LOAD_FAST_BORROW_4_r12 _GUARD_NOS_INT_r22 _CO",
+    1
+   ],
+   [
+    "_LOAD_FAST_BORROW_r01 _LOAD_FAST_BORROW_4_r12 _GUARD_TOS_INT_r22 _GUARD_NOS_INT_r22 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_UNSET_POP_5_r10 _LOAD_FAST_BORROW_4_r01 _LOAD_FAST_BORROW_r12 _BINARY_OP_SUBTRACT_INT_r23 _STORE_FAST_FUSED_INT_r10 _LOAD_FAST_BORROW_r01 _STORE_FAST_FUSED_INT_r10",
+    1
+   ],
+   [
+    "_GUARD_NOT_EXHAUSTED_RANGE_r22 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_r12 _GUARD_TOS_OVERFLOWED_r22 _BINARY_OP_MULTIPLY_INT_r23 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_r01 _LOAD_FAST_BORROW_5_r12 _GUARD_TOS_INT_r22 _BINARY_OP_ADD_INT_r23 _BINARY_OP_MULTIPLY_INT_INPLACE_RIGHT_r13 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_1_r01 _LOAD_FAST_BORROW_r12 _GUARD_NOS_OBJECT_TYPE_VERSION_r22 _STORE_FAST_FUSE",
+    1
+   ]
+  ]
+ },
+ "scimark_lu": {
+  "files": 1,
+  "totals": {
+   "Object allocations": 186552,
+   "Object allocations from freelist": 5183551,
+   "Object frees": 198476,
+   "Object frees to freelist": 5196337,
+   "Optimization traces created": 9,
+   "Optimization traces executed": 1280065,
+   "Optimization uops executed": 233316979,
+   "Executors invalidated": 7
+  },
+  "uops_executed_total": 233316979,
+  "top_uops": [
+   [
+    "_CHECK_VALIDITY_r00",
+    12204055
+   ],
+   [
+    "_SET_IP_r22",
+    11524424
+   ],
+   [
+    "_POP_TOP_NOP_r21",
+    9907257
+   ],
+   [
+    "_POP_TOP_r10",
+    8760819
+   ],
+   [
+    "_LOAD_FAST_BORROW_0_r01",
+    8754298
+   ],
+   [
+    "_POP_TOP_NOP_r32",
+    7247145
+   ],
+   [
+    "_LOAD_FAST_BORROW_1_r12",
+    6764451
+   ],
+   [
+    "_SET_IP_r00",
+    6757511
+   ],
+   [
+    "_CHECK_VALIDITY_r11",
+    6567003
+   ],
+   [
+    "_SET_IP_r33",
+    6469406
+   ],
+   [
+    "_SPILL_OR_RELOAD_r21",
+    6000375
+   ],
+   [
+    "_SPILL_OR_RELOAD_r32",
+    5914302
+   ],
+   [
+    "_LOAD_FAST_BORROW_r12",
+    5407297
+   ],
+   [
+    "_TIER2_RESUME_CHECK_r00",
+    5017388
+   ],
+   [
+    "_GUARD_BUILTINS_IS_CANONICAL_r00",
+    5002841
+   ]
+  ],
+  "arith_uops": {
+   "_BINARY_OP_ADD_INT_r23": 20309,
+   "_BINARY_OP_MULTIPLY_FLOAT_INPLACE_RIGHT_r23": 585858,
+   "_BINARY_OP_MULTIPLY_FLOAT_INPLACE_r03": 1053225,
+   "_BINARY_OP_MULTIPLY_FLOAT_INPLACE_r13": 20309,
+   "_BINARY_OP_MULTIPLY_FLOAT_r13": 2609,
+   "_BINARY_OP_SUBTRACT_FLOAT_INPLACE_RIGHT_r23": 585858,
+   "_BINARY_OP_SUBTRACT_FLOAT_INPLACE_r13": 1053225,
+   "_BINARY_OP_SUBTRACT_FLOAT_UNBOXED_r21": 5939,
+   "_BINARY_OP_SUBTRACT_INT_r23": 5389,
+   "_COMPARE_OP_FLOAT_r23": 10786,
+   "_COMPARE_OP_INT_r23": 5743
+  },
+  "traces": 11,
+  "traces_with_2plus_arith": 4,
+  "top_arith_shapes": [
+   [
+    "_GUARD_IP__PUSH_FRAME_r00 _GUARD_CODE_VERSION__PUSH_FRAME_r00 _GUARD_NOT_EXHAUSTED_RANGE_r22 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_2_r01 _LOAD_FAST_BORROW_1_r12 _STORE_FAST_FUSED_r10 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_0_r01 _GUARD_TYPE_VERSION_r11 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_BORROW_0_r12 _LOAD_FAST_BORROW_0_r23 _LOAD_FAST_BORROW_3_r01 _LOAD_FAST_BORROW_1_r12 _GUARD_TOS_INT_r22 _GUARD",
+    1
+   ],
+   [
+    "_GUARD_GLOBALS_VERSION_r00 _GUARD_BUILTINS_IS_CANONICAL_r00 _LOAD_FAST_BORROW_1_r12 _GUARD_BIT_IS_SET_POP_5_r10 _LOAD_FAST_BORROW_0_r01 _GUARD_TYPE_VERSION_r11 _LOAD_FAST_BORROW_1_r12 _GUARD_TOS_INT_r22 _GUARD_NOS_LIST_r22 _GUARD_IP_RETURN_VALUE_r11 _GUARD_CODE_VERSION_RETURN_VALUE_r11 _LOAD_FAST_BORROW_r12 _GUARD_TOS_INT_r22 _GUARD_NOS_OBJECT_TYPE_VERSION_r22 _GUARD_NOS_FLOAT_r02 _BINARY_OP_MULTI",
+    1
+   ],
+   [
+    "_GUARD_NOT_EXHAUSTED_RANGE_r22 _STORE_FAST_FUSED_r10 _GUARD_GLOBALS_VERSION_r00 _GUARD_BUILTINS_IS_CANONICAL_r00 _LOAD_FAST_BORROW_5_r01 _GUARD_NOS_INT_r22 _BINARY_OP_ADD_INT_r23 _LOAD_FAST_BORROW_3_r12 _GUARD_TYPE_r01 _GUARD_NOT_EXHAUSTED_RANGE_r22 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_BORROW_r12 _GUARD_IP__PUSH_FRAME_r00 _GUARD_CODE_VERSION__PUSH_FRAME_r00 _GUARD_GLOBALS_VERSI",
+    1
+   ]
+  ]
+ },
+ "scimark_monte_carlo": {
+  "files": 1,
+  "totals": {
+   "Object allocations": 185320,
+   "Object allocations from freelist": 874647,
+   "Object frees": 197241,
+   "Object frees to freelist": 887430,
+   "Optimization traces created": 8,
+   "Optimization traces executed": 239983,
+   "Optimization uops executed": 26544719,
+   "Executors invalidated": 7
+  },
+  "uops_executed_total": 26544719,
+  "top_uops": [
+   [
+    "_POP_TOP_NOP_r21",
+    1305858
+   ],
+   [
+    "_POP_TOP_NOP_r32",
+    1150318
+   ],
+   [
+    "_LOAD_CONST_INLINE_BORROW_r12",
+    1091889
+   ],
+   [
+    "_CHECK_VALIDITY_r00",
+    1070578
+   ],
+   [
+    "_POP_TOP_NOP_r10",
+    796084
+   ],
+   [
+    "_LOAD_FAST_BORROW_0_r12",
+    736263
+   ],
+   [
+    "_SET_IP_r22",
+    710790
+   ],
+   [
+    "_LOAD_FAST_BORROW_1_r01",
+    644342
+   ],
+   [
+    "_SET_IP_r11",
+    578796
+   ],
+   [
+    "_GUARD_BIT_IS_SET_POP_5_r10",
+    569194
+   ],
+   [
+    "_LOAD_FAST_BORROW_0_r01",
+    563492
+   ],
+   [
+    "_CHECK_VALIDITY_r11",
+    552791
+   ],
+   [
+    "_LOAD_FAST_BORROW_4_r01",
+    528662
+   ],
+   [
+    "_LOAD_ATTR_INSTANCE_VALUE_CHECKED_r23",
+    508862
+   ],
+   [
+    "_LOAD_FAST_BORROW_2_r01",
+    506289
+   ]
+  ],
+  "arith_uops": {
+   "_BINARY_OP_ADD_FLOAT_INT_r23": 83394,
+   "_BINARY_OP_ADD_FLOAT_UNBOXED_r21": 61228,
+   "_BINARY_OP_ADD_INT_r23": 42202,
+   "_BINARY_OP_MULTIPLY_FLOAT_UNBOXED_r21": 61228,
+   "_BINARY_OP_MULTIPLY_FLOAT_UNBOXED_r32": 61228,
+   "_BINARY_OP_MULTIPLY_FLOAT_r13": 151392,
+   "_BINARY_OP_SUBTRACT_FLOAT_UNBOXED_r21": 191803,
+   "_BINARY_OP_SUBTRACT_INT_r23": 312695,
+   "_COMPARE_OP_FLOAT_UNBOXED_r21": 61228,
+   "_COMPARE_OP_INT_r23": 332569
+  },
+  "traces": 10,
+  "traces_with_2plus_arith": 7,
+  "top_arith_shapes": [
+   [
+    "_GUARD_NOT_EXHAUSTED_RANGE_r22 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_1_r01 _GUARD_TYPE_VERSION_r11 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_BORROW_0_r12 _LOAD_FAST_BORROW_0_r23 _LOAD_FAST_BORROW_3_r01 _LOAD_FAST_BORROW_1_r12 _GUARD_TOS_INT_r22 _GUARD_NOS_OBJECT_TYPE_VERSION_r22 _LOAD_FAST_BORROW_3_r12 _LOAD_FAST_BORROW_2_r23 _GUARD_TOS_INT_r33 _GUARD_NOS_OBJECT_TYPE_VERSION_r33 _BINARY_OP_SUBTRACT_FLO",
+    2
+   ],
+   [
+    "_LOAD_FAST_BORROW_4_r01 _LOAD_FAST_BORROW_0_r12 _GUARD_TYPE_VERSION_r22 _LOAD_FAST_BORROW_2_r23 _LOAD_FAST_BORROW_1_r01 _GUARD_NOS_INT_r22 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_SET_POP_5_r10 _LOAD_FAST_BORROW_1_r01 _BINARY_OP_SUBTRACT_INT_r23 _STORE_FAST_FUSED_INT_r10 _LOAD_FAST_BORROW_1_r01 _LOAD_FAST_BORROW_0_r12 _GUARD_DORV_NO_DICT_r22 _LOAD_FAST_BORROW_2_r01 _GUARD_NOS_INT_r22 _COMPARE_OP_INT_r23 ",
+    2
+   ],
+   [
+    "_LOAD_FAST_BORROW_4_r01 _LOAD_FAST_BORROW_0_r12 _GUARD_TYPE_VERSION_r22 _GUARD_NOS_FLOAT_r12 _BINARY_OP_ADD_FLOAT_INT_r23 _STORE_FAST_FUSED_FLOAT_r10 _LOAD_FAST_BORROW_4_r01 _LOAD_FAST_BORROW_0_r12 _LOAD_FAST_BORROW_2_r23 _LOAD_FAST_BORROW_1_r01 _GUARD_NOS_INT_r22 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_SET_POP_5_r10 _LOAD_FAST_BORROW_1_r01 _BINARY_OP_SUBTRACT_INT_r23 _STORE_FAST_FUSED_INT_r10 _LOAD_FAS",
+    2
+   ]
+  ]
+ },
+ "scimark_sor": {
+  "files": 1,
+  "totals": {
+   "Object allocations": 185320,
+   "Object allocations from freelist": 1936654,
+   "Object frees": 197246,
+   "Object frees to freelist": 1949439,
+   "Optimization traces created": 4,
+   "Optimization traces executed": 119715,
+   "Optimization uops executed": 66825608,
+   "Executors invalidated": 1
+  },
+  "uops_executed_total": 66825608,
+  "top_uops": [
+   [
+    "_POP_TOP_NOP_r21",
+    5491969
+   ],
+   [
+    "_SET_IP_r11",
+    2934164
+   ],
+   [
+    "_POP_TOP_NOP_r32",
+    2676375
+   ],
+   [
+    "_COMPARE_OP_INT_r23",
+    2285147
+   ],
+   [
+    "_GUARD_BIT_IS_UNSET_POP_5_r10",
+    2279404
+   ],
+   [
+    "_SPILL_OR_RELOAD_r32",
+    1896159
+   ],
+   [
+    "_LOAD_FAST_BORROW_0_r01",
+    1817748
+   ],
+   [
+    "_POP_TOP_INT_r32",
+    1709553
+   ],
+   [
+    "_LOAD_ATTR_INSTANCE_VALUE_CHECKED_r12",
+    1620253
+   ],
+   [
+    "_CHECK_VALIDITY_r11",
+    1615594
+   ],
+   [
+    "_SPILL_OR_RELOAD_r12",
+    1598498
+   ],
+   [
+    "_CHECK_VALIDITY_r00",
+    1357677
+   ],
+   [
+    "_STORE_FAST_FUSED_r10",
+    1248618
+   ],
+   [
+    "_LOAD_FAST_BORROW_0_r12",
+    1245092
+   ],
+   [
+    "_SWAP_2_r22",
+    1243489
+   ]
+  ],
+  "arith_uops": {
+   "_BINARY_OP_ADD_FLOAT_INPLACE_RIGHT_r23": 3301,
+   "_BINARY_OP_ADD_FLOAT_INPLACE_r13": 364396,
+   "_BINARY_OP_ADD_INT_INPLACE_r23": 569851,
+   "_BINARY_OP_ADD_INT_r23": 182198,
+   "_BINARY_OP_MULTIPLY_FLOAT_INPLACE_r13": 182198,
+   "_BINARY_OP_MULTIPLY_FLOAT_r13": 2609,
+   "_BINARY_OP_MULTIPLY_FLOAT_r23": 91099,
+   "_BINARY_OP_MULTIPLY_INT_r23": 569851,
+   "_BINARY_OP_SUBTRACT_FLOAT_UNBOXED_r21": 5939,
+   "_BINARY_OP_SUBTRACT_FLOAT_r23": 91099,
+   "_BINARY_OP_SUBTRACT_INT_r23": 190888,
+   "_COMPARE_OP_INT_r23": 2285147
+  },
+  "traces": 6,
+  "traces_with_2plus_arith": 4,
+  "top_arith_shapes": [
+   [
+    "_GUARD_IP__PUSH_FRAME_r00 _GUARD_CODE_VERSION__PUSH_FRAME_r00 _GUARD_NOT_EXHAUSTED_RANGE_r22 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_2_r01 _LOAD_FAST_BORROW_1_r12 _STORE_FAST_FUSED_r10 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_0_r01 _GUARD_TYPE_VERSION_r11 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_BORROW_0_r12 _LOAD_FAST_BORROW_0_r23 _LOAD_FAST_BORROW_3_r01 _LOAD_FAST_BORROW_1_r12 _GUARD_TOS_INT_r22 _GUARD",
+    1
+   ],
+   [
+    "_LOAD_FAST_BORROW_1_r01 _GUARD_TOS_TUPLE_r11 _STORE_FAST_FUSED_r10 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_2_r01 _LOAD_FAST_BORROW_0_r12 _GUARD_TYPE_VERSION_r22 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_BORROW_3_r23 _LOAD_FAST_BORROW_4_r01 _LOAD_FAST_1_r12 _GUARD_TOS_INT_r22 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_UNSET_POP_5_r10 _LOAD_FAST_BORROW_0_r01 _GUARD_TOS_INT_r11 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_UNSE",
+    1
+   ],
+   [
+    "_LOAD_FAST_BORROW_1_r01 _GUARD_TOS_TUPLE_r11 _STORE_FAST_FUSED_r10 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_0_r01 _GUARD_TYPE_VERSION_r11 _LOAD_FAST_BORROW_0_r12 _LOAD_FAST_BORROW_2_r01 _LOAD_FAST_BORROW_3_r12 _LOAD_FAST_1_r12 _GUARD_TOS_INT_r22 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_UNSET_POP_5_r10 _LOAD_FAST_BORROW_0_r01 _GUARD_TOS_INT_r11 _COMPARE_OP_INT_r23 _GUARD_BIT_IS_UNSET_POP_5_r10 _LOAD_FAST_2",
+    1
+   ]
+  ]
+ },
+ "scimark_sparse_mat_mult": {
+  "files": 1,
+  "totals": {
+   "Object allocations": 186343,
+   "Object allocations from freelist": 10542346,
+   "Object frees": 198267,
+   "Object frees to freelist": 10555205,
+   "Optimization traces created": 5,
+   "Optimization traces executed": 297780,
+   "Optimization uops executed": 169447184,
+   "Executors invalidated": 1
+  },
+  "uops_executed_total": 169447184,
+  "top_uops": [
+   [
+    "_CHECK_VALIDITY_r00",
+    10554780
+   ],
+   [
+    "_SET_IP_r00",
+    5471721
+   ],
+   [
+    "_SET_IP_r11",
+    5369849
+   ],
+   [
+    "_MAKE_WARM_r00",
+    5279915
+   ],
+   [
+    "_GUARD_NOT_EXHAUSTED_RANGE_r22",
+    5279899
+   ],
+   [
+    "_LOAD_FAST_BORROW_r01",
+    5273962
+   ],
+   [
+    "_SPILL_OR_RELOAD_r20",
+    5228867
+   ],
+   [
+    "_LOAD_FAST_BORROW_r12",
+    5223122
+   ],
+   [
+    "_CHECK_PERIODIC_r00",
+    5183996
+   ],
+   [
+    "_ITER_CHECK_RANGE_r02",
+    5183996
+   ],
+   [
+    "_ITER_NEXT_RANGE_r23",
+    5178962
+   ],
+   [
+    "_SPILL_OR_RELOAD_r31",
+    5178962
+   ],
+   [
+    "_STORE_FAST_FUSED_r10",
+    5178962
+   ],
+   [
+    "_LOAD_FAST_BORROW_r23",
+    5087901
+   ],
+   [
+    "_GUARD_NOS_OBJECT_TYPE_VERSION_r12",
+    5087885
+   ]
+  ],
+  "arith_uops": {
+   "_BINARY_OP_ADD_FLOAT_INPLACE_RIGHT_r13": 45998,
+   "_BINARY_OP_ADD_FLOAT_UNBOXED_r21": 4991982,
+   "_BINARY_OP_ADD_INT_r23": 140982,
+   "_BINARY_OP_MULTIPLY_FLOAT_UNBOXED_r21": 4991982,
+   "_BINARY_OP_MULTIPLY_INT_r23": 45079
+  },
+  "traces": 7,
+  "traces_with_2plus_arith": 3,
+  "top_arith_shapes": [
+   [
+    "_GUARD_NOT_EXHAUSTED_RANGE_r22 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_r01 _LOAD_FAST_BORROW_r12 _GUARD_TOS_INT_r22 _GUARD_NOS_OVERFLOWED_r22 _BINARY_OP_MULTIPLY_INT_r23 _LOAD_FAST_BORROW_3_r12 _LOAD_FAST_BORROW_r12 _LOAD_FAST_BORROW_r01 _LOAD_FAST_BORROW_r12 _GUARD_NOS_INT_r22 _BINARY_OP_ADD_INT_r23",
+    1
+   ],
+   [
+    "_GUARD_NOT_EXHAUSTED_RANGE_r22 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_r01 _LOAD_FAST_BORROW_5_r12 _LOAD_FAST_BORROW_4_r01 _LOAD_FAST_BORROW_r12 _GUARD_TOS_OVERFLOWED_r22 _GUARD_NOS_OBJECT_TYPE_VERSION_r22 _GUARD_NOS_OBJECT_TYPE_VERSION_r12 _LOAD_FAST_BORROW_2_r12 _LOAD_FAST_BORROW_r23 _GUARD_NOS_OBJECT_TYPE_VERSION_r33 _BINARY_OP_MULTIPLY_FLOAT_UNBOXED_r21 _GUARD_NOS_FLOAT_r12 _BINARY_OP_ADD_FLOA",
+    1
+   ],
+   [
+    "_GUARD_NOT_EXHAUSTED_RANGE_r22 _STORE_FAST_FUSED_r10 _STORE_FAST_FUSED_FLOAT_OR_NULL_r10 _GUARD_GLOBALS_VERSION_r00 _GUARD_BUILTINS_IS_CANONICAL_r00 _LOAD_FAST_BORROW_3_r01 _LOAD_FAST_BORROW_r12 _GUARD_TOS_OVERFLOWED_r22 _GUARD_NOS_OBJECT_TYPE_VERSION_r22 _LOAD_FAST_BORROW_3_r12 _LOAD_FAST_BORROW_r01 _BINARY_OP_ADD_INT_r23 _GUARD_NOS_OBJECT_TYPE_VERSION_r12 _GUARD_TYPE_r01 _GUARD_NOT_EXHAUSTED_RAN",
+    1
+   ]
+  ]
+ },
+ "spectral_norm": {
+  "files": 1,
+  "totals": {
+   "Object allocations": 190045,
+   "Object allocations from freelist": 3047773,
+   "Object frees": 200018,
+   "Object frees to freelist": 3060554,
+   "Optimization traces created": 4,
+   "Optimization traces executed": 649396,
+   "Optimization uops executed": 62654950,
+   "Executors invalidated": 3
+  },
+  "uops_executed_total": 62654950,
+  "top_uops": [
+   [
+    "_CHECK_VALIDITY_r11",
+    3329809
+   ],
+   [
+    "_POP_TOP_NOP_r32",
+    2993835
+   ],
+   [
+    "_SET_IP_r11",
+    2970514
+   ],
+   [
+    "_SET_IP_r00",
+    2002330
+   ],
+   [
+    "_POP_TOP_INT_r21",
+    1990206
+   ],
+   [
+    "_POP_TOP_NOP_r21",
+    1341235
+   ],
+   [
+    "_CHECK_VALIDITY_r00",
+    1333788
+   ],
+   [
+    "_BINARY_OP_ADD_INT_UNBOXED_r32",
+    1326804
+   ],
+   [
+    "_LOAD_CONST_INLINE_BORROW_r12",
+    1326804
+   ],
+   [
+    "_LOAD_FAST_BORROW_0_r12",
+    1326804
+   ],
+   [
+    "_UNBOX_INT_TOS_r33",
+    1326804
+   ],
+   [
+    "_STORE_FAST_FUSED_r10",
+    1310105
+   ],
+   [
+    "_GUARD_BINARY_OP_EXTEND_r22",
+    995375
+   ],
+   [
+    "_SET_IP_r22",
+    995375
+   ],
+   [
+    "_LOAD_FAST_BORROW_1_r12",
+    994831
+   ]
+  ],
+  "arith_uops": {
+   "_BINARY_OP_ADD_FLOAT_INPLACE_RIGHT_r23": 658857,
+   "_BINARY_OP_ADD_INT_INPLACE_r23": 663402,
+   "_BINARY_OP_ADD_INT_UNBOXED_r21": 663402,
+   "_BINARY_OP_ADD_INT_UNBOXED_r32": 1326804,
+   "_BINARY_OP_ADD_INT_r23": 663402,
+   "_BINARY_OP_MULTIPLY_FLOAT_INPLACE_r23": 331973,
+   "_BINARY_OP_MULTIPLY_FLOAT_r23": 314629,
+   "_BINARY_OP_MULTIPLY_INT_UNBOXED_r21": 663402
+  },
+  "traces": 6,
+  "traces_with_2plus_arith": 4,
+  "top_arith_shapes": [
+   [
+    "_GUARD_NOS_TYPE_r02 _GUARD_TOS_TUPLE_r11 _STORE_FAST_FUSED_r10 _STORE_FAST_FUSED_r10 _LOAD_FAST_BORROW_3_r01 _GUARD_GLOBALS_VERSION_r11 _LOAD_FAST_BORROW_1_r01 _LOAD_FAST_BORROW_4_r12 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_BORROW_1_r12 _GUARD_TOS_INT_r22 _GUARD_NOS_INT_r22 _BINARY_OP_ADD_INT_UNBOXED_r21 _LOAD_FAST_BORROW_0_r12 _LOAD_FAST_BORROW_1_r23 _BINARY_OP_ADD_INT_UNBOXED_r32 _BINARY_OP_ADD_INT_U",
+    1
+   ],
+   [
+    "_GUARD_NOS_TYPE_r02 _GUARD_TOS_TUPLE_r11 _STORE_FAST_FUSED_r10 _STORE_FAST_FUSED_FLOAT_OR_NULL_r00 _LOAD_FAST_BORROW_3_r01 _GUARD_GLOBALS_VERSION_r11 _LOAD_FAST_BORROW_4_r01 _LOAD_FAST_BORROW_1_r12 _LOAD_FAST_BORROW_0_r01 _LOAD_FAST_BORROW_1_r12 _GUARD_TOS_INT_r22 _GUARD_NOS_INT_r22 _BINARY_OP_ADD_INT_UNBOXED_r21 _LOAD_FAST_BORROW_0_r12 _LOAD_FAST_BORROW_1_r23 _BINARY_OP_ADD_INT_UNBOXED_r32 _BINAR",
+    1
+   ],
+   [
+    "_GUARD_TOS_FLOAT_r01 _GUARD_NOS_FLOAT_r12 _BINARY_OP_MULTIPLY_FLOAT_r23 _GUARD_NOS_FLOAT_r12 _BINARY_OP_ADD_FLOAT_INPLACE_RIGHT_r23 _STORE_FAST_FUSED_r10",
+    1
+   ]
+  ]
+ }
+}
