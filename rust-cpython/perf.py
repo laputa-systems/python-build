@@ -137,6 +137,7 @@ CLIMB_SUPERSEDED_UOP_ASSERTIONS = frozenset({
     "test.test_capi.test_opt.TestUopsOptimization.test_call_py_exact_args",
     "test.test_capi.test_opt.TestUopsOptimization.test_float_add_chain_both_unique",
     "test.test_capi.test_opt.TestUopsOptimization.test_float_inplace_chain_propagation",
+    "test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_speculative_guards_from_tracing",
     "test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_inplace_unique_lhs",
     "test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_unique_result_enables_inplace",
     "test.test_capi.test_opt.TestUopsOptimization.test_func_guards_removed_or_reduced",
