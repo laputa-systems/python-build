@@ -41,9 +41,10 @@ terms of the MIT license. A copy of the license can be found in the file
 #define mi_decl_cold
 #elif (defined(__GNUC__) && (__GNUC__ >= 3)) || defined(__clang__) // includes clang and icc
 #define mi_decl_noinline        __attribute__((noinline))
-#if defined(__linux__)
+#if defined(__linux__) && defined(__GLIBC__)
 #define mi_decl_thread          __thread __attribute__((tls_model("initial-exec")))
 #else
+// musl refuses to dlopen objects with initial-exec TLS.
 #define mi_decl_thread          __thread
 #endif
 #define mi_decl_align(a)        __attribute__((aligned(a)))
