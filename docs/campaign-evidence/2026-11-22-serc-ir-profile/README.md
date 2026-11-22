@@ -30,3 +30,16 @@ Lead (not yet a hypothesis): Serc's allocation cost. Installing a staticlib-wide
 affects every Rust crate in libpython. That includes code that runs without an attached
 thread state, and lazy tables that outlive interpreters, so `AttachedThreadAllocator` does
 not apply. A design is required before any prediction is written.
+
+## Screen: `indentation::cpython_layout_error` (no prototype)
+
+This is not an error path. It is Serc's routing check, and it runs on every compile
+(`lib.rs` calls it after parsing). It decides whether a module's tab/space layout must be
+handed to CPython. The check makes two scans over the whole file:
+- `contains(b'\t')`;
+- the backslash-continuation `windows(2)` scan, which runs only when the file has tabs.
+
+It also walks every token once, and scans backwards to the line start at each logical
+line. Its whole cost is 0.66% of the corpus, which is below the useful threshold even if
+it were removed entirely. Removing it would also require proving that tab-free files can
+skip the check, which affects routing exactness. Screened out.
