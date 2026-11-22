@@ -4,10 +4,30 @@ set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 LANE_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
 REPO_ROOT=$(cd -- "$LANE_DIR/.." && pwd)
-RESULTS=$LANE_DIR/results/perf-bench
+RESULTS=${P0_BENCH_RESULTS:-$LANE_DIR/results/perf-bench}
 PERF_PY=${PERF_PY:-$LANE_DIR/perf.py}
 GATE_READY=${PERF_GATE_READY:-$SCRIPT_DIR/perf-gate-ready}
 
+MODE=default
+DIAGNOSTIC_REASON=
+if [[ ${1:-} == --diagnostic-reason ]]; then
+    MODE=diagnostic
+    if (($# >= 2)); then
+        DIAGNOSTIC_REASON=$2
+        shift 2
+    else
+        shift
+    fi
+    if [[ -z "${DIAGNOSTIC_REASON//[[:space:]]/}" ]]; then
+        printf '%s\n' 'ERROR: --diagnostic-reason requires non-empty text' >&2
+        exit 2
+    fi
+fi
+BENCH_ARGS=("$@")
+
+if [[ "$RESULTS" != /* ]]; then
+    RESULTS=$PWD/$RESULTS
+fi
 if [[ "$PERF_PY" != /* ]]; then
     PERF_PY=$PWD/$PERF_PY
 fi
@@ -28,10 +48,38 @@ else
 fi
 pre_utc=$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)
 
+if ((pre_exit != 0)) && [[ "$MODE" == default ]]; then
+    record_path=$RESULTS/external-host-checks-$start_stamp.json
+    python3 - "$record_path" "$tmpdir/pre.out" "$pre_exit" "$pre_utc" \
+        "${BENCH_ARGS[@]}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+record_path, pre_path, pre_exit, pre_utc, *args = sys.argv[1:]
+record = {
+    "pre": {
+        "exit": int(pre_exit),
+        "output": Path(pre_path).read_text(encoding="utf-8", errors="replace"),
+        "utc": pre_utc,
+    },
+    "mode": "default",
+    "bench_run": False,
+    "status": "DEFERRED",
+    "eligible": False,
+    "accepted": False,
+    "args": args,
+}
+Path(record_path).write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+    printf 'DEFERRED: perf-gate-ready precheck exit=%d; bench not run\n' "$pre_exit" >&2
+    exit 4
+fi
+
 set +e
 (
     cd -- "$REPO_ROOT"
-    python3 "$PERF_PY" bench "$@"
+    python3 "$PERF_PY" bench "${BENCH_ARGS[@]}"
 ) 2>&1 | tee "$tmpdir/bench.log"
 pipeline_status=("${PIPESTATUS[@]}")
 set -e
@@ -79,16 +127,53 @@ else
 fi
 mv -- "$tmpdir/bench.log" "$log_path"
 
+verdict_path=
+if [[ -n "$result_dir" ]]; then
+    verdict_path=$result_dir/verdict.json
+fi
 python3 - "$record_path" "$tmpdir/pre.out" "$pre_exit" "$pre_utc" \
-    "$tmpdir/post.out" "$post_exit" "$post_utc" "$bench_exit" "$@" <<'PY'
+    "$tmpdir/post.out" "$post_exit" "$post_utc" "$bench_exit" "$MODE" \
+    "$DIAGNOSTIC_REASON" "$verdict_path" "${BENCH_ARGS[@]}" <<'PY'
 import json
 import sys
 from pathlib import Path
 
-record_path, pre_path, pre_exit, pre_utc, post_path, post_exit, post_utc, bench_exit, *args = sys.argv[1:]
+(
+    record_path,
+    pre_path,
+    pre_exit,
+    pre_utc,
+    post_path,
+    post_exit,
+    post_utc,
+    bench_exit,
+    mode,
+    diagnostic_reason,
+    verdict_path,
+    *args,
+) = sys.argv[1:]
 pre_exit = int(pre_exit)
 post_exit = int(post_exit)
 bench_exit = int(bench_exit)
+raw_verdict = None
+if verdict_path:
+    try:
+        verdict_file = json.loads(Path(verdict_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        verdict_file = None
+    if isinstance(verdict_file, dict) and isinstance(verdict_file.get("verdict"), str):
+        raw_verdict = verdict_file["verdict"]
+    elif isinstance(verdict_file, dict) and isinstance(verdict_file.get("decision"), str):
+        raw_verdict = verdict_file["decision"]
+    elif isinstance(verdict_file, dict):
+        raw_verdict = verdict_file.get("decision", verdict_file)
+    else:
+        raw_verdict = verdict_file
+if not isinstance(raw_verdict, str):
+    print(
+        "p0-bench: verdict.json has no top-level verdict string; storing raw value",
+        file=sys.stderr,
+    )
 record = {
     "pre": {
         "exit": pre_exit,
@@ -101,9 +186,21 @@ record = {
         "utc": post_utc,
     },
     "bench_exit": bench_exit,
-    "eligible": pre_exit == 0 and post_exit == 0 and bench_exit == 0,
+    "mode": mode,
+    "verdict": raw_verdict,
+    "bench_run": True,
+    "eligible": mode == "default" and pre_exit == 0 and post_exit == 0 and bench_exit == 0,
+    "accepted": (
+        mode == "default"
+        and pre_exit == 0
+        and post_exit == 0
+        and bench_exit == 0
+        and raw_verdict == "ACCEPT"
+    ),
     "args": args,
 }
+if mode == "diagnostic":
+    record["diagnostic_reason"] = diagnostic_reason
 Path(record_path).write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
 
@@ -113,7 +210,7 @@ printf 'p0-bench log: %s\n' "$log_path" >&2
 if ((bench_exit != 0)); then
     exit "$bench_exit"
 fi
-if ((pre_exit != 0 || post_exit != 0)); then
+if ((pre_exit != 0 || post_exit != 0)) || [[ "$MODE" == diagnostic ]]; then
     printf 'NOT ELIGIBLE: perf-gate-ready pre exit=%d, post exit=%d\n' \
         "$pre_exit" "$post_exit" >&2
     exit 3
