@@ -1438,7 +1438,8 @@ def _musl_allocator_input(name: str, metadata: dict[str, Any], target: str) -> I
 def _cache_musl_allocator_source(name: str, toolchain, *, fetch: bool) -> Path:
     metadata = _musl_allocator_metadata(name)
     path = (REPO / metadata["cache_path"]).resolve()
-    if not path.is_relative_to(CACHE_ROOT.resolve()):
+    bootstrap_cache = (CACHE_ROOT / "bootstrap").resolve()
+    if not path.is_relative_to(bootstrap_cache):
         raise LaneError(f"{name} source cache path escapes the repository")
 
     def matches(candidate: Path) -> bool:
