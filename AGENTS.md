@@ -38,10 +38,13 @@ python3 build/relock_linux.py
 python3 build/mirror_inputs.py [--check]
 ```
 
-`make build|fetch|package|verify|repro|clean|lint` wrap these commands; `TARGET` is a Rust triple
+`make build|fetch|package|test|verify|repro|lint` wrap these commands; `TARGET` is a Rust triple
 and defaults to the host. Releases come from `.github/workflows/release.yml`; the
 `bootstrap-inputs` release is an input mirror outside the release contract and never uses a
 `release-` tag.
+
+`make clean` removes production build output and test caches. It preserves the
+Rust CPython research lane, the Python environment, and shared Cargo targets.
 
 ## Invariants
 

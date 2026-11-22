@@ -12,7 +12,7 @@ BENCH_PYPERFORMANCE_ARGS = $(if $(strip $(BENCH_PYPERFORMANCE_SELECTION)),--pype
 .DEFAULT_GOAL := lint
 
 .PHONY: bench bench-full bench-host-check bench-inputs bench-product
-.PHONY: fetch build package verify repro lint clean
+.PHONY: fetch build package test verify repro lint clean
 
 fetch:
 	$(PYTHON) build.py fetch --target $(TARGET)
@@ -22,6 +22,9 @@ build: fetch
 
 package:
 	$(PYTHON) build.py package --target $(TARGET)
+
+test:
+	$(PYTHON) build.py controller-test
 
 verify:
 	$(PYTHON) build.py verify --target $(TARGET)
@@ -34,11 +37,17 @@ lint:
 	cargo clippy --manifest-path backend/hashing/Cargo.toml --locked --all-targets -- -D warnings
 
 clean:
-	rm -rf dist diagnostics build/prefix build/work build/stage build/logs build/sealed
-	rm -rf rust-cpython/stage rust-cpython/work rust-cpython/logs rust-cpython/results rust-cpython/stage-perf-*
-	cargo clean --manifest-path backend/hashing/Cargo.toml
-	rm -rf .venv .pytest_cache .ruff_cache
-	find . -path './.git' -prune -o -path './.work' -prune -o -name __pycache__ -type d -prune -exec rm -rf {} +
+	@for directory in ./build ./backend ./backend/hashing; do \
+	  if test -L "$$directory"; then printf '%s\n' "make clean: $$directory must be a local directory" >&2; exit 1; fi; \
+	done; \
+	set -- ./dist ./diagnostics ./build/prefix ./build/work ./build/stage ./build/logs ./build/sealed \
+	       ./backend/hashing/target ./.pytest_cache ./.ruff_cache; \
+	for artifact do \
+	  if test -L "$$artifact" || { test -e "$$artifact" && ! test -d "$$artifact"; }; then \
+	    printf '%s\n' "make clean: $$artifact must be a local build or cache directory" >&2; exit 1; \
+	  fi; \
+	done; \
+	rm -rf -- "$$@"
 
 ifeq ($(BENCH_TARGET),aarch64-apple-darwin)
 # The locked wheelhouse is Linux/musl-only; macOS uses dependency-free smoke workloads.
