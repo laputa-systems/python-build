@@ -46,14 +46,29 @@ next experiments. Receipts go to the [Ledger](#ledger); the pre-2026-11-18
 narrative is preserved verbatim under [Status history](#status-history-2026-11-15-to-2026-11-18).
 
 **ACTIVE — continuous Linux research (OD21, 2026-11-19).** Integration branch:
-`campaign/cloud-ubuntu-baseline`. Two Linux hosts have run the campaign: the
+`integ/od22-reconcile` (reconciles `main` and `campaign/cloud-ubuntu-baseline`). Two Linux hosts have run the campaign: the
 original cloud worker (Ubuntu 24.04 container, checkpoints through
 `e8f2b8e`, not observed from the OD22 session) and the OD22 interim Devin VM
 (Ubuntu 22.04, 2026-11-20/21). Neither is a qualified measurement host;
 qualified Linux gains: **0**. Historical PAUSED/BLOCKED/plateau closeouts
 do not end the current campaign.
 
-### Continuous checkpoint (2026-11-21, OD22 host)
+### Continuous checkpoint (2026-11-22, OD22 host)
+
+The tracks below match the runbook's per-track table. The 2026-11-21
+checkpoint table is kept below it, unchanged.
+
+| Track | Current candidate | Disposition | Evidence debt | Next | Blocker |
+| --- | --- | --- | --- | --- | --- |
+| C (Serc) | C-REL-3 `8a57de4` | The one prepared unqualified candidate. Corrected whole-process accounting on the `ef48b04` build: process-private memory −244 KiB in every mode, Pss −448 to −576 KiB, peak RSS −448 to −568 KiB. Lazy tables add one 656 B table, initialised once. `[heap]`/anon change by ≤ 4 KiB. See `docs/campaign-evidence/2026-11-22-probe2/`. | Matched `8a57de4` build: its table order and offsets differ from `ef48b04`. Relocation and probe rerun on that build. Generator-input reproducibility. Independent review. | Build and probe `8a57de4` | Timing needs a qualified host |
+| C archive | C-REL-2 `4fe72f7` | Not a landing candidate (owner, 2026-11-22: keep Serc/parser panic file:line). Its −4,012 relocations and −100 KiB result stays as evidence. It is not counted as a candidate. | None | None | None |
+| C observation | C-LOC-1 `6e5568c` | Retired at attempt 1/1; the record is unchanged. Under the corrected probe the `.pyc` control moves +68 KiB (limit 100) and source mode moves −1,276 KiB. The original control failure was a probe defect: the `-c` reader compiled through Serc. | None | Owner rules on re-admission | Owner decision |
+| J (JIT) | J-ES-2 (`2026-11-21-j-es/PLAN-JES2.md`) | Owner, 2026-11-22: exactly one combined activation attempt is authorized on this provisional host. The larger escape-synced frame representation remains paused. Status: pre-build replay of the captured sparse/FFT planner inputs. | Planner-input fixture and parent/candidate replay. The build runs only if the replay passes. | Replay, then at most one build and collection | None for the replay |
+| H (harness) | `tools/p0-bench` | A failed precheck must defer the bench, not run it | Compact CPU-replay inputs | Patch plus controller test | None |
+| Timing / IPC | None | Deferred. Qualified gains: 0. Accepted: 0. | Fresh H0, A/A and P0. PMU counters. | P0 on a qualified host | No qualified Ubuntu 24.04 host. `perf_event_paranoid=4` |
+
+#### Checkpoint as of 2026-11-21 (superseded by the table above)
+
 
 | Field | State |
 | --- | --- |

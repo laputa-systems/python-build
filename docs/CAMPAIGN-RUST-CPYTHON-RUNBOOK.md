@@ -43,79 +43,46 @@ On resume, inspect local state and fetch the steering before selecting work:
 ```sh
 git status --short --branch
 git fetch origin
-git log --oneline --left-right HEAD...origin/campaign/cloud-ubuntu-baseline
+git log --oneline --left-right HEAD...origin/integ/od22-reconcile
 ```
 
-If already on `campaign/cloud-ubuntu-baseline` with a clean working tree,
-fast-forward with `git merge --ff-only origin/campaign/cloud-ubuntu-baseline`.
-If the local branch has work or a command still owns a lease, preserve and
-reconcile that state first. Do not reset, force push or overwrite an active
-candidate. Then reread this runbook and current Status. A remote steering
+The current integration branch is `integ/od22-reconcile`. It reconciles
+`main` with `campaign/cloud-ubuntu-baseline` and carries every OD22
+checkpoint. If you are on it with a clean tree, fast-forward with
+`git merge --ff-only origin/integ/od22-reconcile`.
+
+If the local branch has work, or a command still owns a lease, preserve and
+reconcile that state first. Never reset, force-push or overwrite an active
+candidate. Then reread this runbook and the current Status. A remote steering
 commit does not update a running worker's checkout by itself.
 
-The last operational checkpoint reviewed for this steering is
-`af2371da5351f449e665981fc84bc133ec642a7c` on
-`campaign/cloud-ubuntu-baseline`. Its Linux reports describe complete baseline
-build/correctness preparation, reconstructed P0/M0 controls, and **zero
-qualified Linux optimization gains**. The latest commit verifies M0 output
-parity; it is not a speedup. See the campaign's compact
-[Status](CAMPAIGN-RUST-CPYTHON-JIT.md#status) for live updates.
+**Worker (verified 2026-11-22).** The only observed writer is the Devin
+session `3f1f17e563f145baaa3379dab72f794e`, running on the OD22 Ubuntu 22.04
+VM. It continues through that session's own turns. No scheduler or Goal
+relaunches it. The `rcp-build-queue` reminder automation is stale and is not a
+continuation mechanism. A pushed commit does not show that a worker is
+running.
 
-At this checkpoint, do the following in order; a blocked item does not hold
-the others:
+Per-track state. The Status table carries the same rows, with evidence links.
+Completed items (evidence recovery, CPU-accounting repair, C-LOC-1, J-ES-1,
+J-LT-2, refusal census) live in Status and the Ledger, not here.
 
-1. **Recover evidence once, then reuse it.** On the original cloud checkout,
-   verify the recorded stage/build identities and archive hashes. The cited
-   `rust-cpython/results/*.tar.zst`, recipe bundle and logs are ignored and
-   absent from the published Git tree. Treat them as host-only until an actual
-   retrievable copy is verified. Commit compact receipt JSON/manifests and
-   review records under `docs/campaign-evidence/`, outside the ignored results
-   directory; record archive location, retention boundary and SHA-256. Keep
-   large archives in an already authorized durable artifact destination when
-   available. A missing archive is evidence debt, not permission to invent it
-   or redo every test. Recreate only evidence required for the next decision.
-2. **Finish the isolated CPU-accounting repair.** Review
-   `b3f896aeb0d2e1083475585de5f65cfe021f7620` on
-   `campaign/cloud-h0-linux-cpu` against its parent, including the waited-child,
-   cold-ZIP double-count and incomplete-coverage controls. Integrate only the
-   reviewed repair as a separate harness commit. Re-run affected controller
-   tests; preserve old raw verdicts and label replays diagnostic. This fixes
-   evidence coverage, not host variance. New gates use one exact reviewed
-   harness identity and still need fresh H0/P0.
-3. **Start a Serc code-residency experiment.** The Linux probes already
-   distinguish compilation-driven executable residency from baseline link
-   cost. Use that evidence without waiting for unavailable PMU counters:
-   compare one package-local size-oriented release profile for Serc/parser
-   code with its exact unchanged parent, in a separate worktree. Keep global
-   LTO and all unrelated crates fixed. Record ELF sections, touched mappings,
-   source/`.pyc` control results and exact compiler-output parity. A smaller
-   binary alone is not a speedup or C3 acceptance. If the mechanism fails its
-   declared locality/semantic prediction, retire it; next investigate cold
-   error-path outlining, not the same profile with another noise retry.
-4. **Prepare one JIT allocation/materialization experiment.** First obtain
-   Linux-specific structural evidence on training workloads: emitted trace
-   shapes, boxing/allocation call sites or separately instrumented software
-   counts. Do not use Mac CPU shares as Linux profiles. Select one trace shape
-   with repeated box/unbox traffic and write its exit, observer and ownership
-   obligations before prototyping Rust planner changes. Instrumented counts
-   support a mechanism; they are neither timing receipts nor a speed ranking.
-   Drop the prototype if it cannot remove the predicted work or preserve
-   semantics. Keep required frame/deopt/refcount review and targeted tests.
-5. **Reopen timing only on changed evidence.** Inspect an already authorized
-   controlled Linux worker if available. Record its host identity, verify the
-   pinned setup and run the predetermined full H0 self-calibration and clean
-   equal-prefix-length A/A pair, then P0 G1–G5. Use matched stages on that
-   worker; do not transport cloud timings as qualification. If access or a
-   suitable host is absent, record that exact infrastructure blocker and
-   continue the independent work above. Do not provision paid infrastructure
-   or change host isolation/security policy implicitly.
+| Track | Current candidate | Disposition | Evidence debt | Next command | Blocker |
+| --- | --- | --- | --- | --- | --- |
+| C (Serc) | C-REL-3 `8a57de4` (generator-emitted relocation-free target tables). The only prepared candidate. C-REL-2 is archived, not landing: the owner keeps panic file:line. | Prepared, unqualified. Structural predictions held. | Matched `8a57de4` build (the measured stage is `ef48b04`). Relocation and `residency_probe2.py` rerun on it. Table equality from recorded generator inputs. Independent review. | `perf.py build --serc` at `8a57de4`, then `docs/campaign-evidence/2026-11-22-probe2/residency_probe2.py ... 7 <out> --gdb` | Timing needs a qualified host. |
+| C (Serc) observation | C-LOC-1 `6e5568c`: retired at attempt 1/1. | The corrected probe shows the original control failure was a probe artifact (`2026-11-22-probe2/`). | None for the record. | None until the owner rules on re-admission. | Owner decision. |
+| J (JIT) | J-ES-2 (J-ES-1 + J-LT-2 combined, `PLAN-JES2.md`). The owner authorized exactly one activation attempt on this host on 2026-11-22. The larger escape-synced frame representation stays paused. | Pre-build replay of captured sparse/FFT planner inputs in progress. | Planner-input fixture, then parent and candidate replay. The full build and collection run only if the replay passes. | Replay test in `Modules/_jit_opt_rs` on `campaign/jes2-cand` | None for the replay. Timing needs a qualified host. |
+| H (harness) | `tools/p0-bench` must defer before the bench when the precheck fails. | Open. | Compact CPU-replay inputs for the diagnostic receipts. | Patch `p0-bench` plus a controller test | None |
+| Timing / IPC | None | Deferred | Fresh H0/A/A/P0 on a qualified host. PMU counters. | `tools/p0-bench` on a qualified host | No qualified Ubuntu 24.04 host. `perf_event_paranoid=4` on this VM. |
 
-The queue is renewed as experiments finish. Every proposed item states its
-observed mechanism, concrete change, falsifier, smallest useful test and the
-later acceptance gate. Rank using current training-workload evidence; held-out
-results are qualification only. No more full suites on unchanged baselines
-merely to produce a new checkpoint. Run full acceptance when integrating a
-candidate, and repeat other checks only for a changed risk or required gate.
+Every new queue item states its observed mechanism, concrete change,
+falsifier, smallest useful test and later acceptance gate. Rank items by
+current training-workload evidence. Held-out results are for qualification
+only.
+
+Do not run more full suites on unchanged baselines just to produce a new
+checkpoint. Run full acceptance when integrating a candidate. Repeat other
+checks only for a changed risk or a required gate.
 
 ## Separate development from qualification
 
@@ -214,7 +181,7 @@ and next action without saying that worker was restarted.
 Use this as the persistent task instruction, or as the body of `/goal` on a
 surface that supports it:
 
-> Continue the Linux Rust CPython campaign on campaign/cloud-ubuntu-baseline
+> Continue the Linux Rust CPython campaign on integ/od22-reconcile
 > after fetching origin and safely reconciling the latest steering with local
 > work. Follow AGENTS.md, docs/CAMPAIGN-RUST-CPYTHON-RUNBOOK.md and OD21. Keep working
 > across checkpoints and bounded experiment rounds toward qualified M4/C3,

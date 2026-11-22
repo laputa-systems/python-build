@@ -1,9 +1,16 @@
 # J-ES-2: loop-types proof with array reads and in-place float ops combined (preregistered 2026-11-22, before code)
 
-Status: NOT RUN. On 2026-11-22 the owner reconfirmed the pause until a qualified
-Ubuntu 24.04 host, overriding a relayed "Allow one combined try". If reopened, this is one
-attempt beyond the 1/1 budgets of J-ES-1 (retired) and J-LT-2 (rejected), which keep their
-own outcomes.
+Status: AUTHORIZED, NOT YET BUILT. On 2026-11-22 the owner authorized exactly one combined
+activation experiment on the provisional host. This supersedes the earlier pause, but only
+for this experiment; the larger escape-synced frame representation stays paused.
+
+Precondition: the captured sparse and FFT planner inputs are replayed through the parent and
+candidate Rust planners. The full build runs only if the parent refuses sparse, the candidate
+plans it, FFT stays refused, and invalid index or operand kinds refuse.
+
+This is one attempt beyond the 1/1 budgets of J-ES-1 (retired) and J-LT-2 (rejected), which
+keep their own outcomes. A pass shows only activation and changed check/store behaviour. It
+does not show allocation removal or speed, and it does not authorize the frame project.
 
 Evidence: refusal census (`ltcensus/`, `ltcensus-closure.txt`) at `da74796`. sparse_mat_mult
 `SparseCompRow_matmult` line 62 (trace len 66, `_JUMP_TO_TOP`) misses exactly
