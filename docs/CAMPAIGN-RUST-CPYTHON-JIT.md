@@ -41,6 +41,28 @@ ledger are evidence to consult by item, not a queue of work to repeat.
 
 ## Status
 
+### OD23 (2026-11-22, owner): the lane targets musl
+
+The owner directed that the lane build for `x86_64-unknown-linux-musl`, to match what
+ships, instead of `x86_64-unknown-linux-gnu` on an Ubuntu glibc host. Lane builds run in
+the pinned Alpine container and toolchain that production's musl recipes use.
+
+The lane's malloc is not musl's native allocator. A process-wide replacement (the latest
+mimalloc release and jemalloc, both pinned as lane-only inputs) is screened during the
+re-baseline, and the winner becomes the lane baseline allocator. The owner is asked first
+if both pass.
+
+Everything measured under glibc becomes historical, not a baseline:
+- J-ES-2, J-TLS-1, C-TLS-2 and C-REL-3 are re-measured on musl.
+- J-TLS-1 and C-TLS-2 target glibc's `__tls_get_addr` slow path. If they are null on
+  musl, they are recorded as null and a revert is proposed.
+- C-ALLOC-1 and C-ALLOC-2 are superseded by the process-wide allocator screen.
+- J-ES-3 builds and measures on the musl lane.
+
+A qualified host is now the pinned Alpine container on a quiet x86-64 machine. Timing
+claims still need one.
+
+
 Rewrite this section at each checkpoint. Keep it short: scorecard, blockers,
 next experiments. Receipts go to the [Ledger](#ledger); the pre-2026-11-18
 narrative is preserved verbatim under [Status history](#status-history-2026-11-15-to-2026-11-18).
