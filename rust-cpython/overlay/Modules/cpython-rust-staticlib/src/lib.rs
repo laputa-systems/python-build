@@ -20,3 +20,38 @@ pub use _tempfile_rs::PyInit__tempfile_rs;
 pub use serc_lane::{_PySerc_CompileSource, _PySerc_DecodesAsUtf8, _PySerc_ReleaseBuffer};
 
 mod io;
+
+#[cfg(all(feature = "serc", target_os = "linux", not(test)))]
+mod mimalloc {
+    use core::alloc::{GlobalAlloc, Layout};
+    use core::ffi::c_void;
+
+    unsafe extern "C" {
+        fn mi_malloc_aligned(size: usize, alignment: usize) -> *mut c_void;
+        fn mi_zalloc_aligned(size: usize, alignment: usize) -> *mut c_void;
+        fn mi_realloc_aligned(pointer: *mut c_void, size: usize, alignment: usize) -> *mut c_void;
+        fn mi_free(pointer: *mut c_void);
+    }
+
+    /// Routes the staticlib's Rust allocations to libpython's mimalloc, which is
+    /// process-wide and needs no attached thread state.
+    pub struct Mimalloc;
+
+    unsafe impl GlobalAlloc for Mimalloc {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            unsafe { mi_malloc_aligned(layout.size(), layout.align()).cast() }
+        }
+        unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+            unsafe { mi_zalloc_aligned(layout.size(), layout.align()).cast() }
+        }
+        unsafe fn dealloc(&self, pointer: *mut u8, _layout: Layout) {
+            unsafe { mi_free(pointer.cast()) }
+        }
+        unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, size: usize) -> *mut u8 {
+            unsafe { mi_realloc_aligned(pointer.cast(), size, layout.align()).cast() }
+        }
+    }
+
+    #[global_allocator]
+    static ALLOCATOR: Mimalloc = Mimalloc;
+}
