@@ -1,0 +1,9 @@
+P1 sparse _CHECK_PERIODIC: parent=5183996, candidate=187997, reduction=96.3735%, pass=True
+P1 sparse _STORE_FAST_FUSED: parent=5178962, candidate=282883, reduction=94.5378%, pass=True
+P2 FFT _CHECK_PERIODIC: parent=874598, candidate=874598, delta=0 (+0.0000%), pass=True
+P2 FFT _STORE_FAST_FUSED: parent=2081851, candidate=2081851, delta=0 (+0.0000%), pass=True
+P3 _CHECK_PERIODIC: max other-kernel rise=+0.0000% (spectral_norm), max all=+0.0000% (spectral_norm), pass=True
+P3 _STORE_FAST_FUSED: max other-kernel rise=+0.0000% (spectral_norm), max all=+0.0000% (spectral_norm), pass=True
+scimark_sparse_mat_mult _BOX_FLOAT delta=0 (+0.0000%), _TIER2_RESUME_CHECK_r00 delta=4995999 (+5209.4293%), all-rank resume delta=4995999
+scimark_fft _BOX_FLOAT delta=0 (+0.0000%), _TIER2_RESUME_CHECK_r00 delta=0 (+0.0000%), all-rank resume delta=0
+Comparable resume metric is r00 to match counters-jlt2; non-r00 totals (parent,candidate): deltablue=(705861,705861), go=(804056,804056)

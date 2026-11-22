@@ -1,8 +1,8 @@
 # J-ES-2: loop-types proof with array reads and in-place float ops combined (preregistered 2026-11-22, before code)
 
-Status: AUTHORIZED, NOT YET BUILT. On 2026-11-22 the owner authorized exactly one combined
-activation experiment on the provisional host. This supersedes the earlier pause, but only
-for this experiment; the larger escape-synced frame representation stays paused.
+Status: RUN 2026-11-22; P1–P4 held (see `RESULT-JES2.md`). Prepared unqualified candidate,
+not timed. This was the single authorized attempt; the larger escape-synced frame
+representation stays paused.
 
 Precondition: the captured sparse and FFT planner inputs are replayed through the parent and
 candidate Rust planners. The full build runs only if the parent refuses sparse, the candidate
