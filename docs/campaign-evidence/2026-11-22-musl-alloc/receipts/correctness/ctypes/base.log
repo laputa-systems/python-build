@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import ctypes,sys; ctypes.CDLL(sys.argv[1]); print("loaded", sys.argv[1])
+                       ~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/ctypes/__init__.py", line 433, in __init__
+    self._handle = self._load_library(name, mode, handle, winmode)
+                   ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/ctypes/__init__.py", line 475, in _load_library
+    return _dlopen(name, mode)
+OSError: Error relocating /home/ubuntu/repos/python-build/wt-musl/rust-cpython/stage-perf-musl-base/lib/libpython3.16.so.1.0: aligned_alloc: initial-exec TLS resolves to dynamic definition in /home/ubuntu/repos/python-build/wt-musl/rust-cpython/stage-perf-musl-base/lib/libpython3.16.so.1.0

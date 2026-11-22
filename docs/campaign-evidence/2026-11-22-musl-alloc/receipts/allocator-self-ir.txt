@@ -1,0 +1,26 @@
+Allocator-family self Ir by run
+Patterns: base public exact malloc/free/calloc/realloc; __libc_malloc_impl; alloc_*; enframe. mi public exact malloc/free/calloc/realloc; mi_*, _mi_*. je public exact malloc/free/calloc/realloc; je_*.
+base-corpus-1 41,894,735 0.086571%
+base-corpus-2 41,894,365 0.086585%
+mi-corpus-1 767,584,413 1.530396%
+mi-corpus-2 767,506,876 1.529766%
+je-corpus-1 616,360,453 1.265948%
+je-corpus-2 616,614,961 1.266884%
+base-scimark_fft-1 416,895 0.009633%
+base-scimark_fft-2 416,895 0.009634%
+mi-scimark_fft-1 9,339,953 0.211503%
+mi-scimark_fft-2 9,339,953 0.211507%
+je-scimark_fft-1 7,647,837 0.176520%
+je-scimark_fft-2 7,679,615 0.177252%
+base-nbody-1 404,070 0.013208%
+base-nbody-2 404,070 0.013207%
+mi-nbody-1 9,109,995 0.289459%
+mi-nbody-2 9,109,995 0.289471%
+je-nbody-1 7,372,380 0.240580%
+je-nbody-2 7,359,468 0.240173%
+base-scimark_sparse_mat_mult-1 413,570 0.006240%
+base-scimark_sparse_mat_mult-2 413,570 0.006240%
+mi-scimark_sparse_mat_mult-1 8,995,870 0.133952%
+mi-scimark_sparse_mat_mult-2 8,995,870 0.133954%
+je-scimark_sparse_mat_mult-1 7,455,029 0.112394%
+je-scimark_sparse_mat_mult-2 7,557,164 0.113935%

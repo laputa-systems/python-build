@@ -1,0 +1,17 @@
+Per-arm percentage vs base uses run 1 of the corresponding run group.
+initial corpus total_ir base=48,393,625,052 mi=50,155,929,224 delta=+3.641604%
+initial corpus allocator_self_ir base=41,894,735 mi=767,584,413 delta=+1732.173931%
+initial corpus total_ir base=48,393,625,052 je=48,687,672,616 delta=+0.607616%
+initial corpus allocator_self_ir base=41,894,735 je=616,360,453 delta=+1371.212201%
+initial scimark_fft total_ir base=4,327,878,256 mi=4,415,998,483 delta=+2.036107%
+initial scimark_fft allocator_self_ir base=416,895 mi=9,339,953 delta=+2140.361002%
+initial scimark_fft total_ir base=4,327,878,256 je=4,332,571,373 delta=+0.108439%
+initial scimark_fft allocator_self_ir base=416,895 je=7,647,837 delta=+1734.475587%
+initial nbody total_ir base=3,059,356,368 mi=3,147,247,103 delta=+2.872851%
+initial nbody allocator_self_ir base=404,070 mi=9,109,995 delta=+2154.558616%
+initial nbody total_ir base=3,059,356,368 je=3,064,417,012 delta=+0.165415%
+initial nbody allocator_self_ir base=404,070 je=7,372,380 delta=+1724.530403%
+initial scimark_sparse_mat_mult total_ir base=6,627,646,003 mi=6,715,745,901 delta=+1.329279%
+initial scimark_sparse_mat_mult allocator_self_ir base=413,570 mi=8,995,870 delta=+2075.174698%
+initial scimark_sparse_mat_mult total_ir base=6,627,646,003 je=6,632,914,388 delta=+0.079491%
+initial scimark_sparse_mat_mult allocator_self_ir base=413,570 je=7,455,029 delta=+1702.603912%

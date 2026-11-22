@@ -1,0 +1,7 @@
+==53== Cachegrind, a high-precision tracing profiler
+==53== Copyright (C) 2002-2024, and GNU GPL'd, by Nicholas Nethercote et al.
+==53== Using Valgrind-3.25.1 and LibVEX; rerun with -h for copyright info
+==53== Command: /home/ubuntu/repos/python-build/wt-musl/rust-cpython/stage-perf-musl-mi/bin/python3.16 -S -W ignore /home/ubuntu/repos/python-build/wt-integ/docs/campaign-evidence/2026-11-22-musl-alloc/receipts/support/compile_corpus.py compile /home/ubuntu/repos/python-build/wt-musl/rust-cpython/stage-perf-musl-mi/lib/python3.16
+==53== 
+==53== 
+==53== I refs:        50,171,514,219

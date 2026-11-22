@@ -1,0 +1,6 @@
+Compile parity comparison; raw digest JSON is preserved in correctness/parity/.
+base entries: 2104
+mi: entries=2104 raw_differences=1 sysconfigdata=['_sysconfigdata__linux_x86_64-linux-musl.py'] other_differences=[]
+mi: _sysconfigdata__linux_x86_64-linux-musl.py normalized_source_equal=True normalized_compile_hashes={'base': '6c7f12af76a598e53ab3929d34ffc201c5c5d71a883bf097d797c3941b089438', 'mi': '6c7f12af76a598e53ab3929d34ffc201c5c5d71a883bf097d797c3941b089438'} normalized_compile_equal=True
+je: entries=2104 raw_differences=1 sysconfigdata=['_sysconfigdata__linux_x86_64-linux-musl.py'] other_differences=[]
+je: _sysconfigdata__linux_x86_64-linux-musl.py normalized_source_equal=True normalized_compile_hashes={'base': '6c7f12af76a598e53ab3929d34ffc201c5c5d71a883bf097d797c3941b089438', 'je': '6c7f12af76a598e53ab3929d34ffc201c5c5d71a883bf097d797c3941b089438'} normalized_compile_equal=True

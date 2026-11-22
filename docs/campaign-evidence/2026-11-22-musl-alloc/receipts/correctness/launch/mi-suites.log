@@ -1,0 +1,3 @@
+FAIL  CPython suite failed; inspect /home/ubuntu/repos/python-build/wt-musl/rust-cpython/logs/perf-musl-mi-test_threading-test_thread-test_embed-test_capi-test_sys-test__interpreters-test_interpreters.log
+RUN   /home/ubuntu/repos/python-build/wt-musl/rust-cpython/work/perf/perf-musl-mi/build/python -m test -j 4 --timeout=900 test_threading test_thread test_embed test_capi test_sys test__interpreters test_interpreters
+LOG   /home/ubuntu/repos/python-build/wt-musl/rust-cpython/logs/perf-musl-mi-test_threading-test_thread-test_embed-test_capi-test_sys-test__interpreters-test_interpreters.log
