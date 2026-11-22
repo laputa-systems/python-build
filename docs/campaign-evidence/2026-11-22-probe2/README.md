@@ -107,12 +107,18 @@ The lazy tables do not consume the saving:
 
 These are structural results, not timing.
 
-**Identity debt.** The measured stage was built from `ef48b04`, the transformed
-tables. The candidate revision is `8a57de4`, the generator-emitted tables. Its
-3.16 table contents differ in element order and offsets, not only in formatting.
-These numbers therefore do not yet describe `8a57de4`. A matched `8a57de4`
-build plus relocation and probe reruns is required before C-REL-3 accounting is
-complete.
+**Identity: closed.** The table above measures `ef48b04`, the transformed tables. The
+candidate `8a57de4`, the generator-emitted tables, differs in 3.16 table order and offsets.
+
+That revision was rebuilt as `perf-crel3-gen` in 620 s, with libpython SHA-256
+`449ed753…fecf1`, and both checks were repeated on it:
+
+- **Relocations:** `.data.rel.ro` `R_X86_64_RELATIVE` 24,486 → 9,059 and pages 111 → 51,
+  identical to `ef48b04`.
+- **Probe** (`res2-perf-crel3-gen.json`): all 21 observations valid, and the same gdb
+  counts and lazy inits as `ef48b04`. Every median is within 8 KiB of the `ef48b04`
+  value, and libpython rows are identical. Process-private memory is −244 KiB
+  (pyc/source/x20: 3,904/6,024/6,592), and peak RSS is −576/−436/−536 KiB.
 
 ## Files
 
