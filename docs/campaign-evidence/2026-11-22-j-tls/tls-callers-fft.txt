@@ -1,0 +1,13 @@
+callers 486 calls 5746230
+ 2,256,600  39.27% cum  39.27% float_dealloc
+   598,955  10.42% cum  49.69% _PyCompactLong_Add
+   577,755  10.05% cum  59.75% long_dealloc
+   511,016   8.89% cum  68.64% _PyCompactLong_Multiply
+   200,180   3.48% cum  72.13% _PyObject_Free
+   187,923   3.27% cum  75.40% _PyObject_Malloc
+   103,703   1.80% cum  77.20% range_dealloc
+   103,703   1.80% cum  79.01% make_range_object
+   103,675   1.80% cum  80.81% rangeiter_dealloc
+   103,675   1.80% cum  82.61% range_iter
+   102,054   1.78% cum  84.39% _PyLong_FromSTwoDigits
+    64,176   1.12% cum  85.51% py_dealloc
