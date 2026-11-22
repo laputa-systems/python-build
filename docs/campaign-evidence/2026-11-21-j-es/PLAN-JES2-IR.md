@@ -43,3 +43,10 @@ records `sha256` of `.text` (`objcopy -O binary --only-section=.text`) for the o
 the stripped libpython. They must match, or the screen is INVALID.
 
 Predictions, kernels, runs and validity rules are unchanged.
+
+## Addendum B (2026-11-22, before any successful run)
+Addendum A stripped only `bin/python3.16` and `lib/*.so*`. Valgrind then failed on the
+DWARF 5 debuginfo of the extension module `lib-dynload/_md5…so`. The strip step now covers
+every ELF file in the `-nodebug` copy:
+`find $COPY -type f -exec sh -c 'file -b "$1" | grep -q ^ELF && strip --strip-debug "$1"' _ {} \;`.
+The `.text` hash check for libpython and all other rules are unchanged.
