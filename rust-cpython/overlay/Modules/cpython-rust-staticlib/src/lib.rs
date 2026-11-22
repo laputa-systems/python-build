@@ -25,12 +25,38 @@ mod io;
 mod mimalloc {
     use core::alloc::{GlobalAlloc, Layout};
     use core::ffi::c_void;
+    use core::sync::atomic::{AtomicU8, Ordering};
+
+    const MI_OPTION_EAGER_COMMIT: i32 = 3;
+    const MI_OPTION_PURGE_DELAY: i32 = 15;
+    const MI_OPTION_ALLOW_THP: i32 = 37;
 
     unsafe extern "C" {
         fn mi_malloc_aligned(size: usize, alignment: usize) -> *mut c_void;
         fn mi_zalloc_aligned(size: usize, alignment: usize) -> *mut c_void;
         fn mi_realloc_aligned(pointer: *mut c_void, size: usize, alignment: usize) -> *mut c_void;
         fn mi_free(pointer: *mut c_void);
+        fn mi_option_set(option: i32, value: core::ffi::c_long);
+    }
+
+    static CONFIGURE_STATE: AtomicU8 = AtomicU8::new(0);
+
+    fn configure() {
+        if CONFIGURE_STATE
+            .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            unsafe {
+                mi_option_set(MI_OPTION_PURGE_DELAY, 0);
+                mi_option_set(MI_OPTION_EAGER_COMMIT, 0);
+                mi_option_set(MI_OPTION_ALLOW_THP, 0);
+            }
+            CONFIGURE_STATE.store(2, Ordering::Release);
+        } else {
+            while CONFIGURE_STATE.load(Ordering::Acquire) != 2 {
+                core::hint::spin_loop();
+            }
+        }
     }
 
     /// Routes the staticlib's Rust allocations to libpython's mimalloc, which is
@@ -39,9 +65,11 @@ mod mimalloc {
 
     unsafe impl GlobalAlloc for Mimalloc {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            configure();
             unsafe { mi_malloc_aligned(layout.size(), layout.align()).cast() }
         }
         unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+            configure();
             unsafe { mi_zalloc_aligned(layout.size(), layout.align()).cast() }
         }
         unsafe fn dealloc(&self, pointer: *mut u8, _layout: Layout) {
