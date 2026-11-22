@@ -4,6 +4,7 @@ import subprocess
 import sys
 
 PROGRAM = r'''
+import array
 import _opcode
 import _testcapi
 import gc
@@ -40,6 +41,18 @@ def trace(function):
         if any(entry[0] == "_JUMP_TO_TOP" for entry in entries):
             return entries
     return []
+
+sparse_values = array.array("d", [0.25]) * WARM
+sparse_columns = array.array("i", [0]) * WARM
+sparse_x = array.array("d", [2.0])
+sparse = build("""def loop(n, val, col, x, initial):
+    value = initial
+    for k in range(n):
+        value += val[k] * x[col[k]]
+    return value
+""")
+RESULTS["sparse"] = sparse(WARM, sparse_values, sparse_columns, sparse_x, 0.0)
+TRACES["sparse"] = trace(sparse)
 
 floating = build()
 RESULTS["float"] = floating(WARM, 0.25, 0.0, 0)
@@ -171,6 +184,92 @@ if OPTIMIZE:
     for kind in ("signal", "gc", "thread"):
         async_case(kind)
 
+def async_sparse_case(kind):
+    values = array.array("d", [0.25]) * CALLBACK_ITERATIONS
+    columns = array.array("i", [0]) * CALLBACK_ITERATIONS
+    x = array.array("d", [2.0])
+    sparse(WARM, values, columns, x, 0.0)
+    before = trace(sparse)
+    stop = threading.Event()
+    state = {}
+    main_thread = threading.get_ident()
+    additions = []
+
+    class Replacement(float):
+        def __add__(self, other):
+            additions.append([sys._getframe(1).f_code.co_name, str(sys.exception())])
+            return float(self) + other
+
+    def replace(frame):
+        state["index"] = frame.f_locals["k"]
+        state["before"] = frame.f_locals["value"]
+        state["context"] = str(sys.exception())
+        frame.f_locals["value"] = Replacement(12345.0)
+
+    class Collected:
+        def __init__(self, frame):
+            self.frame = frame
+            self.cycle = self
+        def __del__(self):
+            replace(self.frame)
+
+    def collected():
+        frame = sys._getframe(1)
+        while frame and frame.f_code is not sparse.__code__:
+            frame = frame.f_back
+        if frame is None:
+            state["error"] = "pending callback lost the sparse loop frame"
+            return
+        cycle = Collected(frame)
+        del cycle
+        gc.collect()
+
+    def handler(signum, frame):
+        if frame.f_code is not sparse.__code__:
+            state["error"] = "signal lost the sparse loop frame"
+            return
+        replace(frame)
+
+    def worker():
+        try:
+            while not stop.is_set():
+                frame = sys._current_frames().get(main_thread)
+                if frame and frame.f_code is sparse.__code__ and "k" in frame.f_locals:
+                    if kind == "signal":
+                        os.kill(os.getpid(), signal.SIGUSR1)
+                    elif kind == "gc":
+                        assert _testcapi._pending_threadfunc(collected, ensure_added=True) == 1
+                    else:
+                        replace(frame)
+                    return
+                stop.wait(0.001)
+        except BaseException as error:
+            state["error"] = repr(error)
+
+    previous_handler = signal.signal(signal.SIGUSR1, handler)
+    thread = threading.Thread(target=worker)
+    try:
+        try:
+            raise ValueError("outer")
+        except ValueError:
+            thread.start()
+            result = sparse(CALLBACK_ITERATIONS, values, columns, x, 0.0)
+    finally:
+        stop.set()
+        thread.join(10)
+        signal.signal(signal.SIGUSR1, previous_handler)
+    assert not thread.is_alive() and "error" not in state, state
+    assert "index" in state, state
+    completed = state["index"] + 1
+    expected = 12345.0 + (CALLBACK_ITERATIONS - completed) * 0.5
+    RESULTS[f"sparse {kind}"] = [result == expected,
+        state["before"] == float(completed) * 0.5, additions, state["context"]]
+    TRACES[f"sparse {kind}"] = before
+
+if OPTIMIZE:
+    for kind in ("signal", "gc", "thread"):
+        async_sparse_case(kind)
+
 observed = []
 def profiler(frame, event, arg):
     if event == "return" and frame.f_code is floating.__code__:
@@ -189,6 +288,36 @@ sys.settrace(tracer)
 floating(20, 1.0, 0.0, 0)
 sys.settrace(None)
 RESULTS["trace"] = observed.copy()
+
+sparse_observed = []
+def sparse_profiler(frame, event, arg):
+    if event == "return" and frame.f_code is sparse.__code__:
+        sparse_observed.append([frame.f_locals["value"], arg])
+
+sys.setprofile(sparse_profiler)
+sparse(20, sparse_values, sparse_columns, sparse_x, 0.0)
+sys.setprofile(None)
+RESULTS["sparse profile"] = sparse_observed.copy()
+sparse_observed.clear()
+
+def sparse_tracer(frame, event, arg):
+    sparse_profiler(frame, event, arg)
+    return sparse_tracer
+
+sys.settrace(sparse_tracer)
+sparse(20, sparse_values, sparse_columns, sparse_x, 0.0)
+sys.settrace(None)
+RESULTS["sparse trace"] = sparse_observed.copy()
+
+speculative_division = build("""def loop(args):
+    a, b, n = args
+    total = 0.0
+    for _ in range(n):
+        total += a / b
+    return total
+""")
+RESULTS["speculative division"] = speculative_division((10.0, 3.0, WARM))
+TRACES["speculative division"] = trace(speculative_division)
 print(json.dumps({"results": RESULTS, "traces": TRACES}, sort_keys=True))
 '''
 
@@ -208,14 +337,18 @@ def main():
     expected = {"float": 1750.0, "noncompact index": 1750.0, "int": 7000,
         "integer growth": (1 << 29) + 20 * (1 << 28), "bool refusal": 20.0,
         "subclass refusal": 20.0, "subclass calls": ["loop"] * 20,
-        "conditional": 1750.0, "null refusal": 5.0,
+        "conditional": 1750.0, "null refusal": 5.0, "sparse": 3500.0,
         "profile": [[20.0, 20.0]], "trace": [[20.0, 20.0]]}
+    expected["sparse profile"] = [[10.0, 10.0]]
+    expected["sparse trace"] = [[10.0, 10.0]]
     for key, value in expected.items():
         assert reference["results"][key] == value, (key, reference["results"][key])
         assert noopt["results"][key] == value, (key, noopt["results"][key])
     for kind in ("signal", "gc", "thread"):
         assert reference["results"][kind] == [True, True, [["loop", "outer"]],
             "None" if kind == "thread" else "outer"], (kind, reference["results"][kind])
+        assert reference["results"][f"sparse {kind}"] == [True, True, [["loop", "outer"]],
+            "None" if kind == "thread" else "outer"], (f"sparse {kind}", reference["results"][f"sparse {kind}"])
     guarded = ("float", "noncompact index", "int", "conditional", "signal", "gc", "thread")
     for key in guarded:
         entries = candidate["traces"][key]
@@ -227,6 +360,16 @@ def main():
         assert "_CHECK_PERIODIC" not in names and "_TIER2_RESUME_CHECK" in names, (key, names)
         jump = next(entry for entry in entries if entry[0] == "_JUMP_TO_TOP")
         assert jump[2] == warm, (key, jump, warm)
+    sparse_names = [entry[0] for entry in candidate["traces"]["sparse"]]
+    sparse_warm = sparse_names.index("_MAKE_WARM")
+    assert any(name == "_GUARD_LOCAL_FLOAT" and index < sparse_warm
+               for index, name in enumerate(sparse_names)), sparse_names
+    assert "_CHECK_PERIODIC" not in sparse_names
+    assert "_TIER2_RESUME_CHECK" in sparse_names
+    division_names = [entry[0] for entry in candidate["traces"]["speculative division"]]
+    assert "_GUARD_LOCAL_FLOAT" in division_names, division_names
+    assert candidate["results"]["speculative division"] == reference["results"]["speculative division"]
+    assert noopt["results"]["speculative division"] == reference["results"]["speculative division"]
     for key in ("float", "noncompact index", "conditional"):
         names = {entry[0] for entry in candidate["traces"][key]}
         assert not names.intersection({"_GUARD_TOS_FLOAT", "_GUARD_NOS_FLOAT"}), (key, names)
