@@ -1,4 +1,4 @@
-3771e610488dd5b484ae8b1931274470c16c0da403a77620483e4e7959414820  README.md
+cf891c44043e418b5e4945dd01a76f9c808e53eb1320f63c9e56394bf5901103  README.md
 94f66deac4db3f7780e89f6063a4d5b515529321b9aa595847212ec8f4368262  gdb-lazy-perf-cloc-cand-pyc.log.xz
 0715ba5f56e01332aa9868e493a7e190650e5ebc332860c7ad42369711541e1b  gdb-lazy-perf-cloc-cand-source-x20.log.xz
 697c95c182e819f0413abd4da892c88841eab0d08ec93f0bbbb4c5b52da1c3bc  gdb-lazy-perf-cloc-cand-source.log.xz
@@ -11,6 +11,8 @@ ccbb156cf28e91908b1d9e0cf5c96cdecd8422d6e7090e487adadb137c709bb5  gdb-lazy-perf-
 6781566f0ef42f4f8fe91a27f18a425f5d749b77c3fae8b0f699cc6ef29a72db  gdb-lazy-perf-crel3-gen-pyc.log.xz
 a41d470a7e4c7253e2f731655886d3fce539d2277d51678408ad6e15a582b035  gdb-lazy-perf-crel3-gen-source-x20.log.xz
 7f078406d112deda9db128f56b94f5ed7f03ec3285e75f1c79d58bc55d1353f2  gdb-lazy-perf-crel3-gen-source.log.xz
+6a236a992c091a386f32ce3f7f4fb8d4c82cfe47973f891737d5cbcba7dc2950  parity-perf-crel3-gen.json.xz
+6a236a992c091a386f32ce3f7f4fb8d4c82cfe47973f891737d5cbcba7dc2950  parity-stagelib-parent.json.xz
 d5a6e1bec317982364c16be6eb85dbd5f6b370ab33a00ae17ca92a07a4d137ac  payload-argparse.py
 2b4af949a4acc316fc65b393e138075b548133f7ae5359f6cf12ac5613d1cfd4  reader.py
 66170c0126e0973ac523739ad51d91af267271fa04dbebd531d363015d7e3bfd  res2-perf-cloc-cand.json

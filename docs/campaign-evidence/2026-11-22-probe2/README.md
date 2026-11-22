@@ -119,6 +119,9 @@ That revision was rebuilt as `perf-crel3-gen` in 620 s, with libpython SHA-256
   counts and lazy inits as `ef48b04`. Every median is within 8 KiB of the `ef48b04`
   value, and libpython rows are identical. Process-private memory is −244 KiB
   (pyc/source/x20: 3,904/6,024/6,592), and peak RSS is −576/−436/−536 KiB.
+- **Compile parity:** the parent and `perf-crel3-gen` compiled the same 2,104-file stage
+  `lib/python3.16` with zero differing marshal digests (`parity-stagelib-parent.json.xz`,
+  `parity-perf-crel3-gen.json.xz`).
 
 ## Files
 
