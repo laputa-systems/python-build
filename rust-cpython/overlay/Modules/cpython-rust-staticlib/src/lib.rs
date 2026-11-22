@@ -42,6 +42,9 @@ mod mimalloc {
     static CONFIGURE_STATE: AtomicU8 = AtomicU8::new(0);
 
     fn configure() {
+        if CONFIGURE_STATE.load(Ordering::Acquire) == 2 {
+            return;
+        }
         if CONFIGURE_STATE
             .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
             .is_ok()
