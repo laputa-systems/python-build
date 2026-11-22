@@ -15,7 +15,7 @@ SCRIPT = LANE / "tools" / "p0-bench"
 
 
 class P0BenchTests(unittest.TestCase):
-    def run_case(self, *, pre=0, post=0, verdict="ACCEPT", args=()):
+    def run_case(self, *, pre=0, post=0, verdict="ACCEPT", nested_verdict=False, args=()):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             results = root / "results"
@@ -44,7 +44,9 @@ class P0BenchTests(unittest.TestCase):
                 "result = Path(os.environ['P0_BENCH_RESULTS']) / f'run-{time.time_ns()}'\n"
                 "result.mkdir(parents=True)\n"
                 "verdict = os.environ['PERF_VERDICT']\n"
-                "(result / 'verdict.json').write_text(json.dumps({'verdict': verdict}) + '\\n', encoding='utf-8')\n"
+                "nested = os.environ['PERF_NESTED_VERDICT'] == '1'\n"
+                "payload = {'decision': {'decision': verdict, 'gate': True}} if nested else {'verdict': verdict}\n"
+                "(result / 'verdict.json').write_text(json.dumps(payload) + '\\n', encoding='utf-8')\n"
                 "Path(os.environ['PERF_MARKER']).write_text('ran\\n', encoding='utf-8')\n"
                 "print(f'LOG {result / \"verdict.json\"}')\n"
                 "raise SystemExit(int(os.environ.get('PERF_EXIT', '0')))\n",
@@ -59,6 +61,7 @@ class P0BenchTests(unittest.TestCase):
                     "PRE_EXIT": str(pre),
                     "POST_EXIT": str(post),
                     "PERF_VERDICT": verdict,
+                    "PERF_NESTED_VERDICT": "1" if nested_verdict else "0",
                     "PERF_MARKER": str(bench_marker),
                     "PERF_ARGS": str(perf_args),
                     "GATE_CALLS": str(gate_log),
@@ -124,6 +127,7 @@ class P0BenchTests(unittest.TestCase):
     def test_diagnostic_bench_runs_after_failed_precheck_but_is_never_eligible(self):
         result = self.run_case(
             pre=1,
+            nested_verdict=True,
             args=("--diagnostic-reason", "owner requested", "--runs", "1"),
         )
         self.assertEqual(result["completed"].returncode, 3)
@@ -139,7 +143,7 @@ class P0BenchTests(unittest.TestCase):
         self.assertEqual(result["record"]["args"], ["--runs", "1"])
 
     def test_accept_verdict_with_both_checks_passing_is_accepted(self):
-        result = self.run_case(pre=0, post=0, verdict="ACCEPT")
+        result = self.run_case(pre=0, post=0, verdict="ACCEPT", nested_verdict=True)
         self.assertEqual(result["completed"].returncode, 0)
         self.assertTrue(result["bench_ran"])
         self.assertEqual(result["record"]["mode"], "default")

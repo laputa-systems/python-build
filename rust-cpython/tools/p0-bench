@@ -163,6 +163,12 @@ if verdict_path:
         verdict_file = None
     if isinstance(verdict_file, dict) and isinstance(verdict_file.get("verdict"), str):
         raw_verdict = verdict_file["verdict"]
+    elif (
+        isinstance(verdict_file, dict)
+        and isinstance(verdict_file.get("decision"), dict)
+        and isinstance(verdict_file["decision"].get("decision"), str)
+    ):
+        raw_verdict = verdict_file["decision"]["decision"]
     elif isinstance(verdict_file, dict) and isinstance(verdict_file.get("decision"), str):
         raw_verdict = verdict_file["decision"]
     elif isinstance(verdict_file, dict):
@@ -171,9 +177,10 @@ if verdict_path:
         raw_verdict = verdict_file
 if not isinstance(raw_verdict, str):
     print(
-        "p0-bench: verdict.json has no top-level verdict string; storing raw value",
+        "p0-bench: verdict.json has no verdict string; storing raw value",
         file=sys.stderr,
     )
+eligible = mode == "default" and pre_exit == 0 and post_exit == 0 and bench_exit == 0
 record = {
     "pre": {
         "exit": pre_exit,
@@ -189,14 +196,8 @@ record = {
     "mode": mode,
     "verdict": raw_verdict,
     "bench_run": True,
-    "eligible": mode == "default" and pre_exit == 0 and post_exit == 0 and bench_exit == 0,
-    "accepted": (
-        mode == "default"
-        and pre_exit == 0
-        and post_exit == 0
-        and bench_exit == 0
-        and raw_verdict == "ACCEPT"
-    ),
+    "eligible": eligible,
+    "accepted": eligible and raw_verdict == "ACCEPT",
     "args": args,
 }
 if mode == "diagnostic":
