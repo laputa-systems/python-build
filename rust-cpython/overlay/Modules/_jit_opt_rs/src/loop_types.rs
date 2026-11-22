@@ -37,6 +37,7 @@ pub struct LocalOpcodes {
     pub float_binary: [u16; 4],
     pub float_binary_inplace: [u16; 8],
     pub int_binary: [u16; 3],
+    pub int_binary_inplace: [u16; 6],
     pub float_compare: u16,
     pub int_compare: u16,
     pub bool_bool: u16,
@@ -53,6 +54,7 @@ pub struct LocalOpcodes {
     pub guard_nos_object_type_version: u16,
     pub subscr_array_d: u16,
     pub subscr_array_i: u16,
+    pub store_subscr_array_d: u16,
 }
 
 /// A kind is 0 (unknown) or the corresponding local-guard opcode. Constant kinds
@@ -135,13 +137,21 @@ pub fn plan_loop_types(uops: &[LocalUop], ops: &LocalOpcodes, local_kinds: &[u16
     let mut used = Vec::new();
     let mut locals = Vec::new();
     let mut stack = Vec::new();
+    let mut local_origins = Vec::new();
+    let mut stack_origins = Vec::new();
+    let mut guarded_origins = Vec::new();
     let mut steps = Vec::new();
     let capacity = uops.len().checked_add(local_kinds.len()).ok_or(Inconsistent)?;
     let stack_capacity = initial_depth.checked_add(uops.len().checked_mul(3).ok_or(Inconsistent)?)
         .ok_or(Inconsistent)?;
+    let origin_capacity = local_kinds.len().checked_add(initial_depth)
+        .and_then(|size| size.checked_add(uops.len())).ok_or(Inconsistent)?;
     if used.try_reserve_exact(local_kinds.len()).is_err()
         || locals.try_reserve_exact(local_kinds.len()).is_err()
         || stack.try_reserve_exact(stack_capacity).is_err()
+        || local_origins.try_reserve_exact(local_kinds.len()).is_err()
+        || stack_origins.try_reserve_exact(stack_capacity).is_err()
+        || guarded_origins.try_reserve_exact(origin_capacity).is_err()
         || steps.try_reserve_exact(capacity).is_err()
     {
         return Ok(None);
@@ -155,8 +165,12 @@ pub fn plan_loop_types(uops: &[LocalUop], ops: &LocalOpcodes, local_kinds: &[u16
     for (index, kind) in local_kinds.iter().enumerate() {
         let kind = decode(*kind, ops)?;
         locals.push(if used[index] { kind } else { Kind::Unknown });
+        local_origins.push(index);
     }
     stack.resize(initial_depth, Kind::Unknown);
+    stack_origins.extend((0..initial_depth).map(|index| Some(local_kinds.len() + index)));
+    guarded_origins.resize(origin_capacity, false);
+    let mut next_origin = local_kinds.len() + initial_depth;
     for (index, uop) in uops.iter().enumerate() {
         steps.push(LocalStep { opcode: uop.opcode, oparg: uop.oparg, source: index as u32 });
     }
@@ -170,34 +184,53 @@ pub fn plan_loop_types(uops: &[LocalUop], ops: &LocalOpcodes, local_kinds: &[u16
             steps[index].opcode = ops.resume;
         }
         else if contains(ops.load, opcode) || contains(ops.borrow, opcode) {
-            stack.push(locals[usize::from(uop.oparg)]);
+            let local = usize::from(uop.oparg);
+            stack.push(locals[local]);
+            stack_origins.push(Some(local_origins[local]));
         }
         else if contains(ops.store, opcode) {
             let value = stack.pop().ok_or(Inconsistent)?;
-            let local = &mut locals[usize::from(uop.oparg)];
-            stack.push(*local);
-            *local = value;
+            let value_origin = stack_origins.pop().ok_or(Inconsistent)?;
+            let local = usize::from(uop.oparg);
+            stack.push(locals[local]);
+            stack_origins.push(Some(local_origins[local]));
+            locals[local] = value;
+            local_origins[local] = match value_origin {
+                Some(origin) => origin,
+                None => {
+                    let origin = next_origin;
+                    next_origin = next_origin.checked_add(1).ok_or(Inconsistent)?;
+                    origin
+                }
+            };
         }
         else if opcode == ops.constant || opcode == ops.constant_borrow {
             stack.push(decode(uop.constant_kind, ops)?);
+            stack_origins.push(None);
         }
         else if contains(ops.small_int, opcode) {
             stack.push(Kind::Int);
+            stack_origins.push(None);
         }
         else if opcode == ops.push_null {
             stack.push(Kind::Unknown);
+            stack_origins.push(None);
         }
         else if contains(ops.copy, opcode) {
             if uop.oparg == 0 { return Err(Inconsistent) }
-            stack.push(at(&stack, usize::from(uop.oparg))?);
+            let depth = usize::from(uop.oparg);
+            stack.push(at(&stack, depth)?);
+            stack_origins.push(stack_origins[stack_origins.len() - depth]);
         }
         else if contains(ops.swap, opcode) {
             let len = stack.len();
             if uop.oparg < 2 || usize::from(uop.oparg) > len { return Err(Inconsistent) }
             stack.swap(len - 1, len - usize::from(uop.oparg));
+            stack_origins.swap(len - 1, len - usize::from(uop.oparg));
         }
         else if opcode == ops.pop {
             let kind = stack.pop().ok_or(Inconsistent)?;
+            stack_origins.pop().ok_or(Inconsistent)?;
             steps[index].opcode = match kind {
                 Kind::Int => ops.pop_int,
                 Kind::Float => ops.pop_float,
@@ -208,6 +241,7 @@ pub fn plan_loop_types(uops: &[LocalUop], ops: &LocalOpcodes, local_kinds: &[u16
         }
         else if [ops.pop_borrow, ops.pop_int, ops.pop_float, ops.pop_unicode].contains(&opcode) {
             let kind = stack.pop().ok_or(Inconsistent)?;
+            stack_origins.pop().ok_or(Inconsistent)?;
             if (opcode == ops.pop_int && ![Kind::Unknown, Kind::Int].contains(&kind))
                 || (opcode == ops.pop_float && ![Kind::Unknown, Kind::Float].contains(&kind))
             {
@@ -232,20 +266,47 @@ pub fn plan_loop_types(uops: &[LocalUop], ops: &LocalOpcodes, local_kinds: &[u16
         }
         else if opcode == ops.guard_nos_object_type_version {
             at(&stack, 2)?;
+            let container = stack.len() - 2;
+            if stack[container] == Kind::Unknown {
+                if let Some(origin) = stack_origins[container] {
+                    guarded_origins[origin] = true;
+                }
+            }
         }
         else if opcode == ops.subscr_array_d || opcode == ops.subscr_array_i {
-            if stack.pop().ok_or(Inconsistent)? != Kind::Int { return Ok(None) }
+            let index = stack.pop().ok_or(Inconsistent)?;
+            let index_origin = stack_origins.pop().ok_or(Inconsistent)?;
+            if index != Kind::Int { return Ok(None) }
             stack.pop().ok_or(Inconsistent)?;
+            let container_origin = stack_origins.pop().ok_or(Inconsistent)?;
             stack.push(if opcode == ops.subscr_array_d { Kind::Float } else { Kind::Int });
+            stack_origins.push(None);
             stack.push(Kind::Unknown);
+            stack_origins.push(container_origin);
             stack.push(Kind::Int);
+            stack_origins.push(index_origin);
+        }
+        else if opcode == ops.store_subscr_array_d {
+            let index = stack.pop().ok_or(Inconsistent)?;
+            stack_origins.pop().ok_or(Inconsistent)?;
+            let container = stack.pop().ok_or(Inconsistent)?;
+            let container_origin = stack_origins.pop().ok_or(Inconsistent)?;
+            let value = stack.pop().ok_or(Inconsistent)?;
+            stack_origins.pop().ok_or(Inconsistent)?;
+            if index != Kind::Int || container != Kind::Unknown || value != Kind::Float
+                || !container_origin.is_some_and(|origin| guarded_origins[origin])
+            {
+                return Ok(None);
+            }
         }
         else if ops.float_binary.contains(&opcode) || ops.float_binary_inplace.contains(&opcode)
-            || ops.int_binary.contains(&opcode)
+            || ops.int_binary.contains(&opcode) || ops.int_binary_inplace.contains(&opcode)
             || opcode == ops.float_compare || opcode == ops.int_compare
         {
             let right = stack.pop().ok_or(Inconsistent)?;
+            let right_origin = stack_origins.pop().ok_or(Inconsistent)?;
             let left = stack.pop().ok_or(Inconsistent)?;
+            let left_origin = stack_origins.pop().ok_or(Inconsistent)?;
             let expected = if ops.float_binary.contains(&opcode)
                 || ops.float_binary_inplace.contains(&opcode) || opcode == ops.float_compare
             {
@@ -253,27 +314,38 @@ pub fn plan_loop_types(uops: &[LocalUop], ops: &LocalOpcodes, local_kinds: &[u16
             } else { Kind::Int };
             if left != expected || right != expected { return Ok(None) }
             stack.push(if opcode == ops.float_compare || opcode == ops.int_compare { Kind::Bool } else { expected });
+            stack_origins.push(None);
             stack.push(left);
+            stack_origins.push(left_origin);
             stack.push(right);
+            stack_origins.push(right_origin);
         }
         else if opcode == ops.bool_bool {
             if !narrow(&mut stack, 1, Kind::Bool)? { return Ok(None) }
         }
         else if opcode == ops.bool_int {
             let value = stack.pop().ok_or(Inconsistent)?;
+            let value_origin = stack_origins.pop().ok_or(Inconsistent)?;
             if value != Kind::Int { return Ok(None) }
             stack.push(Kind::Bool);
+            stack_origins.push(None);
             stack.push(value);
+            stack_origins.push(value_origin);
         }
         else if contains(ops.bit_set, opcode) || contains(ops.bit_unset, opcode) {
-            if stack.pop().ok_or(Inconsistent)? != Kind::Bool { return Ok(None) }
+            let value = stack.pop().ok_or(Inconsistent)?;
+            stack_origins.pop().ok_or(Inconsistent)?;
+            if value != Kind::Bool { return Ok(None) }
         }
         else if opcode == ops.iter_check {
             if !narrow(&mut stack, 2, Kind::RangeIterator)? { return Ok(None) }
         }
         else if opcode == ops.iter_exhaustion || opcode == ops.iter_next {
             if at(&stack, 2)? != Kind::RangeIterator { return Ok(None) }
-            if opcode == ops.iter_next { stack.push(Kind::Int) }
+            if opcode == ops.iter_next {
+                stack.push(Kind::Int);
+                stack_origins.push(None);
+            }
         }
         else { return Ok(None) }
     }
@@ -311,11 +383,13 @@ mod tests {
             tos_overflow: 102, nos_overflow: 103,
             float_binary: [104, 105, 106, 107], float_binary_inplace: [124, 125, 126, 127, 128, 129, 130, 131],
             int_binary: [108, 109, 110],
+            int_binary_inplace: [135, 136, 137, 138, 139, 140],
             float_compare: 111, int_compare: 112, bool_bool: 113, bool_int: 114,
             iter_check: 115, iter_exhaustion: 116, iter_next: 117,
             globals: 118, builtins: 119, entry_globals: 120, local_int: 121, local_float: 122,
             push_null: 123,
             guard_nos_object_type_version: 132, subscr_array_d: 133, subscr_array_i: 134,
+            store_subscr_array_d: 141,
         }
     }
 
@@ -358,6 +432,45 @@ mod tests {
              uop(o.pop_float, 0), uop(o.jump, 0)]
     }
 
+    fn array_store_cycle(guard_local: Option<usize>, store_local: usize) -> Vec<LocalUop> {
+        let o = opcodes();
+        let mut input = vec![
+            uop(o.start, 0), uop(o.warm, 0), uop(o.set_ip, 0), uop(o.periodic, 0),
+            uop(o.borrow.first, 0),
+        ];
+        if let Some(guard_local) = guard_local {
+            input.extend([
+                uop(o.borrow.first, guard_local as u16), uop(o.borrow.first, 2),
+                uop(o.guard_nos_object_type_version, 0),
+            ]);
+            if guard_local != store_local {
+                input.extend([
+                    uop(o.pop_borrow, 0), uop(o.pop_borrow, 0), uop(o.pop_borrow, 0),
+                    uop(o.borrow.first, 0),
+                ]);
+            }
+        }
+        if guard_local != Some(store_local) {
+            input.extend([
+                uop(o.borrow.first, store_local as u16), uop(o.borrow.first, 2),
+            ]);
+        }
+        input.extend([
+            uop(o.store_subscr_array_d, 0), uop(o.borrow.first, 0),
+            uop(o.pop, 0), uop(o.jump, 0),
+        ]);
+        input
+    }
+
+    fn int_inplace_cycle(opcode: u16) -> Vec<LocalUop> {
+        let o = opcodes();
+        vec![
+            uop(o.start, 0), uop(o.warm, 0), uop(o.set_ip, 0), uop(o.periodic, 0),
+            uop(o.borrow.first, 0), uop(o.borrow.first, 1), uop(opcode, 0),
+            uop(o.pop, 0), uop(o.pop, 0), uop(o.pop, 0), uop(o.jump, 0),
+        ]
+    }
+
     #[test]
     fn sparse_float_array_read_accumulates_into_a_float_local() {
         let ops = opcodes();
@@ -374,6 +487,48 @@ mod tests {
         let seeds = [ops.local_float, 0, ops.local_int, 0];
         let plan = plan_loop_types(&input, &ops, &seeds, 0).unwrap().unwrap();
         assert_eq!(plan.iter().find(|step| step.source == 3).unwrap().opcode, ops.resume);
+    }
+
+    #[test]
+    fn guarded_float_array_store_plans_with_exact_operand_kinds() {
+        let ops = opcodes();
+        let input = array_store_cycle(Some(1), 1);
+        let seeds = [ops.local_float, 0, ops.local_int];
+        let plan = plan_loop_types(&input, &ops, &seeds, 0).unwrap().unwrap();
+        assert!(plan.iter().any(|step| step.opcode == ops.store_subscr_array_d));
+        assert_eq!(plan.iter().find(|step| step.source == 10).unwrap().opcode, ops.pop_float);
+    }
+
+    #[test]
+    fn guarded_float_array_store_refuses_wrong_kinds_and_unguarded_container() {
+        let ops = opcodes();
+        for (seeds, guard_local, store_local) in [
+            (vec![ops.local_float, 0, ops.local_float], Some(1), 1),
+            (vec![ops.local_int, 0, ops.local_int], Some(1), 1),
+            (vec![ops.local_float, 0, ops.local_int], None, 1),
+            (vec![ops.local_float, 0, ops.local_int, 0], Some(1), 3),
+        ] {
+            let input = array_store_cycle(guard_local, store_local);
+            assert!(plan_loop_types(&input, &ops, &seeds, 0).unwrap().is_none());
+        }
+    }
+
+    #[test]
+    fn int_inplace_operations_require_two_int_operands() {
+        let ops = opcodes();
+        for opcode in ops.int_binary_inplace {
+            let input = int_inplace_cycle(opcode);
+            let valid = [ops.local_int, ops.local_int];
+            assert!(plan_loop_types(&input, &ops, &valid, 0).unwrap().is_some());
+            for invalid in [
+                [ops.local_float, ops.local_int],
+                [ops.local_int, ops.local_float],
+                [0, ops.local_int],
+                [ops.local_int, 0],
+            ] {
+                assert!(plan_loop_types(&input, &ops, &invalid, 0).unwrap().is_none());
+            }
+        }
     }
 
     #[test]
@@ -504,7 +659,7 @@ mod tests {
         assert_eq!(status, -1);
         assert!(output.iter().all(|step| *step == untouched));
         assert!(matches!(plan_loop_types(&input, &ops, &seeds, 0), Err(Inconsistent)));
-        assert_eq!(std::mem::size_of::<LocalOpcodes>(), 138);
+        assert_eq!(std::mem::size_of::<LocalOpcodes>(), 152);
         assert_eq!(std::mem::size_of::<LocalUop>(), 6);
         assert_eq!(std::mem::size_of::<LocalStep>(), 8);
     }

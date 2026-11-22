@@ -118,6 +118,12 @@ const CANDIDATE_FIELDS: &[&str] = &[
     "int_binary[0]",
     "int_binary[1]",
     "int_binary[2]",
+    "int_binary_inplace[0]",
+    "int_binary_inplace[1]",
+    "int_binary_inplace[2]",
+    "int_binary_inplace[3]",
+    "int_binary_inplace[4]",
+    "int_binary_inplace[5]",
     "float_compare",
     "int_compare",
     "bool_bool",
@@ -134,6 +140,7 @@ const CANDIDATE_FIELDS: &[&str] = &[
     "guard_nos_object_type_version",
     "subscr_array_d",
     "subscr_array_i",
+    "store_subscr_array_d",
 ];
 
 struct Trace {
@@ -346,6 +353,14 @@ fn opcodes_from_capture(traces: &[Trace]) -> LocalOpcodes {
             word(trace, "int_binary[1]"),
             word(trace, "int_binary[2]"),
         ],
+        int_binary_inplace: [
+            extension_opcode("_BINARY_OP_ADD_INT_INPLACE"),
+            extension_opcode("_BINARY_OP_ADD_INT_INPLACE_RIGHT"),
+            extension_opcode("_BINARY_OP_SUBTRACT_INT_INPLACE"),
+            extension_opcode("_BINARY_OP_SUBTRACT_INT_INPLACE_RIGHT"),
+            extension_opcode("_BINARY_OP_MULTIPLY_INT_INPLACE"),
+            extension_opcode("_BINARY_OP_MULTIPLY_INT_INPLACE_RIGHT"),
+        ],
         float_compare: word(trace, "float_compare"),
         int_compare: word(trace, "int_compare"),
         bool_bool: word(trace, "bool_bool"),
@@ -362,6 +377,7 @@ fn opcodes_from_capture(traces: &[Trace]) -> LocalOpcodes {
         guard_nos_object_type_version: extension_opcode("_GUARD_NOS_OBJECT_TYPE_VERSION"),
         subscr_array_d: extension_opcode("_BINARY_OP_SUBSCR_ARRAY_D"),
         subscr_array_i: extension_opcode("_BINARY_OP_SUBSCR_ARRAY_I"),
+        store_subscr_array_d: extension_opcode("_STORE_SUBSCR_ARRAY_D"),
     };
     assert_eq!(
         size_of::<LocalOpcodes>(),
@@ -450,6 +466,12 @@ fn assert_candidate_layout() {
         array_field!("int_binary[0]", int_binary, 0),
         array_field!("int_binary[1]", int_binary, 1),
         array_field!("int_binary[2]", int_binary, 2),
+        array_field!("int_binary_inplace[0]", int_binary_inplace, 0),
+        array_field!("int_binary_inplace[1]", int_binary_inplace, 1),
+        array_field!("int_binary_inplace[2]", int_binary_inplace, 2),
+        array_field!("int_binary_inplace[3]", int_binary_inplace, 3),
+        array_field!("int_binary_inplace[4]", int_binary_inplace, 4),
+        array_field!("int_binary_inplace[5]", int_binary_inplace, 5),
         word_field!("float_compare", float_compare),
         word_field!("int_compare", int_compare),
         word_field!("bool_bool", bool_bool),
@@ -469,6 +491,7 @@ fn assert_candidate_layout() {
         ),
         word_field!("subscr_array_d", subscr_array_d),
         word_field!("subscr_array_i", subscr_array_i),
+        word_field!("store_subscr_array_d", store_subscr_array_d),
     ];
     assert_eq!(
         actual.iter().map(|(name, _)| *name).collect::<Vec<_>>(),
@@ -523,6 +546,7 @@ fn is_supported(opcode: u16, ops: &LocalOpcodes) -> bool {
         ops.guard_nos_object_type_version,
         ops.subscr_array_d,
         ops.subscr_array_i,
+        ops.store_subscr_array_d,
     ]
     .contains(&opcode)
         || [
@@ -540,6 +564,7 @@ fn is_supported(opcode: u16, ops: &LocalOpcodes) -> bool {
         || ops.float_binary.contains(&opcode)
         || ops.float_binary_inplace.contains(&opcode)
         || ops.int_binary.contains(&opcode)
+        || ops.int_binary_inplace.contains(&opcode)
 }
 
 fn first_unsupported<'a>(trace: &'a Trace, ops: &LocalOpcodes) -> Option<(usize, &'a str)> {
@@ -849,7 +874,6 @@ fn replay_inputs() -> Vec<Trace> {
 fn replay_captured_sparse_and_fft_traces() {
     let traces = replay_inputs();
     let ops = opcodes_from_capture(&traces);
-    let parent_replay = std::env::var_os("JES2_PARENT_REPLAY").is_some();
     for trace in &traces {
         let result = plan_loop_types(&trace.uops, &ops, &trace.local_kinds, trace.initial_depth);
         let decision = describe_decision(trace, &ops, &result);
@@ -864,12 +888,7 @@ fn replay_captured_sparse_and_fft_traces() {
             trace.initial_depth,
             decision
         );
-        if trace.label == "sparse" && parent_replay {
-            assert!(
-                matches!(result, Ok(None)),
-                "parent sparse result: {decision}"
-            );
-        } else if trace.label == "sparse" {
+        if trace.label == "sparse" {
             let plan = result
                 .expect("candidate sparse planner error")
                 .expect("candidate sparse trace was not rewritten");
@@ -890,7 +909,12 @@ fn replay_captured_sparse_and_fft_traces() {
                 previous = step.source;
             }
             assert_eq!(plan.last().map(|step| step.opcode), Some(ops.jump));
-        } else {
+        } else if trace.label == "fft_inverse" {
+            assert!(
+                matches!(result, Ok(Some(_))),
+                "candidate FFT_inverse result: {decision}"
+            );
+        } else if trace.label != "fft_transform_internal" {
             assert!(
                 !matches!(result, Ok(Some(_))),
                 "{} unexpectedly rewrote",

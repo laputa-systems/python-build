@@ -2779,11 +2779,11 @@ typedef struct {
     _PyJitOpcodeRange load, borrow, store, small_int, copy, swap, bit_set, bit_unset;
     uint16_t constant, constant_borrow, pop, pop_borrow, pop_int, pop_float, pop_unicode;
     uint16_t tos_float, nos_float, tos_int, nos_int, tos_exact_int, tos_overflow, nos_overflow;
-    uint16_t float_binary[4], float_binary_inplace[8], int_binary[3];
+    uint16_t float_binary[4], float_binary_inplace[8], int_binary[3], int_binary_inplace[6];
     uint16_t float_compare, int_compare, bool_bool, bool_int;
     uint16_t iter_check, iter_exhaustion, iter_next, globals, builtins, entry_globals;
     uint16_t local_int, local_float, push_null;
-    uint16_t guard_nos_object_type_version, subscr_array_d, subscr_array_i;
+    uint16_t guard_nos_object_type_version, subscr_array_d, subscr_array_i, store_subscr_array_d;
 } _PyJitLocalOpcodes;
 
 typedef struct {
@@ -2795,7 +2795,7 @@ typedef struct {
     uint32_t source;
 } _PyJitLocalStep;
 
-static_assert(sizeof(_PyJitLocalOpcodes) == 138, "local opcode map matches Rust");
+static_assert(sizeof(_PyJitLocalOpcodes) == 152, "local opcode map matches Rust");
 static_assert(sizeof(_PyJitLocalUop) == 6, "local descriptors match Rust");
 static_assert(sizeof(_PyJitLocalStep) == 8, "local steps match Rust");
 static_assert(offsetof(_PyJitLocalStep, source) == 4, "local source offset matches Rust");
@@ -2850,6 +2850,11 @@ guard_loop_locals(_PyUOpInstruction *buffer, int length, _PyInterpreterFrame *fr
             _BINARY_OP_TRUEDIV_FLOAT_INPLACE, _BINARY_OP_TRUEDIV_FLOAT_INPLACE_RIGHT,
         },
         .int_binary = {_BINARY_OP_ADD_INT, _BINARY_OP_SUBTRACT_INT, _BINARY_OP_MULTIPLY_INT},
+        .int_binary_inplace = {
+            _BINARY_OP_ADD_INT_INPLACE, _BINARY_OP_ADD_INT_INPLACE_RIGHT,
+            _BINARY_OP_SUBTRACT_INT_INPLACE, _BINARY_OP_SUBTRACT_INT_INPLACE_RIGHT,
+            _BINARY_OP_MULTIPLY_INT_INPLACE, _BINARY_OP_MULTIPLY_INT_INPLACE_RIGHT,
+        },
         .float_compare = _COMPARE_OP_FLOAT, .int_compare = _COMPARE_OP_INT,
         .bool_bool = _TO_BOOL_BOOL, .bool_int = _TO_BOOL_INT,
         .iter_check = _ITER_CHECK_RANGE, .iter_exhaustion = _GUARD_NOT_EXHAUSTED_RANGE,
@@ -2860,6 +2865,7 @@ guard_loop_locals(_PyUOpInstruction *buffer, int length, _PyInterpreterFrame *fr
         .guard_nos_object_type_version = _GUARD_NOS_OBJECT_TYPE_VERSION,
         .subscr_array_d = _BINARY_OP_SUBSCR_ARRAY_D,
         .subscr_array_i = _BINARY_OP_SUBSCR_ARRAY_I,
+        .store_subscr_array_d = _STORE_SUBSCR_ARRAY_D,
     };
     size_t locals = (size_t)code->co_nlocalsplus;
     size_t capacity = (size_t)length + locals;
