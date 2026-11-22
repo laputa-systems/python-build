@@ -530,17 +530,62 @@ def rust_string_literal(value: str) -> str:
     return f'"{"".join(escaped)}"'
 
 
-def render_compact_rust_strings(values: list[str]) -> list[str]:
-    lines = []
-    row = "    "
+def rust_blob_string_literal(value: str) -> str:
+    escaped = ['"']
+    for character in value:
+        codepoint = ord(character)
+        if character == "\\":
+            escaped.append("\\\\")
+        elif character == '"':
+            escaped.append('\\"')
+        elif character == "\n":
+            escaped.append("\\n")
+        elif character == "\r":
+            escaped.append("\\r")
+        elif character == "\t":
+            escaped.append("\\t")
+        elif character == "\0":
+            escaped.append("\\0")
+        elif codepoint < 0x20 or codepoint == 0x7F:
+            escaped.append(f"\\u{{{codepoint:x}}}")
+        else:
+            escaped.append(character)
+    escaped.append('"')
+    return "".join(escaped)
+
+
+def render_rust_string_table(
+    name: str,
+    values: list[str],
+    visibility: str,
+    attributes: tuple[str, ...] = (),
+) -> list[str]:
+    offsets = [0]
+    byte_count = 0
     for value in values:
-        literal = rust_string_literal(value) + ","
-        if row.strip() and len(row) + len(literal) > 100:
-            lines.append(row.rstrip())
-            row = "    "
-        row += literal + " "
-    if row.strip():
-        lines.append(row.rstrip())
+        byte_count += len(value.encode("utf-8"))
+        if byte_count > 0xFFFFFFFF:
+            raise ValueError(f"{name} exceeds u32 offset range")
+        offsets.append(byte_count)
+
+    lines = [*attributes, f"const {name}_BLOB: &str = {rust_blob_string_literal(''.join(values))};"]
+    lines.extend(attributes)
+    lines.append(f"const {name}_OFFSETS: &[u32] = &[")
+    for index in range(0, len(offsets), 12):
+        values = ", ".join(str(offset) for offset in offsets[index : index + 12])
+        lines.append(f"    {values},")
+    lines.append("];")
+    lines.extend(attributes)
+    lines.extend(
+        [
+            f"{visibility}static {name}: std::sync::LazyLock<Box<[&'static str]>> =",
+            "    std::sync::LazyLock::new(|| {",
+            f"        (0..{name}_OFFSETS.len() - 1)",
+            f"            .map(|i| &{name}_BLOB[{name}_OFFSETS[i] as usize..{name}_OFFSETS[i + 1] as usize])",
+            "            .collect()",
+            "    });",
+        ]
+    )
     return lines
 
 
@@ -1237,51 +1282,61 @@ def render(sources: dict[str, str]) -> str:
             f"pub(crate) const SMALL_INT_MAX: i64 = {small_ints['_PY_NSMALLPOSINTS'] - 1};"
         )
         lines.append("")
-    if TARGET_MINOR == "3.14":
-        lines.append('#[cfg(any(not(target_os = "linux"), test))]')
-    lines.append("pub(crate) static PREINTERNED_STRINGS: &[&str] = &[")
-    lines.extend(f"    {rust_string_literal(value)}," for value in preinterned_strings)
-    lines.extend(["];", ""])
-    lines.extend(
-        [
-            "// Builtin compile() initializes these AST identifiers before compiling source.",
-            "#[cfg(test)]",
-            "pub(crate) static COMPILER_INTERNED_STRINGS: &[&str] = &[",
-        ]
+    preinterned_attributes = (
+        ('#[cfg(any(not(target_os = "linux"), test))]',)
+        if TARGET_MINOR == "3.14"
+        else ()
     )
     lines.extend(
-        f"    {rust_string_literal(value)}," for value in compiler_interned_strings
+        render_rust_string_table(
+            "PREINTERNED_STRINGS",
+            preinterned_strings,
+            "pub(crate) ",
+            preinterned_attributes,
+        )
     )
-    lines.extend(["];", ""])
+    lines.append("")
+    lines.append("// Builtin compile() initializes these AST identifiers before compiling source.")
+    lines.extend(
+        render_rust_string_table(
+            "COMPILER_INTERNED_STRINGS",
+            compiler_interned_strings,
+            "pub(crate) ",
+            ("#[cfg(test)]",),
+        )
+    )
+    lines.append("")
     if TARGET_MINOR == "3.14":
         bootstrap_strings = read_bootstrap_strings(sources)
-        lines.extend(
-            [
-                "// Source-derived identifiers and live owners from neutral Linux bootstrap.",
-                "#[cfg(test)]",
-                "pub(crate) static BOOTSTRAP_INTERNED_STRINGS: &[&str] = &[",
-            ]
+        lines.append(
+            "// Source-derived identifiers and live owners from neutral Linux bootstrap."
         )
         lines.extend(
-            f"    {rust_string_literal(value)}," for value in bootstrap_strings
+            render_rust_string_table(
+                "BOOTSTRAP_INTERNED_STRINGS",
+                list(bootstrap_strings),
+                "pub(crate) ",
+                ("#[cfg(test)]",),
+            )
         )
+        lines.append("")
         linux_preinterned_strings = sorted(
             set(preinterned_strings)
             | set(bootstrap_strings)
             | set(read_startup_strings())
         )
-        lines.extend(
-            [
-                "];",
-                "",
-                "// Use the canonical isolated Linux profile regardless of the Rust host architecture.",
-                '#[cfg(target_os = "linux")]',
-                "#[rustfmt::skip]",
-                "pub(super) static LINUX_PREINTERNED_STRINGS: &[&str] = &[",
-            ]
+        lines.append(
+            "// Use the canonical isolated Linux profile regardless of the Rust host architecture."
         )
-        lines.extend(render_compact_rust_strings(linux_preinterned_strings))
-        lines.extend(["];", "", '#[cfg(target_os = "linux")]'])
+        lines.extend(
+            render_rust_string_table(
+                "LINUX_PREINTERNED_STRINGS",
+                linux_preinterned_strings,
+                "pub(super) ",
+                ('#[cfg(target_os = "linux")]', "#[rustfmt::skip]"),
+            )
+        )
+        lines.extend(["", '#[cfg(target_os = "linux")]'])
         lines.extend(
             render_preinterned_lookup(
                 linux_preinterned_strings,
@@ -1303,13 +1358,16 @@ def render(sources: dict[str, str]) -> str:
             [
                 "// Captured before the isolated minimal C reference parses any source.",
                 "// Installation paths are supplied only through an explicit InitialInternState.",
-                "pub(crate) static STARTUP_INTERNED_STRINGS: &[&str] = &[",
             ]
         )
         lines.extend(
-            f"    {rust_string_literal(value)}," for value in read_startup_strings()
+            render_rust_string_table(
+                "STARTUP_INTERNED_STRINGS",
+                list(read_startup_strings()),
+                "pub(crate) ",
+            )
         )
-        lines.extend(["];", ""])
+        lines.append("")
         lines.extend(
             [
                 "pub(crate) fn is_preinterned_string(value: &str) -> bool {",

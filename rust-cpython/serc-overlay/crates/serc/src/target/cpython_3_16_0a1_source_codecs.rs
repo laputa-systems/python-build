@@ -21,336 +21,113 @@
 // Modules/cjkcodecs/multibytecodec.c: sha256 84d5799edcf8e6848f684828eff39f913c0cc81b539e10eb5d4d1db02e49712e
 // Modules/cjkcodecs/clinic/multibytecodec.c.h: sha256 fafb3df1415cfcd61a2674fdc471cae4d5cdf3b4c7448e2c2d82b6e2cad716cc
 
-pub(super) const ASCII: &[&str] = &[
-    "Codec",
-    "CodecInfo",
-    "IncrementalDecoder",
-    "IncrementalDecoder.decode",
-    "IncrementalEncoder",
-    "IncrementalEncoder.encode",
-    "StreamConverter",
-    "StreamReader",
-    "StreamWriter",
-    "__classdict__",
-    "__classdictcell__",
-    "__doc__",
-    "__firstlineno__",
-    "__module__",
-    "__name__",
-    "__qualname__",
-    "__static_attributes__",
-    "ascii",
-    "ascii_decode",
-    "ascii_encode",
-    "codecs",
-    "decode",
-    "encode",
-    "errors",
-    "final",
-    "getregentry",
-    "incrementaldecoder",
-    "incrementalencoder",
-    "input",
-    "name",
-    "self",
-    "streamreader",
-    "streamwriter",
+const ASCII_BLOB: &str = "CodecCodecInfoIncrementalDecoderIncrementalDecoder.decodeIncrementalEncoderIncrementalEncoder.encodeStreamConverterStreamReaderStreamWriter__classdict____classdictcell____doc____firstlineno____module____name____qualname____static_attributes__asciiascii_decodeascii_encodecodecsdecodeencodeerrorsfinalgetregentryincrementaldecoderincrementalencoderinputnameselfstreamreaderstreamwriter";
+const ASCII_OFFSETS: &[u32] = &[
+    0, 5, 14, 32, 57, 75, 100, 115, 127, 139, 152, 169,
+    176, 191, 201, 209, 221, 242, 247, 259, 271, 277, 283, 289,
+    295, 300, 311, 329, 347, 352, 356, 360, 372, 384,
 ];
+pub(super) static ASCII: std::sync::LazyLock<Box<[&'static str]>> =
+    std::sync::LazyLock::new(|| {
+        (0..ASCII_OFFSETS.len() - 1)
+            .map(|i| &ASCII_BLOB[ASCII_OFFSETS[i] as usize..ASCII_OFFSETS[i + 1] as usize])
+            .collect()
+    });
 
-pub(super) const LATIN_1: &[&str] = &[
-    "Codec",
-    "CodecInfo",
-    "IncrementalDecoder",
-    "IncrementalDecoder.decode",
-    "IncrementalEncoder",
-    "IncrementalEncoder.encode",
-    "StreamConverter",
-    "StreamReader",
-    "StreamWriter",
-    "__classdict__",
-    "__classdictcell__",
-    "__doc__",
-    "__firstlineno__",
-    "__module__",
-    "__name__",
-    "__qualname__",
-    "__static_attributes__",
-    "codecs",
-    "decode",
-    "encode",
-    "errors",
-    "final",
-    "getregentry",
-    "incrementaldecoder",
-    "incrementalencoder",
-    "input",
-    "latin_1_decode",
-    "latin_1_encode",
-    "name",
-    "self",
-    "streamreader",
-    "streamwriter",
+const LATIN_1_BLOB: &str = "CodecCodecInfoIncrementalDecoderIncrementalDecoder.decodeIncrementalEncoderIncrementalEncoder.encodeStreamConverterStreamReaderStreamWriter__classdict____classdictcell____doc____firstlineno____module____name____qualname____static_attributes__codecsdecodeencodeerrorsfinalgetregentryincrementaldecoderincrementalencoderinputlatin_1_decodelatin_1_encodenameselfstreamreaderstreamwriter";
+const LATIN_1_OFFSETS: &[u32] = &[
+    0, 5, 14, 32, 57, 75, 100, 115, 127, 139, 152, 169,
+    176, 191, 201, 209, 221, 242, 248, 254, 260, 266, 271, 282,
+    300, 318, 323, 337, 351, 355, 359, 371, 383,
 ];
+pub(super) static LATIN_1: std::sync::LazyLock<Box<[&'static str]>> =
+    std::sync::LazyLock::new(|| {
+        (0..LATIN_1_OFFSETS.len() - 1)
+            .map(|i| &LATIN_1_BLOB[LATIN_1_OFFSETS[i] as usize..LATIN_1_OFFSETS[i + 1] as usize])
+            .collect()
+    });
 
-pub(super) const CP1251: &[&str] = &[
-    "Codec",
-    "Codec.decode",
-    "Codec.encode",
-    "CodecInfo",
-    "IncrementalDecoder",
-    "IncrementalDecoder.decode",
-    "IncrementalEncoder",
-    "IncrementalEncoder.encode",
-    "StreamReader",
-    "StreamWriter",
-    "__classdict__",
-    "__classdictcell__",
-    "__doc__",
-    "__firstlineno__",
-    "__module__",
-    "__name__",
-    "__qualname__",
-    "__static_attributes__",
-    "charmap_build",
-    "charmap_decode",
-    "charmap_encode",
-    "codecs",
-    "cp1251",
-    "decode",
-    "decoding_table",
-    "encode",
-    "encoding_table",
-    "errors",
-    "final",
-    "getregentry",
-    "incrementaldecoder",
-    "incrementalencoder",
-    "input",
-    "name",
-    "self",
-    "streamreader",
-    "streamwriter",
+const CP1251_BLOB: &str = "CodecCodec.decodeCodec.encodeCodecInfoIncrementalDecoderIncrementalDecoder.decodeIncrementalEncoderIncrementalEncoder.encodeStreamReaderStreamWriter__classdict____classdictcell____doc____firstlineno____module____name____qualname____static_attributes__charmap_buildcharmap_decodecharmap_encodecodecscp1251decodedecoding_tableencodeencoding_tableerrorsfinalgetregentryincrementaldecoderincrementalencoderinputnameselfstreamreaderstreamwriter";
+const CP1251_OFFSETS: &[u32] = &[
+    0, 5, 17, 29, 38, 56, 81, 99, 124, 136, 148, 161,
+    178, 185, 200, 210, 218, 230, 251, 264, 278, 292, 298, 304,
+    310, 324, 330, 344, 350, 355, 366, 384, 402, 407, 411, 415,
+    427, 439,
 ];
+pub(super) static CP1251: std::sync::LazyLock<Box<[&'static str]>> =
+    std::sync::LazyLock::new(|| {
+        (0..CP1251_OFFSETS.len() - 1)
+            .map(|i| &CP1251_BLOB[CP1251_OFFSETS[i] as usize..CP1251_OFFSETS[i + 1] as usize])
+            .collect()
+    });
 
-pub(super) const CP1252: &[&str] = &[
-    "Codec",
-    "Codec.decode",
-    "Codec.encode",
-    "CodecInfo",
-    "IncrementalDecoder",
-    "IncrementalDecoder.decode",
-    "IncrementalEncoder",
-    "IncrementalEncoder.encode",
-    "StreamReader",
-    "StreamWriter",
-    "__classdict__",
-    "__classdictcell__",
-    "__doc__",
-    "__firstlineno__",
-    "__module__",
-    "__name__",
-    "__qualname__",
-    "__static_attributes__",
-    "charmap_build",
-    "charmap_decode",
-    "charmap_encode",
-    "codecs",
-    "cp1252",
-    "decode",
-    "decoding_table",
-    "encode",
-    "encoding_table",
-    "errors",
-    "final",
-    "getregentry",
-    "incrementaldecoder",
-    "incrementalencoder",
-    "input",
-    "name",
-    "self",
-    "streamreader",
-    "streamwriter",
+const CP1252_BLOB: &str = "CodecCodec.decodeCodec.encodeCodecInfoIncrementalDecoderIncrementalDecoder.decodeIncrementalEncoderIncrementalEncoder.encodeStreamReaderStreamWriter__classdict____classdictcell____doc____firstlineno____module____name____qualname____static_attributes__charmap_buildcharmap_decodecharmap_encodecodecscp1252decodedecoding_tableencodeencoding_tableerrorsfinalgetregentryincrementaldecoderincrementalencoderinputnameselfstreamreaderstreamwriter";
+const CP1252_OFFSETS: &[u32] = &[
+    0, 5, 17, 29, 38, 56, 81, 99, 124, 136, 148, 161,
+    178, 185, 200, 210, 218, 230, 251, 264, 278, 292, 298, 304,
+    310, 324, 330, 344, 350, 355, 366, 384, 402, 407, 411, 415,
+    427, 439,
 ];
+pub(super) static CP1252: std::sync::LazyLock<Box<[&'static str]>> =
+    std::sync::LazyLock::new(|| {
+        (0..CP1252_OFFSETS.len() - 1)
+            .map(|i| &CP1252_BLOB[CP1252_OFFSETS[i] as usize..CP1252_OFFSETS[i + 1] as usize])
+            .collect()
+    });
 
-pub(super) const ISO8859_15: &[&str] = &[
-    "Codec",
-    "Codec.decode",
-    "Codec.encode",
-    "CodecInfo",
-    "IncrementalDecoder",
-    "IncrementalDecoder.decode",
-    "IncrementalEncoder",
-    "IncrementalEncoder.encode",
-    "StreamReader",
-    "StreamWriter",
-    "__classdict__",
-    "__classdictcell__",
-    "__doc__",
-    "__firstlineno__",
-    "__module__",
-    "__name__",
-    "__qualname__",
-    "__static_attributes__",
-    "charmap_build",
-    "charmap_decode",
-    "charmap_encode",
-    "codecs",
-    "decode",
-    "decoding_table",
-    "encode",
-    "encoding_table",
-    "errors",
-    "final",
-    "getregentry",
-    "incrementaldecoder",
-    "incrementalencoder",
-    "input",
-    "name",
-    "self",
-    "streamreader",
-    "streamwriter",
+const ISO8859_15_BLOB: &str = "CodecCodec.decodeCodec.encodeCodecInfoIncrementalDecoderIncrementalDecoder.decodeIncrementalEncoderIncrementalEncoder.encodeStreamReaderStreamWriter__classdict____classdictcell____doc____firstlineno____module____name____qualname____static_attributes__charmap_buildcharmap_decodecharmap_encodecodecsdecodedecoding_tableencodeencoding_tableerrorsfinalgetregentryincrementaldecoderincrementalencoderinputnameselfstreamreaderstreamwriter";
+const ISO8859_15_OFFSETS: &[u32] = &[
+    0, 5, 17, 29, 38, 56, 81, 99, 124, 136, 148, 161,
+    178, 185, 200, 210, 218, 230, 251, 264, 278, 292, 298, 304,
+    318, 324, 338, 344, 349, 360, 378, 396, 401, 405, 409, 421,
+    433,
 ];
+pub(super) static ISO8859_15: std::sync::LazyLock<Box<[&'static str]>> =
+    std::sync::LazyLock::new(|| {
+        (0..ISO8859_15_OFFSETS.len() - 1)
+            .map(|i| &ISO8859_15_BLOB[ISO8859_15_OFFSETS[i] as usize..ISO8859_15_OFFSETS[i + 1] as usize])
+            .collect()
+    });
 
-pub(super) const KOI8_R: &[&str] = &[
-    "Codec",
-    "Codec.decode",
-    "Codec.encode",
-    "CodecInfo",
-    "IncrementalDecoder",
-    "IncrementalDecoder.decode",
-    "IncrementalEncoder",
-    "IncrementalEncoder.encode",
-    "StreamReader",
-    "StreamWriter",
-    "__classdict__",
-    "__classdictcell__",
-    "__doc__",
-    "__firstlineno__",
-    "__module__",
-    "__name__",
-    "__qualname__",
-    "__static_attributes__",
-    "charmap_build",
-    "charmap_decode",
-    "charmap_encode",
-    "codecs",
-    "decode",
-    "decoding_table",
-    "encode",
-    "encoding_table",
-    "errors",
-    "final",
-    "getregentry",
-    "incrementaldecoder",
-    "incrementalencoder",
-    "input",
-    "name",
-    "self",
-    "streamreader",
-    "streamwriter",
+const KOI8_R_BLOB: &str = "CodecCodec.decodeCodec.encodeCodecInfoIncrementalDecoderIncrementalDecoder.decodeIncrementalEncoderIncrementalEncoder.encodeStreamReaderStreamWriter__classdict____classdictcell____doc____firstlineno____module____name____qualname____static_attributes__charmap_buildcharmap_decodecharmap_encodecodecsdecodedecoding_tableencodeencoding_tableerrorsfinalgetregentryincrementaldecoderincrementalencoderinputnameselfstreamreaderstreamwriter";
+const KOI8_R_OFFSETS: &[u32] = &[
+    0, 5, 17, 29, 38, 56, 81, 99, 124, 136, 148, 161,
+    178, 185, 200, 210, 218, 230, 251, 264, 278, 292, 298, 304,
+    318, 324, 338, 344, 349, 360, 378, 396, 401, 405, 409, 421,
+    433,
 ];
+pub(super) static KOI8_R: std::sync::LazyLock<Box<[&'static str]>> =
+    std::sync::LazyLock::new(|| {
+        (0..KOI8_R_OFFSETS.len() - 1)
+            .map(|i| &KOI8_R_BLOB[KOI8_R_OFFSETS[i] as usize..KOI8_R_OFFSETS[i + 1] as usize])
+            .collect()
+    });
 
-pub(super) const EUC_JP: &[&str] = &[
-    "Codec",
-    "CodecInfo",
-    "IncrementalDecoder",
-    "IncrementalEncoder",
-    "MultibyteIncrementalDecoder",
-    "MultibyteIncrementalEncoder",
-    "MultibyteStreamReader",
-    "MultibyteStreamWriter",
-    "StreamReader",
-    "StreamWriter",
-    "__create_codec",
-    "__firstlineno__",
-    "__map_cp932ext",
-    "__map_jisx0208",
-    "__map_jisx0212",
-    "__map_jisx0213_1_bmp",
-    "__map_jisx0213_1_emp",
-    "__map_jisx0213_2_bmp",
-    "__map_jisx0213_2_emp",
-    "__map_jisx0213_bmp",
-    "__map_jisx0213_emp",
-    "__map_jisx0213_pair",
-    "__map_jisxcommon",
-    "__module__",
-    "__name__",
-    "__qualname__",
-    "__static_attributes__",
-    "_codecs_jp",
-    "_expat_decoding_table",
-    "_multibytecodec",
-    "codec",
-    "codecs",
-    "decode",
-    "encode",
-    "errors",
-    "euc_jp",
-    "getcodec",
-    "getregentry",
-    "getstate",
-    "incrementaldecoder",
-    "incrementalencoder",
-    "mbc",
-    "name",
-    "range",
-    "read",
-    "readline",
-    "readlines",
-    "reset",
-    "setstate",
-    "stream",
-    "streamreader",
-    "streamwriter",
-    "write",
-    "writelines",
+const EUC_JP_BLOB: &str = "CodecCodecInfoIncrementalDecoderIncrementalEncoderMultibyteIncrementalDecoderMultibyteIncrementalEncoderMultibyteStreamReaderMultibyteStreamWriterStreamReaderStreamWriter__create_codec__firstlineno____map_cp932ext__map_jisx0208__map_jisx0212__map_jisx0213_1_bmp__map_jisx0213_1_emp__map_jisx0213_2_bmp__map_jisx0213_2_emp__map_jisx0213_bmp__map_jisx0213_emp__map_jisx0213_pair__map_jisxcommon__module____name____qualname____static_attributes___codecs_jp_expat_decoding_table_multibytecodeccodeccodecsdecodeencodeerrorseuc_jpgetcodecgetregentrygetstateincrementaldecoderincrementalencodermbcnamerangereadreadlinereadlinesresetsetstatestreamstreamreaderstreamwriterwritewritelines";
+const EUC_JP_OFFSETS: &[u32] = &[
+    0, 5, 14, 32, 50, 77, 104, 125, 146, 158, 170, 184,
+    199, 213, 227, 241, 261, 281, 301, 321, 339, 357, 376, 392,
+    402, 410, 422, 443, 453, 474, 489, 494, 500, 506, 512, 518,
+    524, 532, 543, 551, 569, 587, 590, 594, 599, 603, 611, 620,
+    625, 633, 639, 651, 663, 668, 678,
 ];
+pub(super) static EUC_JP: std::sync::LazyLock<Box<[&'static str]>> =
+    std::sync::LazyLock::new(|| {
+        (0..EUC_JP_OFFSETS.len() - 1)
+            .map(|i| &EUC_JP_BLOB[EUC_JP_OFFSETS[i] as usize..EUC_JP_OFFSETS[i + 1] as usize])
+            .collect()
+    });
 
-pub(super) const BIG5: &[&str] = &[
-    "Codec",
-    "CodecInfo",
-    "IncrementalDecoder",
-    "IncrementalEncoder",
-    "MultibyteIncrementalDecoder",
-    "MultibyteIncrementalEncoder",
-    "MultibyteStreamReader",
-    "MultibyteStreamWriter",
-    "StreamReader",
-    "StreamWriter",
-    "__create_codec",
-    "__firstlineno__",
-    "__map_big5",
-    "__map_cp950ext",
-    "__module__",
-    "__name__",
-    "__qualname__",
-    "__static_attributes__",
-    "_codecs_tw",
-    "_expat_decoding_table",
-    "_multibytecodec",
-    "big5",
-    "codec",
-    "codecs",
-    "decode",
-    "encode",
-    "errors",
-    "getcodec",
-    "getregentry",
-    "getstate",
-    "incrementaldecoder",
-    "incrementalencoder",
-    "mbc",
-    "name",
-    "range",
-    "read",
-    "readline",
-    "readlines",
-    "reset",
-    "setstate",
-    "stream",
-    "streamreader",
-    "streamwriter",
-    "write",
-    "writelines",
+const BIG5_BLOB: &str = "CodecCodecInfoIncrementalDecoderIncrementalEncoderMultibyteIncrementalDecoderMultibyteIncrementalEncoderMultibyteStreamReaderMultibyteStreamWriterStreamReaderStreamWriter__create_codec__firstlineno____map_big5__map_cp950ext__module____name____qualname____static_attributes___codecs_tw_expat_decoding_table_multibytecodecbig5codeccodecsdecodeencodeerrorsgetcodecgetregentrygetstateincrementaldecoderincrementalencodermbcnamerangereadreadlinereadlinesresetsetstatestreamstreamreaderstreamwriterwritewritelines";
+const BIG5_OFFSETS: &[u32] = &[
+    0, 5, 14, 32, 50, 77, 104, 125, 146, 158, 170, 184,
+    199, 209, 223, 233, 241, 253, 274, 284, 305, 320, 324, 329,
+    335, 341, 347, 353, 361, 372, 380, 398, 416, 419, 423, 428,
+    432, 440, 449, 454, 462, 468, 480, 492, 497, 507,
 ];
+pub(super) static BIG5: std::sync::LazyLock<Box<[&'static str]>> =
+    std::sync::LazyLock::new(|| {
+        (0..BIG5_OFFSETS.len() - 1)
+            .map(|i| &BIG5_BLOB[BIG5_OFFSETS[i] as usize..BIG5_OFFSETS[i + 1] as usize])
+            .collect()
+    });

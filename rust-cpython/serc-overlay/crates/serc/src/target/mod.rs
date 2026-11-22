@@ -23,14 +23,14 @@ pub(crate) fn source_codec_strings(
     macro_rules! strings {
         ($module:ident) => {
             match codec {
-                SourceCodec::Ascii => $module::ASCII,
-                SourceCodec::Latin1 => $module::LATIN_1,
-                SourceCodec::Iso885915 => $module::ISO8859_15,
-                SourceCodec::Big5 => $module::BIG5,
-                SourceCodec::EucJp => $module::EUC_JP,
-                SourceCodec::Koi8R => $module::KOI8_R,
-                SourceCodec::Windows1251 => $module::CP1251,
-                SourceCodec::Windows1252 => $module::CP1252,
+                SourceCodec::Ascii => &$module::ASCII[..],
+                SourceCodec::Latin1 => &$module::LATIN_1[..],
+                SourceCodec::Iso885915 => &$module::ISO8859_15[..],
+                SourceCodec::Big5 => &$module::BIG5[..],
+                SourceCodec::EucJp => &$module::EUC_JP[..],
+                SourceCodec::Koi8R => &$module::KOI8_R[..],
+                SourceCodec::Windows1251 => &$module::CP1251[..],
+                SourceCodec::Windows1252 => &$module::CP1252[..],
             }
         };
     }
@@ -411,15 +411,15 @@ mod tests {
         for (version, static_strings, compiler_strings, startup_strings) in [
             (
                 Py312,
-                cpython_3_12_14::PREINTERNED_STRINGS,
-                cpython_3_12_14::COMPILER_INTERNED_STRINGS,
-                cpython_3_12_14::STARTUP_INTERNED_STRINGS,
+                &cpython_3_12_14::PREINTERNED_STRINGS[..],
+                &cpython_3_12_14::COMPILER_INTERNED_STRINGS[..],
+                &cpython_3_12_14::STARTUP_INTERNED_STRINGS[..],
             ),
             (
                 Py313,
-                cpython_3_13_15::PREINTERNED_STRINGS,
-                cpython_3_13_15::COMPILER_INTERNED_STRINGS,
-                cpython_3_13_15::STARTUP_INTERNED_STRINGS,
+                &cpython_3_13_15::PREINTERNED_STRINGS[..],
+                &cpython_3_13_15::COMPILER_INTERNED_STRINGS[..],
+                &cpython_3_13_15::STARTUP_INTERNED_STRINGS[..],
             ),
         ] {
             assert!(static_strings.windows(2).all(|pair| pair[0] < pair[1]));
@@ -491,19 +491,19 @@ mod tests {
                 .windows(2)
                 .all(|values| values[0] < values[1])
         );
-        for value in PREINTERNED_STRINGS {
+        for value in &PREINTERNED_STRINGS[..] {
             assert!(
                 is_preinterned_string(value),
                 "missing generated string {value:?}"
             );
         }
-        for value in super::cpython_3_15_0rc2::STARTUP_INTERNED_STRINGS {
+        for value in &super::cpython_3_15_0rc2::STARTUP_INTERNED_STRINGS[..] {
             assert_eq!(
                 is_preinterned_string(value),
                 cfg!(target_os = "linux") || COMPILER_INTERNED_STRINGS.contains(value)
             );
         }
-        for value in COMPILER_INTERNED_STRINGS {
+        for value in &COMPILER_INTERNED_STRINGS[..] {
             assert_eq!(
                 is_preinterned_string(value),
                 !cfg!(target_os = "linux")
@@ -525,7 +525,7 @@ mod tests {
                 .windows(2)
                 .all(|values| values[0] < values[1])
         );
-        for value in BOOTSTRAP_INTERNED_STRINGS {
+        for value in &BOOTSTRAP_INTERNED_STRINGS[..] {
             assert!(
                 is_preinterned_string(value) || !cfg!(target_os = "linux"),
                 "missing source-derived bootstrap string {value:?}",
@@ -553,7 +553,7 @@ mod tests {
                 .windows(2)
                 .all(|values| values[0] < values[1])
         );
-        for value in PREINTERNED_STRINGS {
+        for value in &PREINTERNED_STRINGS[..] {
             assert!(
                 is_preinterned_string(value),
                 "missing preinterned string {value:?}"
@@ -610,7 +610,7 @@ mod tests {
             is_preinterned_string("pause"),
             cfg!(all(unix, not(target_os = "linux")))
         );
-        for value in COMPILER_INTERNED_STRINGS {
+        for value in &COMPILER_INTERNED_STRINGS[..] {
             #[cfg(target_os = "linux")]
             let expected = super::cpython_3_14_5::LINUX_PREINTERNED_STRINGS.contains(value);
             #[cfg(not(target_os = "linux"))]
