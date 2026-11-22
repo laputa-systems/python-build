@@ -1,9 +1,9 @@
 # J-ES-2: loop-types proof with array reads and in-place float ops combined (preregistered 2026-11-22, before code)
 
-Authority: owner budget exception (relayed by Ada 2026-11-22: "Allow one combined try"),
-one attempt, beyond the 1/1 budgets of J-ES-1 (retired) and J-LT-2 (rejected), which keep
-their own outcomes. Pending Joshua's confirmation of the relay, which contradicts his direct
-"Pause" answer of 2026-11-21.
+Status: NOT RUN. On 2026-11-22 the owner reconfirmed the pause until a qualified
+Ubuntu 24.04 host, overriding a relayed "Allow one combined try". If reopened, this is one
+attempt beyond the 1/1 budgets of J-ES-1 (retired) and J-LT-2 (rejected), which keep their
+own outcomes.
 
 Evidence: refusal census (`ltcensus/`, `ltcensus-closure.txt`) at `da74796`. sparse_mat_mult
 `SparseCompRow_matmult` line 62 (trace len 66, `_JUMP_TO_TOP`) misses exactly
