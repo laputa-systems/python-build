@@ -38,7 +38,7 @@
     "libllvm18": "LLVM libraries from the pinned production LLVM archive",
     "libicu74": "the pinned production LLVM archive is built for musl and needs no ICU runtime package",
     "libxml2": "the pinned production LLVM archive is self-contained for this lane",
-    "libgcc-14-dev": "the pinned LLVM toolchain supplies compiler-rt and libunwind; musl CRT objects come from Alpine"
+    "libgcc-14-dev": "the lane uses Alpine libgcc_s.so.1 for Rust unwinding; musl CRT objects come from Alpine"
   },
   "lane_packages": [
     {"name":"binutils","version":"2.45.1-r1","arch":"x86_64","sha256":"15682887459d216585feb438bbfb7ec63e1f33e77c453f44637d2d9d8c35977d","size":3229647,"license":"GPL-2.0-or-later AND LGPL-2.1-or-later AND BSD-3-Clause","repository":"main"},
@@ -47,6 +47,7 @@
     {"name":"isl26","version":"0.26-r2","arch":"x86_64","sha256":"30999fb66e296c8ea7aa102cad0d3095519b3022abb622d2951dd29367310ea9","size":915985,"license":"MIT","repository":"main"},
     {"name":"jansson","version":"2.15.0-r0","arch":"x86_64","sha256":"7681b41486e1f2b2efce11875c839533464ae8857d30fc49130f0039c6585fdb","size":48950,"license":"MIT","repository":"main"},
     {"name":"libatomic","version":"15.2.0-r5","arch":"x86_64","sha256":"c5ec550c73dd7b4e81e206fdff3cf4c46b0ae1b29fec1db5cd4e12d88416abbf","size":10241,"license":"GPL-2.0-or-later AND LGPL-2.1-or-later","repository":"main"},
+    {"name":"libgcc","version":"15.2.0-r5","arch":"x86_64","sha256":"393dcd32629f06d7d85409c272d142d0c082772d10b87ef55ee82f47de3be637","size":80348,"license":"GPL-3.0-or-later WITH GCC-exception-3.1","apkindex_license":"GPL-2.0-or-later AND LGPL-2.1-or-later","repository":"main","role":"lane runtime library libgcc_s.so.1, not a compiler"},
     {"name":"libgcc-static","version":"15.2.0-r5","arch":"x86_64","sha256":"563244a562f5c48b921f7f0b4a571e373cfcba65175fe2d4f752c5f975738bcd","size":2249602,"license":"GPL-2.0-or-later AND LGPL-2.1-or-later","repository":"main"},
     {"name":"libgomp","version":"15.2.0-r5","arch":"x86_64","sha256":"e7204aad00e31d544e0a34eac5a7eb7d3586d2b7b22afd6e5907189c4e0337cc","size":153729,"license":"GPL-2.0-or-later AND LGPL-2.1-or-later","repository":"main"},
     {"name":"mpc1","version":"1.3.1-r1","arch":"x86_64","sha256":"c2247438e163f1c11646428f07576ceb3cf3167f9a9a5c6526021f778d77adb6","size":48549,"license":"LGPL-3.0-or-later","repository":"main"},
@@ -112,17 +113,43 @@
     "size": 101344736,
     "archive_root": "clang+llvm-23.1.5-x86_64-linux-musl",
     "license": "Apache-2.0 WITH LLVM-exception",
-    "unwind": {
-      "archive_member": "lib/libunwind.a",
-      "sha256": "3ab7ab25db20669df956834d79280740d07f3e77ae233e884ba6bd91233cec18",
-      "size": 132782,
-      "reason": "The production LLVM tarball contains its musl-built libunwind; use it rather than add Alpine libgcc.",
-      "pic_check": "readelf -r reports no R_X86_64_32 or R_X86_64_32S relocations",
-      "native_static_libs": {
-        "rustc_probe": "rustc --target x86_64-unknown-linux-musl -C target-feature=-crt-static --crate-type staticlib --print native-static-libs",
-        "reported": ["-lgcc_s", "-lc"],
-        "musl_link_args": ["-L<production LLVM>/lib", "-lunwind", "-lc"],
-        "make_path": "configure --with-libs populates LIBS; SHLIBS expands LIBS for libpython and the program and freeze-module links use LIBS"
+    "rust_native_static_libs": {
+      "probe": "rustc --target x86_64-unknown-linux-musl -C target-feature=-crt-static --crate-type staticlib --print native-static-libs",
+      "reported": ["-lgcc_s", "-lc"],
+      "musl_link_args": ["-lgcc_s", "-lc"],
+      "runtime_package": "libgcc=15.2.0-r5, providing libgcc_s.so.1",
+      "make_path": "configure --with-libs populates LIBS; SHLIBS expands LIBS for libpython and the program and freeze-module links use LIBS"
+    }
+  },
+  "allocators": {
+    "mimalloc": {
+      "version": "3.7.0",
+      "url": "https://github.com/microsoft/mimalloc/releases/download/v3.7.0/mimalloc-v3.7.0-source.tar.gz",
+      "sha256": "a207a0802234ff9d21e7511eee52375e6299fa2ac7b25eb4ce26b579a7735c8c",
+      "size": 1904233,
+      "license": "MIT",
+      "cache_path": ".cache/bootstrap/lane-musl/allocators/mimalloc-v3.7.0-source.tar.gz",
+      "archive_root": "mimalloc-1ed67b5156a763441d2ec3c20221a7b3cd866129",
+      "build": {
+        "source": "src/static.c",
+        "cflags": ["-O2", "-fPIC", "-DMI_MALLOC_OVERRIDE"],
+        "archive": "libmimalloc.a",
+        "link": ["-Wl,--whole-archive", "<libmimalloc.a>", "-Wl,--no-whole-archive"]
+      }
+    },
+    "jemalloc": {
+      "version": "5.4.0",
+      "url": "https://github.com/jemalloc/jemalloc/releases/download/5.4.0/jemalloc-5.4.0.tar.bz2",
+      "sha256": "200776fac271093e7c2f21edd6d62657ecd2be578d9328633f2a86bfa6ef4f1d",
+      "size": 913812,
+      "license": "BSD-2-Clause",
+      "cache_path": ".cache/bootstrap/lane-musl/allocators/jemalloc-5.4.0.tar.bz2",
+      "archive_root": "jemalloc-5.4.0",
+      "build": {
+        "configure": ["./configure", "--with-pic", "--disable-cxx"],
+        "make": ["make", "build_lib_static"],
+        "archive": "lib/libjemalloc.a",
+        "link": ["-Wl,--whole-archive", "<libjemalloc.a>", "-Wl,--no-whole-archive"]
       }
     }
   },

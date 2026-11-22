@@ -308,9 +308,6 @@ class MuslToolchain:
     llvm_archive_size: int
     llvm_archive_root: str
     llvm_license: str
-    llvm_unwind_member: str
-    llvm_unwind_sha256: str
-    llvm_unwind_size: int
     rust_channel: str
     rust_host: str
     make: Path
@@ -388,12 +385,7 @@ class MuslToolchain:
                 "size": self.llvm_archive_size,
                 "license": self.llvm_license,
             },
-            "unwinder": {
-                "archive_member": self.llvm_unwind_member,
-                "sha256": self.llvm_unwind_sha256,
-                "size": self.llvm_unwind_size,
-                "reason": "use LLVM's bundled musl libunwind; no lane-only libgcc",
-            },
+            "rust_native_static_libs": ["-lgcc_s", "-lc"],
             "linker": str(self.llvm_prefix / "bin" / "ld.lld"),
             "llvm_profdata": None,
             "llvm_profdata_version": "not included in the production musl LLVM archive",
@@ -455,6 +447,14 @@ def load_musl_toolchain(path: Path, cache_root: Path) -> MuslToolchain:
             if not separator or name != item.get("name") or expected.get(name) != version:
                 raise LinuxHostError(f"{path}: invalid production supersession for {name}")
         expected[item["name"]] = item["version"]
+    runtime_libgcc = next((item for item in lane_packages if item.get("name") == "libgcc"), None)
+    if (
+        runtime_libgcc is None
+        or runtime_libgcc.get("version") != "15.2.0-r5"
+        or runtime_libgcc.get("license") != "GPL-3.0-or-later WITH GCC-exception-3.1"
+        or runtime_libgcc.get("role") != "lane runtime library libgcc_s.so.1, not a compiler"
+    ):
+        raise LinuxHostError(f"{path}: Alpine libgcc_s runtime package pin is missing")
     roots = tuple(document.get("system_package_roots", ()))
     if not roots or not set(roots).issubset({item["name"] for item in lane_packages}):
         raise LinuxHostError(f"{path}: system package roots are not in the lane APK set")
@@ -464,13 +464,15 @@ def load_musl_toolchain(path: Path, cache_root: Path) -> MuslToolchain:
     if tools.get("pkgconf") != f"pkgconf={expected.get('pkgconf')}":
         raise LinuxHostError(f"{path}: pkgconf pin differs from the production closure")
     llvm = document.get("llvm", {})
-    unwind = llvm.get("unwind", {})
+    native_static_libs = llvm.get("rust_native_static_libs", {})
     if (
         llvm.get("sha256") != archive.sha256
         or llvm.get("version") != bootstrap.llvm.version
-        or unwind.get("archive_member") != "lib/libunwind.a"
+        or native_static_libs.get("reported") != ["-lgcc_s", "-lc"]
+        or native_static_libs.get("musl_link_args") != ["-lgcc_s", "-lc"]
+        or native_static_libs.get("runtime_package") != "libgcc=15.2.0-r5, providing libgcc_s.so.1"
     ):
-        raise LinuxHostError(f"{path}: LLVM archive or unwinder identity differs")
+        raise LinuxHostError(f"{path}: LLVM or Rust native-library identity differs")
     rust = document.get("rust", {})
     if rust.get("host") != TARGET or rust.get("channel") != "nightly-2026-09-15":
         raise LinuxHostError(f"{path}: Rust toolchain pin is not the musl lane toolchain")
@@ -500,9 +502,6 @@ def load_musl_toolchain(path: Path, cache_root: Path) -> MuslToolchain:
         llvm_archive_size=archive.size,
         llvm_archive_root=archive.archive_root,
         llvm_license=llvm["license"],
-        llvm_unwind_member=unwind["archive_member"],
-        llvm_unwind_sha256=unwind["sha256"],
-        llvm_unwind_size=unwind["size"],
         rust_channel=rust["channel"],
         rust_host=rust["host"],
         make=Path("/usr/bin/make"),
@@ -689,13 +688,6 @@ def _musl_problems(toolchain: MuslToolchain) -> list[str]:
     libclang = toolchain.libclang_path / "libclang.so"
     if not libclang.is_file():
         found.append(f"{libclang} is missing")
-    unwind = toolchain.llvm_prefix / toolchain.llvm_unwind_member
-    try:
-        unwind_digest = hashlib.sha256(unwind.read_bytes()).hexdigest()
-    except OSError:
-        unwind_digest = ""
-    if unwind_digest != toolchain.llvm_unwind_sha256:
-        found.append(f"LLVM's locked libunwind is missing or has a different digest: {unwind}")
     make_version = toolchain.make_version.split("-r", 1)[0]
     if f"GNU Make {make_version}" not in _tool_output([str(toolchain.make), "--version"]):
         found.append(f"{toolchain.make} does not report GNU Make {toolchain.make_version}")
@@ -892,13 +884,6 @@ def configure_llvm(toolchain: MuslToolchain) -> None:
     if strip.is_symlink() or strip.exists():
         strip.unlink()
     strip.symlink_to("llvm-strip")
-    unwind = toolchain.llvm_prefix / toolchain.llvm_unwind_member
-    try:
-        digest = hashlib.sha256(unwind.read_bytes()).hexdigest()
-    except OSError as error:
-        raise LinuxHostError(f"LLVM archive has no bundled libunwind: {error}") from error
-    if digest != toolchain.llvm_unwind_sha256:
-        raise LinuxHostError("LLVM bundled libunwind digest differs from the lane lock")
 
 
 def docker_offline() -> bool:

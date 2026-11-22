@@ -106,9 +106,9 @@ MUSL_X86_64_LAYOUT = ExtractionLayout(
         "bin/llvm-nm", "bin/llvm-objcopy",
         "lib/clang/23/include/stdint.h",
         "lib/clang/23/lib/linux/libclang_rt.builtins-x86_64.a",
-        "lib/libclang.so.23.1.5", "lib/libunwind.a",
+        "lib/libclang.so.23.1.5",
     }),
-    library_files=frozenset({"lib/libclang.so.23.1.5", "lib/libunwind.a"}),
+    library_files=frozenset({"lib/libclang.so.23.1.5"}),
     resource_prefixes=("lib/clang/23/include/",),
     resource_files=frozenset({
         "lib/clang/23/lib/linux/libclang_rt.builtins-x86_64.a",
@@ -595,8 +595,11 @@ def _linux_doctor_report(
             "architecture": platform.machine(),
             "libc": ["musl", toolchain.alpine_release],
             "spec": spec_kind,
-            "provisional": False,
-            "provisional_reason": "",
+            "provisional": True,
+            "provisional_reason": (
+                "OD23: pinned Alpine container on an unqualified host; timing needs a "
+                "qualified quiet x86-64 host"
+            ),
         },
         "target": target.triple,
         "source": {
@@ -1408,6 +1411,145 @@ def _fetch_cargo_dependencies(
         raise LaneError("cargo fetch changed the locked Cargo.lock")
 
 
+def _musl_allocator_metadata(name: str) -> dict[str, Any]:
+    if name not in {"mimalloc", "jemalloc"}:
+        raise LaneError(f"unsupported musl allocator source {name!r}")
+    try:
+        metadata = json.loads(LINUX_TOOLCHAIN_LOCK.read_text())["allocators"][name]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as error:
+        raise LaneError(f"cannot read the locked {name} source input: {error}") from error
+    return metadata
+
+
+def _musl_allocator_input(name: str, metadata: dict[str, Any], target: str) -> Input:
+    return Input(
+        name=f"{name}-allocator-source",
+        version=metadata["version"],
+        urls=(metadata["url"],),
+        sha256=metadata["sha256"],
+        size=metadata["size"],
+        role="build-source",
+        target=target,
+        license=metadata["license"],
+        purpose=f"locked {name} allocator source for the musl lane",
+    )
+
+
+def _cache_musl_allocator_source(name: str, toolchain, *, fetch: bool) -> Path:
+    metadata = _musl_allocator_metadata(name)
+    path = (REPO / metadata["cache_path"]).resolve()
+    if not path.is_relative_to(CACHE_ROOT.resolve()):
+        raise LaneError(f"{name} source cache path escapes the repository")
+
+    def matches(candidate: Path) -> bool:
+        if not candidate.is_file() or candidate.stat().st_size != metadata["size"]:
+            return False
+        return hashlib.sha256(candidate.read_bytes()).hexdigest() == metadata["sha256"]
+
+    if matches(path):
+        return path
+    if not fetch:
+        raise LaneError(f"locked {name} source is missing or mismatched; run `perf.py fetch`")
+    source_input = _musl_allocator_input(name, metadata, toolchain.target)
+    blob = Cache(CACHE_ROOT / "bootstrap").fetch(source_input)
+    if not matches(blob):
+        raise LaneError(f"cached {name} source digest/size differs from the lane lock")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=f".{path.name}-", delete=False) as handle:
+        temporary = Path(handle.name)
+    try:
+        shutil.copyfile(blob, temporary)
+        if not matches(temporary):
+            raise LaneError(f"copied {name} source digest/size differs from the lane lock")
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return path
+
+
+def allocator_link_flags(allocator: str, archive: Path | None = None) -> str:
+    if allocator == "musl":
+        return ""
+    if not isinstance(allocator, str) or allocator not in {"mimalloc", "jemalloc"} \
+            or archive is None:
+        raise LaneError(f"invalid allocator link request for {allocator!r}")
+    return shlex.join(("-Wl,--whole-archive", str(archive), "-Wl,--no-whole-archive"))
+
+
+def build_musl_allocator(allocator: str, work: Path, toolchain) -> dict[str, Any]:
+    if allocator == "musl":
+        return {"name": "musl", "link_flags": None, "artifact": None}
+    if allocator not in {"mimalloc", "jemalloc"} or not isinstance(
+        toolchain, lane_linux.MuslToolchain
+    ):
+        raise LaneError(f"allocator {allocator!r} is only supported by the musl lane")
+    metadata = _musl_allocator_metadata(allocator)
+    source_archive = _cache_musl_allocator_source(allocator, toolchain, fetch=False)
+    if work.exists():
+        shutil.rmtree(work)
+    work.mkdir(parents=True)
+    extracted = safe_extract(source_archive, work / "source")
+    source = extracted / metadata["archive_root"]
+    if not source.is_dir():
+        raise LaneError(f"locked {allocator} source root is missing: {source}")
+    tool_bin = toolchain.llvm_prefix / "bin"
+    environment = toolchain.env()
+    environment.update({
+        "CC": str(toolchain.clang),
+        "CFLAGS": "-O2 -fPIC",
+        "AR": str(tool_bin / "llvm-ar"),
+        "RANLIB": str(tool_bin / "llvm-ranlib"),
+    })
+    if allocator == "mimalloc":
+        object_file = work / "mimalloc.o"
+        archive = work / "libmimalloc.a"
+        _require_command(
+            [
+                str(toolchain.clang), "-O2", "-fPIC", "-DMI_MALLOC_OVERRIDE",
+                "-I", str(source / "include"), "-I", str(source / "src"),
+                "-c", str(source / "src/static.c"), "-o", str(object_file),
+            ],
+            cwd=source, env=environment, log=work / "mimalloc-compile.log",
+        )
+        _require_command(
+            [str(tool_bin / "llvm-ar"), "rcs", str(archive), str(object_file)],
+            cwd=source, env=environment, log=work / "mimalloc-archive.log",
+        )
+    else:
+        _require_command(
+            ["./configure", "--with-pic", "--disable-cxx"],
+            cwd=source, env=environment, log=work / "jemalloc-configure.log",
+        )
+        _require_command(
+            ["/usr/bin/make", "build_lib_static"],
+            cwd=source, env=environment, log=work / "jemalloc-build.log",
+        )
+        archive = source / metadata["build"]["archive"]
+        if not archive.is_file():
+            raise LaneError(f"jemalloc build did not produce {archive}")
+    if not archive.is_file():
+        raise LaneError(f"{allocator} build did not produce {archive}")
+    return {
+        "name": allocator,
+        "version": metadata["version"],
+        "license": metadata["license"],
+        "input_url": metadata["url"],
+        "input_sha256": metadata["sha256"],
+        "input_size": metadata["size"],
+        "artifact": str(archive),
+        "artifact_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+        "artifact_size": archive.stat().st_size,
+        "link_flags": allocator_link_flags(allocator, archive),
+    }
+
+
+def _fetch_musl_allocator_sources(toolchain) -> None:
+    for name in ("mimalloc", "jemalloc"):
+        archive = _cache_musl_allocator_source(name, toolchain, fetch=True)
+        version = _musl_allocator_metadata(name)["version"]
+        print(f"OK    {name} {version} -> {archive}")
+
+
 def fetch() -> int:
     _require_host()
     rustup = _require_nightly()
@@ -1435,6 +1577,7 @@ def fetch() -> int:
     _fetch_llvm(toolchain)
     print(f"OK    LLVM {toolchain.llvm_version} -> {toolchain.llvm_prefix}")
     if IS_LINUX:
+        _fetch_musl_allocator_sources(toolchain)
         mpdecimal = _mpdecimal_input()
         mirror = dataclasses.replace(
             mpdecimal, urls=(MPDECIMAL_MIRROR.format(version=mpdecimal.version),))
@@ -1573,9 +1716,7 @@ def _configuration(toolchain, target, *, jit: bool = False,
     ]
     args.append("--with-pydebug")
     if TARGET.endswith("-musl"):
-        args.append(
-            f"--with-libs=-L{toolchain.llvm_prefix / 'lib'} -lunwind -lc"
-        )
+        args.append("--with-libs=-lgcc_s -lc")
     env = _environment(toolchain, offline=True)
     env.update(platform_flags)
     env.update(jit_config.environment)
