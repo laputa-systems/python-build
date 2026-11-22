@@ -90,6 +90,18 @@ class JitConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(perf.lb.LaneError, "invalid allocator link request"):
             perf.lb.allocator_link_flags("jemalloc")
 
+    def test_mimalloc_internal_symbols_are_localized_without_hiding_malloc(self):
+        output = (
+            "00000000 T __mi_stat_increase\n"
+            "00000000 T _mi_os_alloc\n"
+            "00000000 T mi_malloc\n"
+            "00000000 T malloc\n"
+        )
+        self.assertEqual(
+            perf.lb._mimalloc_internal_symbols(output, ("mi_", "_mi_", "__mi_")),
+            ["__mi_stat_increase", "_mi_os_alloc", "mi_malloc"],
+        )
+
     def test_musl_layout_no_longer_requires_llvm_libunwind(self):
         self.assertNotIn("lib/libunwind.a", perf.lb.MUSL_X86_64_LAYOUT.required)
         self.assertNotIn("lib/libunwind.a", perf.lb.MUSL_X86_64_LAYOUT.library_files)

@@ -1477,6 +1477,15 @@ def allocator_link_flags(allocator: str, archive: Path | None = None) -> str:
     return shlex.join(("-Wl,--whole-archive", str(archive), "-Wl,--no-whole-archive"))
 
 
+def _mimalloc_internal_symbols(nm_output: str, prefixes: tuple[str, ...]) -> list[str]:
+    symbols = set()
+    for line in nm_output.splitlines():
+        fields = line.split()
+        if fields and fields[-1].startswith(prefixes):
+            symbols.add(fields[-1])
+    return sorted(symbols)
+
+
 def build_musl_allocator(allocator: str, work: Path, toolchain) -> dict[str, Any]:
     if allocator == "musl":
         return {"name": "musl", "link_flags": None, "artifact": None}
@@ -1511,6 +1520,25 @@ def build_musl_allocator(allocator: str, work: Path, toolchain) -> dict[str, Any
                 "-c", str(source / "src/static.c"), "-o", str(object_file),
             ],
             cwd=source, env=environment, log=work / "mimalloc-compile.log",
+        )
+        prefixes = tuple(metadata["build"]["localize_prefixes"])
+        symbols = subprocess.run(
+            [str(tool_bin / "llvm-nm"), "-g", "--defined-only", str(object_file)],
+            cwd=source, env=environment, capture_output=True, text=True, check=False,
+        )
+        if symbols.returncode:
+            raise LaneError(f"cannot inspect mimalloc symbols: {symbols.stderr.strip()}")
+        local_symbols = _mimalloc_internal_symbols(symbols.stdout, prefixes)
+        if not local_symbols:
+            raise LaneError("mimalloc build has no internal symbols to localize")
+        symbol_list = work / "mimalloc-local-symbols.txt"
+        symbol_list.write_text("\n".join(local_symbols) + "\n")
+        _require_command(
+            [
+                str(tool_bin / "llvm-objcopy"),
+                f"--localize-symbols={symbol_list}", str(object_file),
+            ],
+            cwd=source, env=environment, log=work / "mimalloc-localize.log",
         )
         _require_command(
             [str(tool_bin / "llvm-ar"), "rcs", str(archive), str(object_file)],

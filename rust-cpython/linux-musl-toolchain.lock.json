@@ -133,6 +133,7 @@
       "build": {
         "source": "src/static.c",
         "cflags": ["-O2", "-fPIC", "-DMI_MALLOC_OVERRIDE"],
+        "localize_prefixes": ["mi_", "_mi_", "__mi_"],
         "archive": "libmimalloc.a",
         "link": ["-Wl,--whole-archive", "<libmimalloc.a>", "-Wl,--no-whole-archive"]
       }
