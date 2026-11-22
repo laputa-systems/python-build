@@ -1184,6 +1184,10 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
     configure = [str(source / "configure"), f"--prefix={paths['stage']}", "--enable-shared",
                  jit_config.argument, "--with-tail-call-interp=no",
                  "--without-ensurepip"]
+    if lb.TARGET.endswith("-musl"):
+        configure.append(
+            f"--with-libs=-L{toolchain.llvm_prefix / 'lib'} -lunwind -lc"
+        )
     if pystats:
         configure.append("--enable-pystats")
     # Only the aggregate workspace requires the pinned source-built runtime.

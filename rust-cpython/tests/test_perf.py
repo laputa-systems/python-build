@@ -1356,7 +1356,7 @@ class IncrementalRecipeTests(unittest.TestCase):
                 patches.enter_context(mock.patch.object(perf.lb, "IS_LINUX", False))
             patches.enter_context(mock.patch.object(
                 perf.lb, "TARGET",
-                "x86_64-unknown-linux-gnu" if linux else "aarch64-apple-darwin"))
+                "x86_64-unknown-linux-musl" if linux else "aarch64-apple-darwin"))
             source = root / "source"
             source.mkdir()
             (source / "Cargo.lock").write_text("locked fixture")
@@ -2474,7 +2474,7 @@ class JitStatsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp, ExitStack() as patches:
             side = {"ref": "@control-jit", "name": "perf-upstream-jit",
                     "stage": Path(temp), "python": Path("/python"),
-                    "report": {"target": "x86_64-unknown-linux-gnu"}}
+                    "report": {"target": "x86_64-unknown-linux-musl"}}
             patches.enter_context(mock.patch.object(perf, "resolve", return_value=side))
             patches.enter_context(mock.patch.object(perf, "host_lease",
                                                     return_value=nullcontext()))

@@ -141,9 +141,14 @@ unsafe fn add_closefrom(_actions: *mut libc::posix_spawn_file_actions_t) -> c_in
     libc::ENOSYS
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
 unsafe fn add_closefrom(actions: *mut libc::posix_spawn_file_actions_t) -> c_int {
     unsafe { libc::posix_spawn_file_actions_addclosefrom_np(actions, 3) }
+}
+
+#[cfg(all(target_os = "linux", target_env = "musl"))]
+unsafe fn add_closefrom(_actions: *mut libc::posix_spawn_file_actions_t) -> c_int {
+    libc::ENOSYS
 }
 
 unsafe fn spawn_impl(args: *mut *mut PyObject, nargs: Py_ssize_t) -> *mut PyObject {
