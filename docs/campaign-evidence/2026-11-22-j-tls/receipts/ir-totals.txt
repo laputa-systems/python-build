@@ -1,0 +1,16 @@
+perf-tls-cand-compile-1.cg 49085350191
+perf-tls-cand-compile-2.cg 49090114938
+perf-tls-cand-nbody-1.cg 2614077991
+perf-tls-cand-nbody-2.cg 2613811652
+perf-tls-cand-scimark_fft-1.cg 3750341207
+perf-tls-cand-scimark_fft-2.cg 3750200242
+perf-tls-cand-scimark_sparse_mat_mult-1.cg 5318770423
+perf-tls-cand-scimark_sparse_mat_mult-2.cg 5318757772
+perf-tls-parent-compile-1.cg 54474755635
+perf-tls-parent-compile-2.cg 54482285916
+perf-tls-parent-nbody-1.cg 2695031828
+perf-tls-parent-nbody-2.cg 2694879278
+perf-tls-parent-scimark_fft-1.cg 4139299652
+perf-tls-parent-scimark_fft-2.cg 4139214685
+perf-tls-parent-scimark_sparse_mat_mult-1.cg 5454501252
+perf-tls-parent-scimark_sparse_mat_mult-2.cg 5454370934
