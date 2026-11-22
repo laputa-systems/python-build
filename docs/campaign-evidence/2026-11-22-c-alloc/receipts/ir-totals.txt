@@ -1,0 +1,16 @@
+candidate-corpus-1.cg 33852857890
+candidate-corpus-2.cg 33852799476
+candidate-nbody-1.cg 2478458582
+candidate-nbody-2.cg 2478340440
+candidate-scimark_fft-1.cg 3842196683
+candidate-scimark_fft-2.cg 3819089207
+candidate-scimark_sparse_mat_mult-1.cg 5704127767
+candidate-scimark_sparse_mat_mult-2.cg 5704057651
+parent-corpus-1.cg 37015593392
+parent-corpus-2.cg 37016080576
+parent-nbody-1.cg 2493941125
+parent-nbody-2.cg 2494025455
+parent-scimark_fft-1.cg 3860857383
+parent-scimark_fft-2.cg 3834939389
+parent-scimark_sparse_mat_mult-1.cg 5719762677
+parent-scimark_sparse_mat_mult-2.cg 5719865190
