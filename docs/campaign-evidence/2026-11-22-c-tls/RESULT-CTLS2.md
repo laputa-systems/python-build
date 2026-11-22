@@ -1,4 +1,4 @@
-# C-TLS-2 result: inconclusive (nbody repeatability), amendment A pending
+# C-TLS-2 result: all predictions held after amendment A; prepared, unqualified
 
 Plan: `PLAN-CTLS2.md`. Candidate `perf-ctls2-cand` at `04124a0` (`campaign/ctls2-cand`):
 one Linux-guarded line in the overlay `Makefile.pre.in` that appends
@@ -38,3 +38,18 @@ stages. If both pairs are within 0.1%, S3 is judged on run 1 of the fresh pairs.
 either pair fails again, nbody is recorded as non-repeatable on this host and C-TLS-2 is
 recorded as inconclusive until the qualified host. Nothing else is rerun, and the
 thresholds are unchanged.
+
+## Amendment A result
+
+| Stage | nbody run 1 / 2 | Pair |
+| --- | ---: | ---: |
+| Parent | 2,493,943,211 / 2,493,933,347 | 0.0004% |
+| Candidate | 2,487,567,024 / 2,487,626,814 | 0.0024% |
+
+Both pairs are valid. Candidate vs parent on run 1 is −0.26%, within ±0.5%, so S3 holds;
+operation counts and digests are unchanged. One earlier parent attempt failed before the
+workload loaded because it ran from the wrong working directory (`benchmarks` was not
+importable). It is excluded, and its files are kept as `parent-nbody-1.*`.
+
+Outcome: S1–S5 and correctness hold. C-TLS-2 is prepared and unqualified, in Track C
+slot 1 of 2. Timing needs the qualified host.
