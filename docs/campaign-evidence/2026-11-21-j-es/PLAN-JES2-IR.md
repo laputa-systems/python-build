@@ -30,3 +30,16 @@ Outcome is recorded either way. I1 failing means removing 5.0 M periodic checks 
 stores did not reduce executed instructions measurably. That is recorded against J-ES-2's
 structural claim; it does not reopen or reject the candidate, whose status is set only by
 P1–P4 and timing.
+
+## Addendum A (2026-11-22, before any successful run)
+Valgrind 3.18.1 cannot read the stages' DWARF 5 debuginfo (`unhandled dwarf2 abbrev form
+code 0x25`). The first run aborted before the workload started, and no counts exist.
+
+Change: each stage is copied with `cp -a $STAGE ${STAGE}-nodebug`, and in the copy
+`strip --strip-debug` is applied to `bin/python3.16` and every `lib/*.so*` file. The
+command is otherwise unchanged, with `$STAGE` set to the `-nodebug` copy. Stripping debug
+sections leaves `.text` unchanged, so the executed instructions are identical. Each run
+records `sha256` of `.text` (`objcopy -O binary --only-section=.text`) for the original and
+the stripped libpython. They must match, or the screen is INVALID.
+
+Predictions, kernels, runs and validity rules are unchanged.
