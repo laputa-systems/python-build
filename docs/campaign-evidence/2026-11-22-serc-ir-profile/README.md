@@ -43,3 +43,29 @@ It also walks every token once, and scans backwards to the line start at each lo
 line. Its whole cost is 0.66% of the corpus, which is below the useful threshold even if
 it were removed entirely. Removing it would also require proving that tab-free files can
 skip the check, which affects routing exactness. Screened out.
+
+## Screen: Serc vector growth and remaining allocator callers (2026-11-22)
+
+After C-TLS-2 (candidate corpus run 1, 35.70 G `Ir`), the top self costs are:
+
+| Function | Share of corpus `Ir` |
+| --- | ---: |
+| `sha2` (harness digest) | 9.04% |
+| glibc `_int_malloc` | 4.33% |
+| glibc `_int_free` | 3.40% |
+| `OptimizationPipeline::optimize` | 3.63% |
+| `LayoutAssembler::finish` | 2.53% |
+| lexer `next_token` | 2.12% |
+
+Callgrind of the allocator callers (`exp-serc/alloc/tree.txt`) shows the cost is spread
+thin:
+- Rust `RawVecInner::finish_grow` in `serc` is 2.41% inclusive.
+- The largest single growth site, `Vec<Option<u32>>::grow_one`, is 0.50%.
+- The next largest are `ConstantPassCluster` (0.28%), `Vec<Option<Label>>` (0.26%) and
+  the semantic-error map (0.16%).
+- Every other site is below 0.15%.
+
+No single pre-sizing change approaches the 4% useful threshold that C-ALLOC-1 used, and
+`optimize` is a long sequence of separately guarded passes with no single dominant loop.
+Screened out without a prototype. The remaining Serc CPU lever is the allocator itself
+(C-ALLOC-1 retired on memory), and any retry needs owner approval.
