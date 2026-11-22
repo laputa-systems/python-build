@@ -1,0 +1,12 @@
+perf-ir-jes2-nbody-1.cg 2694632760
+perf-ir-jes2-nbody-2.cg 2694699449
+perf-ir-jes2-scimark_fft-1.cg 4138974904
+perf-ir-jes2-scimark_fft-2.cg 4138968535
+perf-ir-jes2-scimark_sparse_mat_mult-1.cg 5454186133
+perf-ir-jes2-scimark_sparse_mat_mult-2.cg 5454336641
+perf-ir-parent-nbody-1.cg 2694784424
+perf-ir-parent-nbody-2.cg 2694916226
+perf-ir-parent-scimark_fft-1.cg 4139068310
+perf-ir-parent-scimark_fft-2.cg 4139310376
+perf-ir-parent-scimark_sparse_mat_mult-1.cg 5656709736
+perf-ir-parent-scimark_sparse_mat_mult-2.cg 5656846799
