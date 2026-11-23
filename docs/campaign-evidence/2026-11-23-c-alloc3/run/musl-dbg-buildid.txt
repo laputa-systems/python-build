@@ -1,0 +1,6 @@
+musl=1.2.6-r3
+musl-dbg=1.2.6-r3
+loader: /lib/ld-musl-x86_64.so.1: ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, BuildID[sha1]=d1656128169ecc566bb0afcbbcbda02c5ac8cd74, stripped
+debug: /usr/lib/debug/lib/ld-musl-x86_64.so.1.debug: ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, BuildID[sha1]=d1656128169ecc566bb0afcbbcbda02c5ac8cd74, with debug_info, not stripped
+loader_build_id=d1656128169ecc566bb0afcbbcbda02c5ac8cd74
+debug_build_id=d1656128169ecc566bb0afcbbcbda02c5ac8cd74

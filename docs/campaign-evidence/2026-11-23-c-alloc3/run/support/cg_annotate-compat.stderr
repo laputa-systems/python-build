@@ -1,0 +1,7 @@
+==15== Cachegrind, a high-precision tracing profiler
+==15== Copyright (C) 2002-2024, and GNU GPL'd, by Nicholas Nethercote et al.
+==15== Using Valgrind-3.25.1 and LibVEX; rerun with -h for copyright info
+==15== Command: /home/ubuntu/repos/python-build/wt-musl/rust-cpython/stage-perf-musl-base/bin/python3.16 -S -c pass
+==15== 
+==15== 
+==15== I refs:        41,957,794

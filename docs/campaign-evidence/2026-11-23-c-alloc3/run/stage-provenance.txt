@@ -1,0 +1,23 @@
+[parent]
+source_sha=a8c5e2afa7a283e3cb3fe7f8c50977a7cc95735e
+build_report_sha=a8c5e2afa7a283e3cb3fe7f8c50977a7cc95735e
+overlay_dirty=False
+allocator=musl profile=default config=
+target=x86_64-unknown-linux-musl jit=True serc=True pystats=False
+build_mode=perf-no-pgo-thinlto
+image_digest=sha256:d56c381f961d307a21b3ca004cf1e3910f106644aefb1f43e654c8a56c4fd395
+libpython=/home/ubuntu/repos/python-build/wt-calloc3-parent/rust-cpython/stage-perf-calloc3-parent/lib/libpython3.16.so.1.0
+libpython_sha256=0e935589890d88390437a7f6139fba36b5d7026dfc0b0dd3df47bc134dd5895b
+configure_arguments=["/home/ubuntu/repos/python-build/wt-calloc3-parent/rust-cpython/work/perf/perf-calloc3-parent/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/configure", "--prefix=/home/ubuntu/repos/python-build/wt-calloc3-parent/rust-cpython/stage-perf-calloc3-parent", "--enable-shared", "--enable-experimental-jit=yes", "--with-tail-call-interp=no", "--without-ensurepip", "--with-libs=-Wl,-l:libgcc_s.so.1 -lc"]
+
+[cand]
+source_sha=7929ad60599fac3e3daf31053bb081f38a1e570f
+build_report_sha=7929ad60599fac3e3daf31053bb081f38a1e570f
+overlay_dirty=False
+allocator=musl profile=default config=
+target=x86_64-unknown-linux-musl jit=True serc=True pystats=False
+build_mode=perf-no-pgo-thinlto
+image_digest=sha256:d56c381f961d307a21b3ca004cf1e3910f106644aefb1f43e654c8a56c4fd395
+libpython=/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/libpython3.16.so.1.0
+libpython_sha256=55e556fbeb8d5b2705bc2deccb280e4d27d68b4404ea31e35335abab8dd8c345
+configure_arguments=["/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/configure", "--prefix=/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand", "--enable-shared", "--enable-experimental-jit=yes", "--with-tail-call-interp=no", "--without-ensurepip", "--with-libs=-Wl,-l:libgcc_s.so.1 -lc"]

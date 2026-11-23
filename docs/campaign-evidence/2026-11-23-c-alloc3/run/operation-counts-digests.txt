@@ -1,0 +1,20 @@
+Kernel operation count and output digest from each whole-kernel run.
+parent nbody initial run1: operations=20000 digest=3640da69351bfefab701de78301e74a9fd4352c2b115d852e019c715bd23f849
+parent nbody initial run2: operations=20000 digest=3640da69351bfefab701de78301e74a9fd4352c2b115d852e019c715bd23f849
+cand nbody initial run1: operations=20000 digest=3640da69351bfefab701de78301e74a9fd4352c2b115d852e019c715bd23f849
+cand nbody initial run2: operations=20000 digest=3640da69351bfefab701de78301e74a9fd4352c2b115d852e019c715bd23f849
+parent scimark_fft initial run1: operations=50 digest=605e8bed1655ba112f3221d40a5d9431896251b95d8b54ba2cdb933728292f23
+parent scimark_fft initial run2: operations=50 digest=605e8bed1655ba112f3221d40a5d9431896251b95d8b54ba2cdb933728292f23
+cand scimark_fft initial run1: operations=50 digest=605e8bed1655ba112f3221d40a5d9431896251b95d8b54ba2cdb933728292f23
+cand scimark_fft initial run2: operations=50 digest=605e8bed1655ba112f3221d40a5d9431896251b95d8b54ba2cdb933728292f23
+parent scimark_sparse_mat_mult initial run1: operations=100000 digest=2eebf23cc576a0437d1a3adf926793e018f058f6fe88dca519a9038195fff28f
+parent scimark_sparse_mat_mult initial run2: operations=100000 digest=2eebf23cc576a0437d1a3adf926793e018f058f6fe88dca519a9038195fff28f
+cand scimark_sparse_mat_mult initial run1: operations=100000 digest=2eebf23cc576a0437d1a3adf926793e018f058f6fe88dca519a9038195fff28f
+cand scimark_sparse_mat_mult initial run2: operations=100000 digest=2eebf23cc576a0437d1a3adf926793e018f058f6fe88dca519a9038195fff28f
+
+nbody initial run1: parent=(20000, '3640da69351bfefab701de78301e74a9fd4352c2b115d852e019c715bd23f849') cand=(20000, '3640da69351bfefab701de78301e74a9fd4352c2b115d852e019c715bd23f849') matching=True
+nbody initial run2: parent=(20000, '3640da69351bfefab701de78301e74a9fd4352c2b115d852e019c715bd23f849') cand=(20000, '3640da69351bfefab701de78301e74a9fd4352c2b115d852e019c715bd23f849') matching=True
+scimark_fft initial run1: parent=(50, '605e8bed1655ba112f3221d40a5d9431896251b95d8b54ba2cdb933728292f23') cand=(50, '605e8bed1655ba112f3221d40a5d9431896251b95d8b54ba2cdb933728292f23') matching=True
+scimark_fft initial run2: parent=(50, '605e8bed1655ba112f3221d40a5d9431896251b95d8b54ba2cdb933728292f23') cand=(50, '605e8bed1655ba112f3221d40a5d9431896251b95d8b54ba2cdb933728292f23') matching=True
+scimark_sparse_mat_mult initial run1: parent=(100000, '2eebf23cc576a0437d1a3adf926793e018f058f6fe88dca519a9038195fff28f') cand=(100000, '2eebf23cc576a0437d1a3adf926793e018f058f6fe88dca519a9038195fff28f') matching=True
+scimark_sparse_mat_mult initial run2: parent=(100000, '2eebf23cc576a0437d1a3adf926793e018f058f6fe88dca519a9038195fff28f') cand=(100000, '2eebf23cc576a0437d1a3adf926793e018f058f6fe88dca519a9038195fff28f') matching=True

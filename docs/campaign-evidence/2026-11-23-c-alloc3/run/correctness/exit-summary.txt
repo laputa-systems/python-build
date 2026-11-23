@@ -1,0 +1,13 @@
+parent parity 0
+cand parity 0
+parent suites 1
+parent suites-capi-verbose 2
+cand suites 1
+cand suites-capi-verbose 2
+cand serc 0
+parent fuzz 0
+parent threaded 0
+parent ctypes 0
+cand fuzz 0
+cand threaded 0
+cand ctypes 0

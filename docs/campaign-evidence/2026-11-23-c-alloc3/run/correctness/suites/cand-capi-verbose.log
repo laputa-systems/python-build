@@ -1,0 +1,1978 @@
+== CPython 3.16.0a1+dev (main, Jan 1 2024, 00:00:00) [Clang 23.1.5 ]
+== Linux-6.8.0-1060-aws-x86_64-with-musl1.2.6 little-endian
+== Python build: release JIT shared
+== cwd: /home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/build/build/test_python_worker_3516æ
+== CPU count: 8
+== encodings: locale=UTF-8 FS=utf-8
+== resources: all test resources are disabled, use -u option to unskip tests
+
+Using random seed: 1704067200
+0:00:00 load avg: 1.17 mem:   31.0 MiB Run 1 test in parallel using 1 worker process (timeout: 15 min, worker timeout: 20 min)
+0:00:15 load avg: 1.06 mem:   32.9 MiB [1/1/1] test_capi failed (20 failures)
+test_iter_next (test.test_capi.test_abstract.CAPITest.test_iter_next) ... ok
+test_iter_nextitem (test.test_capi.test_abstract.CAPITest.test_iter_nextitem) ... ok
+test_mapping_check (test.test_capi.test_abstract.CAPITest.test_mapping_check) ... ok
+test_mapping_delitemstring (test.test_capi.test_abstract.CAPITest.test_mapping_delitemstring) ... ok
+test_mapping_getitemstring (test.test_capi.test_abstract.CAPITest.test_mapping_getitemstring) ... ok
+test_mapping_getoptionalitem (test.test_capi.test_abstract.CAPITest.test_mapping_getoptionalitem) ... ok
+test_mapping_getoptionalitemstring (test.test_capi.test_abstract.CAPITest.test_mapping_getoptionalitemstring) ... ok
+test_mapping_haskey (test.test_capi.test_abstract.CAPITest.test_mapping_haskey) ... ok
+test_mapping_haskeystring (test.test_capi.test_abstract.CAPITest.test_mapping_haskeystring) ... ok
+test_mapping_haskeystringwitherror (test.test_capi.test_abstract.CAPITest.test_mapping_haskeystringwitherror) ... ok
+test_mapping_haskeywitherror (test.test_capi.test_abstract.CAPITest.test_mapping_haskeywitherror) ... ok
+test_mapping_keys_valuesitems (test.test_capi.test_abstract.CAPITest.test_mapping_keys_valuesitems) ... ok
+test_mapping_keys_valuesitems_bad_arg (test.test_capi.test_abstract.CAPITest.test_mapping_keys_valuesitems_bad_arg) ... ok
+test_mapping_setitemstring (test.test_capi.test_abstract.CAPITest.test_mapping_setitemstring) ... ok
+test_mapping_size (test.test_capi.test_abstract.CAPITest.test_mapping_size) ... ok
+test_object_ascii (test.test_capi.test_abstract.CAPITest.test_object_ascii) ... ok
+test_object_bytes (test.test_capi.test_abstract.CAPITest.test_object_bytes) ... ok
+test_object_delattr (test.test_capi.test_abstract.CAPITest.test_object_delattr) ... ok
+test_object_delattrstring (test.test_capi.test_abstract.CAPITest.test_object_delattrstring) ... ok
+test_object_delitem (test.test_capi.test_abstract.CAPITest.test_object_delitem) ... ok
+test_object_generichash (test.test_capi.test_abstract.CAPITest.test_object_generichash) ... ok
+test_object_getattr (test.test_capi.test_abstract.CAPITest.test_object_getattr) ... ok
+test_object_getattrstring (test.test_capi.test_abstract.CAPITest.test_object_getattrstring) ... ok
+test_object_getitem (test.test_capi.test_abstract.CAPITest.test_object_getitem) ... ok
+test_object_getoptionalattr (test.test_capi.test_abstract.CAPITest.test_object_getoptionalattr) ... ok
+test_object_getoptionalattrstring (test.test_capi.test_abstract.CAPITest.test_object_getoptionalattrstring) ... ok
+test_object_hasattr (test.test_capi.test_abstract.CAPITest.test_object_hasattr) ... ok
+test_object_hasattrstring (test.test_capi.test_abstract.CAPITest.test_object_hasattrstring) ... ok
+test_object_hasattrstringwitherror (test.test_capi.test_abstract.CAPITest.test_object_hasattrstringwitherror) ... ok
+test_object_hasattrwitherror (test.test_capi.test_abstract.CAPITest.test_object_hasattrwitherror) ... ok
+test_object_repr (test.test_capi.test_abstract.CAPITest.test_object_repr) ... ok
+test_object_setattr (test.test_capi.test_abstract.CAPITest.test_object_setattr) ... ok
+test_object_setattr_null_exc (test.test_capi.test_abstract.CAPITest.test_object_setattr_null_exc) ... ok
+test_object_setattrstring (test.test_capi.test_abstract.CAPITest.test_object_setattrstring) ... ok
+test_object_setitem (test.test_capi.test_abstract.CAPITest.test_object_setitem) ... ok
+test_object_str (test.test_capi.test_abstract.CAPITest.test_object_str) ... ok
+test_sequence_check (test.test_capi.test_abstract.CAPITest.test_sequence_check) ... ok
+test_sequence_concat (test.test_capi.test_abstract.CAPITest.test_sequence_concat) ... ok
+test_sequence_contains (test.test_capi.test_abstract.CAPITest.test_sequence_contains) ... ok
+test_sequence_count (test.test_capi.test_abstract.CAPITest.test_sequence_count) ... ok
+test_sequence_delitem (test.test_capi.test_abstract.CAPITest.test_sequence_delitem) ... ok
+test_sequence_delslice (test.test_capi.test_abstract.CAPITest.test_sequence_delslice) ... ok
+test_sequence_fast (test.test_capi.test_abstract.CAPITest.test_sequence_fast) ... ok
+test_sequence_getitem (test.test_capi.test_abstract.CAPITest.test_sequence_getitem) ... ok
+test_sequence_index (test.test_capi.test_abstract.CAPITest.test_sequence_index) ... ok
+test_sequence_inplaceconcat (test.test_capi.test_abstract.CAPITest.test_sequence_inplaceconcat) ... ok
+test_sequence_inplacerepeat (test.test_capi.test_abstract.CAPITest.test_sequence_inplacerepeat) ... ok
+test_sequence_list (test.test_capi.test_abstract.CAPITest.test_sequence_list) ... ok
+test_sequence_repeat (test.test_capi.test_abstract.CAPITest.test_sequence_repeat) ... ok
+test_sequence_setitem (test.test_capi.test_abstract.CAPITest.test_sequence_setitem) ... ok
+test_sequence_setslice (test.test_capi.test_abstract.CAPITest.test_sequence_setslice) ... ok
+test_sequence_size (test.test_capi.test_abstract.CAPITest.test_sequence_size) ... ok
+test_sequence_tuple (test.test_capi.test_abstract.CAPITest.test_sequence_tuple) ... ok
+test__getbuiltwithassert (test.test_capi.test_build.CAPITest.test__getbuiltwithassert) ... ok
+test_getbuildinfo (test.test_capi.test_build.CAPITest.test_getbuildinfo) ... ok
+test_getcompiler (test.test_capi.test_build.CAPITest.test_getcompiler) ... ok
+test_getcopyright (test.test_capi.test_build.CAPITest.test_getcopyright) ... ok
+test_getplatform (test.test_capi.test_build.CAPITest.test_getplatform) ... ok
+test_getversion (test.test_capi.test_build.CAPITest.test_getversion) ... ok
+test_asstring (test.test_capi.test_bytearray.CAPITest.test_asstring)
+Test PyByteArray_AsString() ... ok
+test_check (test.test_capi.test_bytearray.CAPITest.test_check) ... ok
+test_checkexact (test.test_capi.test_bytearray.CAPITest.test_checkexact) ... ok
+test_concat (test.test_capi.test_bytearray.CAPITest.test_concat)
+Test PyByteArray_Concat() ... ok
+test_detect_overflow (test.test_capi.test_bytearray.CAPITest.test_detect_overflow) ... skipped 'need debug build (Py_DEBUG)'
+test_fromobject (test.test_capi.test_bytearray.CAPITest.test_fromobject) ... ok
+test_fromstringandsize (test.test_capi.test_bytearray.CAPITest.test_fromstringandsize) ... ok
+test_resize (test.test_capi.test_bytearray.CAPITest.test_resize)
+Test PyByteArray_Resize() ... ok
+test_size (test.test_capi.test_bytearray.CAPITest.test_size) ... ok
+test_canary_byte (test.test_capi.test_bytes.ByteArrayWriterTest.test_canary_byte) ... skipped 'need a Python debug build'
+test_create (test.test_capi.test_bytes.ByteArrayWriterTest.test_create) ... ok
+test_finish_with_size (test.test_capi.test_bytes.ByteArrayWriterTest.test_finish_with_size) ... ok
+test_format_i (test.test_capi.test_bytes.ByteArrayWriterTest.test_format_i) ... ok
+test_format_s (test.test_capi.test_bytes.ByteArrayWriterTest.test_format_s) ... ok
+test_format_s_memory_error (test.test_capi.test_bytes.ByteArrayWriterTest.test_format_s_memory_error) ... ok
+test_get_data (test.test_capi.test_bytes.ByteArrayWriterTest.test_get_data) ... skipped 'need Py_DEBUG'
+test_get_data_canary (test.test_capi.test_bytes.ByteArrayWriterTest.test_get_data_canary) ... skipped 'need debug build'
+test_grow (test.test_capi.test_bytes.ByteArrayWriterTest.test_grow) ... ok
+test_grow_canary (test.test_capi.test_bytes.ByteArrayWriterTest.test_grow_canary) ... skipped 'need debug build'
+test_grow_error (test.test_capi.test_bytes.ByteArrayWriterTest.test_grow_error) ... ok
+test_resize (test.test_capi.test_bytes.ByteArrayWriterTest.test_resize) ... ok
+test_resize_canary (test.test_capi.test_bytes.ByteArrayWriterTest.test_resize_canary) ... skipped 'need debug build'
+test_resize_error (test.test_capi.test_bytes.ByteArrayWriterTest.test_resize_error) ... ok
+test_thread (test.test_capi.test_bytes.ByteArrayWriterTest.test_thread) ... ok
+test_write_bytes (test.test_capi.test_bytes.ByteArrayWriterTest.test_write_bytes) ... ok
+test_canary_byte (test.test_capi.test_bytes.BytesWriterTest.test_canary_byte) ... skipped 'need a Python debug build'
+test_create (test.test_capi.test_bytes.BytesWriterTest.test_create) ... ok
+test_example_abc (test.test_capi.test_bytes.BytesWriterTest.test_example_abc) ... ok
+test_example_highlevel (test.test_capi.test_bytes.BytesWriterTest.test_example_highlevel) ... ok
+test_example_resize (test.test_capi.test_bytes.BytesWriterTest.test_example_resize) ... ok
+test_finish_with_size (test.test_capi.test_bytes.BytesWriterTest.test_finish_with_size) ... ok
+test_format_i (test.test_capi.test_bytes.BytesWriterTest.test_format_i) ... ok
+test_format_s (test.test_capi.test_bytes.BytesWriterTest.test_format_s) ... ok
+test_format_s_memory_error (test.test_capi.test_bytes.BytesWriterTest.test_format_s_memory_error) ... ok
+test_get_data (test.test_capi.test_bytes.BytesWriterTest.test_get_data) ... skipped 'need Py_DEBUG'
+test_get_data_canary (test.test_capi.test_bytes.BytesWriterTest.test_get_data_canary) ... skipped 'need debug build'
+test_grow (test.test_capi.test_bytes.BytesWriterTest.test_grow) ... ok
+test_grow_canary (test.test_capi.test_bytes.BytesWriterTest.test_grow_canary) ... skipped 'need debug build'
+test_grow_error (test.test_capi.test_bytes.BytesWriterTest.test_grow_error) ... ok
+test_resize (test.test_capi.test_bytes.BytesWriterTest.test_resize) ... ok
+test_resize_canary (test.test_capi.test_bytes.BytesWriterTest.test_resize_canary) ... skipped 'need debug build'
+test_resize_error (test.test_capi.test_bytes.BytesWriterTest.test_resize_error) ... ok
+test_singletons (test.test_capi.test_bytes.BytesWriterTest.test_singletons) ... ok
+test_thread (test.test_capi.test_bytes.BytesWriterTest.test_thread) ... ok
+test_write_bytes (test.test_capi.test_bytes.BytesWriterTest.test_write_bytes) ... ok
+test_asstring (test.test_capi.test_bytes.CAPITest.test_asstring)
+Test PyBytes_AsString() ... ok
+test_asstringandsize (test.test_capi.test_bytes.CAPITest.test_asstringandsize)
+Test PyBytes_AsStringAndSize() ... ok
+test_check (test.test_capi.test_bytes.CAPITest.test_check) ... ok
+test_checkexact (test.test_capi.test_bytes.CAPITest.test_checkexact) ... ok
+test_concat (test.test_capi.test_bytes.CAPITest.test_concat)
+Test PyBytes_Concat() ... ok
+test_concatanddel (test.test_capi.test_bytes.CAPITest.test_concatanddel)
+Test PyBytes_ConcatAndDel() ... ok
+test_decodeescape (test.test_capi.test_bytes.CAPITest.test_decodeescape)
+Test PyBytes_DecodeEscape() ... ok
+test_detect_overflow (test.test_capi.test_bytes.CAPITest.test_detect_overflow) ... skipped 'need debug build (Py_DEBUG)'
+test_fromobject (test.test_capi.test_bytes.CAPITest.test_fromobject) ... ok
+test_fromstring (test.test_capi.test_bytes.CAPITest.test_fromstring) ... ok
+test_fromstringandsize (test.test_capi.test_bytes.CAPITest.test_fromstringandsize) ... ok
+test_join (test.test_capi.test_bytes.CAPITest.test_join)
+Test PyBytes_Join() ... ok
+test_repr (test.test_capi.test_bytes.CAPITest.test_repr) ... ok
+test_resize (test.test_capi.test_bytes.CAPITest.test_resize)
+Test _PyBytes_Resize() ... ok
+test_size (test.test_capi.test_bytes.CAPITest.test_size) ... ok
+test_error_from_attribute_lookup (test.test_capi.test_capsule.CapsuleImportTests.test_error_from_attribute_lookup) ... ok
+test_error_from_import (test.test_capi.test_capsule.CapsuleImportTests.test_error_from_import) ... ok
+test_import (test.test_capi.test_capsule.CapsuleImportTests.test_import) ... ok
+test_invalid_capsule (test.test_capi.test_capsule.CapsuleImportTests.test_invalid_capsule) ... ok
+test_invalid_name (test.test_capi.test_capsule.CapsuleImportTests.test_invalid_name) ... ok
+test_non_ascii_module_name (test.test_capi.test_capsule.CapsuleImportTests.test_non_ascii_module_name) ... ok
+test_submodule (test.test_capi.test_capsule.CapsuleImportTests.test_submodule) ... ok
+test_codec_backslashreplace_errors_handler (test.test_capi.test_codecs.CAPICodecErrors.test_codec_backslashreplace_errors_handler) ... ok
+test_codec_ignore_errors_handler (test.test_capi.test_codecs.CAPICodecErrors.test_codec_ignore_errors_handler) ... ok
+test_codec_lookup_error (test.test_capi.test_codecs.CAPICodecErrors.test_codec_lookup_error) ... ok
+test_codec_namereplace_errors_handler (test.test_capi.test_codecs.CAPICodecErrors.test_codec_namereplace_errors_handler) ... ok
+test_codec_register_error (test.test_capi.test_codecs.CAPICodecErrors.test_codec_register_error) ... ok
+test_codec_replace_errors_handler (test.test_capi.test_codecs.CAPICodecErrors.test_codec_replace_errors_handler) ... ok
+test_codec_strict_errors_handler (test.test_capi.test_codecs.CAPICodecErrors.test_codec_strict_errors_handler) ... ok
+test_codec_xmlcharrefreplace_errors_handler (test.test_capi.test_codecs.CAPICodecErrors.test_codec_xmlcharrefreplace_errors_handler) ... ok
+test_codec_decode (test.test_capi.test_codecs.CAPICodecs.test_codec_decode) ... ok
+test_codec_decoder (test.test_capi.test_codecs.CAPICodecs.test_codec_decoder) ... ok
+test_codec_encode (test.test_capi.test_codecs.CAPICodecs.test_codec_encode) ... ok
+test_codec_encoder (test.test_capi.test_codecs.CAPICodecs.test_codec_encoder) ... ok
+test_codec_incremental_decoder (test.test_capi.test_codecs.CAPICodecs.test_codec_incremental_decoder) ... ok
+test_codec_incremental_encoder (test.test_capi.test_codecs.CAPICodecs.test_codec_incremental_encoder) ... ok
+test_codec_known_encoding (test.test_capi.test_codecs.CAPICodecs.test_codec_known_encoding) ... ok
+test_codec_register (test.test_capi.test_codecs.CAPICodecs.test_codec_register) ... ok
+test_codec_stream_reader (test.test_capi.test_codecs.CAPICodecs.test_codec_stream_reader) ... ok
+test_codec_stream_writer (test.test_capi.test_codecs.CAPICodecs.test_codec_stream_writer) ... ok
+test_codec_unregister (test.test_capi.test_codecs.CAPICodecs.test_codec_unregister) ... ok
+test_asasciistring (test.test_capi.test_codecs.CAPIUnicodeTest.test_asasciistring)
+Test PyUnicode_AsASCIIString() ... ok
+test_ascharmapstring (test.test_capi.test_codecs.CAPIUnicodeTest.test_ascharmapstring)
+Test PyUnicode_AsCharmapString() ... ok
+test_asencodedstring (test.test_capi.test_codecs.CAPIUnicodeTest.test_asencodedstring)
+Test PyUnicode_AsEncodedString() ... ok
+test_aslatin1string (test.test_capi.test_codecs.CAPIUnicodeTest.test_aslatin1string)
+Test PyUnicode_AsLatin1String() ... ok
+test_asrawunicodeescapestring (test.test_capi.test_codecs.CAPIUnicodeTest.test_asrawunicodeescapestring)
+Test PyUnicode_AsRawUnicodeEscapeString() ... ok
+test_asunicodeescapestring (test.test_capi.test_codecs.CAPIUnicodeTest.test_asunicodeescapestring)
+Test PyUnicode_AsUnicodeEscapeString() ... ok
+test_asutf16string (test.test_capi.test_codecs.CAPIUnicodeTest.test_asutf16string)
+Test PyUnicode_AsUTF16String() ... ok
+test_asutf32string (test.test_capi.test_codecs.CAPIUnicodeTest.test_asutf32string)
+Test PyUnicode_AsUTF32String() ... ok
+test_asutf8string (test.test_capi.test_codecs.CAPIUnicodeTest.test_asutf8string)
+Test PyUnicode_AsUTF8String() ... ok
+test_decode (test.test_capi.test_codecs.CAPIUnicodeTest.test_decode)
+Test PyUnicode_Decode() ... ok
+test_decodeascii (test.test_capi.test_codecs.CAPIUnicodeTest.test_decodeascii)
+Test PyUnicode_DecodeASCII() ... ok
+test_decodecharmap (test.test_capi.test_codecs.CAPIUnicodeTest.test_decodecharmap)
+Test PyUnicode_DecodeCharmap() ... ok
+test_decodelatin1 (test.test_capi.test_codecs.CAPIUnicodeTest.test_decodelatin1)
+Test PyUnicode_DecodeLatin1() ... ok
+test_decoderawunicodeescape (test.test_capi.test_codecs.CAPIUnicodeTest.test_decoderawunicodeescape)
+Test PyUnicode_DecodeRawUnicodeEscape() ... ok
+test_decodeunicodeescape (test.test_capi.test_codecs.CAPIUnicodeTest.test_decodeunicodeescape)
+Test PyUnicode_DecodeUnicodeEscape() ... ok
+test_decodeutf16 (test.test_capi.test_codecs.CAPIUnicodeTest.test_decodeutf16)
+Test PyUnicode_DecodeUTF16() ... ok
+test_decodeutf16stateful (test.test_capi.test_codecs.CAPIUnicodeTest.test_decodeutf16stateful)
+Test PyUnicode_DecodeUTF16Stateful() ... ok
+test_decodeutf32 (test.test_capi.test_codecs.CAPIUnicodeTest.test_decodeutf32)
+Test PyUnicode_DecodeUTF8() ... ok
+test_decodeutf32stateful (test.test_capi.test_codecs.CAPIUnicodeTest.test_decodeutf32stateful)
+Test PyUnicode_DecodeUTF32Stateful() ... ok
+test_decodeutf8 (test.test_capi.test_codecs.CAPIUnicodeTest.test_decodeutf8)
+Test PyUnicode_DecodeUTF8() ... ok
+test_decodeutf8stateful (test.test_capi.test_codecs.CAPIUnicodeTest.test_decodeutf8stateful)
+Test PyUnicode_DecodeUTF8Stateful() ... ok
+test_fromencodedobject (test.test_capi.test_codecs.CAPIUnicodeTest.test_fromencodedobject)
+Test PyUnicode_FromEncodedObject() ... ok
+test_asccomplex (test.test_capi.test_complex.CAPIComplexTest.test_asccomplex) ... ok
+test_check (test.test_capi.test_complex.CAPIComplexTest.test_check) ... ok
+test_checkexact (test.test_capi.test_complex.CAPIComplexTest.test_checkexact) ... ok
+test_fromccomplex (test.test_capi.test_complex.CAPIComplexTest.test_fromccomplex) ... ok
+test_fromdoubles (test.test_capi.test_complex.CAPIComplexTest.test_fromdoubles) ... ok
+test_imagasdouble (test.test_capi.test_complex.CAPIComplexTest.test_imagasdouble) ... ok
+test_py_c_abs (test.test_capi.test_complex.CAPIComplexTest.test_py_c_abs) ... ok
+test_py_c_diff (test.test_capi.test_complex.CAPIComplexTest.test_py_c_diff) ... ok
+test_py_c_neg (test.test_capi.test_complex.CAPIComplexTest.test_py_c_neg) ... ok
+test_py_c_pow (test.test_capi.test_complex.CAPIComplexTest.test_py_c_pow) ... ok
+test_py_c_prod (test.test_capi.test_complex.CAPIComplexTest.test_py_c_prod) ... ok
+test_py_c_quot (test.test_capi.test_complex.CAPIComplexTest.test_py_c_quot) ... ok
+test_py_c_sum (test.test_capi.test_complex.CAPIComplexTest.test_py_c_sum) ... ok
+test_py_cr_diff (test.test_capi.test_complex.CAPIComplexTest.test_py_cr_diff) ... ok
+test_py_cr_prod (test.test_capi.test_complex.CAPIComplexTest.test_py_cr_prod) ... ok
+test_py_cr_quot (test.test_capi.test_complex.CAPIComplexTest.test_py_cr_quot) ... ok
+test_py_cr_sum (test.test_capi.test_complex.CAPIComplexTest.test_py_cr_sum) ... ok
+test_py_rc_diff (test.test_capi.test_complex.CAPIComplexTest.test_py_rc_diff) ... ok
+test_py_rc_quot (test.test_capi.test_complex.CAPIComplexTest.test_py_rc_quot) ... ok
+test_realasdouble (test.test_capi.test_complex.CAPIComplexTest.test_realasdouble) ... ok
+test_config_get (test.test_capi.test_config.CAPITests.test_config_get) ... ok
+test_config_get_non_existent (test.test_capi.test_config.CAPITests.test_config_get_non_existent) ... ok
+test_config_get_sys_flags (test.test_capi.test_config.CAPITests.test_config_get_sys_flags) ... ok
+test_config_get_write_bytecode (test.test_capi.test_config.CAPITests.test_config_get_write_bytecode) ... ok
+test_config_getint (test.test_capi.test_config.CAPITests.test_config_getint) ... ok
+test_config_set_cpu_count (test.test_capi.test_config.CAPITests.test_config_set_cpu_count) ... ok
+test_config_set_read_only (test.test_capi.test_config.CAPITests.test_config_set_read_only) ... ok
+test_config_set_sys_attr (test.test_capi.test_config.CAPITests.test_config_set_sys_attr) ... ok
+test_config_set_sys_flag (test.test_capi.test_config.CAPITests.test_config_set_sys_flag) ... ok
+test_get_config_names (test.test_capi.test_config.CAPITests.test_get_config_names) ... ok
+test_anydict_check (test.test_capi.test_dict.CAPITest.test_anydict_check) ... ok
+test_anydict_checkexact (test.test_capi.test_dict.CAPITest.test_anydict_checkexact) ... ok
+test_dict_as_frozendict_and_clear (test.test_capi.test_dict.CAPITest.test_dict_as_frozendict_and_clear) ... ok
+test_dict_check (test.test_capi.test_dict.CAPITest.test_dict_check) ... ok
+test_dict_checkexact (test.test_capi.test_dict.CAPITest.test_dict_checkexact) ... ok
+test_dict_clear (test.test_capi.test_dict.CAPITest.test_dict_clear) ... ok
+test_dict_contains (test.test_capi.test_dict.CAPITest.test_dict_contains) ... ok
+test_dict_contains_string (test.test_capi.test_dict.CAPITest.test_dict_contains_string) ... ok
+test_dict_copy (test.test_capi.test_dict.CAPITest.test_dict_copy) ... ok
+test_dict_delitem (test.test_capi.test_dict.CAPITest.test_dict_delitem) ... ok
+test_dict_delitemstring (test.test_capi.test_dict.CAPITest.test_dict_delitemstring) ... ok
+test_dict_getitem (test.test_capi.test_dict.CAPITest.test_dict_getitem) ... ok
+test_dict_getitemref (test.test_capi.test_dict.CAPITest.test_dict_getitemref) ... ok
+test_dict_getitemstring (test.test_capi.test_dict.CAPITest.test_dict_getitemstring) ... ok
+test_dict_getitemstringref (test.test_capi.test_dict.CAPITest.test_dict_getitemstringref) ... ok
+test_dict_getitemwitherror (test.test_capi.test_dict.CAPITest.test_dict_getitemwitherror) ... ok
+test_dict_merge (test.test_capi.test_dict.CAPITest.test_dict_merge) ... ok
+test_dict_mergefromseq2 (test.test_capi.test_dict.CAPITest.test_dict_mergefromseq2) ... ok
+test_dict_new (test.test_capi.test_dict.CAPITest.test_dict_new) ... ok
+test_dict_next (test.test_capi.test_dict.CAPITest.test_dict_next) ... ok
+test_dict_pop (test.test_capi.test_dict.CAPITest.test_dict_pop) ... ok
+test_dict_popstring (test.test_capi.test_dict.CAPITest.test_dict_popstring) ... ok
+test_dict_setdefault (test.test_capi.test_dict.CAPITest.test_dict_setdefault) ... ok
+test_dict_setdefaultref (test.test_capi.test_dict.CAPITest.test_dict_setdefaultref) ... ok
+test_dict_setitem (test.test_capi.test_dict.CAPITest.test_dict_setitem) ... ok
+test_dict_setitemstring (test.test_capi.test_dict.CAPITest.test_dict_setitemstring) ... ok
+test_dict_size (test.test_capi.test_dict.CAPITest.test_dict_size) ... ok
+test_dict_update (test.test_capi.test_dict.CAPITest.test_dict_update) ... ok
+test_dictproxy_new (test.test_capi.test_dict.CAPITest.test_dictproxy_new) ... ok
+test_frozendict_check (test.test_capi.test_dict.CAPITest.test_frozendict_check) ... ok
+test_frozendict_checkexact (test.test_capi.test_dict.CAPITest.test_frozendict_checkexact) ... ok
+test_frozendict_new (test.test_capi.test_dict.CAPITest.test_frozendict_new) ... ok
+test_mapping_keys_valuesitems (test.test_capi.test_dict.CAPITest.test_mapping_keys_valuesitems) ... ok
+test.test_capi.test_emscripten (unittest.loader.ModuleSkipped.test.test_capi.test_emscripten) ... skipped 'Emscripten-only test'
+test_eval_get_func_desc (test.test_capi.test_eval.Tests.test_eval_get_func_desc) ... ok
+test_eval_get_func_name (test.test_capi.test_eval.Tests.test_eval_get_func_name) ... ok
+test_eval_get_recursion_limit (test.test_capi.test_eval.Tests.test_eval_get_recursion_limit) ... ok
+test_eval_getbuiltins (test.test_capi.test_eval.Tests.test_eval_getbuiltins) ... ok
+test_eval_getframe (test.test_capi.test_eval.Tests.test_eval_getframe) ... ok
+test_eval_getframe_builtins (test.test_capi.test_eval.Tests.test_eval_getframe_builtins) ... ok
+test_eval_getframe_globals (test.test_capi.test_eval.Tests.test_eval_getframe_globals) ... ok
+test_eval_getframe_locals (test.test_capi.test_eval.Tests.test_eval_getframe_locals) ... ok
+test_eval_getglobals (test.test_capi.test_eval.Tests.test_eval_getglobals) ... ok
+test_eval_getlocals (test.test_capi.test_eval.Tests.test_eval_getlocals) ... ok
+test_eval_set_recursion_limit (test.test_capi.test_eval.Tests.test_eval_set_recursion_limit) ... ok
+test_custom_locals (test.test_capi.test_eval_code_ex.PyEval_EvalCodeExTests.test_custom_locals) ... ok
+test_simple (test.test_capi.test_eval_code_ex.PyEval_EvalCodeExTests.test_simple) ... ok
+test_with_args (test.test_capi.test_eval_code_ex.PyEval_EvalCodeExTests.test_with_args) ... ok
+test_with_closure (test.test_capi.test_eval_code_ex.PyEval_EvalCodeExTests.test_with_closure) ... ok
+test_with_default (test.test_capi.test_eval_code_ex.PyEval_EvalCodeExTests.test_with_default) ... ok
+test_with_kwarg_default (test.test_capi.test_eval_code_ex.PyEval_EvalCodeExTests.test_with_kwarg_default) ... ok
+test_with_kwargs (test.test_capi.test_eval_code_ex.PyEval_EvalCodeExTests.test_with_kwargs) ... ok
+test_unicode_decode_error_get_end (test.test_capi.test_exceptions.TestUnicodeError.test_unicode_decode_error_get_end) ... ok
+test_unicode_decode_error_get_start (test.test_capi.test_exceptions.TestUnicodeError.test_unicode_decode_error_get_start) ... ok
+test_unicode_decode_error_set_end (test.test_capi.test_exceptions.TestUnicodeError.test_unicode_decode_error_set_end) ... ok
+test_unicode_decode_error_set_start (test.test_capi.test_exceptions.TestUnicodeError.test_unicode_decode_error_set_start) ... ok
+test_unicode_encode_error_get_end (test.test_capi.test_exceptions.TestUnicodeError.test_unicode_encode_error_get_end) ... ok
+test_unicode_encode_error_get_start (test.test_capi.test_exceptions.TestUnicodeError.test_unicode_encode_error_get_start) ... ok
+test_unicode_encode_error_set_end (test.test_capi.test_exceptions.TestUnicodeError.test_unicode_encode_error_set_end) ... ok
+test_unicode_encode_error_set_start (test.test_capi.test_exceptions.TestUnicodeError.test_unicode_encode_error_set_start) ... ok
+test_unicode_translate_error_get_end (test.test_capi.test_exceptions.TestUnicodeError.test_unicode_translate_error_get_end) ... ok
+test_unicode_translate_error_get_start (test.test_capi.test_exceptions.TestUnicodeError.test_unicode_translate_error_get_start) ... ok
+test_unicode_translate_error_set_end (test.test_capi.test_exceptions.TestUnicodeError.test_unicode_translate_error_set_end) ... ok
+test_unicode_translate_error_set_start (test.test_capi.test_exceptions.TestUnicodeError.test_unicode_translate_error_set_start) ... ok
+test_err_formatunraisable (test.test_capi.test_exceptions.Test_ErrSetAndRestore.test_err_formatunraisable) ... ok
+test_err_formatunraisable_lines (test.test_capi.test_exceptions.Test_ErrSetAndRestore.test_err_formatunraisable_lines) ... ok
+test_err_restore (test.test_capi.test_exceptions.Test_ErrSetAndRestore.test_err_restore) ... ok
+test_err_set_raised (test.test_capi.test_exceptions.Test_ErrSetAndRestore.test_err_set_raised) ... ok
+test_err_writeunraisable (test.test_capi.test_exceptions.Test_ErrSetAndRestore.test_err_writeunraisable) ... ok
+test_err_writeunraisable_lines (test.test_capi.test_exceptions.Test_ErrSetAndRestore.test_err_writeunraisable_lines) ... ok
+test_format (test.test_capi.test_exceptions.Test_ErrSetAndRestore.test_format)
+Test PyErr_Format() ... ok
+test_set_object (test.test_capi.test_exceptions.Test_ErrSetAndRestore.test_set_object) ... ok
+test_set_object_and_fetch (test.test_capi.test_exceptions.Test_ErrSetAndRestore.test_set_object_and_fetch) ... ok
+test_set_string (test.test_capi.test_exceptions.Test_ErrSetAndRestore.test_set_string)
+Test PyErr_SetString() ... ok
+test_setfromerrnowithfilename (test.test_capi.test_exceptions.Test_ErrSetAndRestore.test_setfromerrnowithfilename)
+Test PyErr_SetFromErrnoWithFilename() ... ok
+test__pyerr_setkeyerror (test.test_capi.test_exceptions.Test_Exceptions.test__pyerr_setkeyerror) ... ok
+test_exc_info (test.test_capi.test_exceptions.Test_Exceptions.test_exc_info) ... ok
+test_exception (test.test_capi.test_exceptions.Test_Exceptions.test_exception) ... ok
+test_warn_during_finalization (test.test_capi.test_exceptions.Test_Exceptions.test_warn_during_finalization) ... ok
+test_warn_with_stacklevel (test.test_capi.test_exceptions.Test_Exceptions.test_warn_with_stacklevel) ... ok
+test_fatal_error (test.test_capi.test_exceptions.Test_FatalError.test_fatal_error) ... ok
+test_invalid_args (test.test_capi.test_exceptions.Test_PyUnstable_Exc_PrepReraiseStar.test_invalid_args) ... ok
+test_nothing_to_reraise (test.test_capi.test_exceptions.Test_PyUnstable_Exc_PrepReraiseStar.test_nothing_to_reraise) ... ok
+test_raise_orig_parts (test.test_capi.test_exceptions.Test_PyUnstable_Exc_PrepReraiseStar.test_raise_orig_parts) ... ok
+test_raise_with_new_exceptions (test.test_capi.test_exceptions.Test_PyUnstable_Exc_PrepReraiseStar.test_raise_with_new_exceptions) ... ok
+test_reraise_orig (test.test_capi.test_exceptions.Test_PyUnstable_Exc_PrepReraiseStar.test_reraise_orig) ... ok
+test_py_fopen (test.test_capi.test_file.CAPIFileTest.test_py_fopen) ... ok
+test_py_universalnewlinefgets (test.test_capi.test_file.CAPIFileTest.test_py_universalnewlinefgets) ... ok
+test_pyfile_fromfd (test.test_capi.test_file.CAPIFileTest.test_pyfile_fromfd) ... ok
+test_pyfile_getline (test.test_capi.test_file.CAPIFileTest.test_pyfile_getline) ... ok
+test_pyfile_newstdprinter (test.test_capi.test_file.CAPIFileTest.test_pyfile_newstdprinter) ... ok
+test_pyfile_newstdprinter_write (test.test_capi.test_file.CAPIFileTest.test_pyfile_newstdprinter_write) ... ok
+test_pyfile_writeobject (test.test_capi.test_file.CAPIFileTest.test_pyfile_writeobject) ... ok
+test_pyfile_writestring (test.test_capi.test_file.CAPIFileTest.test_pyfile_writestring) ... ok
+test_pyobject_asfiledescriptor (test.test_capi.test_file.CAPIFileTest.test_pyobject_asfiledescriptor) ... ok
+test_asdouble (test.test_capi.test_float.CAPIFloatTest.test_asdouble) ... ok
+test_check (test.test_capi.test_float.CAPIFloatTest.test_check) ... ok
+test_checkexact (test.test_capi.test_float.CAPIFloatTest.test_checkexact) ... ok
+test_fromdouble (test.test_capi.test_float.CAPIFloatTest.test_fromdouble) ... ok
+test_fromstring (test.test_capi.test_float.CAPIFloatTest.test_fromstring) ... ok
+test_getinfo (test.test_capi.test_float.CAPIFloatTest.test_getinfo) ... ok
+test_getmax (test.test_capi.test_float.CAPIFloatTest.test_getmax) ... ok
+test_getmin (test.test_capi.test_float.CAPIFloatTest.test_getmin) ... ok
+test_pack (test.test_capi.test_float.CAPIFloatTest.test_pack) ... ok
+test_pack_unpack_nans_for_different_formats (test.test_capi.test_float.CAPIFloatTest.test_pack_unpack_nans_for_different_formats) ... ok
+test_pack_unpack_roundtrip (test.test_capi.test_float.CAPIFloatTest.test_pack_unpack_roundtrip) ... ok
+test_pack_unpack_roundtrip_for_nans (test.test_capi.test_float.CAPIFloatTest.test_pack_unpack_roundtrip_for_nans) ... ok
+test_unpack (test.test_capi.test_float.CAPIFloatTest.test_unpack) ... ok
+test_getset (test.test_capi.test_fpcast.FpcastTest.test_getset) ... ok
+test_methods (test.test_capi.test_fpcast.FpcastTest.test_methods) ... ok
+test_module_functions (test.test_capi.test_fpcast.FpcastTest.test_module_functions) ... ok
+test_tp_call (test.test_capi.test_fpcast.FpcastTest.test_tp_call) ... ok
+test_unsupported_signature (test.test_capi.test_fpcast.FpcastTest.test_unsupported_signature) ... skipped 'requires the wasm call trampoline'
+test_frame_fback_api (test.test_capi.test_frame.FrameTest.test_frame_fback_api)
+Test that accessing `f_back` does not cause a segmentation fault on ... ok
+test_frame_get_generator (test.test_capi.test_frame.FrameTest.test_frame_get_generator) ... ok
+test_frame_getters (test.test_capi.test_frame.FrameTest.test_frame_getters) ... ok
+test_getvar (test.test_capi.test_frame.FrameTest.test_getvar) ... ok
+test_function_get_annotations (test.test_capi.test_function.FunctionTest.test_function_get_annotations) ... ok
+test_function_get_closure (test.test_capi.test_function.FunctionTest.test_function_get_closure) ... ok
+test_function_get_closure_error (test.test_capi.test_function.FunctionTest.test_function_get_closure_error) ... ok
+test_function_get_code (test.test_capi.test_function.FunctionTest.test_function_get_code) ... ok
+test_function_get_defaults (test.test_capi.test_function.FunctionTest.test_function_get_defaults) ... ok
+test_function_get_globals (test.test_capi.test_function.FunctionTest.test_function_get_globals) ... ok
+test_function_get_kw_defaults (test.test_capi.test_function.FunctionTest.test_function_get_kw_defaults) ... ok
+test_function_get_module (test.test_capi.test_function.FunctionTest.test_function_get_module) ... ok
+test_function_set_closure (test.test_capi.test_function.FunctionTest.test_function_set_closure) ... ok
+test_function_set_closure_errors (test.test_capi.test_function.FunctionTest.test_function_set_closure_errors) ... ok
+test_function_set_closure_none (test.test_capi.test_function.FunctionTest.test_function_set_closure_none) ... ok
+test_function_set_defaults (test.test_capi.test_function.FunctionTest.test_function_set_defaults) ... ok
+test_function_set_kw_defaults (test.test_capi.test_function.FunctionTest.test_function_set_kw_defaults) ... ok
+test_p (test.test_capi.test_getargs.Boolean_TestCase.test_p) ... ok
+test_c (test.test_capi.test_getargs.Bytes_TestCase.test_c) ... ok
+test_getargs_empty (test.test_capi.test_getargs.Bytes_TestCase.test_getargs_empty) ... ok
+test_w_star (test.test_capi.test_getargs.Bytes_TestCase.test_w_star) ... ok
+test_y (test.test_capi.test_getargs.Bytes_TestCase.test_y) ... ok
+test_y_hash (test.test_capi.test_getargs.Bytes_TestCase.test_y_hash) ... ok
+test_y_star (test.test_capi.test_getargs.Bytes_TestCase.test_y_star) ... ok
+test_D (test.test_capi.test_getargs.Float_TestCase.test_D) ... ok
+test_d (test.test_capi.test_getargs.Float_TestCase.test_d) ... ok
+test_f (test.test_capi.test_getargs.Float_TestCase.test_f) ... ok
+test_f_rounding (test.test_capi.test_getargs.Float_TestCase.test_f_rounding) ... ok
+test_invalid_keyword (test.test_capi.test_getargs.KeywordOnly_TestCase.test_invalid_keyword) ... ok
+test_keyword_args (test.test_capi.test_getargs.KeywordOnly_TestCase.test_keyword_args) ... ok
+test_mixed_args (test.test_capi.test_getargs.KeywordOnly_TestCase.test_mixed_args) ... ok
+test_optional_args (test.test_capi.test_getargs.KeywordOnly_TestCase.test_optional_args) ... ok
+test_positional_args (test.test_capi.test_getargs.KeywordOnly_TestCase.test_positional_args) ... ok
+test_required_args (test.test_capi.test_getargs.KeywordOnly_TestCase.test_required_args) ... ok
+test_surrogate_keyword (test.test_capi.test_getargs.KeywordOnly_TestCase.test_surrogate_keyword) ... ok
+test_too_many_args (test.test_capi.test_getargs.KeywordOnly_TestCase.test_too_many_args) ... ok
+test_weird_str_subclass (test.test_capi.test_getargs.KeywordOnly_TestCase.test_weird_str_subclass) ... ok
+test_weird_str_subclass2 (test.test_capi.test_getargs.KeywordOnly_TestCase.test_weird_str_subclass2) ... ok
+test_invalid_keyword (test.test_capi.test_getargs.Keywords_TestCase.test_invalid_keyword) ... ok
+test_keyword_args (test.test_capi.test_getargs.Keywords_TestCase.test_keyword_args) ... ok
+test_kwargs (test.test_capi.test_getargs.Keywords_TestCase.test_kwargs) ... ok
+test_mixed_args (test.test_capi.test_getargs.Keywords_TestCase.test_mixed_args) ... ok
+test_optional_args (test.test_capi.test_getargs.Keywords_TestCase.test_optional_args) ... ok
+test_positional_args (test.test_capi.test_getargs.Keywords_TestCase.test_positional_args) ... ok
+test_required_args (test.test_capi.test_getargs.Keywords_TestCase.test_required_args) ... ok
+test_surrogate_keyword (test.test_capi.test_getargs.Keywords_TestCase.test_surrogate_keyword) ... ok
+test_too_many_args (test.test_capi.test_getargs.Keywords_TestCase.test_too_many_args) ... ok
+test_K (test.test_capi.test_getargs.LongLong_TestCase.test_K) ... ok
+test_L (test.test_capi.test_getargs.LongLong_TestCase.test_L) ... ok
+test_S (test.test_capi.test_getargs.Object_TestCase.test_S) ... ok
+test_U (test.test_capi.test_getargs.Object_TestCase.test_U) ... ok
+test_Y (test.test_capi.test_getargs.Object_TestCase.test_Y) ... ok
+test_bad_use (test.test_capi.test_getargs.ParseTupleAndKeywords_Test.test_bad_use) ... ok
+test_basic (test.test_capi.test_getargs.ParseTupleAndKeywords_Test.test_basic) ... ok
+test_gh_119213 (test.test_capi.test_getargs.ParseTupleAndKeywords_Test.test_gh_119213) ... ok
+test_nested_sequence (test.test_capi.test_getargs.ParseTupleAndKeywords_Test.test_nested_sequence) ... ok
+test_nonascii_keywords (test.test_capi.test_getargs.ParseTupleAndKeywords_Test.test_nonascii_keywords) ... ok
+test_parse_tuple_and_keywords (test.test_capi.test_getargs.ParseTupleAndKeywords_Test.test_parse_tuple_and_keywords) ... ok
+test_positional_only (test.test_capi.test_getargs.ParseTupleAndKeywords_Test.test_positional_only) ... ok
+test_empty_keyword (test.test_capi.test_getargs.PositionalOnlyAndKeywords_TestCase.test_empty_keyword) ... ok
+test_mixed_args (test.test_capi.test_getargs.PositionalOnlyAndKeywords_TestCase.test_mixed_args) ... ok
+test_optional_args (test.test_capi.test_getargs.PositionalOnlyAndKeywords_TestCase.test_optional_args) ... ok
+test_positional_args (test.test_capi.test_getargs.PositionalOnlyAndKeywords_TestCase.test_positional_args) ... ok
+test_required_args (test.test_capi.test_getargs.PositionalOnlyAndKeywords_TestCase.test_required_args) ... ok
+test_h (test.test_capi.test_getargs.Signed_TestCase.test_h) ... ok
+test_i (test.test_capi.test_getargs.Signed_TestCase.test_i) ... ok
+test_l (test.test_capi.test_getargs.Signed_TestCase.test_l) ... ok
+test_n (test.test_capi.test_getargs.Signed_TestCase.test_n) ... ok
+test_skipitem (test.test_capi.test_getargs.SkipitemTest.test_skipitem)
+If this test failed, you probably added a new "format unit" ... ok
+test_skipitem_with_suffix (test.test_capi.test_getargs.SkipitemTest.test_skipitem_with_suffix) ... ok
+test_C (test.test_capi.test_getargs.String_TestCase.test_C) ... ok
+test_es (test.test_capi.test_getargs.String_TestCase.test_es) ... ok
+test_es_hash (test.test_capi.test_getargs.String_TestCase.test_es_hash) ... ok
+test_et (test.test_capi.test_getargs.String_TestCase.test_et) ... ok
+test_et_hash (test.test_capi.test_getargs.String_TestCase.test_et_hash) ... ok
+test_gh_99240_clear_args (test.test_capi.test_getargs.String_TestCase.test_gh_99240_clear_args) ... ok
+test_s (test.test_capi.test_getargs.String_TestCase.test_s) ... ok
+test_s_hash (test.test_capi.test_getargs.String_TestCase.test_s_hash) ... ok
+test_s_star (test.test_capi.test_getargs.String_TestCase.test_s_star) ... ok
+test_z (test.test_capi.test_getargs.String_TestCase.test_z) ... ok
+test_z_hash (test.test_capi.test_getargs.String_TestCase.test_z_hash) ... ok
+test_z_star (test.test_capi.test_getargs.String_TestCase.test_z_star) ... ok
+test (test.test_capi.test_getargs.Test6012.test) ... ok
+test_args (test.test_capi.test_getargs.Tuple_TestCase.test_args) ... ok
+test_tuple (test.test_capi.test_getargs.Tuple_TestCase.test_tuple) ... ok
+test_B (test.test_capi.test_getargs.Unsigned_TestCase.test_B) ... ok
+test_H (test.test_capi.test_getargs.Unsigned_TestCase.test_H) ... ok
+test_I (test.test_capi.test_getargs.Unsigned_TestCase.test_I) ... ok
+test_b (test.test_capi.test_getargs.Unsigned_TestCase.test_b) ... ok
+test_k (test.test_capi.test_getargs.Unsigned_TestCase.test_k) ... ok
+test_hash_buffer (test.test_capi.test_hash.CAPITest.test_hash_buffer) ... ok
+test_hash_getfuncdef (test.test_capi.test_hash.CAPITest.test_hash_getfuncdef) ... ok
+test_hash_pointer (test.test_capi.test_hash.CAPITest.test_hash_pointer) ... ok
+test_immortal_builtins (test.test_capi.test_immortal.TestInternalCAPI.test_immortal_builtins) ... ok
+test_immortal (test.test_capi.test_immortal.TestUnstableCAPI.test_immortal) ... ok
+test_addmodule (test.test_capi.test_import.ImportTests.test_addmodule) ... ok
+test_addmoduleobject (test.test_capi.test_import.ImportTests.test_addmoduleobject) ... ok
+test_addmoduleref (test.test_capi.test_import.ImportTests.test_addmoduleref) ... ok
+test_executecodemodule (test.test_capi.test_import.ImportTests.test_executecodemodule) ... ok
+test_executecodemoduleex (test.test_capi.test_import.ImportTests.test_executecodemoduleex) ... ok
+test_executecodemoduleobject (test.test_capi.test_import.ImportTests.test_executecodemoduleobject) ... ok
+test_executecodemodulewithpathnames (test.test_capi.test_import.ImportTests.test_executecodemodulewithpathnames) ... ok
+test_getmagicnumber (test.test_capi.test_import.ImportTests.test_getmagicnumber) ... ok
+test_getmagictag (test.test_capi.test_import.ImportTests.test_getmagictag) ... ok
+test_getmodule (test.test_capi.test_import.ImportTests.test_getmodule) ... ok
+test_getmoduledict (test.test_capi.test_import.ImportTests.test_getmoduledict) ... ok
+test_import (test.test_capi.test_import.ImportTests.test_import) ... ok
+test_importfrozenmodule (test.test_capi.test_import.ImportTests.test_importfrozenmodule) ... ok
+test_importfrozenmoduleobject (test.test_capi.test_import.ImportTests.test_importfrozenmoduleobject) ... ok
+test_importmodule (test.test_capi.test_import.ImportTests.test_importmodule) ... ok
+test_importmoduleattr (test.test_capi.test_import.ImportTests.test_importmoduleattr) ... ok
+test_importmoduleattrstring (test.test_capi.test_import.ImportTests.test_importmoduleattrstring) ... ok
+test_importmoduleex (test.test_capi.test_import.ImportTests.test_importmoduleex) ... ok
+test_importmodulelevel (test.test_capi.test_import.ImportTests.test_importmodulelevel) ... ok
+test_importmodulelevelobject (test.test_capi.test_import.ImportTests.test_importmodulelevelobject) ... ok
+test_importmodulenoblock (test.test_capi.test_import.ImportTests.test_importmodulenoblock) ... ok
+test_check (test.test_capi.test_list.CAPITest.test_check) ... ok
+test_list_append (test.test_capi.test_list.CAPITest.test_list_append) ... ok
+test_list_astuple (test.test_capi.test_list.CAPITest.test_list_astuple) ... ok
+test_list_check_exact (test.test_capi.test_list.CAPITest.test_list_check_exact) ... ok
+test_list_clear (test.test_capi.test_list.CAPITest.test_list_clear) ... ok
+test_list_extend (test.test_capi.test_list.CAPITest.test_list_extend) ... ok
+test_list_get_item (test.test_capi.test_list.CAPITest.test_list_get_item) ... ok
+test_list_get_item_ref (test.test_capi.test_list.CAPITest.test_list_get_item_ref) ... ok
+test_list_get_size (test.test_capi.test_list.CAPITest.test_list_get_size) ... ok
+test_list_getitem (test.test_capi.test_list.CAPITest.test_list_getitem) ... ok
+test_list_getslice (test.test_capi.test_list.CAPITest.test_list_getslice) ... ok
+test_list_insert (test.test_capi.test_list.CAPITest.test_list_insert) ... ok
+test_list_new (test.test_capi.test_list.CAPITest.test_list_new) ... ok
+test_list_reverse (test.test_capi.test_list.CAPITest.test_list_reverse) ... ok
+test_list_set_item (test.test_capi.test_list.CAPITest.test_list_set_item) ... ok
+test_list_setitem (test.test_capi.test_list.CAPITest.test_list_setitem) ... ok
+test_list_setslice (test.test_capi.test_list.CAPITest.test_list_setslice) ... ok
+test_list_size (test.test_capi.test_list.CAPITest.test_list_size) ... ok
+test_list_sort (test.test_capi.test_list.CAPITest.test_list_sort) ... ok
+test_uninitialized_list_repr (test.test_capi.test_list.CAPITest.test_uninitialized_list_repr) ... ok
+test_bug_143050 (test.test_capi.test_long.LongTests.test_bug_143050) ... ok
+test_compact (test.test_capi.test_long.LongTests.test_compact) ... ok
+test_compact_known (test.test_capi.test_long.LongTests.test_compact_known) ... ok
+test_long_as_size_t (test.test_capi.test_long.LongTests.test_long_as_size_t) ... ok
+test_long_as_ssize_t (test.test_capi.test_long.LongTests.test_long_as_ssize_t) ... ok
+test_long_asdouble (test.test_capi.test_long.LongTests.test_long_asdouble) ... ok
+test_long_asint (test.test_capi.test_long.LongTests.test_long_asint) ... ok
+test_long_asint32 (test.test_capi.test_long.LongTests.test_long_asint32) ... ok
+test_long_asint64 (test.test_capi.test_long.LongTests.test_long_asint64) ... ok
+test_long_aslong (test.test_capi.test_long.LongTests.test_long_aslong) ... ok
+test_long_aslongandoverflow (test.test_capi.test_long.LongTests.test_long_aslongandoverflow) ... ok
+test_long_aslonglong (test.test_capi.test_long.LongTests.test_long_aslonglong) ... ok
+test_long_aslonglongandoverflow (test.test_capi.test_long.LongTests.test_long_aslonglongandoverflow) ... ok
+test_long_asnativebytes (test.test_capi.test_long.LongTests.test_long_asnativebytes) ... SIZEOF_SIZE=8
+MAX_SSIZE=7FFFFFFFFFFFFFFF
+MAX_USIZE=FFFFFFFFFFFFFFFF
+ok
+test_long_asnativebytes_fuzz (test.test_capi.test_long.LongTests.test_long_asnativebytes_fuzz) ... ok
+test_long_asnativebytes_huge (test.test_capi.test_long.LongTests.test_long_asnativebytes_huge) ... ok
+test_long_aspid (test.test_capi.test_long.LongTests.test_long_aspid) ... ok
+test_long_aspid_limited (test.test_capi.test_long.LongTests.test_long_aspid_limited) ... ok
+test_long_asuint32 (test.test_capi.test_long.LongTests.test_long_asuint32) ... ok
+test_long_asuint64 (test.test_capi.test_long.LongTests.test_long_asuint64) ... ok
+test_long_asunsignedlong (test.test_capi.test_long.LongTests.test_long_asunsignedlong) ... ok
+test_long_asunsignedlonglong (test.test_capi.test_long.LongTests.test_long_asunsignedlonglong) ... ok
+test_long_asunsignedlonglongmask (test.test_capi.test_long.LongTests.test_long_asunsignedlonglongmask) ... ok
+test_long_asunsignedlongmask (test.test_capi.test_long.LongTests.test_long_asunsignedlongmask) ... ok
+test_long_asvoidptr (test.test_capi.test_long.LongTests.test_long_asvoidptr) ... ok
+test_long_check (test.test_capi.test_long.LongTests.test_long_check) ... ok
+test_long_checkexact (test.test_capi.test_long.LongTests.test_long_checkexact) ... ok
+test_long_export (test.test_capi.test_long.LongTests.test_long_export) ... ok
+test_long_fromdouble (test.test_capi.test_long.LongTests.test_long_fromdouble) ... ok
+test_long_fromnativebytes (test.test_capi.test_long.LongTests.test_long_fromnativebytes) ... ok
+test_long_fromstring (test.test_capi.test_long.LongTests.test_long_fromstring) ... ok
+test_long_fromunicodeobject (test.test_capi.test_long.LongTests.test_long_fromunicodeobject) ... ok
+test_long_fromvoidptr (test.test_capi.test_long.LongTests.test_long_fromvoidptr) ... ok
+test_long_getsign (test.test_capi.test_long.LongTests.test_long_getsign) ... ok
+test_long_isnegative (test.test_capi.test_long.LongTests.test_long_isnegative) ... ok
+test_long_ispositive (test.test_capi.test_long.LongTests.test_long_ispositive) ... ok
+test_long_iszero (test.test_capi.test_long.LongTests.test_long_iszero) ... ok
+test_long_layout (test.test_capi.test_long.LongTests.test_long_layout) ... ok
+test_longwriter_create (test.test_capi.test_long.LongTests.test_longwriter_create) ... ok
+test_longwriter_finish (test.test_capi.test_long.LongTests.test_longwriter_finish) ... skipped 'need a debug build (Py_DEBUG)'
+test_pymarshal_readobjectfromstring (test.test_capi.test_marshal.CAPI_TestCase.test_pymarshal_readobjectfromstring) ... ok
+test_pymarshal_writeobjecttostring (test.test_capi.test_marshal.CAPI_TestCase.test_pymarshal_writeobjecttostring) ... ok
+test_read_from_file_error (test.test_capi.test_marshal.CAPI_TestCase.test_read_from_file_error) ... ok
+test_read_last_object_from_file (test.test_capi.test_marshal.CAPI_TestCase.test_read_last_object_from_file) ... ok
+test_read_long_from_file (test.test_capi.test_marshal.CAPI_TestCase.test_read_long_from_file) ... ok
+test_read_object_from_file (test.test_capi.test_marshal.CAPI_TestCase.test_read_object_from_file) ... ok
+test_read_short_from_file (test.test_capi.test_marshal.CAPI_TestCase.test_read_short_from_file) ... ok
+test_write_long_to_file (test.test_capi.test_marshal.CAPI_TestCase.test_write_long_to_file) ... ok
+test_write_object_to_file (test.test_capi.test_marshal.CAPI_TestCase.test_write_object_to_file) ... ok
+test_write_to_file_error (test.test_capi.test_marshal.CAPI_TestCase.test_write_to_file_error) ... ok
+test_buffer_overflow (test.test_capi.test_mem.AddressSanitizerTests.test_buffer_overflow) ... skipped 'need address sanitizer'
+test_api_misuse (test.test_capi.test_mem.PyMemDebugTests.test_api_misuse) ... ok
+test_buffer_overflow (test.test_capi.test_mem.PyMemDebugTests.test_buffer_overflow) ... ok
+test_pymem_malloc_without_gil (test.test_capi.test_mem.PyMemDebugTests.test_pymem_malloc_without_gil) ... ok
+test_pyobject_forbidden_bytes_is_freed (test.test_capi.test_mem.PyMemDebugTests.test_pyobject_forbidden_bytes_is_freed) ... ok
+test_pyobject_freed_is_freed (test.test_capi.test_mem.PyMemDebugTests.test_pyobject_freed_is_freed) ... ok
+test_pyobject_malloc_without_gil (test.test_capi.test_mem.PyMemDebugTests.test_pyobject_malloc_without_gil) ... ok
+test_pyobject_null_is_freed (test.test_capi.test_mem.PyMemDebugTests.test_pyobject_null_is_freed) ... ok
+test_pyobject_uninitialized_is_freed (test.test_capi.test_mem.PyMemDebugTests.test_pyobject_uninitialized_is_freed) ... ok
+test_set_nomemory (test.test_capi.test_mem.PyMemDebugTests.test_set_nomemory) ... ok
+test_api_misuse (test.test_capi.test_mem.PyMemDefaultTests.test_api_misuse) ... skipped 'need Py_DEBUG'
+test_buffer_overflow (test.test_capi.test_mem.PyMemDefaultTests.test_buffer_overflow) ... skipped 'need Py_DEBUG'
+test_pymem_malloc_without_gil (test.test_capi.test_mem.PyMemDefaultTests.test_pymem_malloc_without_gil) ... skipped 'need Py_DEBUG'
+test_pyobject_forbidden_bytes_is_freed (test.test_capi.test_mem.PyMemDefaultTests.test_pyobject_forbidden_bytes_is_freed) ... skipped 'need Py_DEBUG'
+test_pyobject_freed_is_freed (test.test_capi.test_mem.PyMemDefaultTests.test_pyobject_freed_is_freed) ... skipped 'need Py_DEBUG'
+test_pyobject_malloc_without_gil (test.test_capi.test_mem.PyMemDefaultTests.test_pyobject_malloc_without_gil) ... skipped 'need Py_DEBUG'
+test_pyobject_null_is_freed (test.test_capi.test_mem.PyMemDefaultTests.test_pyobject_null_is_freed) ... skipped 'need Py_DEBUG'
+test_pyobject_uninitialized_is_freed (test.test_capi.test_mem.PyMemDefaultTests.test_pyobject_uninitialized_is_freed) ... skipped 'need Py_DEBUG'
+test_set_nomemory (test.test_capi.test_mem.PyMemDefaultTests.test_set_nomemory) ... skipped 'need Py_DEBUG'
+test_api_misuse (test.test_capi.test_mem.PyMemMallocDebugTests.test_api_misuse) ... ok
+test_buffer_overflow (test.test_capi.test_mem.PyMemMallocDebugTests.test_buffer_overflow) ... ok
+test_pymem_malloc_without_gil (test.test_capi.test_mem.PyMemMallocDebugTests.test_pymem_malloc_without_gil) ... ok
+test_pyobject_forbidden_bytes_is_freed (test.test_capi.test_mem.PyMemMallocDebugTests.test_pyobject_forbidden_bytes_is_freed) ... ok
+test_pyobject_freed_is_freed (test.test_capi.test_mem.PyMemMallocDebugTests.test_pyobject_freed_is_freed) ... ok
+test_pyobject_malloc_without_gil (test.test_capi.test_mem.PyMemMallocDebugTests.test_pyobject_malloc_without_gil) ... ok
+test_pyobject_null_is_freed (test.test_capi.test_mem.PyMemMallocDebugTests.test_pyobject_null_is_freed) ... ok
+test_pyobject_uninitialized_is_freed (test.test_capi.test_mem.PyMemMallocDebugTests.test_pyobject_uninitialized_is_freed) ... ok
+test_set_nomemory (test.test_capi.test_mem.PyMemMallocDebugTests.test_set_nomemory) ... ok
+test_api_misuse (test.test_capi.test_mem.PyMemMimallocDebugTests.test_api_misuse) ... ok
+test_buffer_overflow (test.test_capi.test_mem.PyMemMimallocDebugTests.test_buffer_overflow) ... ok
+test_pymem_malloc_without_gil (test.test_capi.test_mem.PyMemMimallocDebugTests.test_pymem_malloc_without_gil) ... ok
+test_pyobject_forbidden_bytes_is_freed (test.test_capi.test_mem.PyMemMimallocDebugTests.test_pyobject_forbidden_bytes_is_freed) ... ok
+test_pyobject_freed_is_freed (test.test_capi.test_mem.PyMemMimallocDebugTests.test_pyobject_freed_is_freed) ... ok
+test_pyobject_malloc_without_gil (test.test_capi.test_mem.PyMemMimallocDebugTests.test_pyobject_malloc_without_gil) ... ok
+test_pyobject_null_is_freed (test.test_capi.test_mem.PyMemMimallocDebugTests.test_pyobject_null_is_freed) ... ok
+test_pyobject_uninitialized_is_freed (test.test_capi.test_mem.PyMemMimallocDebugTests.test_pyobject_uninitialized_is_freed) ... ok
+test_set_nomemory (test.test_capi.test_mem.PyMemMimallocDebugTests.test_set_nomemory) ... ok
+test_api_misuse (test.test_capi.test_mem.PyMemPymallocDebugTests.test_api_misuse) ... ok
+test_buffer_overflow (test.test_capi.test_mem.PyMemPymallocDebugTests.test_buffer_overflow) ... ok
+test_pymem_malloc_without_gil (test.test_capi.test_mem.PyMemPymallocDebugTests.test_pymem_malloc_without_gil) ... ok
+test_pyobject_forbidden_bytes_is_freed (test.test_capi.test_mem.PyMemPymallocDebugTests.test_pyobject_forbidden_bytes_is_freed) ... ok
+test_pyobject_freed_is_freed (test.test_capi.test_mem.PyMemPymallocDebugTests.test_pyobject_freed_is_freed) ... ok
+test_pyobject_malloc_without_gil (test.test_capi.test_mem.PyMemPymallocDebugTests.test_pyobject_malloc_without_gil) ... ok
+test_pyobject_null_is_freed (test.test_capi.test_mem.PyMemPymallocDebugTests.test_pyobject_null_is_freed) ... ok
+test_pyobject_uninitialized_is_freed (test.test_capi.test_mem.PyMemPymallocDebugTests.test_pyobject_uninitialized_is_freed) ... ok
+test_set_nomemory (test.test_capi.test_mem.PyMemPymallocDebugTests.test_set_nomemory) ... ok
+test_Py_CompileString (test.test_capi.test_misc.CAPITest.test_Py_CompileString) ... ok
+test_buildvalue (test.test_capi.test_misc.CAPITest.test_buildvalue) ... ok
+test_buildvalue_N (test.test_capi.test_misc.CAPITest.test_buildvalue_N) ... ok
+test_buildvalue_ints (test.test_capi.test_misc.CAPITest.test_buildvalue_ints) ... ok
+test_c_subclass_of_heap_ctype_with_del_modifying_dunder_class_only_decrefs_once (test.test_capi.test_misc.CAPITest.test_c_subclass_of_heap_ctype_with_del_modifying_dunder_class_only_decrefs_once) ... ok
+test_c_subclass_of_heap_ctype_with_tpdealloc_decrefs_once (test.test_capi.test_misc.CAPITest.test_c_subclass_of_heap_ctype_with_tpdealloc_decrefs_once) ... ok
+test_c_type_with_ipow (test.test_capi.test_misc.CAPITest.test_c_type_with_ipow) ... ok
+test_c_type_with_matrix_multiplication (test.test_capi.test_misc.CAPITest.test_c_type_with_matrix_multiplication) ... ok
+test_clear_managed_dict (test.test_capi.test_misc.CAPITest.test_clear_managed_dict) ... ok
+test_docstring_signature_parsing (test.test_capi.test_misc.CAPITest.test_docstring_signature_parsing) ... ok
+test_export_symbols (test.test_capi.test_misc.CAPITest.test_export_symbols) ... ok
+test_gen_get_code (test.test_capi.test_misc.CAPITest.test_gen_get_code) ... ok
+test_getitem_with_error (test.test_capi.test_misc.CAPITest.test_getitem_with_error) ... ok
+test_heap_ctype_doc_and_text_signature (test.test_capi.test_misc.CAPITest.test_heap_ctype_doc_and_text_signature) ... ok
+test_heaptype_base_with_custom_metaclass (test.test_capi.test_misc.CAPITest.test_heaptype_base_with_custom_metaclass) ... ok
+test_heaptype_with_buffer (test.test_capi.test_misc.CAPITest.test_heaptype_with_buffer) ... ok
+test_heaptype_with_custom_metaclass (test.test_capi.test_misc.CAPITest.test_heaptype_with_custom_metaclass) ... ok
+test_heaptype_with_custom_metaclass_custom_new (test.test_capi.test_misc.CAPITest.test_heaptype_with_custom_metaclass_custom_new) ... ok
+test_heaptype_with_custom_metaclass_null_new (test.test_capi.test_misc.CAPITest.test_heaptype_with_custom_metaclass_null_new) ... ok
+test_heaptype_with_dict (test.test_capi.test_misc.CAPITest.test_heaptype_with_dict) ... ok
+test_heaptype_with_managed_dict (test.test_capi.test_misc.CAPITest.test_heaptype_with_managed_dict) ... ok
+test_heaptype_with_managed_weakref (test.test_capi.test_misc.CAPITest.test_heaptype_with_managed_weakref) ... ok
+test_heaptype_with_negative_dict (test.test_capi.test_misc.CAPITest.test_heaptype_with_negative_dict) ... ok
+test_heaptype_with_setattro (test.test_capi.test_misc.CAPITest.test_heaptype_with_setattro) ... ok
+test_heaptype_with_tp_vectorcall (test.test_capi.test_misc.CAPITest.test_heaptype_with_tp_vectorcall) ... ok
+test_heaptype_with_weakref (test.test_capi.test_misc.CAPITest.test_heaptype_with_weakref) ... ok
+test_immutable_type_with_mutable_base (test.test_capi.test_misc.CAPITest.test_immutable_type_with_mutable_base) ... ok
+test_instancemethod (test.test_capi.test_misc.CAPITest.test_instancemethod) ... ok
+test_memoryview_from_NULL_pointer (test.test_capi.test_misc.CAPITest.test_memoryview_from_NULL_pointer) ... ok
+test_multiple_inheritance_ctypes_with_weakref_or_dict (test.test_capi.test_misc.CAPITest.test_multiple_inheritance_ctypes_with_weakref_or_dict) ... ok
+test_multiple_inheritance_ctypes_with_weakref_or_dict_and_other_builtin (test.test_capi.test_misc.CAPITest.test_multiple_inheritance_ctypes_with_weakref_or_dict_and_other_builtin) ... ok
+test_no_FatalError_infinite_loop (test.test_capi.test_misc.CAPITest.test_no_FatalError_infinite_loop) ... ok
+test_null_type_doc (test.test_capi.test_misc.CAPITest.test_null_type_doc) ... ok
+test_pynumber_tobase (test.test_capi.test_misc.CAPITest.test_pynumber_tobase) ... ok
+test_pyobject_bytes_from_null (test.test_capi.test_misc.CAPITest.test_pyobject_bytes_from_null) ... ok
+test_pyobject_repr_from_null (test.test_capi.test_misc.CAPITest.test_pyobject_repr_from_null) ... ok
+test_pyobject_str_from_null (test.test_capi.test_misc.CAPITest.test_pyobject_str_from_null) ... ok
+test_pytype_fromspec_with_repeated_slots (test.test_capi.test_misc.CAPITest.test_pytype_fromspec_with_repeated_slots) ... ok
+test_return_null_without_error (test.test_capi.test_misc.CAPITest.test_return_null_without_error) ... ok
+test_return_result_with_error (test.test_capi.test_misc.CAPITest.test_return_result_with_error) ... ok
+test_seq_bytes_to_charp_array (test.test_capi.test_misc.CAPITest.test_seq_bytes_to_charp_array) ... ok
+test_sequence_inplace_repeat_errors (test.test_capi.test_misc.CAPITest.test_sequence_inplace_repeat_errors) ... ok
+test_sequence_inplace_repeat_subtypes (test.test_capi.test_misc.CAPITest.test_sequence_inplace_repeat_subtypes) ... ok
+test_sequence_repeat_errors (test.test_capi.test_misc.CAPITest.test_sequence_repeat_errors) ... ok
+test_sequence_repeat_numeric_fallback (test.test_capi.test_misc.CAPITest.test_sequence_repeat_numeric_fallback) ... ok
+test_sequence_repeat_subtypes (test.test_capi.test_misc.CAPITest.test_sequence_repeat_subtypes) ... ok
+test_subclass_of_heap_gc_ctype_with_del_modifying_dunder_class_only_decrefs_once (test.test_capi.test_misc.CAPITest.test_subclass_of_heap_gc_ctype_with_del_modifying_dunder_class_only_decrefs_once) ... ok
+test_subclass_of_heap_gc_ctype_with_tpdealloc_decrefs_once (test.test_capi.test_misc.CAPITest.test_subclass_of_heap_gc_ctype_with_tpdealloc_decrefs_once) ... ok
+test_sublclassing_managed_both (test.test_capi.test_misc.CAPITest.test_sublclassing_managed_both) ... ok
+test_sublclassing_managed_dict (test.test_capi.test_misc.CAPITest.test_sublclassing_managed_dict) ... ok
+test_sublclassing_managed_weakref (test.test_capi.test_misc.CAPITest.test_sublclassing_managed_weakref) ... ok
+test_subprocess_fork_exec (test.test_capi.test_misc.CAPITest.test_subprocess_fork_exec) ... ok
+test_tp_bases_slot (test.test_capi.test_misc.CAPITest.test_tp_bases_slot) ... ok
+test_tp_bases_slot_none (test.test_capi.test_misc.CAPITest.test_tp_bases_slot_none) ... ok
+test_trashcan_python_class1 (test.test_capi.test_misc.CAPITest.test_trashcan_python_class1) ... skipped "resource 'cpu' is not enabled"
+test_trashcan_python_class2 (test.test_capi.test_misc.CAPITest.test_trashcan_python_class2) ... skipped "resource 'cpu' is not enabled"
+test_trashcan_subclass (test.test_capi.test_misc.CAPITest.test_trashcan_subclass) ... ok
+test_unstable_gc_new_with_extra_data (test.test_capi.test_misc.CAPITest.test_unstable_gc_new_with_extra_data) ... ok
+test_get_config (test.test_capi.test_misc.InterpreterConfigTests.test_get_config) ... ok
+test_interp_init (test.test_capi.test_misc.InterpreterConfigTests.test_interp_init) ... ok
+test_predefined_config (test.test_capi.test_misc.InterpreterConfigTests.test_predefined_config) ... ok
+test_update_from_dict (test.test_capi.test_misc.InterpreterConfigTests.test_update_from_dict) ... ok
+test_conversion_bad (test.test_capi.test_misc.InterpreterIDTests.test_conversion_bad) ... ok
+test_conversion_coerced (test.test_capi.test_misc.InterpreterIDTests.test_conversion_coerced) ... ok
+test_conversion_from_interpreter (test.test_capi.test_misc.InterpreterIDTests.test_conversion_from_interpreter) ... ok
+test_conversion_int (test.test_capi.test_misc.InterpreterIDTests.test_conversion_int) ... ok
+test_linked_lifecycle_does_not_exist (test.test_capi.test_misc.InterpreterIDTests.test_linked_lifecycle_does_not_exist) ... ok
+test_linked_lifecycle_incref_link (test.test_capi.test_misc.InterpreterIDTests.test_linked_lifecycle_incref_link) ... ok
+test_linked_lifecycle_initial (test.test_capi.test_misc.InterpreterIDTests.test_linked_lifecycle_initial) ... ok
+test_linked_lifecycle_link_incref_decref (test.test_capi.test_misc.InterpreterIDTests.test_linked_lifecycle_link_incref_decref) ... ok
+test_linked_lifecycle_link_incref_unlink_decref (test.test_capi.test_misc.InterpreterIDTests.test_linked_lifecycle_link_incref_unlink_decref) ... ok
+test_linked_lifecycle_link_unlink (test.test_capi.test_misc.InterpreterIDTests.test_linked_lifecycle_link_unlink) ... ok
+test_linked_lifecycle_never_linked (test.test_capi.test_misc.InterpreterIDTests.test_linked_lifecycle_never_linked) ... ok
+test_lookup_destroyed (test.test_capi.test_misc.InterpreterIDTests.test_lookup_destroyed) ... ok
+test_lookup_does_not_exist (test.test_capi.test_misc.InterpreterIDTests.test_lookup_does_not_exist) ... ok
+test_lookup_exists (test.test_capi.test_misc.InterpreterIDTests.test_lookup_exists) ... ok
+test_configured_settings (test.test_capi.test_misc.SubinterpreterTest.test_configured_settings)
+The config with which an interpreter is created corresponds ... ok
+test_module_state_shared_in_global (test.test_capi.test_misc.SubinterpreterTest.test_module_state_shared_in_global)
+bpo-44050: Extension module state should be shared between interpreters ... ok
+test_mutate_exception (test.test_capi.test_misc.SubinterpreterTest.test_mutate_exception)
+Exceptions saved in global module state get shared between ... ok
+test_overridden_setting_extensions_subinterp_check (test.test_capi.test_misc.SubinterpreterTest.test_overridden_setting_extensions_subinterp_check)
+PyInterpreterConfig.check_multi_interp_extensions can be overridden ... ok
+test_pending_call_creates_thread_subinterpreter (test.test_capi.test_misc.SubinterpreterTest.test_pending_call_creates_thread_subinterpreter) ... ok
+test_py_config_isoloated_per_interpreter (test.test_capi.test_misc.SubinterpreterTest.test_py_config_isoloated_per_interpreter) ... ok
+test_subinterps (test.test_capi.test_misc.SubinterpreterTest.test_subinterps) ... ok
+test_subinterps_recent_language_features (test.test_capi.test_misc.SubinterpreterTest.test_subinterps_recent_language_features) ... ok
+test_ceval_decref (test.test_capi.test_misc.TestCEval.test_ceval_decref) ... ok
+test_corrupt_bool (test.test_capi.test_misc.TestCheckSingleton.test_corrupt_bool) ... skipped 'need Py_DEBUG'
+test_corrupt_bytes (test.test_capi.test_misc.TestCheckSingleton.test_corrupt_bytes) ... skipped 'need Py_DEBUG'
+test_corrupt_long (test.test_capi.test_misc.TestCheckSingleton.test_corrupt_long) ... skipped 'need Py_DEBUG'
+test_corrupt_unicode (test.test_capi.test_misc.TestCheckSingleton.test_corrupt_unicode) ... skipped 'need Py_DEBUG'
+test_HeapCCollection (test.test_capi.test_misc.TestHeapTypeRelative.test_HeapCCollection)
+Make sure HeapCCollection works properly by itself ... ok
+test_heaptype_inherit_itemsize (test.test_capi.test_misc.TestHeapTypeRelative.test_heaptype_inherit_itemsize)
+Test HeapCCollection subclasses work properly ... ok
+test_heaptype_invalid_inheritance (test.test_capi.test_misc.TestHeapTypeRelative.test_heaptype_invalid_inheritance) ... ok
+test_heaptype_relative_members (test.test_capi.test_misc.TestHeapTypeRelative.test_heaptype_relative_members)
+Test HeapCCollection subclasses work properly ... ok
+test_heaptype_relative_members_errors (test.test_capi.test_misc.TestHeapTypeRelative.test_heaptype_relative_members_errors) ... ok
+test_heaptype_relative_sizes (test.test_capi.test_misc.TestHeapTypeRelative.test_heaptype_relative_sizes) ... ok
+test_heaptype_relative_special_members_errors (test.test_capi.test_misc.TestHeapTypeRelative.test_heaptype_relative_special_members_errors) ... ok
+test_pyobject_getitemdata_error (test.test_capi.test_misc.TestHeapTypeRelative.test_pyobject_getitemdata_error)
+Test PyObject_GetItemData fails on unsupported types ... ok
+test_code (test.test_capi.test_misc.TestInternalFrameApi.test_code) ... ok
+test_code_get_localsplus_names (test.test_capi.test_misc.TestInternalFrameApi.test_code_get_localsplus_names) ... ok
+test_get_local_cell (test.test_capi.test_misc.TestInternalFrameApi.test_get_local_cell) ... ok
+test_get_local_free (test.test_capi.test_misc.TestInternalFrameApi.test_get_local_free) ... ok
+test_get_local_index_out_of_range (test.test_capi.test_misc.TestInternalFrameApi.test_get_local_index_out_of_range) ... ok
+test_get_local_plain (test.test_capi.test_misc.TestInternalFrameApi.test_get_local_plain) ... ok
+test_get_local_set (test.test_capi.test_misc.TestInternalFrameApi.test_get_local_set) ... ok
+test_get_local_unset (test.test_capi.test_misc.TestInternalFrameApi.test_get_local_unset) ... ok
+test_lasti (test.test_capi.test_misc.TestInternalFrameApi.test_lasti) ... ok
+test_line (test.test_capi.test_misc.TestInternalFrameApi.test_line) ... ok
+test_isolated_subinterpreter (test.test_capi.test_misc.TestPendingCalls.test_isolated_subinterpreter) ... ok
+test_main_pendingcalls_non_threaded (test.test_capi.test_misc.TestPendingCalls.test_main_pendingcalls_non_threaded) ... ok
+test_main_pendingcalls_threaded (test.test_capi.test_misc.TestPendingCalls.test_main_pendingcalls_threaded) ... ok
+test_many_subthreads_can_handle_pending_calls (test.test_capi.test_misc.TestPendingCalls.test_many_subthreads_can_handle_pending_calls) ... ok
+test_max_pending (test.test_capi.test_misc.TestPendingCalls.test_max_pending) ... ok
+test_pending_call_creates_thread (test.test_capi.test_misc.TestPendingCalls.test_pending_call_creates_thread) ... ok
+test_subthreads_can_handle_pending_calls (test.test_capi.test_misc.TestPendingCalls.test_subthreads_can_handle_pending_calls) ... ok
+test_py_thread_id (test.test_capi.test_misc.TestPyThreadId.test_py_thread_id) ... skipped 'need Py_GIL_DISABLED'
+test_pytype_ready_always_sets_tp_type (test.test_capi.test_misc.TestStaticTypes.test_pytype_ready_always_sets_tp_type) ... ok
+test_gilstate_ensure_no_deadlock (test.test_capi.test_misc.TestThreadState.test_gilstate_ensure_no_deadlock) ... ok
+test_gilstate_matches_current (test.test_capi.test_misc.TestThreadState.test_gilstate_matches_current) ... ok
+test_thread_gilstate_in_clear (test.test_capi.test_misc.TestThreadState.test_thread_gilstate_in_clear) ... ok
+test_thread_state (test.test_capi.test_misc.TestThreadState.test_thread_state) ... ok
+test_pack_full_version (test.test_capi.test_misc.TestVersions.test_pack_full_version) ... ok
+test_pack_full_version_ctypes (test.test_capi.test_misc.TestVersions.test_pack_full_version_ctypes) ... ok
+test_pack_version (test.test_capi.test_misc.TestVersions.test_pack_version) ... ok
+test_pack_version_ctypes (test.test_capi.test_misc.TestVersions.test_pack_version_ctypes) ... ok
+test_get_module_bad_def (test.test_capi.test_misc.Test_ModuleStateAccess.test_get_module_bad_def) ... ok
+test_get_module_static_in_mro (test.test_capi.test_misc.Test_ModuleStateAccess.test_get_module_static_in_mro) ... ok
+test_state_access (test.test_capi.test_misc.Test_ModuleStateAccess.test_state_access)
+Checks methods defined with and without argument clinic ... ok
+test_subclass_get_module (test.test_capi.test_misc.Test_ModuleStateAccess.test_subclass_get_module)
+PyType_GetModule for defining_class ... ok
+test_subclass_get_module_with_super (test.test_capi.test_misc.Test_ModuleStateAccess.test_subclass_get_module_with_super) ... ok
+test_inlined_binary_subscr (test.test_capi.test_misc.Test_Pep523API.test_inlined_binary_subscr) ... ok
+test_inlined_call (test.test_capi.test_misc.Test_Pep523API.test_inlined_call) ... ok
+test_inlined_call_function_ex (test.test_capi.test_misc.Test_Pep523API.test_inlined_call_function_ex) ... ok
+test_inlined_for_iter (test.test_capi.test_misc.Test_Pep523API.test_inlined_for_iter) ... ok
+test_inlined_load_attr (test.test_capi.test_misc.Test_Pep523API.test_inlined_load_attr) ... ok
+test_inlined_send (test.test_capi.test_misc.Test_Pep523API.test_inlined_send) ... ok
+test_allow_specialization_call (test.test_capi.test_misc.Test_Pep523AllowSpecialization.test_allow_specialization_call) ... ok
+test_is_specialization_enabled_after_restore (test.test_capi.test_misc.Test_Pep523AllowSpecialization.test_is_specialization_enabled_after_restore) ... ok
+test_is_specialization_enabled_default (test.test_capi.test_misc.Test_Pep523AllowSpecialization.test_is_specialization_enabled_default) ... ok
+test_is_specialization_enabled_with_allow (test.test_capi.test_misc.Test_Pep523AllowSpecialization.test_is_specialization_enabled_with_allow) ... ok
+test_is_specialization_enabled_with_eval_frame (test.test_capi.test_misc.Test_Pep523AllowSpecialization.test_is_specialization_enabled_with_eval_frame) ... ok
+test_no_specialization_call (test.test_capi.test_misc.Test_Pep523AllowSpecialization.test_no_specialization_call) ... ok
+test_lock_basic (test.test_capi.test_misc.Test_PyLock.test_lock_basic) ... ok
+test_lock_benchmark (test.test_capi.test_misc.Test_PyLock.test_lock_benchmark) ... ok
+test_lock_counter (test.test_capi.test_misc.Test_PyLock.test_lock_counter) ... ok
+test_lock_counter_slow (test.test_capi.test_misc.Test_PyLock.test_lock_counter_slow) ... ok
+test_lock_once (test.test_capi.test_misc.Test_PyLock.test_lock_once) ... ok
+test_lock_recursive (test.test_capi.test_misc.Test_PyLock.test_lock_recursive) ... ok
+test_lock_rwlock (test.test_capi.test_misc.Test_PyLock.test_lock_rwlock) ... ok
+test_lock_two_threads (test.test_capi.test_misc.Test_PyLock.test_lock_two_threads) ... ok
+test_atexit (test.test_capi.test_misc.Test_testcapi.test_atexit) ... ok
+test_atomic_add_int (test.test_capi.test_misc.Test_testcapi.test_atomic_add_int) ... ok
+test_atomic_add_int16 (test.test_capi.test_misc.Test_testcapi.test_atomic_add_int16) ... ok
+test_atomic_add_int32 (test.test_capi.test_misc.Test_testcapi.test_atomic_add_int32) ... ok
+test_atomic_add_int64 (test.test_capi.test_misc.Test_testcapi.test_atomic_add_int64) ... ok
+test_atomic_add_int8 (test.test_capi.test_misc.Test_testcapi.test_atomic_add_int8) ... ok
+test_atomic_add_intptr (test.test_capi.test_misc.Test_testcapi.test_atomic_add_intptr) ... ok
+test_atomic_add_ssize (test.test_capi.test_misc.Test_testcapi.test_atomic_add_ssize) ... ok
+test_atomic_add_uint (test.test_capi.test_misc.Test_testcapi.test_atomic_add_uint) ... ok
+test_atomic_add_uint16 (test.test_capi.test_misc.Test_testcapi.test_atomic_add_uint16) ... ok
+test_atomic_add_uint32 (test.test_capi.test_misc.Test_testcapi.test_atomic_add_uint32) ... ok
+test_atomic_add_uint64 (test.test_capi.test_misc.Test_testcapi.test_atomic_add_uint64) ... ok
+test_atomic_add_uint8 (test.test_capi.test_misc.Test_testcapi.test_atomic_add_uint8) ... ok
+test_atomic_add_uintptr (test.test_capi.test_misc.Test_testcapi.test_atomic_add_uintptr) ... ok
+test_atomic_and_or_uint16 (test.test_capi.test_misc.Test_testcapi.test_atomic_and_or_uint16) ... ok
+test_atomic_and_or_uint32 (test.test_capi.test_misc.Test_testcapi.test_atomic_and_or_uint32) ... ok
+test_atomic_and_or_uint64 (test.test_capi.test_misc.Test_testcapi.test_atomic_and_or_uint64) ... ok
+test_atomic_and_or_uint8 (test.test_capi.test_misc.Test_testcapi.test_atomic_and_or_uint8) ... ok
+test_atomic_and_or_uintptr (test.test_capi.test_misc.Test_testcapi.test_atomic_and_or_uintptr) ... ok
+test_atomic_compare_exchange_int (test.test_capi.test_misc.Test_testcapi.test_atomic_compare_exchange_int) ... ok
+test_atomic_compare_exchange_int16 (test.test_capi.test_misc.Test_testcapi.test_atomic_compare_exchange_int16) ... ok
+test_atomic_compare_exchange_int32 (test.test_capi.test_misc.Test_testcapi.test_atomic_compare_exchange_int32) ... ok
+test_atomic_compare_exchange_int64 (test.test_capi.test_misc.Test_testcapi.test_atomic_compare_exchange_int64) ... ok
+test_atomic_compare_exchange_int8 (test.test_capi.test_misc.Test_testcapi.test_atomic_compare_exchange_int8) ... ok
+test_atomic_compare_exchange_intptr (test.test_capi.test_misc.Test_testcapi.test_atomic_compare_exchange_intptr) ... ok
+test_atomic_compare_exchange_ptr (test.test_capi.test_misc.Test_testcapi.test_atomic_compare_exchange_ptr) ... ok
+test_atomic_compare_exchange_ssize (test.test_capi.test_misc.Test_testcapi.test_atomic_compare_exchange_ssize) ... ok
+test_atomic_compare_exchange_uint (test.test_capi.test_misc.Test_testcapi.test_atomic_compare_exchange_uint) ... ok
+test_atomic_compare_exchange_uint16 (test.test_capi.test_misc.Test_testcapi.test_atomic_compare_exchange_uint16) ... ok
+test_atomic_compare_exchange_uint32 (test.test_capi.test_misc.Test_testcapi.test_atomic_compare_exchange_uint32) ... ok
+test_atomic_compare_exchange_uint64 (test.test_capi.test_misc.Test_testcapi.test_atomic_compare_exchange_uint64) ... ok
+test_atomic_compare_exchange_uint8 (test.test_capi.test_misc.Test_testcapi.test_atomic_compare_exchange_uint8) ... ok
+test_atomic_compare_exchange_uintptr (test.test_capi.test_misc.Test_testcapi.test_atomic_compare_exchange_uintptr) ... ok
+test_atomic_exchange_int (test.test_capi.test_misc.Test_testcapi.test_atomic_exchange_int) ... ok
+test_atomic_exchange_int16 (test.test_capi.test_misc.Test_testcapi.test_atomic_exchange_int16) ... ok
+test_atomic_exchange_int32 (test.test_capi.test_misc.Test_testcapi.test_atomic_exchange_int32) ... ok
+test_atomic_exchange_int64 (test.test_capi.test_misc.Test_testcapi.test_atomic_exchange_int64) ... ok
+test_atomic_exchange_int8 (test.test_capi.test_misc.Test_testcapi.test_atomic_exchange_int8) ... ok
+test_atomic_exchange_intptr (test.test_capi.test_misc.Test_testcapi.test_atomic_exchange_intptr) ... ok
+test_atomic_exchange_ptr (test.test_capi.test_misc.Test_testcapi.test_atomic_exchange_ptr) ... ok
+test_atomic_exchange_ssize (test.test_capi.test_misc.Test_testcapi.test_atomic_exchange_ssize) ... ok
+test_atomic_exchange_uint (test.test_capi.test_misc.Test_testcapi.test_atomic_exchange_uint) ... ok
+test_atomic_exchange_uint16 (test.test_capi.test_misc.Test_testcapi.test_atomic_exchange_uint16) ... ok
+test_atomic_exchange_uint32 (test.test_capi.test_misc.Test_testcapi.test_atomic_exchange_uint32) ... ok
+test_atomic_exchange_uint64 (test.test_capi.test_misc.Test_testcapi.test_atomic_exchange_uint64) ... ok
+test_atomic_exchange_uint8 (test.test_capi.test_misc.Test_testcapi.test_atomic_exchange_uint8) ... ok
+test_atomic_exchange_uintptr (test.test_capi.test_misc.Test_testcapi.test_atomic_exchange_uintptr) ... ok
+test_atomic_fences (test.test_capi.test_misc.Test_testcapi.test_atomic_fences) ... ok
+test_atomic_load_store_int (test.test_capi.test_misc.Test_testcapi.test_atomic_load_store_int) ... ok
+test_atomic_load_store_int16 (test.test_capi.test_misc.Test_testcapi.test_atomic_load_store_int16) ... ok
+test_atomic_load_store_int32 (test.test_capi.test_misc.Test_testcapi.test_atomic_load_store_int32) ... ok
+test_atomic_load_store_int64 (test.test_capi.test_misc.Test_testcapi.test_atomic_load_store_int64) ... ok
+test_atomic_load_store_int8 (test.test_capi.test_misc.Test_testcapi.test_atomic_load_store_int8) ... ok
+test_atomic_load_store_int_release_acquire (test.test_capi.test_misc.Test_testcapi.test_atomic_load_store_int_release_acquire) ... ok
+test_atomic_load_store_intptr (test.test_capi.test_misc.Test_testcapi.test_atomic_load_store_intptr) ... ok
+test_atomic_load_store_ptr (test.test_capi.test_misc.Test_testcapi.test_atomic_load_store_ptr) ... ok
+test_atomic_load_store_ssize (test.test_capi.test_misc.Test_testcapi.test_atomic_load_store_ssize) ... ok
+test_atomic_load_store_uint (test.test_capi.test_misc.Test_testcapi.test_atomic_load_store_uint) ... ok
+test_atomic_load_store_uint16 (test.test_capi.test_misc.Test_testcapi.test_atomic_load_store_uint16) ... ok
+test_atomic_load_store_uint32 (test.test_capi.test_misc.Test_testcapi.test_atomic_load_store_uint32) ... ok
+test_atomic_load_store_uint64 (test.test_capi.test_misc.Test_testcapi.test_atomic_load_store_uint64) ... ok
+test_atomic_load_store_uint8 (test.test_capi.test_misc.Test_testcapi.test_atomic_load_store_uint8) ... ok
+test_atomic_load_store_uintptr (test.test_capi.test_misc.Test_testcapi.test_atomic_load_store_uintptr) ... ok
+test_atomic_release_acquire (test.test_capi.test_misc.Test_testcapi.test_atomic_release_acquire) ... ok
+test_buildvalue_N (test.test_capi.test_misc.Test_testcapi.test_buildvalue_N) ... ok
+test_buildvalue_p (test.test_capi.test_misc.Test_testcapi.test_buildvalue_p) ... ok
+test_bytes_resize_tracer (test.test_capi.test_misc.Test_testcapi.test_bytes_resize_tracer) ... ok
+test_byteswriter_ptr (test.test_capi.test_misc.Test_testcapi.test_byteswriter_ptr) ... ok
+test_capsule (test.test_capi.test_misc.Test_testcapi.test_capsule) ... ok
+test_code_api (test.test_capi.test_misc.Test_testcapi.test_code_api) ... ok
+test_code_extra (test.test_capi.test_misc.Test_testcapi.test_code_extra) ... ok
+test_config (test.test_capi.test_misc.Test_testcapi.test_config) ... ok
+test_critical_sections (test.test_capi.test_misc.Test_testcapi.test_critical_sections) ... ok
+test_current_tstate_matches (test.test_capi.test_misc.Test_testcapi.test_current_tstate_matches) ... ok
+test_datetime_capi (test.test_capi.test_misc.Test_testcapi.test_datetime_capi) ... ok
+test_dict_iteration (test.test_capi.test_misc.Test_testcapi.test_dict_iteration) ... ok
+test_from_contiguous (test.test_capi.test_misc.Test_testcapi.test_from_contiguous) ... ok
+test_from_spec_invalid_metatype_inheritance (test.test_capi.test_misc.Test_testcapi.test_from_spec_invalid_metatype_inheritance) ... ok
+test_from_spec_metatype_inheritance (test.test_capi.test_misc.Test_testcapi.test_from_spec_metatype_inheritance) ... ok
+test_gc_control (test.test_capi.test_misc.Test_testcapi.test_gc_control) ... ok
+test_gc_visit_objects_basic (test.test_capi.test_misc.Test_testcapi.test_gc_visit_objects_basic) ... ok
+test_gc_visit_objects_exit_early (test.test_capi.test_misc.Test_testcapi.test_gc_visit_objects_exit_early) ... ok
+test_gc_visit_objects_frozen (test.test_capi.test_misc.Test_testcapi.test_gc_visit_objects_frozen) ... ok
+test_get_statictype_slots (test.test_capi.test_misc.Test_testcapi.test_get_statictype_slots) ... ok
+test_get_type_dict (test.test_capi.test_misc.Test_testcapi.test_get_type_dict) ... ok
+test_immortal_builtins (test.test_capi.test_misc.Test_testcapi.test_immortal_builtins) ... ok
+test_immortal_small_ints (test.test_capi.test_misc.Test_testcapi.test_immortal_small_ints) ... ok
+test_interp_view_after_shutdown (test.test_capi.test_misc.Test_testcapi.test_interp_view_after_shutdown) ... ok
+test_interpreter_guards (test.test_capi.test_misc.Test_testcapi.test_interpreter_guards) ... ok
+test_lazy_hash_inheritance (test.test_capi.test_misc.Test_testcapi.test_lazy_hash_inheritance) ... ok
+test_list_api (test.test_capi.test_misc.Test_testcapi.test_list_api) ... ok
+test_macros (test.test_capi.test_misc.Test_testcapi.test_macros) ... ok
+test_pep3118_obsolete_write_locks (test.test_capi.test_misc.Test_testcapi.test_pep3118_obsolete_write_locks) ... ok
+test_py_identifier (test.test_capi.test_misc.Test_testcapi.test_py_identifier) ... ok
+test_py_set_immortal (test.test_capi.test_misc.Test_testcapi.test_py_set_immortal) ... ok
+test_py_try_inc_ref (test.test_capi.test_misc.Test_testcapi.test_py_try_inc_ref) ... ok
+test_pymem_alloc0 (test.test_capi.test_misc.Test_testcapi.test_pymem_alloc0) ... ok
+test_pymem_setallocators (test.test_capi.test_misc.Test_testcapi.test_pymem_setallocators) ... ok
+test_pymem_setrawallocators (test.test_capi.test_misc.Test_testcapi.test_pymem_setrawallocators) ... ok
+test_pyobject_new (test.test_capi.test_misc.Test_testcapi.test_pyobject_new) ... ok
+test_pyobject_setallocators (test.test_capi.test_misc.Test_testcapi.test_pyobject_setallocators) ... ok
+test_pythread_tss_key_state (test.test_capi.test_misc.Test_testcapi.test_pythread_tss_key_state) ... ok
+test_reftracer (test.test_capi.test_misc.Test_testcapi.test_reftracer) ... ok
+test_set_type_size (test.test_capi.test_misc.Test_testcapi.test_set_type_size) ... ok
+test_sizeof_c_types (test.test_capi.test_misc.Test_testcapi.test_sizeof_c_types) ... ok
+test_soft_deprecated_macros (test.test_capi.test_misc.Test_testcapi.test_soft_deprecated_macros) ... ok
+test_string_to_double (test.test_capi.test_misc.Test_testcapi.test_string_to_double) ... ok
+test_structseq_newtype_doesnt_leak (test.test_capi.test_misc.Test_testcapi.test_structseq_newtype_doesnt_leak) ... ok
+test_structseq_newtype_null_descr_doc (test.test_capi.test_misc.Test_testcapi.test_structseq_newtype_null_descr_doc) ... ok
+test_thread_state_ensure_crossinterp (test.test_capi.test_misc.Test_testcapi.test_thread_state_ensure_crossinterp) ... ok
+test_thread_state_ensure_detached_gilstate (test.test_capi.test_misc.Test_testcapi.test_thread_state_ensure_detached_gilstate) ... ok
+test_thread_state_ensure_detachment (test.test_capi.test_misc.Test_testcapi.test_thread_state_ensure_detachment) ... ok
+test_thread_state_ensure_nested (test.test_capi.test_misc.Test_testcapi.test_thread_state_ensure_nested) ... ok
+test_thread_state_ensure_view (test.test_capi.test_misc.Test_testcapi.test_thread_state_ensure_view) ... ok
+test_thread_state_release_with_destructor (test.test_capi.test_misc.Test_testcapi.test_thread_state_release_with_destructor) ... ok
+test_tstate_capi (test.test_capi.test_misc.Test_testcapi.test_tstate_capi) ... ok
+test_type_from_ephemeral_spec (test.test_capi.test_misc.Test_testcapi.test_type_from_ephemeral_spec) ... ok
+test_version_api_data (test.test_capi.test_misc.Test_testcapi.test_version_api_data) ... ok
+test_w_code_invalid (test.test_capi.test_misc.Test_testcapi.test_w_code_invalid) ... ok
+test_weakref_capi (test.test_capi.test_misc.Test_testcapi.test_weakref_capi) ... ok
+test_widechar (test.test_capi.test_misc.Test_testcapi.test_widechar) ... ok
+test_with_docstring (test.test_capi.test_misc.Test_testcapi.test_with_docstring)
+This is a pretty normal docstring. ... ok
+test_bit_length (test.test_capi.test_misc.Test_testinternalcapi.test_bit_length) ... ok
+test_bswap (test.test_capi.test_misc.Test_testinternalcapi.test_bswap) ... ok
+test_bytes_find (test.test_capi.test_misc.Test_testinternalcapi.test_bytes_find) ... ok
+test_critical_sections (test.test_capi.test_misc.Test_testinternalcapi.test_critical_sections) ... ok
+test_critical_sections_gc (test.test_capi.test_misc.Test_testinternalcapi.test_critical_sections_gc) ... ok
+test_critical_sections_nest (test.test_capi.test_misc.Test_testinternalcapi.test_critical_sections_nest) ... ok
+test_critical_sections_stw (test.test_capi.test_misc.Test_testinternalcapi.test_critical_sections_stw) ... ok
+test_critical_sections_suspend (test.test_capi.test_misc.Test_testinternalcapi.test_critical_sections_suspend) ... ok
+test_critical_sections_threads (test.test_capi.test_misc.Test_testinternalcapi.test_critical_sections_threads) ... ok
+test_edit_cost (test.test_capi.test_misc.Test_testinternalcapi.test_edit_cost) ... ok
+test_hashtable (test.test_capi.test_misc.Test_testinternalcapi.test_hashtable) ... ok
+test_interp_guard_countdown (test.test_capi.test_misc.Test_testinternalcapi.test_interp_guard_countdown) ... ok
+test_interp_view_countdown (test.test_capi.test_misc.Test_testinternalcapi.test_interp_view_countdown) ... ok
+test_long_numbits (test.test_capi.test_misc.Test_testinternalcapi.test_long_numbits) ... ok
+test_popcount (test.test_capi.test_misc.Test_testinternalcapi.test_popcount) ... ok
+test_stop_the_world (test.test_capi.test_misc.Test_testinternalcapi.test_stop_the_world) ... ok
+test_thread_state_ensure_from_view_interp_switch (test.test_capi.test_misc.Test_testinternalcapi.test_thread_state_ensure_from_view_interp_switch) ... ok
+test_threadstate_set_stack_protection (test.test_capi.test_misc.Test_testinternalcapi.test_threadstate_set_stack_protection) ... ok
+test_tokenizer_source (test.test_capi.test_misc.Test_testinternalcapi.test_tokenizer_source) ... ok
+test_tokenizer_source_discard (test.test_capi.test_misc.Test_testinternalcapi.test_tokenizer_source_discard) ... ok
+test_tstate_capi (test.test_capi.test_misc.Test_testinternalcapi.test_tstate_capi) ... ok
+test_PyOS_mystricmp (test.test_capi.test_misc.Test_testlimitedcapi.test_PyOS_mystricmp) ... ok
+test_PyOS_mystrnicmp (test.test_capi.test_misc.Test_testlimitedcapi.test_PyOS_mystrnicmp) ... ok
+test_alignof_max_align_t (test.test_capi.test_misc.Test_testlimitedcapi.test_alignof_max_align_t) ... ok
+test_constants (test.test_capi.test_misc.Test_testlimitedcapi.test_constants) ... ok
+test_decref_doesnt_leak (test.test_capi.test_misc.Test_testlimitedcapi.test_decref_doesnt_leak) ... ok
+test_frozenset_add_in_capi (test.test_capi.test_misc.Test_testlimitedcapi.test_frozenset_add_in_capi) ... ok
+test_frozenset_add_in_capi_tracking (test.test_capi.test_misc.Test_testlimitedcapi.test_frozenset_add_in_capi_tracking) ... ok
+test_frozenset_add_in_capi_tracking_immutable (test.test_capi.test_misc.Test_testlimitedcapi.test_frozenset_add_in_capi_tracking_immutable) ... ok
+test_incref_decref_API (test.test_capi.test_misc.Test_testlimitedcapi.test_incref_decref_API) ... ok
+test_incref_doesnt_leak (test.test_capi.test_misc.Test_testlimitedcapi.test_incref_doesnt_leak) ... ok
+test_long_and_overflow (test.test_capi.test_misc.Test_testlimitedcapi.test_long_and_overflow)
+Test the PyLong_AsLongAndOverflow API. ... ok
+test_long_api (test.test_capi.test_misc.Test_testlimitedcapi.test_long_api) ... ok
+test_long_as_double (test.test_capi.test_misc.Test_testlimitedcapi.test_long_as_double) ... ok
+test_long_as_size_t (test.test_capi.test_misc.Test_testlimitedcapi.test_long_as_size_t)
+Test the PyLong_As{Size,Ssize}_t API. ... ok
+test_long_as_unsigned_long_long_mask (test.test_capi.test_misc.Test_testlimitedcapi.test_long_as_unsigned_long_long_mask) ... ok
+test_long_long_and_overflow (test.test_capi.test_misc.Test_testlimitedcapi.test_long_long_and_overflow)
+Test the PyLong_AsLongLongAndOverflow API. ... ok
+test_longlong_api (test.test_capi.test_misc.Test_testlimitedcapi.test_longlong_api) ... ok
+test_min_max_abs_macros (test.test_capi.test_misc.Test_testlimitedcapi.test_min_max_abs_macros) ... ok
+test_py_clear (test.test_capi.test_misc.Test_testlimitedcapi.test_py_clear) ... ok
+test_py_is_funcs (test.test_capi.test_misc.Test_testlimitedcapi.test_py_is_funcs) ... ok
+test_py_is_macros (test.test_capi.test_misc.Test_testlimitedcapi.test_py_is_macros) ... ok
+test_py_setref (test.test_capi.test_misc.Test_testlimitedcapi.test_py_setref) ... ok
+test_refcount_funcs (test.test_capi.test_misc.Test_testlimitedcapi.test_refcount_funcs) ... ok
+test_refcount_macros (test.test_capi.test_misc.Test_testlimitedcapi.test_refcount_macros) ... ok
+test_set_contains_does_not_convert_unhashable_key (test.test_capi.test_misc.Test_testlimitedcapi.test_set_contains_does_not_convert_unhashable_key) ... ok
+test_string_from_format (test.test_capi.test_misc.Test_testlimitedcapi.test_string_from_format) ... ok
+test_unicode_compare_with_ascii (test.test_capi.test_misc.Test_testlimitedcapi.test_unicode_compare_with_ascii) ... ok
+test_widechar (test.test_capi.test_misc.Test_testlimitedcapi.test_widechar) ... ok
+test_xdecref_doesnt_leak (test.test_capi.test_misc.Test_testlimitedcapi.test_xdecref_doesnt_leak) ... ok
+test_xincref_doesnt_leak (test.test_capi.test_misc.Test_testlimitedcapi.test_xincref_doesnt_leak) ... ok
+test_funcandkeywords (test.test_capi.test_modsupport.TestModsupport.test_funcandkeywords) ... ok
+test_pyarg_parsearray (test.test_capi.test_modsupport.TestModsupport.test_pyarg_parsearray) ... ok
+test_large_major_version (test.test_capi.test_modsupport.Test_ABIInfo_Check.test_large_major_version) ... ok
+test_large_minor_version (test.test_capi.test_modsupport.Test_ABIInfo_Check.test_large_minor_version) ... ok
+test_negative_freethreading (test.test_capi.test_modsupport.Test_ABIInfo_Check.test_negative_freethreading) ... ok
+test_negative_internal (test.test_capi.test_modsupport.Test_ABIInfo_Check.test_negative_internal) ... ok
+test_negative_regular (test.test_capi.test_modsupport.Test_ABIInfo_Check.test_negative_regular) ... ok
+test_negative_stable (test.test_capi.test_modsupport.Test_ABIInfo_Check.test_negative_stable) ... ok
+test_positive_freethreading (test.test_capi.test_modsupport.Test_ABIInfo_Check.test_positive_freethreading) ... ok
+test_positive_internal (test.test_capi.test_modsupport.Test_ABIInfo_Check.test_positive_internal) ... ok
+test_positive_regular (test.test_capi.test_modsupport.Test_ABIInfo_Check.test_positive_regular) ... ok
+test_positive_stable (test.test_capi.test_modsupport.Test_ABIInfo_Check.test_positive_stable) ... ok
+test_zero (test.test_capi.test_modsupport.Test_ABIInfo_Check.test_zero) ... ok
+test_bad_abiinfo (test.test_capi.test_module.TestModFromSlotsAndSpec.test_bad_abiinfo)
+Slots that incompatible ABI is rejected ... ok
+test_create (test.test_capi.test_module.TestModFromSlotsAndSpec.test_create) ... ok
+test_def_multiple_exec (test.test_capi.test_module.TestModFromSlotsAndSpec.test_def_multiple_exec)
+PyModule_Exec runs all exec slots of PyModuleDef-defined module ... ok
+test_def_slot (test.test_capi.test_module.TestModFromSlotsAndSpec.test_def_slot)
+Slots cannot contradict PyModuleDef fields ... ok
+test_def_slot_parrot (test.test_capi.test_module.TestModFromSlotsAndSpec.test_def_slot_parrot)
+Slots with same value as PyModuleDef fields are allowed ... ok
+test_def_token (test.test_capi.test_module.TestModFromSlotsAndSpec.test_def_token)
+In PyModuleDef-defined modules, the def is the token ... ok
+test_doc (test.test_capi.test_module.TestModFromSlotsAndSpec.test_doc) ... ok
+test_empty (test.test_capi.test_module.TestModFromSlotsAndSpec.test_empty) ... ok
+test_exec (test.test_capi.test_module.TestModFromSlotsAndSpec.test_exec) ... ok
+test_gc (test.test_capi.test_module.TestModFromSlotsAndSpec.test_gc) ... ok
+test_get_state_size (test.test_capi.test_module.TestModFromSlotsAndSpec.test_get_state_size) ... ok
+test_methods (test.test_capi.test_module.TestModFromSlotsAndSpec.test_methods) ... ok
+test_minimal (test.test_capi.test_module.TestModFromSlotsAndSpec.test_minimal) ... ok
+test_multiple_abiinfo (test.test_capi.test_module.TestModFromSlotsAndSpec.test_multiple_abiinfo)
+Slots that Py_mod_abiinfo can be repeated ... ok
+test_name (test.test_capi.test_module.TestModFromSlotsAndSpec.test_name) ... ok
+test_none_spec (test.test_capi.test_module.TestModFromSlotsAndSpec.test_none_spec) ... ok
+test_null_def_slot (test.test_capi.test_module.TestModFromSlotsAndSpec.test_null_def_slot)
+Slots that replace PyModuleDef fields can't be NULL ... ok
+test_null_slots (test.test_capi.test_module.TestModFromSlotsAndSpec.test_null_slots) ... ok
+test_repeated_def_slot (test.test_capi.test_module.TestModFromSlotsAndSpec.test_repeated_def_slot)
+Slots that replace PyModuleDef fields can't be repeated ... ok
+test_size (test.test_capi.test_module.TestModFromSlotsAndSpec.test_size) ... ok
+test_token (test.test_capi.test_module.TestModFromSlotsAndSpec.test_token) ... ok
+test_asssizet (test.test_capi.test_number.CAPITest.test_asssizet) ... ok
+test_binary_ops (test.test_capi.test_number.CAPITest.test_binary_ops) ... ok
+test_check (test.test_capi.test_number.CAPITest.test_check) ... ok
+test_float (test.test_capi.test_number.CAPITest.test_float) ... ok
+test_index (test.test_capi.test_number.CAPITest.test_index) ... ok
+test_long (test.test_capi.test_number.CAPITest.test_long) ... ok
+test_misc_add (test.test_capi.test_number.CAPITest.test_misc_add) ... ok
+test_misc_multiply (test.test_capi.test_number.CAPITest.test_misc_multiply) ... ok
+test_misc_power (test.test_capi.test_number.CAPITest.test_misc_power) ... ok
+test_tobase (test.test_capi.test_number.CAPITest.test_tobase) ... ok
+test_unary_ops (test.test_capi.test_number.CAPITest.test_unary_ops) ... ok
+test_decref_delayed (test.test_capi.test_object.CAPITest.test_decref_delayed) ... skipped "resource 'cpu' is not enabled"
+test_decref_delayed_immortal (test.test_capi.test_object.CAPITest.test_decref_delayed_immortal) ... ok
+test_decref_freed_object (test.test_capi.test_object.CAPITest.test_decref_freed_object) ... skipped 'need _testcapi.decref_freed_object()'
+test_is_unique_temporary (test.test_capi.test_object.CAPITest.test_is_unique_temporary) ... ok
+test_negative_refcount (test.test_capi.test_object.CAPITest.test_negative_refcount) ... skipped 'need _testcapi.negative_refcount()'
+test_pyobject_dump (test.test_capi.test_object.CAPITest.test_pyobject_dump) ... ok
+test_ClearWeakRefsNoCallbacks (test.test_capi.test_object.ClearWeakRefsNoCallbacksTest.test_ClearWeakRefsNoCallbacks)
+Ensure PyUnstable_Object_ClearWeakRefsNoCallbacks works ... ok
+test_ClearWeakRefsNoCallbacks_no_weakref_support (test.test_capi.test_object.ClearWeakRefsNoCallbacksTest.test_ClearWeakRefsNoCallbacks_no_weakref_support)
+Don't fail on objects that don't support weakrefs ... ok
+test_enable_deferred_refcount (test.test_capi.test_object.EnableDeferredRefcountingTest.test_enable_deferred_refcount) ... skipped "resource 'cpu' is not enabled"
+test_get_constant (test.test_capi.test_object.GetConstantTest.test_get_constant) ... ok
+test_get_constant_borrowed (test.test_capi.test_object.GetConstantTest.test_get_constant_borrowed) ... ok
+test_is_uniquely_referenced (test.test_capi.test_object.IsUniquelyReferencedTest.test_is_uniquely_referenced) ... ok
+testPyObjectPrintNULL (test.test_capi.test_object.PrintTest.testPyObjectPrintNULL) ... ok
+testPyObjectPrintNoRefObject (test.test_capi.test_object.PrintTest.testPyObjectPrintNoRefObject) ... ok
+testPyObjectPrintOSError (test.test_capi.test_object.PrintTest.testPyObjectPrintOSError) ... ok
+testPyObjectPrintObject (test.test_capi.test_object.PrintTest.testPyObjectPrintObject) ... ok
+test_destroy_traced_for_trashcan_deferred_objects (test.test_capi.test_object.RefTracerTest.test_destroy_traced_for_trashcan_deferred_objects) ... skipped "resource 'cpu' is not enabled"
+test_pysentinel_new (test.test_capi.test_object.SentinelTest.test_pysentinel_new) ... ok
+test_invalidate_object (test.test_capi.test_opt.TestExecutorInvalidation.test_invalidate_object) ... ok
+test_prev_executor_freed_while_tracing (test.test_capi.test_opt.TestExecutorInvalidation.test_prev_executor_freed_while_tracing) ... ok
+test_sys__clear_internal_caches (test.test_capi.test_opt.TestExecutorInvalidation.test_sys__clear_internal_caches) ... ok
+test_uop_optimizer_invalidation (test.test_capi.test_opt.TestExecutorInvalidation.test_uop_optimizer_invalidation) ... ok
+test_basic_loop (test.test_capi.test_opt.TestUops.test_basic_loop) ... ok
+test_branch_coincident_targets (test.test_capi.test_opt.TestUops.test_branch_coincident_targets) ... ok
+test_branch_taken (test.test_capi.test_opt.TestUops.test_branch_taken) ... ok
+test_call_py_ex (test.test_capi.test_opt.TestUops.test_call_py_ex) ... ok
+test_call_py_exact_args (test.test_capi.test_opt.TestUops.test_call_py_exact_args) ... FAIL
+test_extended_arg (test.test_capi.test_opt.TestUops.test_extended_arg)
+Check EXTENDED_ARG handling in superblock creation ... ok
+test_for_iter_list (test.test_capi.test_opt.TestUops.test_for_iter_list) ... ok
+test_for_iter_range (test.test_capi.test_opt.TestUops.test_for_iter_range) ... ok
+test_for_iter_tier_two (test.test_capi.test_opt.TestUops.test_for_iter_tier_two) ... ok
+test_for_iter_tuple (test.test_capi.test_opt.TestUops.test_for_iter_tuple) ... ok
+test_get_iter_gen (test.test_capi.test_opt.TestUops.test_get_iter_gen) ... ok
+test_get_iter_list (test.test_capi.test_opt.TestUops.test_get_iter_list) ... ok
+test_get_iter_trad (test.test_capi.test_opt.TestUops.test_get_iter_trad) ... ok
+test_jump_backward (test.test_capi.test_opt.TestUops.test_jump_backward) ... ok
+test_jump_backward_extended_arg (test.test_capi.test_opt.TestUops.test_jump_backward_extended_arg) ... ok
+test_jump_forward (test.test_capi.test_opt.TestUops.test_jump_forward) ... ok
+test_list_edge_case (test.test_capi.test_opt.TestUops.test_list_edge_case) ... ok
+test_pop_jump_if_false (test.test_capi.test_opt.TestUops.test_pop_jump_if_false) ... ok
+test_pop_jump_if_none (test.test_capi.test_opt.TestUops.test_pop_jump_if_none) ... ok
+test_pop_jump_if_not_none (test.test_capi.test_opt.TestUops.test_pop_jump_if_not_none) ... ok
+test_pop_jump_if_true (test.test_capi.test_opt.TestUops.test_pop_jump_if_true) ... ok
+test_resume (test.test_capi.test_opt.TestUops.test_resume) ... ok
+test_unspecialized_unpack (test.test_capi.test_opt.TestUops.test_unspecialized_unpack) ... ok
+test_143026 (test.test_capi.test_opt.TestUopsOptimization.test_143026) ... ok
+test_143092 (test.test_capi.test_opt.TestUopsOptimization.test_143092) ... ok
+test_143183 (test.test_capi.test_opt.TestUopsOptimization.test_143183) ... ok
+test_143358 (test.test_capi.test_opt.TestUopsOptimization.test_143358) ... ok
+test_144068_daemon_thread_jit_cleanup (test.test_capi.test_opt.TestUopsOptimization.test_144068_daemon_thread_jit_cleanup) ... ok
+test_149335_trace_buffer_guard (test.test_capi.test_opt.TestUopsOptimization.test_149335_trace_buffer_guard) ... ok
+test_add_unicode_propagation (test.test_capi.test_opt.TestUopsOptimization.test_add_unicode_propagation) ... ok
+test_attr_promotion_failure (test.test_capi.test_opt.TestUopsOptimization.test_attr_promotion_failure) ... ok
+test_attribute_changes_are_watched (test.test_capi.test_opt.TestUopsOptimization.test_attribute_changes_are_watched) ... ok
+test_binary_op_constant_evaluate (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_constant_evaluate) ... ok
+test_binary_op_extend_float_long_add_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_extend_float_long_add_refcount_elimination) ... ok
+test_binary_op_extend_float_result_enables_inplace_multiply (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_extend_float_result_enables_inplace_multiply) ... ok
+test_binary_op_extend_guard_elimination (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_extend_guard_elimination) ... ok
+test_binary_op_extend_list_concat_type_propagation (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_extend_list_concat_type_propagation) ... ok
+test_binary_op_extend_partial_guard_lhs_known (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_extend_partial_guard_lhs_known) ... ok
+test_binary_op_extend_partial_guard_rhs_known (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_extend_partial_guard_rhs_known) ... ok
+test_binary_op_extend_tuple_concat_type_propagation (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_extend_tuple_concat_type_propagation) ... ok
+test_binary_op_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_refcount_elimination) ... ok
+test_binary_op_subscr_constant_frozendict_known_hash (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_subscr_constant_frozendict_known_hash) ... ok
+test_binary_op_subscr_defaultdict_known_hash (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_subscr_defaultdict_known_hash) ... ok
+test_binary_op_subscr_dict (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_subscr_dict) ... ok
+test_binary_op_subscr_dict_known_hash (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_subscr_dict_known_hash) ... ok
+test_binary_op_subscr_init_frame (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_subscr_init_frame) ... ok
+test_binary_op_subscr_str_int (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_subscr_str_int) ... ok
+test_binary_op_subscr_tuple_int (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_subscr_tuple_int) ... ok
+test_binary_op_subscr_ustr_int (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_subscr_ustr_int) ... ok
+test_binary_subcsr_str_int_narrows_to_str (test.test_capi.test_opt.TestUopsOptimization.test_binary_subcsr_str_int_narrows_to_str) ... ok
+test_binary_subcsr_ustr_int_narrows_to_str (test.test_capi.test_opt.TestUopsOptimization.test_binary_subcsr_ustr_int_narrows_to_str) ... ok
+test_binary_subscr_frozendict_const_fold (test.test_capi.test_opt.TestUopsOptimization.test_binary_subscr_frozendict_const_fold) ... ok
+test_binary_subscr_frozendict_lowering (test.test_capi.test_opt.TestUopsOptimization.test_binary_subscr_frozendict_lowering) ... ok
+test_binary_subscr_list_int (test.test_capi.test_opt.TestUopsOptimization.test_binary_subscr_list_int) ... ok
+test_binary_subscr_list_slice (test.test_capi.test_opt.TestUopsOptimization.test_binary_subscr_list_slice) ... FAIL
+test_binary_subscr_tuple_int (test.test_capi.test_opt.TestUopsOptimization.test_binary_subscr_tuple_int) ... ok
+test_builtins_guard_emitted_once_per_frame (test.test_capi.test_opt.TestUopsOptimization.test_builtins_guard_emitted_once_per_frame) ... FAIL
+test_cached_attributes (test.test_capi.test_opt.TestUopsOptimization.test_cached_attributes) ... ok
+test_cached_attributes_fixed_version_tag (test.test_capi.test_opt.TestUopsOptimization.test_cached_attributes_fixed_version_tag) ... ok
+test_cached_load_special (test.test_capi.test_opt.TestUopsOptimization.test_cached_load_special) ... ok
+test_call_builtin_class (test.test_capi.test_opt.TestUopsOptimization.test_call_builtin_class) ... ok
+test_call_builtin_fast (test.test_capi.test_opt.TestUopsOptimization.test_call_builtin_fast) ... ok
+test_call_builtin_fast_extra_flags (test.test_capi.test_opt.TestUopsOptimization.test_call_builtin_fast_extra_flags) ... ok
+test_call_builtin_fast_with_keywords (test.test_capi.test_opt.TestUopsOptimization.test_call_builtin_fast_with_keywords) ... ok
+test_call_builtin_fast_with_keywords_extra_flags (test.test_capi.test_opt.TestUopsOptimization.test_call_builtin_fast_with_keywords_extra_flags) ... ok
+test_call_builtin_o (test.test_capi.test_opt.TestUopsOptimization.test_call_builtin_o) ... ok
+test_call_builtin_o_extra_flags (test.test_capi.test_opt.TestUopsOptimization.test_call_builtin_o_extra_flags) ... ok
+test_call_intrinsic_1 (test.test_capi.test_opt.TestUopsOptimization.test_call_intrinsic_1) ... ok
+test_call_intrinsic_2 (test.test_capi.test_opt.TestUopsOptimization.test_call_intrinsic_2) ... ok
+test_call_isinstance_guards_removed (test.test_capi.test_opt.TestUopsOptimization.test_call_isinstance_guards_removed) ... ok
+test_call_isinstance_is_false (test.test_capi.test_opt.TestUopsOptimization.test_call_isinstance_is_false) ... ok
+test_call_isinstance_is_true (test.test_capi.test_opt.TestUopsOptimization.test_call_isinstance_is_true) ... ok
+test_call_isinstance_metaclass (test.test_capi.test_opt.TestUopsOptimization.test_call_isinstance_metaclass) ... ok
+test_call_isinstance_subclass (test.test_capi.test_opt.TestUopsOptimization.test_call_isinstance_subclass) ... ok
+test_call_isinstance_tuple_of_classes (test.test_capi.test_opt.TestUopsOptimization.test_call_isinstance_tuple_of_classes) ... ok
+test_call_isinstance_unknown_object (test.test_capi.test_opt.TestUopsOptimization.test_call_isinstance_unknown_object) ... ok
+test_call_kw (test.test_capi.test_opt.TestUopsOptimization.test_call_kw) ... ok
+test_call_kw_bound_method (test.test_capi.test_opt.TestUopsOptimization.test_call_kw_bound_method) ... ok
+test_call_len (test.test_capi.test_opt.TestUopsOptimization.test_call_len) ... ok
+test_call_len_known_length (test.test_capi.test_opt.TestUopsOptimization.test_call_len_known_length) ... ok
+test_call_len_known_length_small_int (test.test_capi.test_opt.TestUopsOptimization.test_call_len_known_length_small_int) ... ok
+test_call_len_string_frozen_set_dict (test.test_capi.test_opt.TestUopsOptimization.test_call_len_string_frozen_set_dict) ... ok
+test_call_list_append (test.test_capi.test_opt.TestUopsOptimization.test_call_list_append) ... ok
+test_call_list_append_pop_top (test.test_capi.test_opt.TestUopsOptimization.test_call_list_append_pop_top) ... ok
+test_call_method_descriptor_fast (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_fast) ... ok
+test_call_method_descriptor_fast_extra_flags (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_fast_extra_flags) ... ok
+test_call_method_descriptor_fast_with_keywords (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_fast_with_keywords) ... ok
+test_call_method_descriptor_fast_with_keywords_extra_flags (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_fast_with_keywords_extra_flags) ... ok
+test_call_method_descriptor_noargs (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_noargs) ... FAIL
+test_call_method_descriptor_noargs_extra_flags (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_noargs_extra_flags) ... ok
+test_call_method_descriptor_o (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_o) ... ok
+test_call_method_descriptor_o_extra_flags (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_o_extra_flags) ... ok
+test_call_py_exact_args (test.test_capi.test_opt.TestUopsOptimization.test_call_py_exact_args) ... FAIL
+test_call_py_exact_args_disappearing (test.test_capi.test_opt.TestUopsOptimization.test_call_py_exact_args_disappearing) ... ok
+test_call_str_1 (test.test_capi.test_opt.TestUopsOptimization.test_call_str_1) ... ok
+test_call_str_1_pop_top (test.test_capi.test_opt.TestUopsOptimization.test_call_str_1_pop_top) ... ok
+test_call_str_1_result_is_const_for_str_input (test.test_capi.test_opt.TestUopsOptimization.test_call_str_1_result_is_const_for_str_input) ... ok
+test_call_str_1_result_is_str (test.test_capi.test_opt.TestUopsOptimization.test_call_str_1_result_is_str) ... ok
+test_call_super (test.test_capi.test_opt.TestUopsOptimization.test_call_super) ... ok
+test_call_tuple_1 (test.test_capi.test_opt.TestUopsOptimization.test_call_tuple_1) ... ok
+test_call_tuple_1_pop_top (test.test_capi.test_opt.TestUopsOptimization.test_call_tuple_1_pop_top) ... ok
+test_call_tuple_1_result_is_tuple (test.test_capi.test_opt.TestUopsOptimization.test_call_tuple_1_result_is_tuple) ... ok
+test_call_tuple_1_result_propagates_for_tuple_input (test.test_capi.test_opt.TestUopsOptimization.test_call_tuple_1_result_propagates_for_tuple_input) ... ok
+test_call_type_1_guards_removed (test.test_capi.test_opt.TestUopsOptimization.test_call_type_1_guards_removed) ... ok
+test_call_type_1_known_type (test.test_capi.test_opt.TestUopsOptimization.test_call_type_1_known_type) ... ok
+test_call_type_1_pop_top (test.test_capi.test_opt.TestUopsOptimization.test_call_type_1_pop_top) ... ok
+test_call_type_1_result_is_const (test.test_capi.test_opt.TestUopsOptimization.test_call_type_1_result_is_const) ... ok
+test_check_is_not_py_callable (test.test_capi.test_opt.TestUopsOptimization.test_check_is_not_py_callable) ... ok
+test_check_is_not_py_callable_ex (test.test_capi.test_opt.TestUopsOptimization.test_check_is_not_py_callable_ex) ... ok
+test_check_is_not_py_callable_kw (test.test_capi.test_opt.TestUopsOptimization.test_check_is_not_py_callable_kw) ... ok
+test_check_recursion_limit_deduplicated (test.test_capi.test_opt.TestUopsOptimization.test_check_recursion_limit_deduplicated) ... ok
+test_cold_exit_on_init_cleanup_frame (test.test_capi.test_opt.TestUopsOptimization.test_cold_exit_on_init_cleanup_frame) ... ok
+test_combine_stack_space_checks_large_framesize (test.test_capi.test_opt.TestUopsOptimization.test_combine_stack_space_checks_large_framesize) ... skipped 'reopen when we combine multiple stack space checks into one'
+test_combine_stack_space_checks_nested (test.test_capi.test_opt.TestUopsOptimization.test_combine_stack_space_checks_nested) ... ok
+test_combine_stack_space_checks_recursion (test.test_capi.test_opt.TestUopsOptimization.test_combine_stack_space_checks_recursion) ... skipped 'reopen when we combine multiple stack space checks into one'
+test_combine_stack_space_checks_sequential (test.test_capi.test_opt.TestUopsOptimization.test_combine_stack_space_checks_sequential) ... ok
+test_combine_stack_space_checks_several_calls (test.test_capi.test_opt.TestUopsOptimization.test_combine_stack_space_checks_several_calls) ... ok
+test_combine_stack_space_checks_several_calls_different_order (test.test_capi.test_opt.TestUopsOptimization.test_combine_stack_space_checks_several_calls_different_order) ... ok
+test_combine_stack_space_complex (test.test_capi.test_opt.TestUopsOptimization.test_combine_stack_space_complex) ... skipped 'reopen when we combine multiple stack space checks into one'
+test_compare_float_eq_narrows_to_constant (test.test_capi.test_opt.TestUopsOptimization.test_compare_float_eq_narrows_to_constant) ... ok
+test_compare_float_ne_narrows_to_constant (test.test_capi.test_opt.TestUopsOptimization.test_compare_float_ne_narrows_to_constant) ... ok
+test_compare_int_eq_narrows_to_constant (test.test_capi.test_opt.TestUopsOptimization.test_compare_int_eq_narrows_to_constant) ... ok
+test_compare_int_ne_narrows_to_constant (test.test_capi.test_opt.TestUopsOptimization.test_compare_int_ne_narrows_to_constant) ... ok
+test_compare_op_float_insert_two_load_const_inline_borrow (test.test_capi.test_opt.TestUopsOptimization.test_compare_op_float_insert_two_load_const_inline_borrow) ... ok
+test_compare_op_int_insert_two_load_const_inline_borrow (test.test_capi.test_opt.TestUopsOptimization.test_compare_op_int_insert_two_load_const_inline_borrow) ... ok
+test_compare_op_pop_two_load_const_inline_borrow (test.test_capi.test_opt.TestUopsOptimization.test_compare_op_pop_two_load_const_inline_borrow) ... ok
+test_compare_op_str_insert_two_load_const_inline_borrow (test.test_capi.test_opt.TestUopsOptimization.test_compare_op_str_insert_two_load_const_inline_borrow) ... ok
+test_compare_op_type_propagation_float (test.test_capi.test_opt.TestUopsOptimization.test_compare_op_type_propagation_float) ... ok
+test_compare_op_type_propagation_float_partial (test.test_capi.test_opt.TestUopsOptimization.test_compare_op_type_propagation_float_partial) ... ok
+test_compare_op_type_propagation_int (test.test_capi.test_opt.TestUopsOptimization.test_compare_op_type_propagation_int) ... ok
+test_compare_op_type_propagation_int_partial (test.test_capi.test_opt.TestUopsOptimization.test_compare_op_type_propagation_int_partial) ... ok
+test_compare_op_type_propagation_unicode (test.test_capi.test_opt.TestUopsOptimization.test_compare_op_type_propagation_unicode) ... ok
+test_comprehension (test.test_capi.test_opt.TestUopsOptimization.test_comprehension) ... ok
+test_constant_fold_tuple (test.test_capi.test_opt.TestUopsOptimization.test_constant_fold_tuple) ... ok
+test_contains_op (test.test_capi.test_opt.TestUopsOptimization.test_contains_op) ... ok
+test_contains_op_dict (test.test_capi.test_opt.TestUopsOptimization.test_contains_op_dict) ... ok
+test_contains_op_frozendict_const_fold (test.test_capi.test_opt.TestUopsOptimization.test_contains_op_frozendict_const_fold) ... ok
+test_contains_op_frozenset_const_fold (test.test_capi.test_opt.TestUopsOptimization.test_contains_op_frozenset_const_fold) ... ok
+test_contains_op_pop_two_load_const_inline_borrow (test.test_capi.test_opt.TestUopsOptimization.test_contains_op_pop_two_load_const_inline_borrow) ... ok
+test_contains_op_set (test.test_capi.test_opt.TestUopsOptimization.test_contains_op_set) ... ok
+test_decref_escapes (test.test_capi.test_opt.TestUopsOptimization.test_decref_escapes) ... ok
+test_dict_merge (test.test_capi.test_opt.TestUopsOptimization.test_dict_merge) ... ok
+test_dict_subclass_subscr (test.test_capi.test_opt.TestUopsOptimization.test_dict_subclass_subscr) ... ok
+test_dict_subclass_subscr_with_override (test.test_capi.test_opt.TestUopsOptimization.test_dict_subclass_subscr_with_override) ... ok
+test_dict_subscr_probable_type (test.test_capi.test_opt.TestUopsOptimization.test_dict_subscr_probable_type) ... ok
+test_dict_update (test.test_capi.test_opt.TestUopsOptimization.test_dict_update) ... ok
+test_enter_executor_valid_op_arg (test.test_capi.test_opt.TestUopsOptimization.test_enter_executor_valid_op_arg) ... ok
+test_executor_side_exits_create_another_executor (test.test_capi.test_opt.TestUopsOptimization.test_executor_side_exits_create_another_executor) ... ok
+test_float_add_chain_both_unique (test.test_capi.test_opt.TestUopsOptimization.test_float_add_chain_both_unique) ... FAIL
+test_float_add_constant_propagation (test.test_capi.test_opt.TestUopsOptimization.test_float_add_constant_propagation) ... ok
+test_float_add_inplace_unique_lhs (test.test_capi.test_opt.TestUopsOptimization.test_float_add_inplace_unique_lhs) ... ok
+test_float_add_inplace_unique_rhs (test.test_capi.test_opt.TestUopsOptimization.test_float_add_inplace_unique_rhs) ... ok
+test_float_add_no_inplace_non_unique (test.test_capi.test_opt.TestUopsOptimization.test_float_add_no_inplace_non_unique) ... ok
+test_float_cmp_op_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_float_cmp_op_refcount_elimination) ... ok
+test_float_inplace_chain_propagation (test.test_capi.test_opt.TestUopsOptimization.test_float_inplace_chain_propagation) ... FAIL
+test_float_multiply_constant_propagation (test.test_capi.test_opt.TestUopsOptimization.test_float_multiply_constant_propagation) ... ok
+test_float_multiply_inplace_unique_lhs (test.test_capi.test_opt.TestUopsOptimization.test_float_multiply_inplace_unique_lhs) ... ok
+test_float_multiply_inplace_unique_rhs (test.test_capi.test_opt.TestUopsOptimization.test_float_multiply_inplace_unique_rhs) ... ok
+test_float_negate_inplace_unique (test.test_capi.test_opt.TestUopsOptimization.test_float_negate_inplace_unique) ... ok
+test_float_negate_no_inplace_non_unique (test.test_capi.test_opt.TestUopsOptimization.test_float_negate_no_inplace_non_unique) ... ok
+test_float_op_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_float_op_refcount_elimination) ... ok
+test_float_remainder_speculative_guards_from_tracing (test.test_capi.test_opt.TestUopsOptimization.test_float_remainder_speculative_guards_from_tracing) ... ok
+test_float_subtract_constant_propagation (test.test_capi.test_opt.TestUopsOptimization.test_float_subtract_constant_propagation) ... ok
+test_float_subtract_inplace_unique_lhs (test.test_capi.test_opt.TestUopsOptimization.test_float_subtract_inplace_unique_lhs) ... ok
+test_float_subtract_inplace_unique_rhs (test.test_capi.test_opt.TestUopsOptimization.test_float_subtract_inplace_unique_rhs) ... ok
+test_float_truediv_inplace_unique_lhs (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_inplace_unique_lhs) ... FAIL
+test_float_truediv_inplace_unique_rhs (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_inplace_unique_rhs) ... ok
+test_float_truediv_mixed_float_fraction_no_crash (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_mixed_float_fraction_no_crash) ... ok
+test_float_truediv_non_float_type_no_crash (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_non_float_type_no_crash) ... ok
+test_float_truediv_partial_float_no_stack_underflow (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_partial_float_no_stack_underflow) ... ok
+test_float_truediv_speculative_guards_from_tracing (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_speculative_guards_from_tracing) ... FAIL
+test_float_truediv_type_propagation (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_type_propagation) ... ok
+test_float_truediv_unique_result_enables_inplace (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_unique_result_enables_inplace) ... FAIL
+test_for_iter (test.test_capi.test_opt.TestUopsOptimization.test_for_iter) ... ok
+test_for_iter_direct_dict_items (test.test_capi.test_opt.TestUopsOptimization.test_for_iter_direct_dict_items) ... ok
+test_for_iter_direct_dict_keys (test.test_capi.test_opt.TestUopsOptimization.test_for_iter_direct_dict_keys) ... ok
+test_for_iter_direct_dict_values (test.test_capi.test_opt.TestUopsOptimization.test_for_iter_direct_dict_values) ... ok
+test_for_iter_direct_enumerate (test.test_capi.test_opt.TestUopsOptimization.test_for_iter_direct_enumerate) ... ok
+test_for_iter_direct_reversed (test.test_capi.test_opt.TestUopsOptimization.test_for_iter_direct_reversed) ... ok
+test_for_iter_direct_set (test.test_capi.test_opt.TestUopsOptimization.test_for_iter_direct_set) ... ok
+test_for_iter_direct_zip (test.test_capi.test_opt.TestUopsOptimization.test_for_iter_direct_zip) ... ok
+test_for_iter_gen_cleared_frame_does_not_crash (test.test_capi.test_opt.TestUopsOptimization.test_for_iter_gen_cleared_frame_does_not_crash) ... ok
+test_for_iter_gen_frame (test.test_capi.test_opt.TestUopsOptimization.test_for_iter_gen_frame) ... ok
+test_for_iter_side_exit_does_not_self_link (test.test_capi.test_opt.TestUopsOptimization.test_for_iter_side_exit_does_not_self_link) ... ok
+test_func_guards_removed_or_reduced (test.test_capi.test_opt.TestUopsOptimization.test_func_guards_removed_or_reduced) ... FAIL
+test_func_version_guarded_on_change (test.test_capi.test_opt.TestUopsOptimization.test_func_version_guarded_on_change) ... FAIL
+test_get_len_with_const_tuple (test.test_capi.test_opt.TestUopsOptimization.test_get_len_with_const_tuple) ... ok
+test_get_len_with_non_const_tuple (test.test_capi.test_opt.TestUopsOptimization.test_get_len_with_non_const_tuple) ... ok
+test_get_len_with_non_tuple (test.test_capi.test_opt.TestUopsOptimization.test_get_len_with_non_tuple) ... ok
+test_guard_type_version_executor_invalidated (test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_executor_invalidated)
+Verify that the executor is invalided on a type change. ... ok
+test_guard_type_version_locked_propagates (test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_locked_propagates)
+_GUARD_TYPE_VERSION_LOCKED should set the type version on the ... FAIL
+test_guard_type_version_locked_removed (test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_locked_removed)
+Verify that redundant _GUARD_TYPE_VERSION_LOCKED guards are ... ok
+test_guard_type_version_removed (test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_removed) ... ok
+test_guard_type_version_removed_escaping (test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_removed_escaping) ... ok
+test_guard_type_version_removed_inlined (test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_removed_inlined)
+Verify that the guard type version if we have an inlined function ... ok
+test_guard_type_version_removed_invalidation (test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_removed_invalidation) ... ok
+test_handling_of_tos_cache_with_side_exits (test.test_capi.test_opt.TestUopsOptimization.test_handling_of_tos_cache_with_side_exits) ... ok
+test_init_guards_removed (test.test_capi.test_opt.TestUopsOptimization.test_init_guards_removed) ... ok
+test_init_guards_removed_global (test.test_capi.test_opt.TestUopsOptimization.test_init_guards_removed_global) ... ok
+test_init_resolves_callable (test.test_capi.test_opt.TestUopsOptimization.test_init_resolves_callable)
+_CHECK_AND_ALLOCATE_OBJECT should resolve __init__ to a constant, ... ok
+test_init_with_changed_code_argcount (test.test_capi.test_opt.TestUopsOptimization.test_init_with_changed_code_argcount) ... ok
+test_init_with_default_argument (test.test_capi.test_opt.TestUopsOptimization.test_init_with_default_argument) ... ok
+test_int_add_inplace_small_int_result (test.test_capi.test_opt.TestUopsOptimization.test_int_add_inplace_small_int_result) ... ok
+test_int_add_inplace_unique_lhs (test.test_capi.test_opt.TestUopsOptimization.test_int_add_inplace_unique_lhs) ... ok
+test_int_add_inplace_unique_rhs (test.test_capi.test_opt.TestUopsOptimization.test_int_add_inplace_unique_rhs) ... ok
+test_int_add_no_inplace_non_unique (test.test_capi.test_opt.TestUopsOptimization.test_int_add_no_inplace_non_unique) ... ok
+test_int_add_op_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_int_add_op_refcount_elimination) ... ok
+test_int_cmp_op_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_int_cmp_op_refcount_elimination) ... ok
+test_int_impure_region (test.test_capi.test_opt.TestUopsOptimization.test_int_impure_region) ... ok
+test_int_inplace_chain_propagation (test.test_capi.test_opt.TestUopsOptimization.test_int_inplace_chain_propagation) ... FAIL
+test_int_mul_op_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_int_mul_op_refcount_elimination) ... ok
+test_int_multiply_inplace_unique_lhs (test.test_capi.test_opt.TestUopsOptimization.test_int_multiply_inplace_unique_lhs) ... ok
+test_int_multiply_inplace_unique_rhs (test.test_capi.test_opt.TestUopsOptimization.test_int_multiply_inplace_unique_rhs) ... ok
+test_int_sub_op_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_int_sub_op_refcount_elimination) ... ok
+test_int_subtract_inplace_unique_lhs (test.test_capi.test_opt.TestUopsOptimization.test_int_subtract_inplace_unique_lhs) ... ok
+test_int_subtract_inplace_unique_rhs (test.test_capi.test_opt.TestUopsOptimization.test_int_subtract_inplace_unique_rhs) ... ok
+test_int_type_propagate_through_range (test.test_capi.test_opt.TestUopsOptimization.test_int_type_propagate_through_range) ... ok
+test_int_type_propagation (test.test_capi.test_opt.TestUopsOptimization.test_int_type_propagation) ... ok
+test_int_type_propagation_from_frame (test.test_capi.test_opt.TestUopsOptimization.test_int_type_propagation_from_frame) ... ok
+test_int_type_propagation_through_frame (test.test_capi.test_opt.TestUopsOptimization.test_int_type_propagation_through_frame) ... ok
+test_int_value_numbering (test.test_capi.test_opt.TestUopsOptimization.test_int_value_numbering) ... ok
+test_interpreter_finalization_with_generator_alive (test.test_capi.test_opt.TestUopsOptimization.test_interpreter_finalization_with_generator_alive) ... ok
+test_is_false_narrows_to_constant (test.test_capi.test_opt.TestUopsOptimization.test_is_false_narrows_to_constant) ... ok
+test_is_none_narrows_to_constant (test.test_capi.test_opt.TestUopsOptimization.test_is_none_narrows_to_constant) ... ok
+test_is_op (test.test_capi.test_opt.TestUopsOptimization.test_is_op) ... ok
+test_is_true_narrows_to_constant (test.test_capi.test_opt.TestUopsOptimization.test_is_true_narrows_to_constant) ... ok
+test_iter_check_list (test.test_capi.test_opt.TestUopsOptimization.test_iter_check_list) ... ok
+test_jit_error_pops (test.test_capi.test_opt.TestUopsOptimization.test_jit_error_pops)
+Tests that the correct number of pops are inserted into the ... ok
+test_jit_shutdown_after_cold_executor_creation (test.test_capi.test_opt.TestUopsOptimization.test_jit_shutdown_after_cold_executor_creation) ... ok
+test_jitted_code_sees_changed_copied_builtins (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_changed_copied_builtins) ... ok
+test_jitted_code_sees_changed_copied_globals (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_changed_copied_globals) ... 
+  test_jitted_code_sees_changed_copied_globals (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_changed_copied_globals) (copy=<method 'copy' of 'dict' objects>) ... FAIL
+  test_jitted_code_sees_changed_copied_globals (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_changed_copied_globals) (copy=<class 'dict'>) ... FAIL
+test_jitted_code_sees_changed_globals (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_changed_globals)
+Issue 136154: Check that jitted code spots the change in the globals ... ok
+test_jitted_code_sees_different_builtins (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_different_builtins) ... ok
+test_list_extend (test.test_capi.test_opt.TestUopsOptimization.test_list_extend) ... ok
+test_load_addr_slot (test.test_capi.test_opt.TestUopsOptimization.test_load_addr_slot) ... ok
+test_load_attr_getattribute_frame (test.test_capi.test_opt.TestUopsOptimization.test_load_attr_getattribute_frame) ... ok
+test_load_attr_instance_value (test.test_capi.test_opt.TestUopsOptimization.test_load_attr_instance_value) ... FAIL
+test_load_attr_module (test.test_capi.test_opt.TestUopsOptimization.test_load_attr_module) ... ok
+test_load_attr_property_frame (test.test_capi.test_opt.TestUopsOptimization.test_load_attr_property_frame) ... ok
+test_load_attr_property_frame_invalidates_on_code_change (test.test_capi.test_opt.TestUopsOptimization.test_load_attr_property_frame_invalidates_on_code_change) ... ok
+test_load_attr_with_hint (test.test_capi.test_opt.TestUopsOptimization.test_load_attr_with_hint) ... ok
+test_load_common_constant (test.test_capi.test_opt.TestUopsOptimization.test_load_common_constant) ... ok
+test_load_common_constant_new_literals (test.test_capi.test_opt.TestUopsOptimization.test_load_common_constant_new_literals) ... ok
+test_load_small_int (test.test_capi.test_opt.TestUopsOptimization.test_load_small_int) ... ok
+test_load_special_type_guard_deopt (test.test_capi.test_opt.TestUopsOptimization.test_load_special_type_guard_deopt) ... ok
+test_make_function (test.test_capi.test_opt.TestUopsOptimization.test_make_function) ... ok
+test_make_heap_safe_not_optimized_for_owned (test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_not_optimized_for_owned) ... FAIL
+test_make_heap_safe_optimized_immortal (test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_optimized_immortal) ... FAIL
+test_make_heap_safe_optimized_yield (test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_optimized_yield) ... ok
+test_many_nested (test.test_capi.test_opt.TestUopsOptimization.test_many_nested) ... ok
+test_match_class (test.test_capi.test_opt.TestUopsOptimization.test_match_class) ... ok
+test_method_chain_guard_elimination (test.test_capi.test_opt.TestUopsOptimization.test_method_chain_guard_elimination)
+Calling two methods on the same object should share the outer ... ok
+test_method_guards_removed_or_reduced (test.test_capi.test_opt.TestUopsOptimization.test_method_guards_removed_or_reduced) ... ok
+test_modified_local_is_seen_by_optimized_code (test.test_capi.test_opt.TestUopsOptimization.test_modified_local_is_seen_by_optimized_code) ... ok
+test_narrow_type_to_constant_bool_false (test.test_capi.test_opt.TestUopsOptimization.test_narrow_type_to_constant_bool_false) ... ok
+test_narrow_type_to_constant_bool_true (test.test_capi.test_opt.TestUopsOptimization.test_narrow_type_to_constant_bool_true) ... ok
+test_narrow_type_to_constant_int_zero (test.test_capi.test_opt.TestUopsOptimization.test_narrow_type_to_constant_int_zero) ... ok
+test_narrow_type_to_constant_str_empty (test.test_capi.test_opt.TestUopsOptimization.test_narrow_type_to_constant_str_empty) ... ok
+test_next_instr_for_exception_handler_set (test.test_capi.test_opt.TestUopsOptimization.test_next_instr_for_exception_handler_set) ... ok
+test_next_instr_for_exception_handler_set_lasts_instr (test.test_capi.test_opt.TestUopsOptimization.test_next_instr_for_exception_handler_set_lasts_instr) ... ok
+test_non_unique_three_tuple_unpack (test.test_capi.test_opt.TestUopsOptimization.test_non_unique_three_tuple_unpack) ... ok
+test_non_unique_tuple_unpack (test.test_capi.test_opt.TestUopsOptimization.test_non_unique_tuple_unpack) ... ok
+test_non_unique_two_tuple_unpack (test.test_capi.test_opt.TestUopsOptimization.test_non_unique_two_tuple_unpack) ... ok
+test_not_contains_op_frozendict_const_fold (test.test_capi.test_opt.TestUopsOptimization.test_not_contains_op_frozendict_const_fold) ... ok
+test_pop_top_specialize_float (test.test_capi.test_opt.TestUopsOptimization.test_pop_top_specialize_float) ... ok
+test_pop_top_specialize_int (test.test_capi.test_opt.TestUopsOptimization.test_pop_top_specialize_int) ... ok
+test_pop_top_specialize_none (test.test_capi.test_opt.TestUopsOptimization.test_pop_top_specialize_none) ... ok
+test_power_type_depends_on_input_values (test.test_capi.test_opt.TestUopsOptimization.test_power_type_depends_on_input_values) ... ok
+test_promote_globals_to_constants (test.test_capi.test_opt.TestUopsOptimization.test_promote_globals_to_constants) ... ok
+test_promoted_global_refcount_eliminated (test.test_capi.test_opt.TestUopsOptimization.test_promoted_global_refcount_eliminated) ... ok
+test_record_bound_method_exact_args (test.test_capi.test_opt.TestUopsOptimization.test_record_bound_method_exact_args) ... FAIL
+test_record_bound_method_general (test.test_capi.test_opt.TestUopsOptimization.test_record_bound_method_general) ... ok
+test_reference_tracking_across_call_doesnt_crash (test.test_capi.test_opt.TestUopsOptimization.test_reference_tracking_across_call_doesnt_crash) ... ok
+test_remove_guard_for_known_type_dict (test.test_capi.test_opt.TestUopsOptimization.test_remove_guard_for_known_type_dict) ... ok
+test_remove_guard_for_known_type_list (test.test_capi.test_opt.TestUopsOptimization.test_remove_guard_for_known_type_list) ... ok
+test_remove_guard_for_known_type_set (test.test_capi.test_opt.TestUopsOptimization.test_remove_guard_for_known_type_set) ... ok
+test_remove_guard_for_known_type_slice (test.test_capi.test_opt.TestUopsOptimization.test_remove_guard_for_known_type_slice) ... ok
+test_remove_guard_for_known_type_str (test.test_capi.test_opt.TestUopsOptimization.test_remove_guard_for_known_type_str) ... ok
+test_remove_guard_for_known_type_tuple (test.test_capi.test_opt.TestUopsOptimization.test_remove_guard_for_known_type_tuple) ... ok
+test_remove_guard_for_slice_list (test.test_capi.test_opt.TestUopsOptimization.test_remove_guard_for_slice_list) ... ok
+test_remove_guard_for_slice_tuple (test.test_capi.test_opt.TestUopsOptimization.test_remove_guard_for_slice_tuple) ... ok
+test_remove_guard_for_tuple_bounds_check (test.test_capi.test_opt.TestUopsOptimization.test_remove_guard_for_tuple_bounds_check) ... ok
+test_return_generator (test.test_capi.test_opt.TestUopsOptimization.test_return_generator) ... ok
+test_send_gen_frame (test.test_capi.test_opt.TestUopsOptimization.test_send_gen_frame) ... ok
+test_send_virtual (test.test_capi.test_opt.TestUopsOptimization.test_send_virtual) ... ok
+test_send_virtual_exhausted (test.test_capi.test_opt.TestUopsOptimization.test_send_virtual_exhausted) ... ok
+test_set_type_version_sets_type (test.test_capi.test_opt.TestUopsOptimization.test_set_type_version_sets_type) ... ok
+test_set_update (test.test_capi.test_opt.TestUopsOptimization.test_set_update) ... ok
+test_settrace_then_polymorphic_call_does_not_crash (test.test_capi.test_opt.TestUopsOptimization.test_settrace_then_polymorphic_call_does_not_crash) ... ok
+test_store_attr_instance_value (test.test_capi.test_opt.TestUopsOptimization.test_store_attr_instance_value) ... ok
+test_store_attr_slot (test.test_capi.test_opt.TestUopsOptimization.test_store_attr_slot) ... ok
+test_store_attr_with_hint (test.test_capi.test_opt.TestUopsOptimization.test_store_attr_with_hint) ... ok
+test_store_fast_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_store_fast_refcount_elimination) ... ok
+test_store_fast_refcount_elimination_when_uninitialized (test.test_capi.test_opt.TestUopsOptimization.test_store_fast_refcount_elimination_when_uninitialized) ... ok
+test_store_subscr_defaultdict_known_hash (test.test_capi.test_opt.TestUopsOptimization.test_store_subscr_defaultdict_known_hash) ... ok
+test_store_subscr_dict (test.test_capi.test_opt.TestUopsOptimization.test_store_subscr_dict) ... ok
+test_store_subscr_dict_known_hash (test.test_capi.test_opt.TestUopsOptimization.test_store_subscr_dict_known_hash) ... ok
+test_store_subscr_int (test.test_capi.test_opt.TestUopsOptimization.test_store_subscr_int) ... ok
+test_str_cmp_op_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_str_cmp_op_refcount_elimination) ... ok
+test_symbols_flow_through_tuples (test.test_capi.test_opt.TestUopsOptimization.test_symbols_flow_through_tuples) ... ok
+test_to_bool_always_true (test.test_capi.test_opt.TestUopsOptimization.test_to_bool_always_true) ... ok
+test_to_bool_bool_contains_op_dict (test.test_capi.test_opt.TestUopsOptimization.test_to_bool_bool_contains_op_dict)
+Test that _TO_BOOL_BOOL is removed from code like: ... ok
+test_to_bool_bool_contains_op_set (test.test_capi.test_opt.TestUopsOptimization.test_to_bool_bool_contains_op_set)
+Test that _TO_BOOL_BOOL is removed from code like: ... ok
+test_to_bool_int (test.test_capi.test_opt.TestUopsOptimization.test_to_bool_int) ... ok
+test_to_bool_list (test.test_capi.test_opt.TestUopsOptimization.test_to_bool_list) ... ok
+test_to_bool_noncompact_int (test.test_capi.test_opt.TestUopsOptimization.test_to_bool_noncompact_int) ... ok
+test_to_bool_str (test.test_capi.test_opt.TestUopsOptimization.test_to_bool_str) ... ok
+test_type_version_doesnt_segfault (test.test_capi.test_opt.TestUopsOptimization.test_type_version_doesnt_segfault)
+Tests that setting a type version doesn't cause a segfault when later looking at the stack. ... ok
+test_unary_invert (test.test_capi.test_opt.TestUopsOptimization.test_unary_invert) ... ok
+test_unary_invert_insert_1_load_const_inline_borrow (test.test_capi.test_opt.TestUopsOptimization.test_unary_invert_insert_1_load_const_inline_borrow) ... ok
+test_unary_invert_long_type (test.test_capi.test_opt.TestUopsOptimization.test_unary_invert_long_type) ... ok
+test_unary_negative (test.test_capi.test_opt.TestUopsOptimization.test_unary_negative) ... ok
+test_unary_negative_long_float_type (test.test_capi.test_opt.TestUopsOptimization.test_unary_negative_long_float_type) ... ok
+test_unary_negative_pop_top_load_const_inline_borrow (test.test_capi.test_opt.TestUopsOptimization.test_unary_negative_pop_top_load_const_inline_borrow) ... ok
+test_unary_not_pop_top_load_const_inline_borrow (test.test_capi.test_opt.TestUopsOptimization.test_unary_not_pop_top_load_const_inline_borrow) ... ok
+test_unicode_add_op_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_unicode_add_op_refcount_elimination) ... ok
+test_unique_three_tuple_unpack (test.test_capi.test_opt.TestUopsOptimization.test_unique_three_tuple_unpack) ... ok
+test_unique_tuple_unpack (test.test_capi.test_opt.TestUopsOptimization.test_unique_tuple_unpack) ... ok
+test_unique_two_tuple_unpack (test.test_capi.test_opt.TestUopsOptimization.test_unique_two_tuple_unpack) ... ok
+test_atomic_add_int (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_add_int) ... ok
+test_atomic_add_int16 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_add_int16) ... ok
+test_atomic_add_int32 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_add_int32) ... ok
+test_atomic_add_int64 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_add_int64) ... ok
+test_atomic_add_int8 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_add_int8) ... ok
+test_atomic_add_intptr (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_add_intptr) ... ok
+test_atomic_add_ssize (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_add_ssize) ... ok
+test_atomic_add_uint (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_add_uint) ... ok
+test_atomic_add_uint16 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_add_uint16) ... ok
+test_atomic_add_uint32 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_add_uint32) ... ok
+test_atomic_add_uint64 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_add_uint64) ... ok
+test_atomic_add_uint8 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_add_uint8) ... ok
+test_atomic_add_uintptr (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_add_uintptr) ... ok
+test_atomic_and_or_uint16 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_and_or_uint16) ... ok
+test_atomic_and_or_uint32 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_and_or_uint32) ... ok
+test_atomic_and_or_uint64 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_and_or_uint64) ... ok
+test_atomic_and_or_uint8 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_and_or_uint8) ... ok
+test_atomic_and_or_uintptr (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_and_or_uintptr) ... ok
+test_atomic_compare_exchange_int (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_compare_exchange_int) ... ok
+test_atomic_compare_exchange_int16 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_compare_exchange_int16) ... ok
+test_atomic_compare_exchange_int32 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_compare_exchange_int32) ... ok
+test_atomic_compare_exchange_int64 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_compare_exchange_int64) ... ok
+test_atomic_compare_exchange_int8 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_compare_exchange_int8) ... ok
+test_atomic_compare_exchange_intptr (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_compare_exchange_intptr) ... ok
+test_atomic_compare_exchange_ptr (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_compare_exchange_ptr) ... ok
+test_atomic_compare_exchange_ssize (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_compare_exchange_ssize) ... ok
+test_atomic_compare_exchange_uint (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_compare_exchange_uint) ... ok
+test_atomic_compare_exchange_uint16 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_compare_exchange_uint16) ... ok
+test_atomic_compare_exchange_uint32 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_compare_exchange_uint32) ... ok
+test_atomic_compare_exchange_uint64 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_compare_exchange_uint64) ... ok
+test_atomic_compare_exchange_uint8 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_compare_exchange_uint8) ... ok
+test_atomic_compare_exchange_uintptr (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_compare_exchange_uintptr) ... ok
+test_atomic_exchange_int (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_exchange_int) ... ok
+test_atomic_exchange_int16 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_exchange_int16) ... ok
+test_atomic_exchange_int32 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_exchange_int32) ... ok
+test_atomic_exchange_int64 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_exchange_int64) ... ok
+test_atomic_exchange_int8 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_exchange_int8) ... ok
+test_atomic_exchange_intptr (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_exchange_intptr) ... ok
+test_atomic_exchange_ptr (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_exchange_ptr) ... ok
+test_atomic_exchange_ssize (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_exchange_ssize) ... ok
+test_atomic_exchange_uint (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_exchange_uint) ... ok
+test_atomic_exchange_uint16 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_exchange_uint16) ... ok
+test_atomic_exchange_uint32 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_exchange_uint32) ... ok
+test_atomic_exchange_uint64 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_exchange_uint64) ... ok
+test_atomic_exchange_uint8 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_exchange_uint8) ... ok
+test_atomic_exchange_uintptr (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_exchange_uintptr) ... ok
+test_atomic_fences (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_fences) ... ok
+test_atomic_load_store_int (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_load_store_int) ... ok
+test_atomic_load_store_int16 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_load_store_int16) ... ok
+test_atomic_load_store_int32 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_load_store_int32) ... ok
+test_atomic_load_store_int64 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_load_store_int64) ... ok
+test_atomic_load_store_int8 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_load_store_int8) ... ok
+test_atomic_load_store_int_release_acquire (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_load_store_int_release_acquire) ... ok
+test_atomic_load_store_intptr (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_load_store_intptr) ... ok
+test_atomic_load_store_ptr (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_load_store_ptr) ... ok
+test_atomic_load_store_ssize (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_load_store_ssize) ... ok
+test_atomic_load_store_uint (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_load_store_uint) ... ok
+test_atomic_load_store_uint16 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_load_store_uint16) ... ok
+test_atomic_load_store_uint32 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_load_store_uint32) ... ok
+test_atomic_load_store_uint64 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_load_store_uint64) ... ok
+test_atomic_load_store_uint8 (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_load_store_uint8) ... ok
+test_atomic_load_store_uintptr (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_load_store_uintptr) ... ok
+test_atomic_release_acquire (test.test_capi.test_pyatomic.PyAtomicTests.test_atomic_release_acquire) ... ok
+test_compilestring (test.test_capi.test_run.CAPITest.test_compilestring) ... ok
+test_compilestringexflags (test.test_capi.test_run.CAPITest.test_compilestringexflags) ... ok
+test_compilestringflags (test.test_capi.test_run.CAPITest.test_compilestringflags) ... ok
+test_compilestringobject (test.test_capi.test_run.CAPITest.test_compilestringobject) ... ok
+test_run_anyfile (test.test_capi.test_run.CAPITest.test_run_anyfile) ... ok
+test_run_anyfileex (test.test_capi.test_run.CAPITest.test_run_anyfileex) ... ok
+test_run_anyfileexflags (test.test_capi.test_run.CAPITest.test_run_anyfileexflags) ... ok
+test_run_anyfileflags (test.test_capi.test_run.CAPITest.test_run_anyfileflags) ... ok
+test_run_file (test.test_capi.test_run.CAPITest.test_run_file) ... ok
+test_run_fileex (test.test_capi.test_run.CAPITest.test_run_fileex) ... ok
+test_run_fileexflags (test.test_capi.test_run.CAPITest.test_run_fileexflags) ... ok
+test_run_fileflags (test.test_capi.test_run.CAPITest.test_run_fileflags) ... ok
+test_run_interactiveloop (test.test_capi.test_run.CAPITest.test_run_interactiveloop) ... ok
+test_run_interactiveloopflags (test.test_capi.test_run.CAPITest.test_run_interactiveloopflags) ... ok
+test_run_interactiveone (test.test_capi.test_run.CAPITest.test_run_interactiveone) ... ok
+test_run_interactiveoneflags (test.test_capi.test_run.CAPITest.test_run_interactiveoneflags) ... ok
+test_run_interactiveoneobject (test.test_capi.test_run.CAPITest.test_run_interactiveoneobject) ... ok
+test_run_simplefile (test.test_capi.test_run.CAPITest.test_run_simplefile) ... ok
+test_run_simplefileex (test.test_capi.test_run.CAPITest.test_run_simplefileex) ... ok
+test_run_simplefileexflags (test.test_capi.test_run.CAPITest.test_run_simplefileexflags) ... ok
+test_run_simplestring (test.test_capi.test_run.CAPITest.test_run_simplestring) ... ok
+test_run_simplestringflags (test.test_capi.test_run.CAPITest.test_run_simplestringflags) ... ok
+test_run_string (test.test_capi.test_run.CAPITest.test_run_string) ... ok
+test_run_stringflags (test.test_capi.test_run.CAPITest.test_run_stringflags) ... ok
+test_set_next_entry (test.test_capi.test_set.TestInternalCAPI.test_set_next_entry) ... ok
+test_set_update (test.test_capi.test_set.TestInternalCAPI.test_set_update) ... ok
+test_add (test.test_capi.test_set.TestSetCAPI.test_add) ... ok
+test_add_frozenset (test.test_capi.test_set.TestSetCAPI.test_add_frozenset) ... ok
+test_anyset_check (test.test_capi.test_set.TestSetCAPI.test_anyset_check) ... ok
+test_anyset_check_exact (test.test_capi.test_set.TestSetCAPI.test_anyset_check_exact) ... ok
+test_clear (test.test_capi.test_set.TestSetCAPI.test_clear) ... ok
+test_discard (test.test_capi.test_set.TestSetCAPI.test_discard) ... ok
+test_frozenset_check (test.test_capi.test_set.TestSetCAPI.test_frozenset_check) ... ok
+test_frozenset_check_exact (test.test_capi.test_set.TestSetCAPI.test_frozenset_check_exact) ... ok
+test_frozenset_new (test.test_capi.test_set.TestSetCAPI.test_frozenset_new) ... ok
+test_pop (test.test_capi.test_set.TestSetCAPI.test_pop) ... ok
+test_set_check (test.test_capi.test_set.TestSetCAPI.test_set_check) ... ok
+test_set_check_exact (test.test_capi.test_set.TestSetCAPI.test_set_check_exact) ... ok
+test_set_contains (test.test_capi.test_set.TestSetCAPI.test_set_contains) ... ok
+test_set_get_size (test.test_capi.test_set.TestSetCAPI.test_set_get_size) ... ok
+test_set_new (test.test_capi.test_set.TestSetCAPI.test_set_new) ... ok
+test_set_size (test.test_capi.test_set.TestSetCAPI.test_set_size) ... ok
+test_getindicesex (test.test_capi.test_slice.GetIndicesExFuncTest.test_getindicesex) ... ok
+test_getindicesex_seq (test.test_capi.test_slice.GetIndicesExFuncTest.test_getindicesex_seq) ... ok
+test_getindicesex (test.test_capi.test_slice.GetIndicesExMacroTest.test_getindicesex) ... ok
+test_getindicesex_seq (test.test_capi.test_slice.GetIndicesExMacroTest.test_getindicesex_seq) ... ok
+test_adjustindices (test.test_capi.test_slice.SliceTest.test_adjustindices) ... ok
+test_check (test.test_capi.test_slice.SliceTest.test_check) ... ok
+test_getindices (test.test_capi.test_slice.SliceTest.test_getindices) ... ok
+test_new (test.test_capi.test_slice.SliceTest.test_new) ... ok
+test_unpack (test.test_capi.test_slice.SliceTest.test_unpack) ... ok
+test_bases_slots (test.test_capi.test_slots.ModuleSlotsTests.test_bases_slots) ... ok
+test_basic_module_slots (test.test_capi.test_slots.ModuleSlotsTests.test_basic_module_slots) ... ok
+test_compat_slot_number_create (test.test_capi.test_slots.ModuleSlotsTests.test_compat_slot_number_create) ... ok
+test_compat_slot_number_gil (test.test_capi.test_slots.ModuleSlotsTests.test_compat_slot_number_gil) ... ok
+test_compat_slot_numbers (test.test_capi.test_slots.ModuleSlotsTests.test_compat_slot_numbers) ... ok
+test_exec_slot (test.test_capi.test_slots.ModuleSlotsTests.test_exec_slot) ... ok
+test_flag_slots (test.test_capi.test_slots.ModuleSlotsTests.test_flag_slots) ... ok
+test_intptr_methods (test.test_capi.test_slots.ModuleSlotsTests.test_intptr_methods) ... ok
+test_invalid (test.test_capi.test_slots.ModuleSlotsTests.test_invalid) ... ok
+test_nested (test.test_capi.test_slots.ModuleSlotsTests.test_nested) ... ok
+test_nested_nonstatic_from_def (test.test_capi.test_slots.ModuleSlotsTests.test_nested_nonstatic_from_def) ... ok
+test_nonstatic_mod_methods (test.test_capi.test_slots.ModuleSlotsTests.test_nonstatic_mod_methods) ... ok
+test_null_slot_handling (test.test_capi.test_slots.ModuleSlotsTests.test_null_slot_handling) ... ok
+test_optional_end (test.test_capi.test_slots.ModuleSlotsTests.test_optional_end) ... ok
+test_repeat_error (test.test_capi.test_slots.ModuleSlotsTests.test_repeat_error) ... ok
+test_size_slots (test.test_capi.test_slots.ModuleSlotsTests.test_size_slots) ... ok
+test_type_slot_in_module (test.test_capi.test_slots.ModuleSlotsTests.test_type_slot_in_module) ... ok
+test_basic_type_slots (test.test_capi.test_slots.TypeSlotsTests.test_basic_type_slots) ... ok
+test_compat_slot_numbers (test.test_capi.test_slots.TypeSlotsTests.test_compat_slot_numbers) ... ok
+test_flag_slots (test.test_capi.test_slots.TypeSlotsTests.test_flag_slots) ... ok
+test_func_slots (test.test_capi.test_slots.TypeSlotsTests.test_func_slots) ... ok
+test_intptr_flags (test.test_capi.test_slots.TypeSlotsTests.test_intptr_flags) ... ok
+test_invalid (test.test_capi.test_slots.TypeSlotsTests.test_invalid) ... ok
+test_mod_slot_in_type (test.test_capi.test_slots.TypeSlotsTests.test_mod_slot_in_type) ... ok
+test_nested (test.test_capi.test_slots.TypeSlotsTests.test_nested) ... ok
+test_nonstatic_tp_members (test.test_capi.test_slots.TypeSlotsTests.test_nonstatic_tp_members) ... ok
+test_null_slot_handling (test.test_capi.test_slots.TypeSlotsTests.test_null_slot_handling) ... ok
+test_optional_end (test.test_capi.test_slots.TypeSlotsTests.test_optional_end) ... ok
+test_repeat_error (test.test_capi.test_slots.TypeSlotsTests.test_repeat_error) ... ok
+test_repeat_warning (test.test_capi.test_slots.TypeSlotsTests.test_repeat_warning) ... ok
+test_size_slots (test.test_capi.test_slots.TypeSlotsTests.test_size_slots) ... ok
+test_bad_assignments (test.test_capi.test_structmembers.ReadWriteTests_NewAPI.test_bad_assignments) ... ok
+test_bool (test.test_capi.test_structmembers.ReadWriteTests_NewAPI.test_bool) ... ok
+test_byte (test.test_capi.test_structmembers.ReadWriteTests_NewAPI.test_byte) ... ok
+test_char (test.test_capi.test_structmembers.ReadWriteTests_NewAPI.test_char) ... ok
+test_inplace_string (test.test_capi.test_structmembers.ReadWriteTests_NewAPI.test_inplace_string) ... ok
+test_int (test.test_capi.test_structmembers.ReadWriteTests_NewAPI.test_int) ... ok
+test_long (test.test_capi.test_structmembers.ReadWriteTests_NewAPI.test_long) ... ok
+test_longlong (test.test_capi.test_structmembers.ReadWriteTests_NewAPI.test_longlong) ... ok
+test_py_ssize_t (test.test_capi.test_structmembers.ReadWriteTests_NewAPI.test_py_ssize_t) ... ok
+test_short (test.test_capi.test_structmembers.ReadWriteTests_NewAPI.test_short) ... ok
+test_bad_assignments (test.test_capi.test_structmembers.ReadWriteTests_OldAPI.test_bad_assignments) ... ok
+test_bool (test.test_capi.test_structmembers.ReadWriteTests_OldAPI.test_bool) ... ok
+test_byte (test.test_capi.test_structmembers.ReadWriteTests_OldAPI.test_byte) ... ok
+test_char (test.test_capi.test_structmembers.ReadWriteTests_OldAPI.test_char) ... ok
+test_inplace_string (test.test_capi.test_structmembers.ReadWriteTests_OldAPI.test_inplace_string) ... ok
+test_int (test.test_capi.test_structmembers.ReadWriteTests_OldAPI.test_int) ... ok
+test_long (test.test_capi.test_structmembers.ReadWriteTests_OldAPI.test_long) ... ok
+test_longlong (test.test_capi.test_structmembers.ReadWriteTests_OldAPI.test_longlong) ... ok
+test_py_ssize_t (test.test_capi.test_structmembers.ReadWriteTests_OldAPI.test_py_ssize_t) ... ok
+test_short (test.test_capi.test_structmembers.ReadWriteTests_OldAPI.test_short) ... ok
+test_sys_formatstderr (test.test_capi.test_sys.CAPITest.test_sys_formatstderr) ... ok
+test_sys_formatstdout (test.test_capi.test_sys.CAPITest.test_sys_formatstdout) ... ok
+test_sys_getattr (test.test_capi.test_sys.CAPITest.test_sys_getattr) ... ok
+test_sys_getattrstring (test.test_capi.test_sys.CAPITest.test_sys_getattrstring) ... ok
+test_sys_getobject (test.test_capi.test_sys.CAPITest.test_sys_getobject) ... ok
+test_sys_getoptionalattr (test.test_capi.test_sys.CAPITest.test_sys_getoptionalattr) ... ok
+test_sys_getoptionalattrstring (test.test_capi.test_sys.CAPITest.test_sys_getoptionalattrstring) ... ok
+test_sys_getxoptions (test.test_capi.test_sys.CAPITest.test_sys_getxoptions) ... ok
+test_sys_setobject (test.test_capi.test_sys.CAPITest.test_sys_setobject) ... ok
+test_sys_writestderr (test.test_capi.test_sys.CAPITest.test_sys_writestderr) ... ok
+test_sys_writestdout (test.test_capi.test_sys.CAPITest.test_sys_writestdout) ... ok
+test_assecondsdouble (test.test_capi.test_time.CAPITest.test_assecondsdouble) ... ok
+test_min_max (test.test_capi.test_time.CAPITest.test_min_max) ... ok
+test_monotonic (test.test_capi.test_time.CAPITest.test_monotonic) ... ok
+test_perf_counter (test.test_capi.test_time.CAPITest.test_perf_counter) ... ok
+test_time (test.test_capi.test_time.CAPITest.test_time) ... ok
+test_source (test.test_capi.test_tokenizer.TokenizerTests.test_source) ... ok
+test_source_discard (test.test_capi.test_tokenizer.TokenizerTests.test_source_discard) ... ok
+test__tuple_resize (test.test_capi.test_tuple.CAPITest.test__tuple_resize) ... ok
+test_bug_59313 (test.test_capi.test_tuple.CAPITest.test_bug_59313) ... ok
+test_check (test.test_capi.test_tuple.CAPITest.test_check) ... ok
+test_tuple_checkexact (test.test_capi.test_tuple.CAPITest.test_tuple_checkexact) ... ok
+test_tuple_from_pair (test.test_capi.test_tuple.CAPITest.test_tuple_from_pair) ... ok
+test_tuple_from_pair_steal (test.test_capi.test_tuple.CAPITest.test_tuple_from_pair_steal) ... ok
+test_tuple_fromarray (test.test_capi.test_tuple.CAPITest.test_tuple_fromarray) ... ok
+test_tuple_get_item (test.test_capi.test_tuple.CAPITest.test_tuple_get_item) ... ok
+test_tuple_get_size (test.test_capi.test_tuple.CAPITest.test_tuple_get_size) ... ok
+test_tuple_getitem (test.test_capi.test_tuple.CAPITest.test_tuple_getitem) ... ok
+test_tuple_getslice (test.test_capi.test_tuple.CAPITest.test_tuple_getslice) ... ok
+test_tuple_new (test.test_capi.test_tuple.CAPITest.test_tuple_new) ... ok
+test_tuple_pack (test.test_capi.test_tuple.CAPITest.test_tuple_pack) ... ok
+test_tuple_set_item (test.test_capi.test_tuple.CAPITest.test_tuple_set_item) ... ok
+test_tuple_setitem (test.test_capi.test_tuple.CAPITest.test_tuple_setitem) ... ok
+test_tuple_size (test.test_capi.test_tuple.CAPITest.test_tuple_size) ... ok
+test_uninitialized_tuple_repr (test.test_capi.test_tuple.CAPITest.test_uninitialized_tuple_repr) ... ok
+test_tp_bases_is_set (test.test_capi.test_type.BuiltinStaticTypesTests.test_tp_bases_is_set) ... ok
+test_tp_mro_is_set (test.test_capi.test_type.BuiltinStaticTypesTests.test_tp_mro_is_set) ... ok
+test_extension_managed_dict_type (test.test_capi.test_type.TypeTests.test_extension_managed_dict_type) ... ok
+test_extension_managed_weakref_nogc_type (test.test_capi.test_type.TypeTests.test_extension_managed_weakref_nogc_type) ... ok
+test_freeze (test.test_capi.test_type.TypeTests.test_freeze) ... ok
+test_freeze_meta (test.test_capi.test_type.TypeTests.test_freeze_meta)
+test PyType_Freeze() with overridden MRO ... ok
+test_get_base_by_token (test.test_capi.test_type.TypeTests.test_get_base_by_token) ... ok
+test_get_module_by_def (test.test_capi.test_type.TypeTests.test_get_module_by_def) ... ok
+test_get_module_by_token (test.test_capi.test_type.TypeTests.test_get_module_by_token) ... ok
+test_get_type_name (test.test_capi.test_type.TypeTests.test_get_type_name) ... ok
+test_manual_heap_type (test.test_capi.test_type.TypeTests.test_manual_heap_type) ... ok
+test_subclass_type_with_dict_subclass_tp_dict (test.test_capi.test_type.TypeTests.test_subclass_type_with_dict_subclass_tp_dict) ... ok
+test_type_clearcache (test.test_capi.test_type.TypeTests.test_type_clearcache) ... ok
+test_type_getflags (test.test_capi.test_type.TypeTests.test_type_getflags) ... ok
+test_type_issubtype (test.test_capi.test_type.TypeTests.test_type_issubtype) ... ok
+test_type_modified (test.test_capi.test_type.TypeTests.test_type_modified) ... ok
+test_type_ready (test.test_capi.test_type.TypeTests.test_type_ready) ... ok
+test_GET_CACHED_HASH (test.test_capi.test_unicode.CAPITest.test_GET_CACHED_HASH)
+Test PyUnstable_Unicode_GET_CACHED_HASH() ... ok
+test_append (test.test_capi.test_unicode.CAPITest.test_append)
+Test PyUnicode_Append() ... ok
+test_appendanddel (test.test_capi.test_unicode.CAPITest.test_appendanddel)
+Test PyUnicode_AppendAndDel() ... ok
+test_asucs4 (test.test_capi.test_unicode.CAPITest.test_asucs4)
+Test PyUnicode_AsUCS4() ... ok
+test_asucs4copy (test.test_capi.test_unicode.CAPITest.test_asucs4copy)
+Test PyUnicode_AsUCS4Copy() ... ok
+test_asutf8 (test.test_capi.test_unicode.CAPITest.test_asutf8)
+Test PyUnicode_AsUTF8() ... ok
+test_asutf8_race (test.test_capi.test_unicode.CAPITest.test_asutf8_race)
+Test that there's no race condition in PyUnicode_AsUTF8() ... ok
+test_asutf8andsize (test.test_capi.test_unicode.CAPITest.test_asutf8andsize)
+Test PyUnicode_AsUTF8AndSize() ... ok
+test_aswidechar (test.test_capi.test_unicode.CAPITest.test_aswidechar)
+Test PyUnicode_AsWideChar() ... ok
+test_aswidecharstring (test.test_capi.test_unicode.CAPITest.test_aswidecharstring)
+Test PyUnicode_AsWideCharString() ... ok
+test_check (test.test_capi.test_unicode.CAPITest.test_check) ... ok
+test_check_interned (test.test_capi.test_unicode.CAPITest.test_check_interned)
+Test PyUnicode_CHECK_INTERNED() macro ... ok
+test_checkexact (test.test_capi.test_unicode.CAPITest.test_checkexact) ... ok
+test_compare (test.test_capi.test_unicode.CAPITest.test_compare)
+Test PyUnicode_Compare() ... ok
+test_comparewithasciistring (test.test_capi.test_unicode.CAPITest.test_comparewithasciistring)
+Test PyUnicode_CompareWithASCIIString() ... ok
+test_concat (test.test_capi.test_unicode.CAPITest.test_concat)
+Test PyUnicode_Concat() ... ok
+test_contains (test.test_capi.test_unicode.CAPITest.test_contains)
+Test PyUnicode_Contains() ... ok
+test_copycharacters (test.test_capi.test_unicode.CAPITest.test_copycharacters)
+Test PyUnicode_CopyCharacters() ... ok
+test_count (test.test_capi.test_unicode.CAPITest.test_count)
+Test PyUnicode_Count() ... ok
+test_equal (test.test_capi.test_unicode.CAPITest.test_equal)
+Test PyUnicode_Equal() ... ok
+test_equaltoutf8 (test.test_capi.test_unicode.CAPITest.test_equaltoutf8) ... ok
+test_equaltoutf8andsize (test.test_capi.test_unicode.CAPITest.test_equaltoutf8andsize) ... ok
+test_fill (test.test_capi.test_unicode.CAPITest.test_fill)
+Test PyUnicode_Fill() ... ok
+test_find (test.test_capi.test_unicode.CAPITest.test_find)
+Test PyUnicode_Find() ... ok
+test_findchar (test.test_capi.test_unicode.CAPITest.test_findchar)
+Test PyUnicode_FindChar() ... ok
+test_format (test.test_capi.test_unicode.CAPITest.test_format)
+Test PyUnicode_Format() ... ok
+test_from_format (test.test_capi.test_unicode.CAPITest.test_from_format)
+Test PyUnicode_FromFormat() ... ok
+test_fromkindanddata (test.test_capi.test_unicode.CAPITest.test_fromkindanddata)
+Test PyUnicode_FromKindAndData() ... ok
+test_fromobject (test.test_capi.test_unicode.CAPITest.test_fromobject)
+Test PyUnicode_FromObject() ... ok
+test_fromordinal (test.test_capi.test_unicode.CAPITest.test_fromordinal)
+Test PyUnicode_FromOrdinal() ... ok
+test_fromstring (test.test_capi.test_unicode.CAPITest.test_fromstring)
+Test PyUnicode_FromString() ... ok
+test_fromstringandsize (test.test_capi.test_unicode.CAPITest.test_fromstringandsize)
+Test PyUnicode_FromStringAndSize() ... ok
+test_fromwidechar (test.test_capi.test_unicode.CAPITest.test_fromwidechar)
+Test PyUnicode_FromWideChar() ... ok
+test_getdefaultencoding (test.test_capi.test_unicode.CAPITest.test_getdefaultencoding)
+Test PyUnicode_GetDefaultEncoding() ... ok
+test_getlength (test.test_capi.test_unicode.CAPITest.test_getlength)
+Test PyUnicode_GetLength() ... ok
+test_getlength_macro (test.test_capi.test_unicode.CAPITest.test_getlength_macro)
+Test PyUnicode_GET_LENGTH() macro ... ok
+test_internfromstring (test.test_capi.test_unicode.CAPITest.test_internfromstring)
+Test PyUnicode_InternFromString() ... ok
+test_interninplace (test.test_capi.test_unicode.CAPITest.test_interninplace)
+Test PyUnicode_InternInPlace() ... ok
+test_is_ascii (test.test_capi.test_unicode.CAPITest.test_is_ascii)
+Test PyUnicode_IS_ASCII() macro ... ok
+test_is_compact (test.test_capi.test_unicode.CAPITest.test_is_compact)
+Test PyUnicode_IS_COMPACT() macro ... ok
+test_is_compact_ascii (test.test_capi.test_unicode.CAPITest.test_is_compact_ascii)
+Test PyUnicode_IS_COMPACT_ASCII() macro ... ok
+test_isidentifier (test.test_capi.test_unicode.CAPITest.test_isidentifier)
+Test PyUnicode_IsIdentifier() ... ok
+test_join (test.test_capi.test_unicode.CAPITest.test_join)
+Test PyUnicode_Join() ... ok
+test_kind (test.test_capi.test_unicode.CAPITest.test_kind)
+Test PyUnicode_KIND() ... ok
+test_max_char_value (test.test_capi.test_unicode.CAPITest.test_max_char_value)
+Test PyUnicode_MAX_CHAR_VALUE() ... ok
+test_new (test.test_capi.test_unicode.CAPITest.test_new)
+Test PyUnicode_New() ... ok
+test_partition (test.test_capi.test_unicode.CAPITest.test_partition)
+Test PyUnicode_Partition() ... ok
+test_pep393_utf8_caching_bug (test.test_capi.test_unicode.CAPITest.test_pep393_utf8_caching_bug) ... ok
+test_pyunicode_dump (test.test_capi.test_unicode.CAPITest.test_pyunicode_dump) ... skipped '_PyUnicode_Dump not available'
+test_read_char_macro (test.test_capi.test_unicode.CAPITest.test_read_char_macro)
+Test PyUnicode_READ_CHAR() macro ... ok
+test_read_macro (test.test_capi.test_unicode.CAPITest.test_read_macro)
+Test PyUnicode_READ() macro ... ok
+test_readchar (test.test_capi.test_unicode.CAPITest.test_readchar)
+Test PyUnicode_ReadChar() ... ok
+test_replace (test.test_capi.test_unicode.CAPITest.test_replace)
+Test PyUnicode_Replace() ... ok
+test_resize (test.test_capi.test_unicode.CAPITest.test_resize)
+Test PyUnicode_Resize() ... ok
+test_richcompare (test.test_capi.test_unicode.CAPITest.test_richcompare)
+Test PyUnicode_RichCompare() ... ok
+test_rpartition (test.test_capi.test_unicode.CAPITest.test_rpartition)
+Test PyUnicode_RPartition() ... ok
+test_rsplit (test.test_capi.test_unicode.CAPITest.test_rsplit)
+Test PyUnicode_RSplit() ... ok
+test_split (test.test_capi.test_unicode.CAPITest.test_split)
+Test PyUnicode_Split() ... ok
+test_splitlines (test.test_capi.test_unicode.CAPITest.test_splitlines)
+Test PyUnicode_SplitLines() ... ok
+test_substring (test.test_capi.test_unicode.CAPITest.test_substring)
+Test PyUnicode_Substring() ... ok
+test_tailmatch (test.test_capi.test_unicode.CAPITest.test_tailmatch)
+Test PyUnicode_Tailmatch() ... ok
+test_transform_decimal_and_space (test.test_capi.test_unicode.CAPITest.test_transform_decimal_and_space)
+Test _PyUnicode_TransformDecimalAndSpaceToASCII() ... ok
+test_translate (test.test_capi.test_unicode.CAPITest.test_translate)
+Test PyUnicode_Translate() ... ok
+test_unicode_equal (test.test_capi.test_unicode.CAPITest.test_unicode_equal) ... ok
+test_write_macro (test.test_capi.test_unicode.CAPITest.test_write_macro)
+Test PyUnicode_WRITE() ... ok
+test_writechar (test.test_capi.test_unicode.CAPITest.test_writechar)
+Test PyUnicode_WriteChar() ... ok
+test_format (test.test_capi.test_unicode.PyUnicodeWriterFormatTest.test_format) ... ok
+test_readonly_optim (test.test_capi.test_unicode.PyUnicodeWriterFormatTest.test_readonly_optim) ... ok
+test_recheck_maxchar (test.test_capi.test_unicode.PyUnicodeWriterFormatTest.test_recheck_maxchar) ... ok
+test_recover_error (test.test_capi.test_unicode.PyUnicodeWriterFormatTest.test_recover_error) ... ok
+test_ascii (test.test_capi.test_unicode.PyUnicodeWriterTest.test_ascii) ... ok
+test_basic (test.test_capi.test_unicode.PyUnicodeWriterTest.test_basic) ... ok
+test_change_kind (test.test_capi.test_unicode.PyUnicodeWriterTest.test_change_kind) ... ok
+test_create (test.test_capi.test_unicode.PyUnicodeWriterTest.test_create) ... ok
+test_decode_utf8 (test.test_capi.test_unicode.PyUnicodeWriterTest.test_decode_utf8) ... ok
+test_decode_utf8_consumed (test.test_capi.test_unicode.PyUnicodeWriterTest.test_decode_utf8_consumed) ... ok
+test_detect_overflow (test.test_capi.test_unicode.PyUnicodeWriterTest.test_detect_overflow) ... skipped 'need debug build (Py_DEBUG)'
+test_finish_with_size (test.test_capi.test_unicode.PyUnicodeWriterTest.test_finish_with_size) ... ok
+test_invalid_utf8 (test.test_capi.test_unicode.PyUnicodeWriterTest.test_invalid_utf8) ... ok
+test_memory_error (test.test_capi.test_unicode.PyUnicodeWriterTest.test_memory_error) ... ok
+test_readonly_optim (test.test_capi.test_unicode.PyUnicodeWriterTest.test_readonly_optim) ... ok
+test_readonly_optim_large_int (test.test_capi.test_unicode.PyUnicodeWriterTest.test_readonly_optim_large_int) ... ok
+test_recover_utf8_error (test.test_capi.test_unicode.PyUnicodeWriterTest.test_recover_utf8_error) ... ok
+test_repr (test.test_capi.test_unicode.PyUnicodeWriterTest.test_repr) ... ok
+test_repr_null (test.test_capi.test_unicode.PyUnicodeWriterTest.test_repr_null) ... ok
+test_singletons (test.test_capi.test_unicode.PyUnicodeWriterTest.test_singletons) ... ok
+test_str_subclass (test.test_capi.test_unicode.PyUnicodeWriterTest.test_str_subclass) ... ok
+test_substring_empty (test.test_capi.test_unicode.PyUnicodeWriterTest.test_substring_empty) ... ok
+test_ucs4 (test.test_capi.test_unicode.PyUnicodeWriterTest.test_ucs4) ... ok
+test_utf8 (test.test_capi.test_unicode.PyUnicodeWriterTest.test_utf8) ... ok
+test_widechar (test.test_capi.test_unicode.PyUnicodeWriterTest.test_widechar) ... ok
+test_write_char (test.test_capi.test_unicode.PyUnicodeWriterTest.test_write_char) ... ok
+test_write_latin1 (test.test_capi.test_unicode.PyUnicodeWriterTest.test_write_latin1) ... ok
+test_allocate_too_many_watchers (test.test_capi.test_watchers.TestCodeObjectWatchers.test_allocate_too_many_watchers) ... ok
+test_clear_out_of_range_watcher_id (test.test_capi.test_watchers.TestCodeObjectWatchers.test_clear_out_of_range_watcher_id) ... ok
+test_clear_unassigned_watcher_id (test.test_capi.test_watchers.TestCodeObjectWatchers.test_clear_unassigned_watcher_id) ... ok
+test_code_object_events_dispatched (test.test_capi.test_watchers.TestCodeObjectWatchers.test_code_object_events_dispatched) ... ok
+test_dealloc_error (test.test_capi.test_watchers.TestCodeObjectWatchers.test_dealloc_error) ... ok
+test_error (test.test_capi.test_watchers.TestCodeObjectWatchers.test_error) ... ok
+test_allocate_too_many_watchers (test.test_capi.test_watchers.TestContextObjectWatchers.test_allocate_too_many_watchers) ... ok
+test_callback_error (test.test_capi.test_watchers.TestContextObjectWatchers.test_callback_error) ... ok
+test_clear_out_of_range_watcher_id (test.test_capi.test_watchers.TestContextObjectWatchers.test_clear_out_of_range_watcher_id) ... ok
+test_clear_unassigned_watcher_id (test.test_capi.test_watchers.TestContextObjectWatchers.test_clear_unassigned_watcher_id) ... ok
+test_context_object_events_dispatched (test.test_capi.test_watchers.TestContextObjectWatchers.test_context_object_events_dispatched) ... ok
+test_exit_base_context (test.test_capi.test_watchers.TestContextObjectWatchers.test_exit_base_context) ... ok
+test_clear (test.test_capi.test_watchers.TestDictWatchers.test_clear) ... ok
+test_clear_out_of_range_watcher_id (test.test_capi.test_watchers.TestDictWatchers.test_clear_out_of_range_watcher_id) ... ok
+test_clear_unassigned_watcher_id (test.test_capi.test_watchers.TestDictWatchers.test_clear_unassigned_watcher_id) ... ok
+test_clone (test.test_capi.test_watchers.TestDictWatchers.test_clone) ... ok
+test_dealloc (test.test_capi.test_watchers.TestDictWatchers.test_dealloc) ... ok
+test_dealloc_error (test.test_capi.test_watchers.TestDictWatchers.test_dealloc_error) ... ok
+test_del (test.test_capi.test_watchers.TestDictWatchers.test_del) ... ok
+test_error (test.test_capi.test_watchers.TestDictWatchers.test_error) ... ok
+test_no_event_if_not_watched (test.test_capi.test_watchers.TestDictWatchers.test_no_event_if_not_watched) ... ok
+test_object_dict (test.test_capi.test_watchers.TestDictWatchers.test_object_dict) ... ok
+test_pop (test.test_capi.test_watchers.TestDictWatchers.test_pop) ... ok
+test_set_existing_item (test.test_capi.test_watchers.TestDictWatchers.test_set_existing_item) ... ok
+test_set_new_item (test.test_capi.test_watchers.TestDictWatchers.test_set_new_item) ... ok
+test_two_watchers (test.test_capi.test_watchers.TestDictWatchers.test_two_watchers) ... ok
+test_unwatch (test.test_capi.test_watchers.TestDictWatchers.test_unwatch) ... ok
+test_unwatch_non_dict (test.test_capi.test_watchers.TestDictWatchers.test_unwatch_non_dict) ... ok
+test_unwatch_out_of_range_watcher_id (test.test_capi.test_watchers.TestDictWatchers.test_unwatch_out_of_range_watcher_id) ... ok
+test_unwatch_unassigned_watcher_id (test.test_capi.test_watchers.TestDictWatchers.test_unwatch_unassigned_watcher_id) ... ok
+test_watch_non_dict (test.test_capi.test_watchers.TestDictWatchers.test_watch_non_dict) ... ok
+test_watch_out_of_range_watcher_id (test.test_capi.test_watchers.TestDictWatchers.test_watch_out_of_range_watcher_id) ... ok
+test_watch_unassigned_watcher_id (test.test_capi.test_watchers.TestDictWatchers.test_watch_unassigned_watcher_id) ... ok
+test_allocate_too_many_watchers (test.test_capi.test_watchers.TestFuncWatchers.test_allocate_too_many_watchers) ... ok
+test_clear_out_of_range_watcher_id (test.test_capi.test_watchers.TestFuncWatchers.test_clear_out_of_range_watcher_id) ... ok
+test_clear_unassigned_watcher_id (test.test_capi.test_watchers.TestFuncWatchers.test_clear_unassigned_watcher_id) ... ok
+test_dealloc_watcher_raises_error (test.test_capi.test_watchers.TestFuncWatchers.test_dealloc_watcher_raises_error) ... ok
+test_func_events_dispatched (test.test_capi.test_watchers.TestFuncWatchers.test_func_events_dispatched) ... ok
+test_multiple_watchers (test.test_capi.test_watchers.TestFuncWatchers.test_multiple_watchers) ... ok
+test_watcher_raises_error (test.test_capi.test_watchers.TestFuncWatchers.test_watcher_raises_error) ... ok
+test_all_watchers (test.test_capi.test_watchers.TestTypeWatchers.test_all_watchers) ... ok
+test_clear_out_of_range_watcher_id (test.test_capi.test_watchers.TestTypeWatchers.test_clear_out_of_range_watcher_id) ... ok
+test_clear_unassigned_watcher_id (test.test_capi.test_watchers.TestTypeWatchers.test_clear_unassigned_watcher_id) ... ok
+test_clear_watcher (test.test_capi.test_watchers.TestTypeWatchers.test_clear_watcher) ... ok
+test_error (test.test_capi.test_watchers.TestTypeWatchers.test_error) ... ok
+test_event_aggregation (test.test_capi.test_watchers.TestTypeWatchers.test_event_aggregation) ... ok
+test_lookup_resets_aggregation (test.test_capi.test_watchers.TestTypeWatchers.test_lookup_resets_aggregation) ... ok
+test_no_more_ids_available (test.test_capi.test_watchers.TestTypeWatchers.test_no_more_ids_available) ... ok
+test_two_watchers (test.test_capi.test_watchers.TestTypeWatchers.test_two_watchers) ... ok
+test_unwatch_non_type (test.test_capi.test_watchers.TestTypeWatchers.test_unwatch_non_type) ... ok
+test_unwatch_out_of_range_watcher_id (test.test_capi.test_watchers.TestTypeWatchers.test_unwatch_out_of_range_watcher_id) ... ok
+test_unwatch_type (test.test_capi.test_watchers.TestTypeWatchers.test_unwatch_type) ... ok
+test_unwatch_unassigned_watcher_id (test.test_capi.test_watchers.TestTypeWatchers.test_unwatch_unassigned_watcher_id) ... ok
+test_watch_non_type (test.test_capi.test_watchers.TestTypeWatchers.test_watch_non_type) ... ok
+test_watch_out_of_range_watcher_id (test.test_capi.test_watchers.TestTypeWatchers.test_watch_out_of_range_watcher_id) ... ok
+test_watch_type (test.test_capi.test_watchers.TestTypeWatchers.test_watch_type) ... ok
+test_watch_type_dealloc (test.test_capi.test_watchers.TestTypeWatchers.test_watch_type_dealloc) ... ok
+test_watch_type_dealloc_error (test.test_capi.test_watchers.TestTypeWatchers.test_watch_type_dealloc_error) ... ok
+test_watch_type_subclass (test.test_capi.test_watchers.TestTypeWatchers.test_watch_type_subclass) ... ok
+test_watch_unassigned_watcher_id (test.test_capi.test_watchers.TestTypeWatchers.test_watch_unassigned_watcher_id) ... ok
+test_pyweakref_check (test.test_capi.test_weakref.CAPIWeakrefTest.test_pyweakref_check) ... ok
+test_pyweakref_checkproxy (test.test_capi.test_weakref.CAPIWeakrefTest.test_pyweakref_checkproxy) ... ok
+test_pyweakref_checkref (test.test_capi.test_weakref.CAPIWeakrefTest.test_pyweakref_checkref) ... ok
+test_pyweakref_checkrefexact (test.test_capi.test_weakref.CAPIWeakrefTest.test_pyweakref_checkrefexact) ... ok
+test_pyweakref_getref (test.test_capi.test_weakref.CAPIWeakrefTest.test_pyweakref_getref) ... ok
+test_pyweakref_isdead (test.test_capi.test_weakref.CAPIWeakrefTest.test_pyweakref_isdead) ... ok
+test_pyweakref_newproxy (test.test_capi.test_weakref.CAPIWeakrefTest.test_pyweakref_newproxy) ... ok
+test_pyweakref_newref (test.test_capi.test_weakref.CAPIWeakrefTest.test_pyweakref_newref) ... ok
+
+======================================================================
+FAIL: test_call_py_exact_args (test.test_capi.test_opt.TestUops.test_call_py_exact_args)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_capi/test_opt.py", line 550, in test_call_py_exact_args
+    self.assertIn("_PUSH_FRAME", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_PUSH_FRAME' not found in ['_START_EXECUTOR', '_MAKE_WARM', '_SET_IP', '_CHECK_PERIODIC', '_CHECK_VALIDITY', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_SPILL_OR_RELOAD', '_STORE_FAST_FUSED', '_CHECK_VALIDITY', '_LOAD_FAST_BORROW_1', '_PUSH_NULL', '_LOAD_FAST_BORROW_2', '_SET_IP', '_SPILL_OR_RELOAD', '_CHECK_FUNCTION_VERSION', '_CHECK_STACK_SPACE_OPERAND', '_CHECK_RECURSION_REMAINING', '_SAVE_RETURN_OFFSET', '_BEGIN_VIRTUAL_CALL', '_LOAD_VIRTUAL_ARGUMENT', '_LOAD_CONST_INLINE_BORROW', '_GUARD_NOS_INT', '_GUARD_NOS_OVERFLOWED', '_GUARD_TOS_INT', '_BINARY_OP_ADD_INT', '_POP_TOP_NOP', '_POP_TOP_NOP', '_MAKE_HEAP_SAFE', '_RETURN_VIRTUAL_CALL', '_CHECK_VALIDITY', '_POP_TOP_INT', '_JUMP_TO_TOP', '_DEOPT', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_DEOPT', '_EXIT_TRACE', '_SPILL_OR_RELOAD', '_MATERIALIZE_VIRTUAL_FRAME', '_DEOPT']
+
+======================================================================
+FAIL: test_binary_subscr_list_slice (test.test_capi.test_opt.TestUopsOptimization.test_binary_subscr_list_slice)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_capi/test_opt.py", line 5752, in test_binary_subscr_list_slice
+    self.assertEqual(count_ops(ex, "_POP_TOP"), 2)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 2
+
+======================================================================
+FAIL: test_builtins_guard_emitted_once_per_frame (test.test_capi.test_opt.TestUopsOptimization.test_builtins_guard_emitted_once_per_frame)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_capi/test_opt.py", line 5391, in test_builtins_guard_emitted_once_per_frame
+    self.assertEqual(uop_names.count("_GUARD_GLOBALS_VERSION"), 1)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0 != 1
+
+======================================================================
+FAIL: test_call_method_descriptor_noargs (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_noargs)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_capi/test_opt.py", line 3569, in test_call_method_descriptor_noargs
+    self.assertGreaterEqual(count_ops(ex, "_POP_TOP"), 5)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 2 not greater than or equal to 5
+
+======================================================================
+FAIL: test_call_py_exact_args (test.test_capi.test_opt.TestUopsOptimization.test_call_py_exact_args)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_capi/test_opt.py", line 736, in test_call_py_exact_args
+    self.assertIn("_PUSH_FRAME", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_PUSH_FRAME' not found in ['_START_EXECUTOR', '_MAKE_WARM', '_SET_IP', '_CHECK_PERIODIC', '_CHECK_VALIDITY', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_SPILL_OR_RELOAD', '_STORE_FAST_FUSED', '_CHECK_VALIDITY', '_LOAD_FAST_BORROW_1', '_PUSH_NULL', '_LOAD_FAST_BORROW_2', '_SET_IP', '_SPILL_OR_RELOAD', '_CHECK_FUNCTION_VERSION', '_CHECK_STACK_SPACE_OPERAND', '_CHECK_RECURSION_REMAINING', '_SAVE_RETURN_OFFSET', '_BEGIN_VIRTUAL_CALL', '_LOAD_VIRTUAL_ARGUMENT', '_LOAD_CONST_INLINE_BORROW', '_GUARD_NOS_INT', '_GUARD_NOS_OVERFLOWED', '_GUARD_TOS_INT', '_BINARY_OP_ADD_INT', '_POP_TOP_NOP', '_POP_TOP_NOP', '_MAKE_HEAP_SAFE', '_RETURN_VIRTUAL_CALL', '_CHECK_VALIDITY', '_POP_TOP_INT', '_JUMP_TO_TOP', '_DEOPT', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_DEOPT', '_EXIT_TRACE', '_SPILL_OR_RELOAD', '_MATERIALIZE_VIRTUAL_FRAME', '_DEOPT']
+
+======================================================================
+FAIL: test_float_add_chain_both_unique (test.test_capi.test_opt.TestUopsOptimization.test_float_add_chain_both_unique)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_capi/test_opt.py", line 4361, in test_float_add_chain_both_unique
+    self.assertTrue(inplace, "Expected inplace add for unique sub-results")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : Expected inplace add for unique sub-results
+
+======================================================================
+FAIL: test_float_inplace_chain_propagation (test.test_capi.test_opt.TestUopsOptimization.test_float_inplace_chain_propagation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_capi/test_opt.py", line 4197, in test_float_inplace_chain_propagation
+    self.assertTrue(inplace_add,
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+        "Expected an inplace add for unique intermediate results")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : Expected an inplace add for unique intermediate results
+
+======================================================================
+FAIL: test_float_truediv_inplace_unique_lhs (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_inplace_unique_lhs)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_capi/test_opt.py", line 4244, in test_float_truediv_inplace_unique_lhs
+    self.assertIn("_BINARY_OP_TRUEDIV_FLOAT_INPLACE", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_BINARY_OP_TRUEDIV_FLOAT_INPLACE' not found in ['_START_EXECUTOR', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_INT', '_MAKE_WARM', '_SET_IP', '_TIER2_RESUME_CHECK', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_STORE_FAST_FUSED_INT', '_LOAD_FAST_BORROW_6', '_SPILL_OR_RELOAD', '_LOAD_FAST_BORROW_1', '_LOAD_FAST_BORROW_2', '_UNBOX_FLOAT_NOS', '_UNBOX_FLOAT_TOS', '_BINARY_OP_ADD_FLOAT_UNBOXED', '_LOAD_FAST_BORROW_3', '_LOAD_FAST_BORROW_4', '_UNBOX_FLOAT_NOS', '_UNBOX_FLOAT_TOS', '_BINARY_OP_ADD_FLOAT_UNBOXED', '_BINARY_OP_TRUEDIV_FLOAT_UNBOXED', '_UNBOX_FLOAT_NOS', '_BINARY_OP_ADD_FLOAT_UNBOXED', '_BOX_FLOAT', '_STORE_FAST_FUSED_FLOAT', '_JUMP_TO_TOP', '_DEOPT', '_EXIT_TRACE', '_HANDLE_PENDING_AND_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_SPILL_OR_RELOAD', '_BOX_UNBOXED_SLOTS', '_DEOPT', '_ERROR_POP_N', '_ERROR_POP_N']
+
+======================================================================
+FAIL: test_float_truediv_speculative_guards_from_tracing (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_speculative_guards_from_tracing)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_capi/test_opt.py", line 4279, in test_float_truediv_speculative_guards_from_tracing
+    self.assertIn("_GUARD_TOS_FLOAT", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_GUARD_TOS_FLOAT' not found in ['_START_EXECUTOR', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_INT', '_MAKE_WARM', '_SET_IP', '_TIER2_RESUME_CHECK', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_STORE_FAST_FUSED_INT', '_LOAD_FAST_BORROW_4', '_SPILL_OR_RELOAD', '_LOAD_FAST_BORROW_1', '_LOAD_FAST_BORROW_2', '_SET_IP', '_BINARY_OP_TRUEDIV_FLOAT', '_POP_TOP_NOP', '_POP_TOP_NOP', '_CHECK_VALIDITY', '_BINARY_OP_ADD_FLOAT_INPLACE_RIGHT', '_POP_TOP_NOP', '_POP_TOP_NOP', '_STORE_FAST_FUSED_FLOAT', '_JUMP_TO_TOP', '_DEOPT', '_EXIT_TRACE', '_HANDLE_PENDING_AND_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_ERROR_POP_N', '_DEOPT']
+
+======================================================================
+FAIL: test_float_truediv_unique_result_enables_inplace (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_unique_result_enables_inplace)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_capi/test_opt.py", line 4340, in test_float_truediv_unique_result_enables_inplace
+    self.assertIn("_BINARY_OP_TRUEDIV_FLOAT_INPLACE", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_BINARY_OP_TRUEDIV_FLOAT_INPLACE' not found in ['_START_EXECUTOR', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_INT', '_MAKE_WARM', '_SET_IP', '_TIER2_RESUME_CHECK', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_STORE_FAST_FUSED_INT', '_LOAD_FAST_BORROW', '_SPILL_OR_RELOAD', '_LOAD_FAST_BORROW_1', '_LOAD_FAST_BORROW_2', '_UNBOX_FLOAT_NOS', '_UNBOX_FLOAT_TOS', '_BINARY_OP_ADD_FLOAT_UNBOXED', '_LOAD_FAST_BORROW_3', '_LOAD_FAST_BORROW_4', '_UNBOX_FLOAT_NOS', '_UNBOX_FLOAT_TOS', '_BINARY_OP_ADD_FLOAT_UNBOXED', '_BINARY_OP_TRUEDIV_FLOAT_UNBOXED', '_LOAD_FAST_BORROW_5', '_LOAD_FAST_BORROW_6', '_UNBOX_FLOAT_NOS', '_UNBOX_FLOAT_TOS', '_BINARY_OP_ADD_FLOAT_UNBOXED', '_BINARY_OP_TRUEDIV_FLOAT_UNBOXED', '_UNBOX_FLOAT_NOS', '_BINARY_OP_ADD_FLOAT_UNBOXED', '_BOX_FLOAT', '_STORE_FAST_FUSED_FLOAT', '_JUMP_TO_TOP', '_DEOPT', '_EXIT_TRACE', '_HANDLE_PENDING_AND_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_SPILL_OR_RELOAD', '_BOX_UNBOXED_SLOTS', '_DEOPT', '_ERROR_POP_N', '_SPILL_OR_RELOAD', '_BOX_UNBOXED_SLOTS', '_DEOPT', '_ERROR_POP_N', '_ERROR_POP_N']
+
+======================================================================
+FAIL: test_func_guards_removed_or_reduced (test.test_capi.test_opt.TestUopsOptimization.test_func_guards_removed_or_reduced)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_capi/test_opt.py", line 1960, in test_func_guards_removed_or_reduced
+    self.assertIn("_PUSH_FRAME", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_PUSH_FRAME' not found in ['_START_EXECUTOR', '_GUARD_LOOP_GLOBALS_VERSION', '_MAKE_WARM', '_SET_IP', '_CHECK_PERIODIC', '_CHECK_VALIDITY', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_SPILL_OR_RELOAD', '_STORE_FAST_FUSED', '_CHECK_VALIDITY', '_LOAD_CONST_INLINE', '_PUSH_NULL', '_LOAD_FAST_BORROW_1', '_SET_IP', '_SPILL_OR_RELOAD', '_CHECK_FUNCTION_VERSION', '_CHECK_STACK_SPACE_OPERAND', '_CHECK_RECURSION_REMAINING', '_SAVE_RETURN_OFFSET', '_CALL_PY_LEAF', '_CHECK_VALIDITY', '_POP_TOP_INT', '_JUMP_TO_TOP', '_DEOPT', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_DEOPT', '_DEOPT', '_DEOPT']
+
+======================================================================
+FAIL: test_func_version_guarded_on_change (test.test_capi.test_opt.TestUopsOptimization.test_func_version_guarded_on_change)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_capi/test_opt.py", line 6520, in test_func_version_guarded_on_change
+    self.assertIn("_PUSH_FRAME", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_PUSH_FRAME' not found in ['_START_EXECUTOR', '_GUARD_LOOP_GLOBALS_VERSION', '_MAKE_WARM', '_SET_IP', '_CHECK_PERIODIC', '_CHECK_VALIDITY', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_SPILL_OR_RELOAD', '_STORE_FAST_FUSED', '_CHECK_VALIDITY', '_LOAD_CONST_INLINE', '_PUSH_NULL', '_LOAD_FAST_BORROW_1', '_SET_IP', '_SPILL_OR_RELOAD', '_CHECK_FUNCTION_VERSION', '_CHECK_STACK_SPACE_OPERAND', '_CHECK_RECURSION_REMAINING', '_SAVE_RETURN_OFFSET', '_CALL_PY_LEAF', '_CHECK_VALIDITY', '_POP_TOP_INT', '_JUMP_TO_TOP', '_DEOPT', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_DEOPT', '_DEOPT', '_DEOPT']
+
+======================================================================
+FAIL: test_guard_type_version_locked_propagates (test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_locked_propagates)
+_GUARD_TYPE_VERSION_LOCKED should set the type version on the
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_capi/test_opt.py", line 1912, in test_guard_type_version_locked_propagates
+    self.assertEqual(uops.count("_PUSH_FRAME"), 2)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0 != 2
+
+======================================================================
+FAIL: test_int_inplace_chain_propagation (test.test_capi.test_opt.TestUopsOptimization.test_int_inplace_chain_propagation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_capi/test_opt.py", line 4572, in test_int_inplace_chain_propagation
+    self.assertTrue(inplace_add,
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+        "Expected an inplace add for unique intermediate results")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : Expected an inplace add for unique intermediate results
+
+======================================================================
+FAIL: test_jitted_code_sees_changed_copied_globals (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_changed_copied_globals) (copy=<method 'copy' of 'dict' objects>)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_capi/test_opt.py", line 5326, in test_jitted_code_sees_changed_copied_globals
+    self.assertIn("_GUARD_GLOBALS_VERSION", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_GUARD_GLOBALS_VERSION' not found in ['_START_EXECUTOR', '_GUARD_LOOP_GLOBALS_VERSION', '_MAKE_WARM', '_SET_IP', '_CHECK_PERIODIC', '_CHECK_VALIDITY', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_SPILL_OR_RELOAD', '_STORE_FAST_FUSED', '_CHECK_VALIDITY', '_LOAD_CONST_INLINE_BORROW', '_SET_IP', '_STORE_FAST_FUSED', '_JUMP_TO_TOP', '_DEOPT', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT']
+
+======================================================================
+FAIL: test_jitted_code_sees_changed_copied_globals (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_changed_copied_globals) (copy=<class 'dict'>)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_capi/test_opt.py", line 5326, in test_jitted_code_sees_changed_copied_globals
+    self.assertIn("_GUARD_GLOBALS_VERSION", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_GUARD_GLOBALS_VERSION' not found in ['_START_EXECUTOR', '_GUARD_LOOP_GLOBALS_VERSION', '_MAKE_WARM', '_SET_IP', '_CHECK_PERIODIC', '_CHECK_VALIDITY', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_SPILL_OR_RELOAD', '_STORE_FAST_FUSED', '_CHECK_VALIDITY', '_LOAD_CONST_INLINE_BORROW', '_SET_IP', '_STORE_FAST_FUSED', '_JUMP_TO_TOP', '_DEOPT', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT']
+
+======================================================================
+FAIL: test_load_attr_instance_value (test.test_capi.test_opt.TestUopsOptimization.test_load_attr_instance_value)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_capi/test_opt.py", line 4590, in test_load_attr_instance_value
+    self.assertIn("_LOAD_ATTR_INSTANCE_VALUE", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_LOAD_ATTR_INSTANCE_VALUE' not found in ['_START_EXECUTOR', '_MAKE_WARM', '_SET_IP', '_CHECK_PERIODIC', '_CHECK_VALIDITY', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_SPILL_OR_RELOAD', '_STORE_FAST_FUSED', '_CHECK_VALIDITY', '_LOAD_FAST_BORROW_2', '_GUARD_TYPE_VERSION', '_LOAD_ATTR_INSTANCE_VALUE_CHECKED', '_POP_TOP_NOP', '_SET_IP', '_STORE_FAST_FUSED', '_JUMP_TO_TOP', '_DEOPT', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE']
+
+======================================================================
+FAIL: test_make_heap_safe_not_optimized_for_owned (test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_not_optimized_for_owned)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_capi/test_opt.py", line 1478, in test_make_heap_safe_not_optimized_for_owned
+    self.assertIn("_RETURN_VALUE", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_RETURN_VALUE' not found in ['_START_EXECUTOR', '_MAKE_WARM', '_SET_IP', '_CHECK_PERIODIC', '_CHECK_VALIDITY', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_SPILL_OR_RELOAD', '_STORE_FAST_FUSED', '_CHECK_VALIDITY', '_SET_IP', '_LOAD_DEREF', '_CHECK_VALIDITY', '_PUSH_NULL', '_LOAD_FAST_BORROW_1', '_SET_IP', '_SPILL_OR_RELOAD', '_CHECK_FUNCTION_VERSION', '_CHECK_STACK_SPACE_OPERAND', '_CHECK_RECURSION_REMAINING', '_SAVE_RETURN_OFFSET', '_BEGIN_VIRTUAL_CALL', '_LOAD_VIRTUAL_ARGUMENT', '_LOAD_CONST_INLINE_BORROW', '_GUARD_NOS_INT', '_GUARD_TOS_INT', '_BINARY_OP_ADD_INT', '_POP_TOP_NOP', '_POP_TOP_NOP', '_MAKE_HEAP_SAFE', '_RETURN_VIRTUAL_CALL', '_CHECK_VALIDITY', '_STORE_FAST_FUSED_INT', '_JUMP_TO_TOP', '_DEOPT', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_DEOPT', '_EXIT_TRACE', '_SPILL_OR_RELOAD', '_MATERIALIZE_VIRTUAL_FRAME', '_DEOPT']
+
+======================================================================
+FAIL: test_make_heap_safe_optimized_immortal (test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_optimized_immortal)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_capi/test_opt.py", line 1445, in test_make_heap_safe_optimized_immortal
+    self.assertIn("_RETURN_VALUE", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_RETURN_VALUE' not found in ['_START_EXECUTOR', '_MAKE_WARM', '_SET_IP', '_CHECK_PERIODIC', '_CHECK_VALIDITY', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_SPILL_OR_RELOAD', '_STORE_FAST_FUSED', '_CHECK_VALIDITY', '_SET_IP', '_LOAD_DEREF', '_CHECK_VALIDITY', '_PUSH_NULL', '_SET_IP', '_SPILL_OR_RELOAD', '_CHECK_FUNCTION_VERSION', '_CHECK_STACK_SPACE_OPERAND', '_CHECK_RECURSION_REMAINING', '_SAVE_RETURN_OFFSET', '_CALL_PY_LEAF', '_CHECK_VALIDITY', '_SET_IP', '_STORE_FAST_FUSED', '_JUMP_TO_TOP', '_DEOPT', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_DEOPT', '_DEOPT', '_DEOPT']
+
+======================================================================
+FAIL: test_record_bound_method_exact_args (test.test_capi.test_opt.TestUopsOptimization.test_record_bound_method_exact_args)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_capi/test_opt.py", line 2020, in test_record_bound_method_exact_args
+    self.assertIn("_PUSH_FRAME", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_PUSH_FRAME' not found in ['_START_EXECUTOR', '_MAKE_WARM', '_SET_IP', '_CHECK_PERIODIC', '_CHECK_VALIDITY', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_SPILL_OR_RELOAD', '_STORE_FAST_FUSED', '_CHECK_VALIDITY', '_LOAD_FAST_BORROW_3', '_LOAD_FAST_BORROW_2', '_PUSH_NULL', '_SPILL_OR_RELOAD', '_LOAD_FAST_BORROW_4', '_SET_IP', '_SPILL_OR_RELOAD', '_CHECK_CALL_BOUND_METHOD_EXACT_ARGS', '_INIT_CALL_BOUND_METHOD_EXACT_ARGS', '_CHECK_FUNCTION_VERSION', '_CHECK_STACK_SPACE_OPERAND', '_CHECK_RECURSION_REMAINING', '_SAVE_RETURN_OFFSET', '_BEGIN_VIRTUAL_CALL', '_LOAD_VIRTUAL_ARGUMENT', '_LOAD_CONST_INLINE_BORROW', '_GUARD_NOS_INT', '_GUARD_NOS_OVERFLOWED', '_GUARD_TOS_INT', '_BINARY_OP_ADD_INT', '_POP_TOP_NOP', '_POP_TOP_NOP', '_MAKE_HEAP_SAFE', '_RETURN_VIRTUAL_CALL', '_CHECK_VALIDITY', '_GUARD_NOS_INT', '_BINARY_OP_ADD_INT_INPLACE_RIGHT', '_POP_TOP_INT', '_POP_TOP_NOP', '_STORE_FAST_FUSED_INT', '_JUMP_TO_TOP', '_DEOPT', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_DEOPT', '_EXIT_TRACE', '_SPILL_OR_RELOAD', '_MATERIALIZE_VIRTUAL_FRAME', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE']
+
+----------------------------------------------------------------------
+Ran 1628 tests in 15.221s
+
+FAILED (failures=20, skipped=42)
+test test_capi failed
+
+== Tests result: FAILURE ==
+
+1 test failed:
+    test_capi
+
+Total duration: 15.6 sec
+Total tests: run=1,628 failures=20 skipped=42
+Total test files: run=1/1 failed=1
+Result: FAILURE

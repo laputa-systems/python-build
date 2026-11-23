@@ -1,0 +1,32 @@
+build-parent wrapper attempt 1 stopped before starting Docker or building a stage.
+Command: python3 support/run-container.py build-parent
+Error:
+Traceback (most recent call last):
+  File "support/run-container.py", line 61, in <module>
+    from lane_cache import cache_root, mount_root, musl_llvm_prepared_prefix
+ImportError: cannot import name 'musl_llvm_prepared_prefix' from 'lane_cache' (wt-allocretry/rust-cpython/lane_cache.py)
+
+The wrapper was corrected to import lane_cache from the current C-ALLOC-3 evidence worktree.
+
+build-parent wrapper attempt 2 reached perf.py setup-worktree and doctor, then stopped
+before compiling CPython because the primary checkout's cloned Cargo shim points to a
+host-only rustup executable.
+Command log: /home/ubuntu/repos/python-build/wt-calloc3-parent/rust-cpython/logs/perf-calloc3-parent-cargo-offline-check.log
+Error: /home/ubuntu/repos/python-build/wt-calloc3-parent/rust-cpython/.cargo-home/bin/cargo:
+exec: line 2: /home/ubuntu/.cargo/bin/rustup: not found
+build-parent wrapper attempt 3 stopped before Docker because copying the entire Cargo home
+collided with pre-existing relative symlinks in cached Git checkouts (shutil Error, Errno 17).
+The wrapper now leaves the stage-local registry/cache copy intact and copies only the
+existing musl cargo/rustc/rustup launchers after setup-worktree.
+
+cachegrind container attempt 1 installed the locked APKs, including musl-dbg, but exited
+before precompile or any profile. The package-version parser used awk paragraph mode that
+BusyBox awk did not match; the version check stopped the script. The parser now matches the
+package and version fields line-by-line. Container logs are preserved as
+support/cachegrind-attempt-1-container.*.
+
+cachegrind container attempt 2 verified matching musl/musl-dbg version 1.2.6-r3 and
+matching BuildIDs, then completed the required parent compileall with exit 1. Its diagnostics
+are expected invalid-encoding/syntax fixtures under Lib/test; the plan requires recording
+the exit code, not treating it as a gate. No profile ran. The next run preserves the parent
+exit/log and compiles cand once, then continues to profiles.
