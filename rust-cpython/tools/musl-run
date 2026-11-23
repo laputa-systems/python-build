@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import pathlib
+import shlex
 import subprocess
 import sys
 import urllib.request
@@ -29,10 +30,18 @@ def lock_data() -> tuple[dict, dict]:
 
 
 def verify_cache(*, download_missing: bool) -> None:
-    lane, _production = lock_data()
+    lane, production = lock_data()
+    base_cache = SHARED_CACHE / "bootstrap" / "apk" / "amd64"
     cache = shared_path(REPO, lane["lane_apk_cache"])
+    base_packages = production["apk_closure"]["x86_64"]
+    lane_packages = lane["lane_packages"]
+    _verify_apk_directory(base_cache, base_packages, by_digest=True)
     cache.mkdir(parents=True, exist_ok=True)
-    for package in lane["lane_packages"]:
+    expected_names = {f'{item["name"]}-{item["version"]}.apk' for item in lane_packages}
+    extras = sorted(path.name for path in cache.glob("*.apk") if path.name not in expected_names)
+    if extras:
+        raise SystemExit(f"unexpected cached lane APKs: {extras}")
+    for package in lane_packages:
         path = cache / f'{package["name"]}-{package["version"]}.apk'
         if not path.exists() and download_missing:
             repository = next(
@@ -49,8 +58,32 @@ def verify_cache(*, download_missing: bool) -> None:
             if len(payload) != package["size"] or hashlib.sha256(payload).hexdigest() != package["sha256"]:
                 raise SystemExit(f"downloaded APK digest/size mismatch: {url}")
             path.write_bytes(payload)
-        if not path.is_file():
-            raise SystemExit(f"missing cached lane APK: {path}")
+    _verify_apk_directory(cache, lane_packages)
+
+
+def _verify_apk_directory(
+    cache: pathlib.Path, packages: list[dict], *, by_digest: bool = False
+) -> None:
+    cache.mkdir(parents=True, exist_ok=True)
+    filenames = {
+        item["sha256"]: f'{item["sha256"]}.apk'
+        for item in packages
+    } if by_digest else {
+        item["name"]: f'{item["name"]}-{item["version"]}.apk'
+        for item in packages
+    }
+    expected_names = set(filenames.values())
+    extras = sorted(path.name for path in cache.glob("*.apk") if path.name not in expected_names)
+    if extras:
+        raise SystemExit(f"unexpected cached APKs in {cache}: {extras}")
+    for package in packages:
+        filename = (
+            f'{package["sha256"]}.apk'
+            if by_digest else f'{package["name"]}-{package["version"]}.apk'
+        )
+        path = cache / filename
+        if path.is_symlink() or not path.is_file():
+            raise SystemExit(f"missing or invalid cached APK: {path}")
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         if path.stat().st_size != package["size"] or digest != package["sha256"]:
             raise SystemExit(f"cached APK digest/size mismatch: {path}")
@@ -146,19 +179,28 @@ def drop_privileges_and_exec(uid: int, gid: int, mode: str, command: list[str]) 
     return 127
 
 
-def run_container(mode: str, command: list[str]) -> int:
+def run_container(mode: str, command: list[str], *, download_missing: bool = False) -> int:
+    verify_cache(download_missing=download_missing)
     lane, _production = lock_data()
     image = "alpine@" + lane["production"]["image_digest"]
     cache = shared_path(REPO, lane["lane_apk_cache"])
     base_cache = SHARED_CACHE / "bootstrap" / "apk" / "amd64"
+    base_apks = [
+        base_cache / f'{item["sha256"]}.apk'
+        for item in _production["apk_closure"]["x86_64"]
+    ]
+    lane_apks = [
+        cache / f'{item["name"]}-{item["version"]}.apk'
+        for item in lane["lane_packages"]
+    ]
     rustup_home = LANE / lane["rust"]["cache"]
     cargo_home = LANE / ".cargo-home"
     llvm_prefix = local_cache_root(REPO) / "llvm" / "toolchains" / (
         lane["llvm"]["version"] + "-" + lane["llvm"]["sha256"] + "-musl"
     )
     script = f'''set -eu
-apk --no-network --repositories-file /dev/null add {base_cache}/*.apk
-apk --no-network --repositories-file /dev/null add {cache}/*.apk
+apk --no-network --repositories-file /dev/null add -- {shlex.join(map(str, base_apks))}
+apk --no-network --repositories-file /dev/null add -- {shlex.join(map(str, lane_apks))}
 python3 {LANE / "tools/musl-run"} --verify-cache
 python3 {LANE / "tools/musl-run"} --verify-installed
 export HOME={LANE / ".home"}
@@ -215,10 +257,8 @@ def main(argv: list[str]) -> int:
              "--target", "x86_64-unknown-linux-musl"],
             cwd=REPO, check=True,
         )
-        verify_cache(download_missing=True)
-        return run_container("fetch", [])
-    verify_cache(download_missing=True)
-    return run_container("command", argv)
+        return run_container("fetch", [], download_missing=True)
+    return run_container("command", argv, download_missing=True)
 
 
 if __name__ == "__main__":

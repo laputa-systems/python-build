@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import concurrent.futures
 import hashlib
+import importlib.util
 import io
+from importlib.machinery import SourceFileLoader
 import json
 import os
 import subprocess
@@ -21,6 +23,13 @@ LANE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LANE))
 
 import perf
+
+_MUSL_RUN_LOADER = SourceFileLoader(
+    "musl_run_review_test", str(LANE / "tools" / "musl-run"))
+_MUSL_RUN_SPEC = importlib.util.spec_from_loader(
+    _MUSL_RUN_LOADER.name, _MUSL_RUN_LOADER)
+musl_run = importlib.util.module_from_spec(_MUSL_RUN_SPEC)
+_MUSL_RUN_SPEC.loader.exec_module(musl_run)
 
 
 class RustLauncherTests(unittest.TestCase):
@@ -567,6 +576,48 @@ class LinuxDwarfdumpInputTests(unittest.TestCase):
             for name, path in paths.items():
                 self.assertEqual(path.read_bytes(), payloads[name])
             self.assertEqual(cache.fetch.call_count, 3)
+
+
+class MuslAPKVerificationTests(unittest.TestCase):
+    def test_tampered_and_extra_apks_are_rejected_before_container_install(self):
+        payload = b"locked"
+        package = {
+            "name": "lane-pkg",
+            "version": "1.0-r0",
+            "arch": "x86_64",
+            "repository": "main",
+            "size": len(payload),
+            "sha256": hashlib.sha256(payload).hexdigest(),
+        }
+        lane = {
+            "lane_apk_cache": ".cache/bootstrap/lane-musl/apk/amd64",
+            "lane_packages": [package],
+            "repositories": ["https://example.invalid/main"],
+        }
+        production = {"apk_closure": {"x86_64": []}}
+        for scenario, bytes_, extra, message in (
+            ("tampered", b"bad!!!", False, "digest/size mismatch"),
+            ("extra", payload, True, "unexpected cached lane APKs"),
+        ):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                lane_cache = root / "lane-apks"
+                lane_cache.mkdir()
+                (lane_cache / "lane-pkg-1.0-r0.apk").write_bytes(bytes_)
+                if extra:
+                    (lane_cache / "unexpected.apk").write_bytes(b"extra")
+                base_cache = root / "bootstrap" / "apk" / "amd64"
+                base_cache.mkdir(parents=True)
+                docker = mock.Mock()
+                with mock.patch.object(musl_run, "lock_data",
+                                       return_value=(lane, production)), \
+                        mock.patch.object(musl_run, "shared_path",
+                                          return_value=lane_cache), \
+                        mock.patch.object(musl_run, "SHARED_CACHE", root), \
+                        mock.patch.object(musl_run.subprocess, "run", docker):
+                    with self.assertRaisesRegex(SystemExit, message):
+                        musl_run.main(["python3", "--version"])
+                docker.assert_not_called()
 
 
 class LinuxSetupTests(unittest.TestCase):

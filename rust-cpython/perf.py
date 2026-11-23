@@ -47,7 +47,7 @@ REPO = LANE.parent
 SCRATCH = REPO / ".work" / "tmp"
 
 sys.path.insert(0, str(REPO))
-from cache_paths import primary_checkout
+from cache_paths import git_common_dir
 
 
 def _lane_build():
@@ -197,11 +197,18 @@ def _git(*args: str, cwd: Path = LANE) -> str:
     return result.stdout.strip()
 
 
-def _primary_repo() -> Path:
+def _common_dir() -> Path:
     try:
-        return primary_checkout(REPO)
+        return git_common_dir(REPO)
     except RuntimeError as error:
         raise LaneError(str(error)) from error
+
+
+def _primary_repo() -> Path:
+    common = _common_dir()
+    if common.name != ".git":
+        raise LaneError(f"cannot locate the primary checkout from git common dir {common}")
+    return common.parent
 
 
 def _git_state() -> dict[str, Any]:

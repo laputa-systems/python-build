@@ -7,9 +7,10 @@ import subprocess
 from pathlib import Path
 
 
-def primary_checkout(repo: Path) -> Path:
+def git_common_dir(repo: Path) -> Path:
+    checkout = Path(repo).resolve()
     result = subprocess.run(
-        ["git", "-C", str(Path(repo).resolve()),
+        ["git", "-c", f"safe.directory={checkout}", "-C", str(checkout),
          "rev-parse", "--path-format=absolute", "--git-common-dir"],
         capture_output=True,
         text=True,
@@ -17,7 +18,11 @@ def primary_checkout(repo: Path) -> Path:
     )
     if result.returncode:
         raise RuntimeError(f"cannot resolve git common directory: {result.stderr.strip()}")
-    common = Path(result.stdout.strip()).resolve()
+    return Path(result.stdout.strip()).resolve()
+
+
+def primary_checkout(repo: Path) -> Path:
+    common = git_common_dir(repo)
     if common.name != ".git":
         raise RuntimeError(f"unexpected git common directory: {common}")
     return common.parent
