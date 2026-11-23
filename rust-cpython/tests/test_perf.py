@@ -2026,7 +2026,7 @@ class IncrementalRecipeTests(unittest.TestCase):
     def test_abrupt_placement_mutation_persists_nonresumable_state_before_copy(self):
         self.exercise(True, aggregate=False, abrupt_placement_failure=True)
 
-    def test_post_configure_failure_persists_toolchain_identity(self):
+    def test_regen_failure_leaves_build_unconfigured_and_refuses_incremental(self):
         identity = {
             "prepared_llvm_prefix": "/cache/llvm/prepared/prefix",
             "prepared_llvm_key": "a" * 128,
@@ -2035,8 +2035,24 @@ class IncrementalRecipeTests(unittest.TestCase):
         }
         state = self.exercise(
             False, linux=True, fail_after_configure=True, toolchain_identity=identity)
-        self.assertTrue(state["configured"])
-        self.assertEqual(state["toolchain_identity"], identity)
+        self.assertFalse(state["configured"])
+        self.assertIsNone(state["toolchain_identity"])
+
+        with tempfile.TemporaryDirectory() as temporary, ExitStack() as patches:
+            paths = {"report": Path(temporary) / "report.json"}
+            paths["report"].write_text(json.dumps({
+                "configured": state["configured"], "pristine": False,
+            }))
+            patches.enter_context(mock.patch.object(
+                perf.lb, "doctor_report", return_value={"ok": True}))
+            patches.enter_context(mock.patch.object(perf.lb, "IS_LINUX", True))
+            patches.enter_context(mock.patch.object(perf, "_paths", return_value=paths))
+            patches.enter_context(mock.patch.object(
+                perf, "host_lease", return_value=nullcontext()))
+            builder = patches.enter_context(mock.patch.object(perf, "_build_locked"))
+            with self.assertRaisesRegex(perf.LaneError, "no configured candidate"):
+                perf.build(name="fixture", empty_overlay=False, incremental=True)
+            builder.assert_not_called()
 
     def test_jit_build_records_llvm_stencil_and_regen(self):
         report = self.exercise(False, jit=True)

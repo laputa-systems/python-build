@@ -1338,8 +1338,6 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
             env.update(lb._build_mpdecimal(toolchain, target, workers, sandbox))
         lb._require_command(configure, cwd=paths["build"], env=env,
                             log=paths["configure_log"], sealed=sandbox)
-        state["configured"] = True
-        state["toolchain_identity"] = toolchain_identity
         if not empty_overlay:
             lb._python_for_regen_version(paths["build"] / "Makefile", env)
         setup_local = source / "Modules" / "Setup.local"
@@ -1351,6 +1349,8 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
             setup_target.parent.mkdir(parents=True, exist_ok=True)
             setup_target.write_text(contents)
             setup_target.chmod(setup_local.stat().st_mode & 0o777)
+        state["configured"] = True
+        state["toolchain_identity"] = toolchain_identity
     lb._write_cargo_source_config(paths["build"])
     if placement:
         # The existing generators own module registration and linker recipes.
