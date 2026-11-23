@@ -883,7 +883,17 @@ def _llvm_prepared_additions_sha256(target: str) -> str:
         "target_config": target_config.replace(str(Path("/prepared-llvm")), "{LLVM_PREFIX}"),
         "clangxx_additions": ["-lc++abi", "-lunwind"],
         "strip_link": "llvm-strip",
-        "runtime_files": ["clang_rt.crtbegin.o", "clang_rt.crtend.o"],
+        "runtime_files": [
+            "clang_rt.crtbegin.o",
+            "clang_rt.crtend.o",
+            "clang_rt.crtbegin-x86_64.o",
+            "clang_rt.crtend-x86_64.o",
+            "crtbegin.o",
+            "crtbeginS.o",
+            "crtbeginT.o",
+            "crtend.o",
+            "crtendS.o",
+        ],
     }
     return hashlib.sha256(
         json.dumps(recipe, sort_keys=True, separators=(",", ":")).encode()

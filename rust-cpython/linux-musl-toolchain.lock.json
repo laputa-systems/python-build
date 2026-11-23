@@ -221,7 +221,7 @@
         "llvm-libunwind=22.1.3-r0"
       ],
       "cxx_runtime": "production LLVM static libc++.a and libc++abi.a are preferred via -L <production LLVM>/lib",
-      "cxx_startup_files": "clang_rt.crtbegin.o and clang_rt.crtend.o from the locked LLVM archive",
+      "cxx_startup_files": "clang resource-dir crtbeginS.o/crtendS.o links to the locked clang_rt.crtbegin-x86_64.o/crtend-x86_64.o objects",
       "cache_path": ".cache/bootstrap/lane-musl/llvm-dwarfdump/23.1.5/bin/llvm-dwarfdump",
       "previous_binary_sha256": "b323a79e2f687bb3b950f308fdeeea412f95a8e282ee15cc26277f25502265a5",
       "previous_binary_size": 18704168,

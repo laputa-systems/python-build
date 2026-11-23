@@ -118,6 +118,17 @@ class JitConfigurationTests(unittest.TestCase):
             member = f"lib/clang/23/lib/linux/{name}"
             self.assertIn(member, perf.lb.MUSL_X86_64_LAYOUT.required)
             self.assertIn(member, perf.lb.MUSL_X86_64_LAYOUT.resource_files)
+        for name in (
+            "clang_rt.crtbegin-x86_64.o",
+            "clang_rt.crtend-x86_64.o",
+            "crtbegin.o",
+            "crtbeginS.o",
+            "crtbeginT.o",
+            "crtend.o",
+            "crtendS.o",
+        ):
+            member = f"lib/clang/23/lib/linux/{name}"
+            self.assertIn(member, perf.lb.MUSL_X86_64_LAYOUT.required)
 
     def regen(self, version: str) -> tuple[Path, Path]:
         root = Path(self.enterContext(tempfile.TemporaryDirectory()))
