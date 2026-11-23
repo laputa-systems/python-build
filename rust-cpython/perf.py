@@ -1023,6 +1023,8 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
     _check_name(name)
     if not isinstance(allocator, str) or allocator not in {"musl", "mimalloc", "jemalloc"}:
         raise LaneError(f"unknown allocator {allocator!r}")
+    if empty_overlay and allocator != "musl":
+        raise LaneError("--empty-overlay requires --allocator musl")
     if jobs is not None and jobs < 1:
         raise LaneError("build jobs must be positive")
     if pystats and not jit:
@@ -1108,6 +1110,8 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
                   pystats: bool = False, serc: bool = False,
                   allocator: str = "musl",
                   host_report: dict[str, Any] | None = None) -> dict[str, Any]:
+    if empty_overlay and allocator != "musl":
+        raise LaneError("--empty-overlay requires --allocator musl")
     toolchain, target = lb._toolchain()
     lb._llvm_ready(toolchain)
     allocator_build = lb.build_musl_allocator(
