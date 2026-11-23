@@ -10,6 +10,7 @@ import fcntl
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import tomllib
@@ -24,9 +25,33 @@ sys.path.insert(0, str(LANE))
 import builtin_modules
 import perf
 import perf_verdict as pv
+import cache_paths
 
 
 NO_CPU = object()
+
+
+class PrimaryCheckoutTests(unittest.TestCase):
+    def test_primary_checkout_and_mount_root_cover_a_linked_worktree(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "primary"
+            worktree = root / "linked"
+            root.mkdir()
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            (root / "tracked").write_text("tracked\n")
+            subprocess.run(["git", "-C", str(root), "add", "tracked"], check=True)
+            subprocess.run(
+                ["git", "-C", str(root), "-c", "user.name=Test",
+                 "-c", "user.email=test@example.invalid", "commit", "-qm", "init"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "worktree", "add", "--detach", str(worktree), "HEAD"],
+                check=True,
+            )
+            self.assertEqual(cache_paths.primary_checkout(worktree), root.resolve())
+            self.assertEqual(cache_paths.shared_cache_root(worktree), root / ".cache")
+            self.assertEqual(cache_paths.mount_root(worktree), root.resolve())
 
 
 def summary(wall_ci, *, wall_ratios=(1.0, 1.0, 1.0),

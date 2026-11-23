@@ -31,6 +31,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from cache_paths import local_cache_root
 from buildlib.locks import LockError, load_bootstrap
 
 from .inputs import Input, InputError
@@ -570,21 +571,16 @@ def load_macos_toolchain(path: Path) -> MacOSToolchain:
     pkgconf_path, pkgconf_version = _resolve_host_tool(
         tuple(_require(pkgconf, "resolution", "host_tools.pkgconf"))
     )
+    llvm_prefix = (
+        local_cache_root(Path(path).resolve().parent)
+        / "llvm"
+        / "toolchains"
+        / f"{_require(llvm, 'version', 'llvm')}-{_require(artifact, 'sha256', 'llvm.archive')}"
+    )
     return MacOSToolchain(
-        llvm_prefix=(
-            Path(path).resolve().parent
-            / ".cache"
-            / "llvm"
-            / "toolchains"
-            / f"{_require(llvm, 'version', 'llvm')}-{_require(artifact, 'sha256', 'llvm.archive')}"
-        ),
+        llvm_prefix=llvm_prefix,
         llvm_resource_dir=(
-            Path(path).resolve().parent
-            / ".cache"
-            / "llvm"
-            / "toolchains"
-            / f"{_require(llvm, 'version', 'llvm')}-{_require(artifact, 'sha256', 'llvm.archive')}"
-            / _require(llvm, "resource_dir", "llvm")
+            llvm_prefix / _require(llvm, "resource_dir", "llvm")
         ),
         llvm_version=_require(llvm, "version", "llvm"),
         llvm_archive_url=_require(artifact, "url", "llvm.archive"),

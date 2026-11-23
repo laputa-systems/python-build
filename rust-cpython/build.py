@@ -35,6 +35,8 @@ LANE = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(LANE))
 
+from cache_paths import local_cache_root, shared_cache_root
+
 import lane_linux
 
 from buildsys import macho
@@ -116,7 +118,8 @@ MUSL_X86_64_LAYOUT = ExtractionLayout(
     max_member_bytes=320 * 1024 * 1024,
     max_prefix_bytes=900 * 1024 * 1024,
 )
-CACHE_ROOT = REPO / ".cache"
+LOCAL_CACHE_ROOT = local_cache_root(REPO)
+CACHE_ROOT = shared_cache_root(REPO)
 CARGO_HOME = LANE / ".cargo-home"
 CARGO_CONFIG_ISOLATED_CWD = Path("/")
 INDEX_FORWARDER_PORT = 18737
@@ -311,7 +314,8 @@ def _rust_std_source_environment(destination: Path) -> dict[str, str]:
 def _toolchain():
     if IS_LINUX:
         try:
-            toolchain = lane_linux.load_musl_toolchain(LINUX_TOOLCHAIN_LOCK, CACHE_ROOT)
+            toolchain = lane_linux.load_musl_toolchain(
+                LINUX_TOOLCHAIN_LOCK, local_cache_root(REPO, LOCAL_CACHE_ROOT))
         except lane_linux.LinuxHostError as error:
             raise LaneError(str(error)) from error
         return toolchain, LaneTarget(LINUX_TARGET, toolchain.cpu_baseline)

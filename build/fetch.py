@@ -12,6 +12,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
+from cache_paths import shared_cache_root
+
 from buildsys.bootstrap import (
     BootstrapError,
     load_linux_bootstrap,
@@ -32,7 +34,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--target", default=native_target().triple)
     args = parser.parse_args(argv)
     target = target_for_triple(args.target)
-    source_cache = Cache(REPO / ".cache")
+    source_cache = Cache(shared_cache_root(REPO))
     try:
         inputs = locked_inputs(REPO / "sources.lock.json")
         for entry in inputs:
@@ -48,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if target.is_macos:
             locked = load_macos_toolchain(REPO / "bootstrap.lock.json")
-            llvm_cache = Cache(REPO / ".cache" / "llvm")
+            llvm_cache = Cache(shared_cache_root(REPO) / "llvm")
             try:
                 archive = llvm_cache.require(locked.llvm_input())
                 print("cached  llvm-macos-aarch64")
@@ -90,15 +92,16 @@ def main(argv: list[str] | None = None) -> int:
                     f"bootstrap image architecture {image.alpine_arch} does not match "
                     f"target {target.alpine_arch}"
                 )
-            package_cache = Cache(REPO / ".cache" / "bootstrap")
-            view = REPO / ".cache" / "bootstrap" / "apk" / docker_arch
+            bootstrap_cache = shared_cache_root(REPO) / "bootstrap"
+            package_cache = Cache(bootstrap_cache)
+            view = bootstrap_cache / "apk" / docker_arch
             _publish_view(
                 package_cache,
                 view,
                 [(package.input(target.triple), f"{package.sha256}.apk")
                  for package in locked.apk_closure[target.alpine_arch]],
             )
-            toolchain_view = REPO / ".cache" / "bootstrap" / "toolchain" / docker_arch
+            toolchain_view = bootstrap_cache / "toolchain" / docker_arch
             _publish_view(
                 package_cache,
                 toolchain_view,

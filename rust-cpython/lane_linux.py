@@ -34,6 +34,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from cache_paths import local_cache_root
+
 from buildsys.bootstrap import BootstrapError, load_linux_bootstrap
 from buildsys.inputs import Cache, Input, InputError
 
@@ -398,7 +400,7 @@ class MuslToolchain:
         }
 
 
-def load_musl_toolchain(path: Path, cache_root: Path) -> MuslToolchain:
+def load_musl_toolchain(path: Path, cache_root: Path | None = None) -> MuslToolchain:
     try:
         document = json.loads(Path(path).read_text())
         bootstrap_path = Path(path).resolve().parents[1] / "bootstrap.lock.json"
@@ -477,8 +479,9 @@ def load_musl_toolchain(path: Path, cache_root: Path) -> MuslToolchain:
     if rust.get("host") != TARGET or rust.get("channel") != "nightly-2026-09-15":
         raise LinuxHostError(f"{path}: Rust toolchain pin is not the musl lane toolchain")
     version = llvm["version"]
+    local_cache = local_cache_root(Path(path).resolve().parents[1], cache_root)
     prefix = (
-        Path(cache_root) / "llvm" / "toolchains"
+        local_cache / "llvm" / "toolchains"
         / f"{version}-{archive.sha256}-musl"
     ).resolve()
     package_pins = tuple(f"{name}={value}" for name, value in sorted(expected.items()))

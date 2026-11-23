@@ -17,6 +17,8 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
+from cache_paths import shared_cache_root
+
 ROOT = Path(__file__).resolve().parent.parent
 INPUT_NAME = "laputa-buildlib"
 VIEW_RELATIVE_PATH = Path(".cache") / "bootstrap" / "buildlib"
@@ -60,7 +62,7 @@ def ensure() -> None:
         return
     document = json.loads((ROOT / "sources.lock.json").read_text())
     pin = next(entry for entry in document["inputs"] if entry["name"] == INPUT_NAME)
-    wheel = object_path(ROOT / ".cache", pin["sha256"])
+    wheel = object_path(shared_cache_root(ROOT), pin["sha256"])
     if not _matches(wheel, pin["sha256"], pin["size"]):
         _download(pin["url"], wheel, pin["sha256"], pin["size"])
     sys.path.append(str(wheel))

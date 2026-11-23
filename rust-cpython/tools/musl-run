@@ -13,7 +13,11 @@ import urllib.request
 
 LANE = pathlib.Path(__file__).resolve().parents[1]
 REPO = LANE.parent
-PRIMARY = REPO.parent
+sys.path.insert(0, str(REPO))
+from cache_paths import local_cache_root, mount_root, primary_checkout, shared_cache_root, shared_path
+
+PRIMARY = primary_checkout(REPO)
+SHARED_CACHE = shared_cache_root(REPO)
 LOCK_PATH = LANE / "linux-musl-toolchain.lock.json"
 BOOTSTRAP_PATH = REPO / "bootstrap.lock.json"
 
@@ -26,7 +30,7 @@ def lock_data() -> tuple[dict, dict]:
 
 def verify_cache(*, download_missing: bool) -> None:
     lane, _production = lock_data()
-    cache = PRIMARY / lane["lane_apk_cache"]
+    cache = shared_path(REPO, lane["lane_apk_cache"])
     cache.mkdir(parents=True, exist_ok=True)
     for package in lane["lane_packages"]:
         path = cache / f'{package["name"]}-{package["version"]}.apk'
@@ -145,11 +149,11 @@ def drop_privileges_and_exec(uid: int, gid: int, mode: str, command: list[str]) 
 def run_container(mode: str, command: list[str]) -> int:
     lane, _production = lock_data()
     image = "alpine@" + lane["production"]["image_digest"]
-    cache = PRIMARY / lane["lane_apk_cache"]
-    base_cache = PRIMARY / ".cache" / "bootstrap" / "apk" / "amd64"
+    cache = shared_path(REPO, lane["lane_apk_cache"])
+    base_cache = SHARED_CACHE / "bootstrap" / "apk" / "amd64"
     rustup_home = LANE / lane["rust"]["cache"]
     cargo_home = LANE / ".cargo-home"
-    llvm_prefix = PRIMARY / ".cache" / "llvm" / "toolchains" / (
+    llvm_prefix = local_cache_root(REPO) / "llvm" / "toolchains" / (
         lane["llvm"]["version"] + "-" + lane["llvm"]["sha256"] + "-musl"
     )
     script = f'''set -eu
@@ -177,9 +181,10 @@ exec python3 {LANE / "tools/musl-run"} --as-user "$HOST_UID" "$HOST_GID" "{mode}
         ):
             if name in os.environ:
                 proxy_args.extend(["--env", name])
+    mount = mount_root(REPO)
     argv = [
         "docker", "run", "--rm", "--platform", "linux/amd64",
-        "--mount", f"type=bind,source={PRIMARY},target={PRIMARY}",
+        "--mount", f"type=bind,source={mount},target={mount}",
         "--workdir", str(REPO),
         "--network", "none" if mode == "command" else "bridge",
         "--env", f"HOST_UID={os.getuid()}",
