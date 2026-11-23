@@ -549,8 +549,13 @@ class LinuxDwarfdumpInputTests(unittest.TestCase):
                 }
             }))
             cache = mock.Mock()
-            cache.fetch.side_effect = lambda input_: payloads[input_.name.removeprefix(
-                "llvm-dwarfdump-")]
+            def fetch(input_):
+                name = input_.name.removeprefix("llvm-dwarfdump-")
+                blob = root / "downloaded" / name
+                blob.parent.mkdir(parents=True, exist_ok=True)
+                blob.write_bytes(payloads[name])
+                return blob
+            cache.fetch.side_effect = fetch
             toolchain = SimpleNamespace(
                 target="x86_64-unknown-linux-musl", llvm_version="23.1.5")
             with mock.patch.object(perf.lb, "LINUX_TOOLCHAIN_LOCK", lock), \
