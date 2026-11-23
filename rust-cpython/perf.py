@@ -2712,6 +2712,7 @@ def setup_worktree() -> int:
         return 0
     links = (
         (primary / ".cache" / "objects", REPO / ".cache" / "objects"),
+        (primary / ".cache" / "bootstrap", REPO / ".cache" / "bootstrap"),
         (primary / "benchmarks" / ".cache" / "wheelhouse", REPO / "benchmarks" / ".cache" / "wheelhouse"),
     )
     for source, target in links:

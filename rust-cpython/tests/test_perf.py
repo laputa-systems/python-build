@@ -54,6 +54,39 @@ class PrimaryCheckoutTests(unittest.TestCase):
             self.assertEqual(cache_paths.mount_root(worktree), root.resolve())
 
 
+class WorktreeSetupTests(unittest.TestCase):
+    def test_fresh_worktree_shares_bootstrap_inputs_and_passes_doctor(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            primary = root / "primary"
+            worktree = root / "fresh"
+            (primary / ".cache" / "objects").mkdir(parents=True)
+            (primary / ".cache" / "bootstrap" / "lane-musl" / "apk").mkdir(parents=True)
+            (primary / ".cache" / "llvm").mkdir(parents=True)
+            (primary / ".cache" / "llvm" / "marker").write_text("checkout-local prefix\n")
+            (primary / "benchmarks" / ".cache" / "wheelhouse").mkdir(parents=True)
+            (primary / "rust-cpython" / ".cargo-home").mkdir(parents=True)
+            (primary / "rust-cpython" / ".cargo-home" / "marker").write_text("cargo home\n")
+            doctor = mock.Mock(return_value={"ok": True})
+            with mock.patch.object(perf, "REPO", worktree), \
+                    mock.patch.object(perf, "LANE", worktree / "rust-cpython"), \
+                    mock.patch.object(perf, "_primary_repo", return_value=primary), \
+                    mock.patch.object(perf.lb, "IS_LINUX", True), \
+                    mock.patch.object(perf.lb, "doctor_report", doctor):
+                self.assertEqual(perf.setup_worktree(), 0)
+            self.assertEqual(
+                (worktree / ".cache" / "bootstrap").resolve(),
+                (primary / ".cache" / "bootstrap").resolve(),
+            )
+            self.assertTrue((worktree / ".cache" / "bootstrap").is_symlink())
+            self.assertFalse((worktree / ".cache" / "llvm").is_symlink())
+            self.assertEqual(
+                (worktree / ".cache" / "llvm" / "marker").read_text(),
+                "checkout-local prefix\n",
+            )
+            doctor.assert_called_once_with()
+
+
 def summary(wall_ci, *, wall_ratios=(1.0, 1.0, 1.0),
             cpu=((1.0,) * 3, (1.0,) * 3), status="pass", memory=None):
     timing = {"paired_ratio_samples": list(wall_ratios), "median_ratio_ci95": wall_ci,
