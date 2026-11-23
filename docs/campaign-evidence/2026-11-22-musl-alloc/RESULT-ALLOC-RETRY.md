@@ -19,8 +19,17 @@ owner's "One tuned retry" decision.
 | Geometric mean (rule: ≤ −1%) | +7.032% FAIL | −1.442% pass |
 
 All 12 pairs repeated within 0.1% (maximum 0.043%); no reruns were needed. Operation counts
-and digests match across the stages. Allocator self-`Ir` on the compile corpus is 0.16%
-(musl), 10.77% (mimalloc) and 6.49% (jemalloc).
+and digests match across the stages. Allocator self-`Ir` on the compile corpus is 10.77%
+(mimalloc) and 6.49% (jemalloc).
+
+The musl figure (0.16%) is an undercount, and the first screen's base figure has the same
+problem. Alpine's `ld-musl` is stripped, so mallocng's internal functions land in
+cachegrind's `???:???` bucket. On the compile corpus that bucket is 5.32 G `Ir` (14.0%) on
+base2, against 0.29 G on je2 and 2.36 G on mi2. This inferred attribution is not used by any
+rule: S1 compares whole-program `Ir`, which symbolization does not affect.
+
+The corpus harness itself hashes every marshalled code object with `hashlib.sha256`, which
+is 8.5% of corpus `Ir` in every arm. This is harness overhead, not Serc.
 
 ## Memory (S2)
 
