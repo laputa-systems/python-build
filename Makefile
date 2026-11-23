@@ -12,7 +12,7 @@ BENCH_PYPERFORMANCE_ARGS = $(if $(strip $(BENCH_PYPERFORMANCE_SELECTION)),--pype
 .DEFAULT_GOAL := lint
 
 .PHONY: bench bench-full bench-host-check bench-inputs bench-product
-.PHONY: fetch build package test verify repro lint clean
+.PHONY: fetch build package test test-ci verify repro lint clean
 
 fetch:
 	$(PYTHON) build.py fetch --target $(TARGET)
@@ -25,6 +25,9 @@ package:
 
 test:
 	$(PYTHON) build.py controller-test
+
+test-ci:
+	uv run --isolated --no-project --python 3.15 $(MAKE) test PYTHON=python
 
 verify:
 	$(PYTHON) build.py verify --target $(TARGET)
