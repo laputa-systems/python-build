@@ -916,7 +916,7 @@ def _prepared_files(root: Path) -> dict[str, dict[str, Any]]:
 def _prepared_prefix_matches(toolchain: MuslToolchain, additions_sha256: str) -> bool:
     manifest = toolchain.llvm_prefix / ".prepared-manifest.json"
     try:
-            record = json.loads(manifest.read_text())
+        record = json.loads(manifest.read_text())
         return (
             record.get("schema") == 2
             and record.get("raw_archive_sha256") == toolchain.llvm_archive_sha256
