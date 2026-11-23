@@ -949,6 +949,14 @@ def _fetch_llvm_archive(toolchain, llvm_cache: Cache) -> Path:
         raise LaneError(f"cannot provision the locked LLVM toolchain: {error}") from error
 
 
+def _file_sha256(path: Path) -> str:
+    checksum = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            checksum.update(chunk)
+    return checksum.hexdigest()
+
+
 def _musl_llvm_dwarfdump_inputs(toolchain, *, fetch: bool) -> dict[str, Path]:
     document = json.loads(LINUX_TOOLCHAIN_LOCK.read_text())
     entry = document["llvm_dwarfdump"]
@@ -956,13 +964,6 @@ def _musl_llvm_dwarfdump_inputs(toolchain, *, fetch: bool) -> dict[str, Path]:
     dev = entry["dev_archive"]
     if entry["version"] != toolchain.llvm_version:
         raise LaneError("llvm-dwarfdump version does not match the musl toolchain")
-
-    def digest(path: Path) -> str:
-        checksum = hashlib.sha256()
-        with path.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                checksum.update(chunk)
-        return checksum.hexdigest()
 
     inputs = (
         (
@@ -1010,7 +1011,7 @@ def _musl_llvm_dwarfdump_inputs(toolchain, *, fetch: bool) -> dict[str, Path]:
             temporary = Path(handle.name)
         try:
             shutil.copyfile(blob, temporary)
-            if (size is not None and temporary.stat().st_size != size) or digest(temporary) != sha256:
+            if (size is not None and temporary.stat().st_size != size) or _file_sha256(temporary) != sha256:
                 raise LaneError(f"{input_.name}: cached input digest/size mismatch")
             os.replace(temporary, path)
         finally:
@@ -1030,7 +1031,7 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
     if (
         expected_binary_sha
         and cached.is_file()
-        and digest(cached) == expected_binary_sha
+        and _file_sha256(cached) == expected_binary_sha
     ):
         return cached
 
@@ -1147,7 +1148,7 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
                 f"built llvm-dwarfdump reports {version.stdout.strip()!r}, "
                 f"expected {entry['version']}"
             )
-        actual_sha = digest(binary)
+        actual_sha = _file_sha256(binary)
         if expected_binary_sha and actual_sha != expected_binary_sha:
             raise LaneError(
                 f"built llvm-dwarfdump digest {actual_sha} != locked {expected_binary_sha}"
@@ -1162,7 +1163,7 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
             os.replace(temporary_cache, cached)
         finally:
             temporary_cache.unlink(missing_ok=True)
-    print(f"llvm-dwarfdump cache: {cached} sha256={digest(cached)}")
+    print(f"llvm-dwarfdump cache: {cached} sha256={_file_sha256(cached)}")
     return cached
 
 
