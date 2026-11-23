@@ -1222,7 +1222,7 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
                  jit_config.argument, "--with-tail-call-interp=no",
                  "--without-ensurepip"]
     if lb.TARGET.endswith("-musl"):
-        configure.append("--with-libs=-lgcc_s -lc")
+        configure.append("--with-libs=-Wl,-l:libgcc_s.so.1 -lc")
     if pystats:
         configure.append("--enable-pystats")
     # Only the aggregate workspace requires the pinned source-built runtime.

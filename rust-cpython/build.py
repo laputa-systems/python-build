@@ -1841,7 +1841,7 @@ def _configuration(toolchain, target, *, jit: bool = False,
     ]
     args.append("--with-pydebug")
     if target.triple.endswith("-musl"):
-        args.append("--with-libs=-lgcc_s -lc")
+        args.append("--with-libs=-Wl,-l:libgcc_s.so.1 -lc")
     env = _environment(toolchain, offline=True)
     env.update(platform_flags)
     env.update(jit_config.environment)

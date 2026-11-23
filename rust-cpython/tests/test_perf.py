@@ -1797,7 +1797,10 @@ class IncrementalRecipeTests(unittest.TestCase):
 
     def test_musl_build_uses_rust_dynamic_unwinder_arguments(self):
         report = self.exercise(False, linux=True, source_std=False, aggregate=False)
-        self.assertIn("--with-libs=-lgcc_s -lc", report["configure_arguments"])
+        self.assertIn(
+            "--with-libs=-Wl,-l:libgcc_s.so.1 -lc",
+            report["configure_arguments"],
+        )
 
     def test_serc_build_defines_the_hook_and_requests_serc_staging(self):
         self.exercise(False, serc=True)

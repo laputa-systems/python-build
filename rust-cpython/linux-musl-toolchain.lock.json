@@ -105,9 +105,9 @@
     "rust_native_static_libs": {
       "probe": "rustc --target x86_64-unknown-linux-musl -C target-feature=-crt-static --crate-type staticlib --print native-static-libs",
       "reported": ["-lgcc_s", "-lc"],
-      "musl_link_args": ["-lgcc_s", "-lc"],
+      "musl_link_args": ["-Wl,-l:libgcc_s.so.1", "-lc"],
       "runtime_package": "libgcc=15.2.0-r5, providing libgcc_s.so.1",
-      "make_path": "configure --with-libs populates LIBS; SHLIBS expands LIBS for libpython and the program and freeze-module links use LIBS"
+      "make_path": "configure --with-libs uses the versioned libgcc_s.so.1 link name without a GCC linker-name symlink; SHLIBS expands LIBS for libpython and the program and freeze-module links use LIBS"
     }
   },
   "allocators": {

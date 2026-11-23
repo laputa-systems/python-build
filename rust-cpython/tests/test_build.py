@@ -81,7 +81,7 @@ class JitConfigurationTests(unittest.TestCase):
             disabled_args, disabled_env = perf.lb._configuration(self.toolchain, target, jit=False)
         self.assertIn("--enable-experimental-jit=yes", enabled_args)
         self.assertIn("--enable-experimental-jit=no", disabled_args)
-        self.assertIn("--with-libs=-lgcc_s -lc", enabled_args)
+        self.assertIn("--with-libs=-Wl,-l:libgcc_s.so.1 -lc", enabled_args)
         self.assertFalse(any("-lunwind" in item for item in enabled_args))
         self.assertEqual(enabled_env["LLVM_TOOLS_INSTALL_DIR"], "/opt/llvm/23.1.2")
         self.assertEqual(disabled_env["LLVM_VERSION"], "23")

@@ -473,7 +473,8 @@ def load_musl_toolchain(path: Path, cache_root: Path | None = None) -> MuslToolc
         llvm.get("sha256") != archive.sha256
         or llvm.get("version") != bootstrap.llvm.version
         or native_static_libs.get("reported") != ["-lgcc_s", "-lc"]
-        or native_static_libs.get("musl_link_args") != ["-lgcc_s", "-lc"]
+        or native_static_libs.get("musl_link_args")
+        != ["-Wl,-l:libgcc_s.so.1", "-lc"]
         or native_static_libs.get("runtime_package") != "libgcc=15.2.0-r5, providing libgcc_s.so.1"
     ):
         raise LinuxHostError(f"{path}: LLVM or Rust native-library identity differs")
