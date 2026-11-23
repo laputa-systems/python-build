@@ -37,6 +37,8 @@ from typing import Any
 
 from lane_cache import (
     cache_root as lane_cache_root,
+)
+from lane_cache import (
     musl_llvm_prepared_additions_sha256,
     musl_llvm_prepared_prefix,
 )
@@ -727,7 +729,7 @@ def problems(toolchain: LinuxToolchain | MuslToolchain) -> list[str]:
             f"the Linux lane requires native x86_64 Linux (found {platform.system()} "
             f"{platform.machine()})"
         )
-    spec_kind, spec = host_spec(toolchain)
+    _spec_kind, spec = host_spec(toolchain)
     release = _os_release()
     if release.get("ID") != toolchain.host_os_id or (
         release.get("VERSION_ID") != spec["os_version_id"]

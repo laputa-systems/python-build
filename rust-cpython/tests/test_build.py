@@ -6,7 +6,6 @@ import concurrent.futures
 import hashlib
 import importlib.util
 import io
-from importlib.machinery import SourceFileLoader
 import json
 import os
 import subprocess
@@ -15,6 +14,7 @@ import tarfile
 import tempfile
 import threading
 import unittest
+from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -635,9 +635,9 @@ class LinuxDwarfdumpInputTests(unittest.TestCase):
             })
             with mock.patch.object(perf.lb, "LINUX_TOOLCHAIN_LOCK", lock), \
                     mock.patch.object(perf.lb, "cache_path", return_value=cached), \
-                    mock.patch.object(perf.lb, "_musl_llvm_dwarfdump_inputs", inputs):
-                with self.assertRaisesRegex(perf.LaneError, "attestation bundle is missing"):
-                    perf.lb._cached_musl_llvm_dwarfdump(toolchain)
+                    mock.patch.object(perf.lb, "_musl_llvm_dwarfdump_inputs", inputs), \
+                    self.assertRaisesRegex(perf.LaneError, "attestation bundle is missing"):
+                perf.lb._cached_musl_llvm_dwarfdump(toolchain)
             inputs.assert_called_once_with(toolchain, fetch=False)
 
     def test_dwarfdump_lock_records_reproducible_build_inputs(self):
@@ -770,9 +770,9 @@ class MuslAPKVerificationTests(unittest.TestCase):
                         mock.patch.object(musl_run, "cache_path",
                                           return_value=lane_cache), \
                         mock.patch.object(musl_run, "CACHE_ROOT", root), \
-                        mock.patch.object(musl_run.subprocess, "run", docker):
-                    with self.assertRaisesRegex(SystemExit, message):
-                        musl_run.main(["python3", "--version"])
+                        mock.patch.object(musl_run.subprocess, "run", docker), \
+                        self.assertRaisesRegex(SystemExit, message):
+                    musl_run.main(["python3", "--version"])
                 docker.assert_not_called()
 
 
@@ -929,9 +929,9 @@ class MuslRustupPinTests(unittest.TestCase):
                     mock.patch.object(musl_run, "lock_data", return_value=(lane, {})), \
                     mock.patch.object(musl_run.urllib.request, "urlopen",
                                       return_value=response) as fetch, \
-                    mock.patch.object(musl_run.subprocess, "run", run):
-                with self.assertRaisesRegex(SystemExit, "rustup-init digest mismatch"):
-                    musl_run.container_fetch()
+                    mock.patch.object(musl_run.subprocess, "run", run), \
+                    self.assertRaisesRegex(SystemExit, "rustup-init digest mismatch"):
+                musl_run.container_fetch()
             self.assertEqual(
                 fetch.call_args.args[0].full_url,
                 lane["rust"]["rustup"]["init_url"],

@@ -17,7 +17,7 @@ package = false
 
 [tool.ruff]
 target-version = "py315"
-extend-exclude = ["rust-cpython/overlay", "backend/vendor", "benchmarks/workloads/fixtures", "rust-cpython/serc-overlay/crates/serc/tests/fixtures"]
+extend-exclude = ["rust-cpython/overlay", "backend/vendor", "benchmarks/workloads/fixtures", "rust-cpython/serc-overlay/crates/serc/tests/fixtures", "docs/campaign-evidence"]
 
 [tool.ty.environment]
 python-version = "3.15"

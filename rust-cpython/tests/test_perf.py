@@ -23,10 +23,9 @@ LANE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LANE))
 
 import builtin_modules
+import lane_cache
 import perf
 import perf_verdict as pv
-import lane_cache
-
 
 NO_CPU = object()
 
@@ -157,15 +156,15 @@ class WorktreeSetupTests(unittest.TestCase):
 
 class EmptyOverlayAllocatorTests(unittest.TestCase):
     def test_custom_allocator_is_rejected_before_doctor_or_build_setup(self):
-        with mock.patch.object(perf.lb, "doctor_report") as doctor:
-            with self.assertRaisesRegex(perf.LaneError, "--empty-overlay requires"):
-                perf.build(name="fixture", empty_overlay=True, allocator="mimalloc")
+        with mock.patch.object(perf.lb, "doctor_report") as doctor, \
+                self.assertRaisesRegex(perf.LaneError, "--empty-overlay requires"):
+            perf.build(name="fixture", empty_overlay=True, allocator="mimalloc")
         doctor.assert_not_called()
-        with mock.patch.object(perf.lb, "_toolchain") as toolchain:
-            with self.assertRaisesRegex(perf.LaneError, "--empty-overlay requires"):
-                perf._build_locked(
-                    "fixture", {}, empty_overlay=True, jobs=None, incremental=False,
-                    state={}, allocator="jemalloc")
+        with mock.patch.object(perf.lb, "_toolchain") as toolchain, \
+                self.assertRaisesRegex(perf.LaneError, "--empty-overlay requires"):
+            perf._build_locked(
+                "fixture", {}, empty_overlay=True, jobs=None, incremental=False,
+                state={}, allocator="jemalloc")
         toolchain.assert_not_called()
 
 

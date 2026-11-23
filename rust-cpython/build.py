@@ -35,9 +35,8 @@ LANE = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(LANE))
 
-from lane_cache import cache_path, cache_root
-
 import lane_linux
+from lane_cache import cache_path, cache_root
 
 from buildsys import macho
 from buildsys.bootstrap import (
@@ -57,9 +56,9 @@ from buildsys.inputs import (
     safe_extract,
 )
 from buildsys.llvm import (
-    ExtractionLayout,
     LINUX_X86_64_LAYOUT,
     MACOS_AARCH64_LAYOUT,
+    ExtractionLayout,
     extract_llvm_archive,
     verify_llvm_attestation_metadata,
 )
@@ -603,7 +602,7 @@ def _linux_doctor_report(
         failures.append(f"the locked LLVM {toolchain.llvm_version} toolchain is not provisioned; run fetch")
     if not _mpdecimal_cached():
         failures.append("the locked mpdecimal source is not verified in .cache; run fetch")
-    spec_kind, spec = lane_linux.host_spec(toolchain)
+    spec_kind, _spec = lane_linux.host_spec(toolchain)
     return {
         "host": {
             "os": platform.system(),
