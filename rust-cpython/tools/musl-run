@@ -1,0 +1,220 @@
+#!/usr/bin/env python3
+"""Run the Rust-for-CPython lane in its pinned Alpine musl container."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import urllib.request
+
+LANE = pathlib.Path(__file__).resolve().parents[1]
+REPO = LANE.parent
+PRIMARY = REPO.parent
+LOCK_PATH = LANE / "linux-musl-toolchain.lock.json"
+BOOTSTRAP_PATH = REPO / "bootstrap.lock.json"
+
+
+def lock_data() -> tuple[dict, dict]:
+    lane = json.loads(LOCK_PATH.read_text())
+    production = json.loads(BOOTSTRAP_PATH.read_text())["linux_toolchain"]
+    return lane, production
+
+
+def verify_cache(*, download_missing: bool) -> None:
+    lane, _production = lock_data()
+    cache = PRIMARY / lane["lane_apk_cache"]
+    cache.mkdir(parents=True, exist_ok=True)
+    for package in lane["lane_packages"]:
+        path = cache / f'{package["name"]}-{package["version"]}.apk'
+        if not path.exists() and download_missing:
+            repository = next(
+                entry for entry in lane["repositories"]
+                if entry.rstrip("/").endswith("/" + package["repository"])
+            )
+            url = (
+                f'{repository}/{package["arch"]}/'
+                f'{package["name"]}-{package["version"]}.apk'
+            )
+            request = urllib.request.Request(url, headers={"User-Agent": "musl-lane-bootstrap/1"})
+            with urllib.request.urlopen(request, timeout=60) as response:
+                payload = response.read()
+            if len(payload) != package["size"] or hashlib.sha256(payload).hexdigest() != package["sha256"]:
+                raise SystemExit(f"downloaded APK digest/size mismatch: {url}")
+            path.write_bytes(payload)
+        if not path.is_file():
+            raise SystemExit(f"missing cached lane APK: {path}")
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        if path.stat().st_size != package["size"] or digest != package["sha256"]:
+            raise SystemExit(f"cached APK digest/size mismatch: {path}")
+
+
+def verify_installed() -> None:
+    lane, production = lock_data()
+    release = pathlib.Path("/etc/alpine-release").read_text().strip()
+    if release != lane["alpine_release"]:
+        raise SystemExit(f"Alpine release is {release}, expected {lane['alpine_release']}")
+    expected = dict(item.split("=", 1) for item in production["base_packages"])
+    expected.update({
+        package["name"]: package["version"]
+        for package in production["apk_closure"]["x86_64"]
+    })
+    expected.update({
+        package["name"]: package["version"] for package in lane["lane_packages"]
+    })
+    installed = {}
+    for text in pathlib.Path("/lib/apk/db/installed").read_text().split("\n\n"):
+        fields = dict(
+            line.split(":", 1) for line in text.splitlines() if ":" in line
+        )
+        if fields.get("P"):
+            installed[fields["P"]] = fields.get("V", "")
+    mismatches = {
+        name: (installed.get(name), version)
+        for name, version in expected.items() if installed.get(name) != version
+    }
+    extras = sorted(set(installed) - set(expected))
+    if mismatches or extras:
+        raise SystemExit(f"installed APK closure differs from lock: {mismatches=}, {extras=}")
+
+
+def container_fetch() -> int:
+    lane, _production = lock_data()
+    cargo_home = LANE / ".cargo-home"
+    rustup_home = LANE / lane["rust"]["cache"]
+    cargo_home.mkdir(parents=True, exist_ok=True)
+    rustup_home.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ)
+    env.update({
+        "HOME": str(LANE / ".home"),
+        "CARGO_HOME": str(cargo_home),
+        "RUSTUP_HOME": str(rustup_home),
+        "RUSTUP_INIT_SKIP_PATH_CHECK": "1",
+        "RUSTUP_TOOLCHAIN": lane["rust"]["channel"],
+        "PATH": f"{cargo_home / 'bin'}:{os.environ.get('PATH', '/usr/bin:/bin')}",
+    })
+    pathlib.Path(env["HOME"]).mkdir(parents=True, exist_ok=True)
+    rustup = cargo_home / "bin" / "rustup"
+    usable = rustup.is_file() and subprocess.run(
+        [str(rustup), "--version"], env=env, stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL, check=False,
+    ).returncode == 0
+    if not usable:
+        url = "https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-musl/rustup-init"
+        installer = rustup_home / "rustup-init"
+        request = urllib.request.Request(url, headers={"User-Agent": "musl-lane-bootstrap/1"})
+        with urllib.request.urlopen(request, timeout=60) as response:
+            installer.write_bytes(response.read())
+        installer.chmod(0o755)
+        result = subprocess.run(
+            [str(installer), "-y", "--no-modify-path", "--default-toolchain", "none"],
+            env=env, check=False,
+        )
+        if result.returncode:
+            return result.returncode
+    toolchain = f'{lane["rust"]["channel"]}-{lane["rust"]["host"]}'
+    installed = subprocess.run(
+        [str(rustup), "toolchain", "install", toolchain, "--profile", "minimal",
+         "--component", "rust-src"],
+        env=env, check=False,
+    )
+    if installed.returncode:
+        return installed.returncode
+    return subprocess.run(
+        [sys.executable, str(LANE / "build.py"), "fetch"],
+        cwd=REPO, env=env, check=False,
+    ).returncode
+
+
+def drop_privileges_and_exec(uid: int, gid: int, mode: str, command: list[str]) -> int:
+    os.setgroups([])
+    os.setgid(gid)
+    os.setuid(uid)
+    pathlib.Path(os.environ["HOME"]).mkdir(parents=True, exist_ok=True)
+    if mode == "fetch":
+        return container_fetch()
+    if not command:
+        raise SystemExit("musl-run requires a command")
+    os.execvp(command[0], command)
+    return 127
+
+
+def run_container(mode: str, command: list[str]) -> int:
+    lane, _production = lock_data()
+    image = "alpine@" + lane["production"]["image_digest"]
+    cache = PRIMARY / lane["lane_apk_cache"]
+    base_cache = PRIMARY / ".cache" / "bootstrap" / "apk" / "amd64"
+    rustup_home = LANE / lane["rust"]["cache"]
+    cargo_home = LANE / ".cargo-home"
+    llvm_prefix = PRIMARY / ".cache" / "llvm" / "toolchains" / (
+        lane["llvm"]["version"] + "-" + lane["llvm"]["sha256"] + "-musl"
+    )
+    script = f'''set -eu
+apk --no-network --repositories-file /dev/null add {base_cache}/*.apk
+apk --no-network --repositories-file /dev/null add {cache}/*.apk
+python3 {LANE / "tools/musl-run"} --verify-cache
+python3 {LANE / "tools/musl-run"} --verify-installed
+export HOME={LANE / ".home"}
+export CARGO_HOME={cargo_home}
+export RUSTUP_HOME={rustup_home}
+export RUSTUP_TOOLCHAIN={lane["rust"]["channel"]}
+export PATH={cargo_home / "bin"}:{llvm_prefix / "bin"}:/usr/bin:/bin
+export LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC
+export PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1
+export SOURCE_DATE_EPOCH=1704067200
+export MUSL_LANE_IMAGE_DIGEST={lane["production"]["image_digest"]}
+    if [ "{mode}" = command ]; then export RUST_CPYTHON_DOCKER_OFFLINE=1; fi
+exec python3 {LANE / "tools/musl-run"} --as-user "$HOST_UID" "$HOST_GID" "{mode}" "$@"
+'''
+    proxy_args = []
+    if mode == "fetch":
+        for name in (
+            "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+            "http_proxy", "https_proxy", "all_proxy", "no_proxy",
+        ):
+            if name in os.environ:
+                proxy_args.extend(["--env", name])
+    argv = [
+        "docker", "run", "--rm", "--platform", "linux/amd64",
+        "--mount", f"type=bind,source={PRIMARY},target={PRIMARY}",
+        "--workdir", str(REPO),
+        "--network", "none" if mode == "command" else "bridge",
+        "--env", f"HOST_UID={os.getuid()}",
+        "--env", f"HOST_GID={os.getgid()}",
+        *proxy_args,
+        image, "sh", "-euc", script, "musl-run-container", *command,
+    ]
+    return subprocess.run(argv, check=False).returncode
+
+
+def main(argv: list[str]) -> int:
+    if argv[:1] == ["--verify-cache"]:
+        verify_cache(download_missing=False)
+        return 0
+    if argv[:1] == ["--verify-installed"]:
+        verify_installed()
+        return 0
+    if argv[:1] == ["--as-user"]:
+        uid, gid, mode, *command = argv[1:]
+        return drop_privileges_and_exec(int(uid), int(gid), mode, command)
+    if argv[:1] == ["--container-fetch"]:
+        return container_fetch()
+    if not argv:
+        raise SystemExit("usage: musl-run fetch | musl-run <command> [args...]")
+    if argv[0] == "fetch":
+        subprocess.run(
+            ["uv", "run", "--frozen", "python", str(REPO / "build/fetch.py"),
+             "--target", "x86_64-unknown-linux-musl"],
+            cwd=REPO, check=True,
+        )
+        verify_cache(download_missing=True)
+        return run_container("fetch", [])
+    verify_cache(download_missing=True)
+    return run_container("command", argv)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

@@ -500,7 +500,8 @@ extern "C" {
 #    error "no supported thread-local variable storage classifier"
 #  endif
 #  if defined(Py_BUILD_CORE) && !defined(Py_BUILD_CORE_MODULE) \
-      && defined(__linux__) && (defined(__GNUC__) || defined(__clang__))
+      && defined(__linux__) && defined(__GLIBC__) \
+      && (defined(__GNUC__) || defined(__clang__))
 #    undef _Py_thread_local
 #    define _Py_thread_local __thread __attribute__((tls_model("initial-exec")))
 #  endif

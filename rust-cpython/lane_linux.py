@@ -1,12 +1,10 @@
-"""x86_64 glibc Linux host support for the isolated Rust-for-CPython lane.
+"""Linux host support for the isolated Rust-for-CPython lane.
 
-The macOS lane takes its toolchain from bootstrap.lock.json, its headers from
-the Xcode SDK, and its sealed boundary from sandbox-exec. This module supplies
-the Linux equivalents without touching the production 3.14.6 musl recipes:
+The Linux lane runs in the production Alpine/musl container and shares the
+production APK closure and LLVM archive:
 
-* `linux-toolchain.lock.json` pins the official LLVM 23.1.2 x86_64 archive
-  (same tag and source commit as the macOS archive) plus the exact host
-  distribution packages that provide glibc and the development libraries.
+* `linux-musl-toolchain.lock.json` pins the lane-only APK layer and references
+  the production image, APK closure, and LLVM digests.
 * `SealedRun` runs a command in a fresh user and network namespace
   (`unshare --user --map-root-user --net`). The namespace has only a down
   loopback device, so every connection fails, including to host loopback;
@@ -21,6 +19,7 @@ the Linux equivalents without touching the production 3.14.6 musl recipes:
 from __future__ import annotations
 
 import errno
+import hashlib
 import json
 import os
 import platform
@@ -35,9 +34,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from buildsys.bootstrap import BootstrapError, load_linux_bootstrap
 from buildsys.inputs import Cache, Input, InputError
 
-TARGET = "x86_64-unknown-linux-gnu"
+TARGET = "x86_64-unknown-linux-musl"
+_GNU_TARGET = "x86_64-unknown-linux-gnu"
 UNSHARE = "/usr/bin/unshare"
 _UNSHARE_ARGS = ("--user", "--map-root-user", "--net", "--")
 _DOCKER_OFFLINE = "RUST_CPYTHON_DOCKER_OFFLINE"
@@ -48,7 +49,11 @@ class LinuxHostError(Exception):
 
 
 def supported_host() -> bool:
-    return platform.system() == "Linux" and platform.machine() == "x86_64"
+    return (
+        platform.system() == "Linux"
+        and platform.machine() == "x86_64"
+        and Path("/etc/alpine-release").is_file()
+    )
 
 
 def _tool_output(argv: list[str]) -> str:
@@ -183,7 +188,7 @@ class LinuxToolchain:
             sha256=self.llvm_archive_sha256,
             size=self.llvm_archive_size,
             role="build-source",
-            target=TARGET,
+            target=_GNU_TARGET,
             license=self.llvm_license,
             purpose="official LLVM compiler, linker and profiling tools for the Linux lane",
         )
@@ -196,7 +201,7 @@ class LinuxToolchain:
             sha256=self.llvm_attestation_sha256,
             size=self.llvm_attestation_size,
             role="build-source",
-            target=TARGET,
+            target=_GNU_TARGET,
             purpose="Sigstore provenance statement for the LLVM release archive",
         )
 
@@ -208,7 +213,7 @@ class LinuxToolchain:
             sha256=self.icu_runtime["sha256"],
             size=self.icu_runtime["size"],
             role="build-source",
-            target=TARGET,
+            target=_GNU_TARGET,
             license=self.icu_runtime["license"],
             purpose="ICU 70 runtime libraries required by the official ld.lld binary",
         )
@@ -248,7 +253,7 @@ class LinuxToolchain:
         profdata = _tool_output([str(self.llvm_profdata), "--version"])
         return {
             "family": "linux-gnu",
-            "target": TARGET,
+            "target": _GNU_TARGET,
             "llvm_version": self.llvm_version,
             "llvm_prefix": str(self.llvm_prefix),
             "llvm_resource_dir": str(self.llvm_resource_dir),
@@ -282,6 +287,230 @@ class LinuxToolchain:
         }
 
 
+@dataclass(frozen=True)
+class MuslToolchain:
+    lock_path: Path
+    target: str
+    cpu_baseline: str
+    alpine_release: str
+    image_digest: str
+    image_revision: str
+    repositories: tuple[str, ...]
+    package_pins: tuple[str, ...]
+    lane_packages: tuple[dict[str, Any], ...]
+    lane_apk_cache: str
+    system_package_roots: tuple[str, ...]
+    llvm_prefix: Path
+    llvm_resource_dir: Path
+    llvm_version: str
+    llvm_archive_url: str
+    llvm_archive_sha256: str
+    llvm_archive_size: int
+    llvm_archive_root: str
+    llvm_license: str
+    rust_channel: str
+    rust_host: str
+    make: Path
+    make_version: str
+    pkgconf: Path
+    pkgconf_version: str
+
+    @property
+    def llvm_profdata(self) -> Path:
+        return self.llvm_prefix / "bin" / "llvm-profdata"
+
+    @property
+    def clang(self) -> Path:
+        return self.llvm_prefix / "bin" / "clang"
+
+    @property
+    def libclang_path(self) -> Path:
+        return self.llvm_prefix / "lib"
+
+    @property
+    def bindgen_resource_dir(self) -> Path:
+        return self.llvm_resource_dir
+
+    def llvm_input(self) -> Input:
+        return Input(
+            name="llvm-musl-x86_64",
+            version=self.llvm_version,
+            urls=(self.llvm_archive_url,),
+            sha256=self.llvm_archive_sha256,
+            size=self.llvm_archive_size,
+            role="build-source",
+            target=self.target,
+            license=self.llvm_license,
+            purpose="production LLVM compiler and linker for the musl lane",
+        )
+
+    def env(self) -> dict[str, str]:
+        env = dict(os.environ)
+        for name in (
+            "PYTHONPATH", "PYTHONHOME", "CPATH", "C_INCLUDE_PATH", "LIBRARY_PATH",
+            "LD_LIBRARY_PATH", "LD_PRELOAD", "RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS",
+        ):
+            env.pop(name, None)
+        binary = self.llvm_prefix / "bin"
+        env.update({
+            "CC": str(binary / "clang"),
+            "CXX": str(binary / "clang++"),
+            "AR": str(binary / "llvm-ar"),
+            "RANLIB": str(binary / "llvm-ranlib"),
+            "NM": str(binary / "llvm-nm"),
+            "STRIP": str(binary / "llvm-strip"),
+            "READELF": str(binary / "llvm-readelf"),
+            "LIBCLANG_PATH": str(self.libclang_path),
+        })
+        env.pop("LD", None)
+        return env
+
+    def toolchain(self) -> MuslToolchain:
+        return self
+
+    def identity(self) -> dict[str, Any]:
+        return {
+            "family": "linux-musl",
+            "target": self.target,
+            "alpine_release": self.alpine_release,
+            "image_digest": self.image_digest,
+            "image_revision": self.image_revision,
+            "cpu_baseline": self.cpu_baseline,
+            "lock_path": str(self.lock_path),
+            "llvm_version": self.llvm_version,
+            "llvm_prefix": str(self.llvm_prefix),
+            "llvm_archive": {
+                "url": self.llvm_archive_url,
+                "sha256": self.llvm_archive_sha256,
+                "size": self.llvm_archive_size,
+                "license": self.llvm_license,
+            },
+            "rust_native_static_libs": ["-lgcc_s", "-lc"],
+            "linker": str(self.llvm_prefix / "bin" / "ld.lld"),
+            "llvm_profdata": None,
+            "llvm_profdata_version": "not included in the production musl LLVM archive",
+            "make": str(self.make),
+            "make_version": self.make_version,
+            "pkgconf": str(self.pkgconf),
+            "pkgconf_version": self.pkgconf_version,
+            "system_package_roots": list(self.system_package_roots),
+            "system_packages": list(self.package_pins),
+        }
+
+
+def load_musl_toolchain(path: Path, cache_root: Path) -> MuslToolchain:
+    try:
+        document = json.loads(Path(path).read_text())
+        bootstrap_path = Path(path).resolve().parents[1] / "bootstrap.lock.json"
+        bootstrap_document = json.loads(bootstrap_path.read_text())["linux_toolchain"]
+        bootstrap = load_linux_bootstrap(bootstrap_path)
+    except (OSError, json.JSONDecodeError, KeyError, BootstrapError) as error:
+        raise LinuxHostError(f"cannot read musl toolchain inputs: {error}") from error
+    production = document.get("production", {})
+    closure = bootstrap_document["apk_closure"]["x86_64"]
+    closure_digest = hashlib.sha256(
+        json.dumps(closure, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    image = bootstrap.images["amd64"]
+    archive = bootstrap.llvm.archives["x86_64"]
+    if document.get("target") != TARGET or document.get("arch") != "x86_64":
+        raise LinuxHostError(f"{path}: expected the {TARGET} target")
+    if (
+        production.get("image_digest") != image.digest
+        or production.get("image_revision") != image.revision
+        or production.get("apk_closure_sha256") != closure_digest
+        or production.get("llvm_sha256") != archive.sha256
+        or document.get("alpine_release") != bootstrap.release
+        or tuple(document.get("repositories", ())) != bootstrap.repositories
+    ):
+        raise LinuxHostError(f"{path}: production image, APK, or LLVM identity differs")
+    expected = dict(item.split("=", 1) for item in bootstrap.base_packages)
+    expected.update({item.name: item.version for item in bootstrap.apk_closure["x86_64"]})
+    lane_packages = tuple(document.get("lane_packages", ()))
+    if not lane_packages or len({item.get("name") for item in lane_packages}) != len(lane_packages):
+        raise LinuxHostError(f"{path}: lane package set is empty or has duplicate names")
+    for item in lane_packages:
+        if (
+            item.get("arch") != "x86_64"
+            or item.get("repository") not in {"main", "community"}
+            or item.get("repository") not in {
+                repository.rsplit("/", 1)[-1] for repository in bootstrap.repositories
+            }
+            or not re.fullmatch(r"[0-9a-f]{64}", item.get("sha256", ""))
+            or not isinstance(item.get("size"), int)
+            or not item.get("license")
+        ):
+            raise LinuxHostError(f"{path}: malformed lane APK entry {item.get('name')}")
+        supersedes = item.get("supersedes_production_pin")
+        if supersedes:
+            name, separator, version = supersedes.partition("=")
+            if not separator or name != item.get("name") or expected.get(name) != version:
+                raise LinuxHostError(f"{path}: invalid production supersession for {name}")
+        expected[item["name"]] = item["version"]
+    runtime_libgcc = next((item for item in lane_packages if item.get("name") == "libgcc"), None)
+    if (
+        runtime_libgcc is None
+        or runtime_libgcc.get("version") != "15.2.0-r5"
+        or runtime_libgcc.get("license") != "GPL-3.0-or-later WITH GCC-exception-3.1"
+        or runtime_libgcc.get("role") != "lane runtime library libgcc_s.so.1, not a compiler"
+    ):
+        raise LinuxHostError(f"{path}: Alpine libgcc_s runtime package pin is missing")
+    roots = tuple(document.get("system_package_roots", ()))
+    if not roots or not set(roots).issubset({item["name"] for item in lane_packages}):
+        raise LinuxHostError(f"{path}: system package roots are not in the lane APK set")
+    tools = document.get("production_tools", {})
+    if tools.get("make") != f"make={expected.get('make')}":
+        raise LinuxHostError(f"{path}: make pin differs from the production closure")
+    if tools.get("pkgconf") != f"pkgconf={expected.get('pkgconf')}":
+        raise LinuxHostError(f"{path}: pkgconf pin differs from the production closure")
+    llvm = document.get("llvm", {})
+    native_static_libs = llvm.get("rust_native_static_libs", {})
+    if (
+        llvm.get("sha256") != archive.sha256
+        or llvm.get("version") != bootstrap.llvm.version
+        or native_static_libs.get("reported") != ["-lgcc_s", "-lc"]
+        or native_static_libs.get("musl_link_args") != ["-lgcc_s", "-lc"]
+        or native_static_libs.get("runtime_package") != "libgcc=15.2.0-r5, providing libgcc_s.so.1"
+    ):
+        raise LinuxHostError(f"{path}: LLVM or Rust native-library identity differs")
+    rust = document.get("rust", {})
+    if rust.get("host") != TARGET or rust.get("channel") != "nightly-2026-09-15":
+        raise LinuxHostError(f"{path}: Rust toolchain pin is not the musl lane toolchain")
+    version = llvm["version"]
+    prefix = (
+        Path(cache_root) / "llvm" / "toolchains"
+        / f"{version}-{archive.sha256}-musl"
+    ).resolve()
+    package_pins = tuple(f"{name}={value}" for name, value in sorted(expected.items()))
+    return MuslToolchain(
+        lock_path=Path(path),
+        target=TARGET,
+        cpu_baseline=document["cpu_baseline"],
+        alpine_release=bootstrap.release,
+        image_digest=image.digest,
+        image_revision=image.revision,
+        repositories=bootstrap.repositories,
+        package_pins=package_pins,
+        lane_packages=lane_packages,
+        lane_apk_cache=document["lane_apk_cache"],
+        system_package_roots=roots,
+        llvm_prefix=prefix,
+        llvm_resource_dir=prefix / "lib" / "clang" / "23",
+        llvm_version=version,
+        llvm_archive_url=archive.url,
+        llvm_archive_sha256=archive.sha256,
+        llvm_archive_size=archive.size,
+        llvm_archive_root=archive.archive_root,
+        llvm_license=llvm["license"],
+        rust_channel=rust["channel"],
+        rust_host=rust["host"],
+        make=Path("/usr/bin/make"),
+        make_version=expected["make"],
+        pkgconf=Path("/usr/bin/pkgconf"),
+        pkgconf_version=expected["pkgconf"],
+    )
+
+
 def _require(document: dict, key: str, where: str) -> Any:
     if key not in document:
         raise LinuxHostError(f"{where}: missing {key!r}")
@@ -293,8 +522,8 @@ def load_linux_toolchain(path: Path, cache_root: Path) -> LinuxToolchain:
         document = json.loads(Path(path).read_text())
     except (OSError, json.JSONDecodeError) as error:
         raise LinuxHostError(f"cannot read Linux toolchain lock {path}: {error}") from error
-    if document.get("target") != TARGET:
-        raise LinuxHostError(f"{path}: target is not {TARGET}")
+    if document.get("target") != _GNU_TARGET:
+        raise LinuxHostError(f"{path}: target is not {_GNU_TARGET}")
     llvm = _require(document, "llvm", "lock")
     archive = _require(llvm, "archive", "llvm")
     provenance = _require(archive, "provenance", "llvm.archive")
@@ -338,13 +567,19 @@ def load_linux_toolchain(path: Path, cache_root: Path) -> LinuxToolchain:
     )
 
 
-def host_spec(toolchain: LinuxToolchain) -> tuple[str, dict[str, Any]]:
+def host_spec(toolchain: LinuxToolchain | MuslToolchain) -> tuple[str, dict[str, Any]]:
     """The host spec this host satisfies: ('lock', spec) or ('provisional', spec).
 
     Provisional specs come from the lock's `provisional_hosts` entries and
     carry their own make/pkgconf versions and package pins. When nothing
     matches, the primary spec is returned so problems() reports against it.
     """
+    if isinstance(toolchain, MuslToolchain):
+        return "pinned-alpine", {
+            "release": toolchain.alpine_release,
+            "image_digest": toolchain.image_digest,
+            "system_packages": list(toolchain.package_pins),
+        }
     release = _os_release()
     libc = platform.libc_ver()
     primary = {
@@ -379,8 +614,93 @@ def host_spec(toolchain: LinuxToolchain) -> tuple[str, dict[str, Any]]:
     return "lock", primary
 
 
-def problems(toolchain: LinuxToolchain) -> list[str]:
+def _apk_installed_versions() -> dict[str, str]:
+    try:
+        records = Path("/lib/apk/db/installed").read_text().split("\n\n")
+    except OSError:
+        return {}
+    installed: dict[str, str] = {}
+    for record in records:
+        fields = dict(line.split(":", 1) for line in record.splitlines() if ":" in line)
+        if fields.get("P"):
+            installed[fields["P"]] = fields.get("V", "")
+    return installed
+
+
+def _musl_problems(toolchain: MuslToolchain) -> list[str]:
+    found: list[str] = []
+    if not supported_host():
+        found.append(
+            f"the musl lane requires x86_64 Alpine in Docker "
+            f"(found {platform.system()} {platform.machine()})"
+        )
+    if not Path("/.dockerenv").is_file():
+        found.append("the musl lane must run inside the pinned Docker container")
+    release = Path("/etc/alpine-release")
+    try:
+        installed_release = release.read_text().strip()
+    except OSError:
+        installed_release = "unavailable"
+    if installed_release != toolchain.alpine_release:
+        found.append(
+            f"Alpine release is {installed_release}; lock requires {toolchain.alpine_release}"
+        )
+    image_digest = os.environ.get("MUSL_LANE_IMAGE_DIGEST")
+    if image_digest != toolchain.image_digest:
+        found.append(
+            f"container image digest is {image_digest or 'unreported'}; "
+            f"lock requires {toolchain.image_digest}"
+        )
+    installed = _apk_installed_versions()
+    expected = dict(item.split("=", 1) for item in toolchain.package_pins)
+    for name, version in expected.items():
+        if installed.get(name) != version:
+            found.append(
+                f"APK package {name} is {installed.get(name) or 'absent'}; lock requires {version}"
+            )
+    extras = sorted(set(installed) - set(expected))
+    if extras:
+        found.append(f"unexpected APK packages are installed: {', '.join(extras)}")
+    marker = toolchain.llvm_prefix / ".verified.json"
+    try:
+        marker_data = json.loads(marker.read_text())
+    except (OSError, json.JSONDecodeError):
+        marker_data = None
+    if marker_data != {
+        "version": toolchain.llvm_version,
+        "sha256": toolchain.llvm_archive_sha256,
+    }:
+        found.append(f"production LLVM archive is not provisioned at {toolchain.llvm_prefix}; run fetch")
+    else:
+        clang_version = _tool_output([str(toolchain.clang), "--version"])
+        if f"clang version {toolchain.llvm_version}" not in clang_version:
+            found.append(f"{toolchain.clang} does not report LLVM {toolchain.llvm_version}")
+        triple = _tool_output([str(toolchain.clang), "-print-target-triple"])
+        if triple != toolchain.target:
+            found.append(f"clang target is {triple!r}; expected {toolchain.target}")
+        resource = _tool_output([str(toolchain.clang), "-print-resource-dir"])
+        if Path(resource) != toolchain.llvm_resource_dir:
+            found.append(f"clang resource directory is {resource!r}")
+        for name in ("ld.lld", "llvm-ar", "llvm-nm", "llvm-readelf"):
+            reported = _tool_output([str(toolchain.llvm_prefix / "bin" / name), "--version"])
+            if toolchain.llvm_version not in reported:
+                found.append(f"{name} does not report LLVM {toolchain.llvm_version}")
+    libclang = toolchain.libclang_path / "libclang.so"
+    if not libclang.is_file():
+        found.append(f"{libclang} is missing")
+    make_version = toolchain.make_version.split("-r", 1)[0]
+    if f"GNU Make {make_version}" not in _tool_output([str(toolchain.make), "--version"]):
+        found.append(f"{toolchain.make} does not report GNU Make {toolchain.make_version}")
+    pkgconf_version = toolchain.pkgconf_version.split("-r", 1)[0]
+    if _tool_output([str(toolchain.pkgconf), "--version"]) != pkgconf_version:
+        found.append(f"{toolchain.pkgconf} does not report {toolchain.pkgconf_version}")
+    return found
+
+
+def problems(toolchain: LinuxToolchain | MuslToolchain) -> list[str]:
     """Every way the host disagrees with the Linux lane lock."""
+    if isinstance(toolchain, MuslToolchain):
+        return _musl_problems(toolchain)
     found: list[str] = []
     if not supported_host():
         found.append(
@@ -522,9 +842,48 @@ def setup_local_with_shared_ssl_rs(contents: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def package_report(toolchain: LinuxToolchain) -> dict[str, str]:
+def package_report(toolchain: LinuxToolchain | MuslToolchain) -> dict[str, str]:
+    if isinstance(toolchain, MuslToolchain):
+        installed = _apk_installed_versions()
+        names = {item.split("=", 1)[0] for item in toolchain.package_pins}
+        return {name: installed[name] for name in sorted(names) if name in installed}
     _kind, spec = host_spec(toolchain)
     return _dpkg_versions(list(spec["system_packages"]))
+
+
+def configure_llvm(toolchain: MuslToolchain) -> None:
+    binary = toolchain.llvm_prefix / "bin"
+    patcher = Path(__file__).resolve().parents[1] / "build" / "patch_llvm_stack.py"
+    result = subprocess.run(
+        [os.environ.get("PYTHON", "python3"), str(patcher), str(binary)],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode:
+        raise LinuxHostError(f"cannot patch the LLVM GNU_STACK headers: {result.stderr.strip()}")
+    for name in ("clang", "lld"):
+        report = _tool_output([str(binary / "llvm-readelf"), "-lW", str(binary / name)])
+        if "GNU_STACK" not in report or "0x800000" not in report:
+            raise LinuxHostError(f"LLVM {name} does not have the locked 8 MiB stack header")
+    target_config = binary / f"{toolchain.target}.cfg"
+    target_config.write_text(
+        "\n".join((
+            "--rtlib=compiler-rt",
+            "--unwindlib=none",
+            f"-L{toolchain.llvm_prefix / 'lib'}",
+            "-isystem /usr/include/fortify",
+            "",
+        ))
+    )
+    cxx_config = binary / "clang++.cfg"
+    existing = cxx_config.read_text() if cxx_config.is_file() else ""
+    suffix = "".join(flag + "\n" for flag in ("-lc++abi", "-lunwind") if flag not in existing)
+    if suffix:
+        with cxx_config.open("a") as stream:
+            stream.write(suffix)
+    strip = binary / "strip"
+    if strip.is_symlink() or strip.exists():
+        strip.unlink()
+    strip.symlink_to("llvm-strip")
 
 
 def docker_offline() -> bool:

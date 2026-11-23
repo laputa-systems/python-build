@@ -65,15 +65,46 @@ class JitConfigurationTests(unittest.TestCase):
         self.assertEqual(disabled.environment["LLVM_VERSION"], "23")
 
     def test_configuration_applies_the_jit_argument_and_environment(self) -> None:
-        target = SimpleNamespace(triple="x86_64-unknown-linux-gnu")
+        target = SimpleNamespace(triple="x86_64-unknown-linux-musl")
         with mock.patch.object(perf.lb, "_environment", return_value={}), \
                 mock.patch.object(perf.lb, "_platform_flags", return_value={"CFLAGS": "-O2"}):
             enabled_args, enabled_env = perf.lb._configuration(self.toolchain, target, jit=True)
             disabled_args, disabled_env = perf.lb._configuration(self.toolchain, target, jit=False)
         self.assertIn("--enable-experimental-jit=yes", enabled_args)
         self.assertIn("--enable-experimental-jit=no", disabled_args)
+        self.assertIn("--with-libs=-lgcc_s -lc", enabled_args)
+        self.assertFalse(any("-lunwind" in item for item in enabled_args))
         self.assertEqual(enabled_env["LLVM_TOOLS_INSTALL_DIR"], "/opt/llvm/23.1.2")
         self.assertEqual(disabled_env["LLVM_VERSION"], "23")
+
+
+    def test_allocator_archives_are_whole_archived_only_for_custom_allocators(self):
+        archive = Path("/work/liballocator.a")
+        self.assertEqual(perf.lb.allocator_link_flags("musl"), "")
+        for allocator in ("mimalloc", "jemalloc"):
+            with self.subTest(allocator=allocator):
+                self.assertEqual(
+                    perf.lb.allocator_link_flags(allocator, archive),
+                    "-Wl,--whole-archive /work/liballocator.a -Wl,--no-whole-archive",
+                )
+        with self.assertRaisesRegex(perf.lb.LaneError, "invalid allocator link request"):
+            perf.lb.allocator_link_flags("jemalloc")
+
+    def test_mimalloc_internal_symbols_are_localized_without_hiding_malloc(self):
+        output = (
+            "00000000 T __mi_stat_increase\n"
+            "00000000 T _mi_os_alloc\n"
+            "00000000 T mi_malloc\n"
+            "00000000 T malloc\n"
+        )
+        self.assertEqual(
+            perf.lb._mimalloc_internal_symbols(output, ("mi_", "_mi_", "__mi_")),
+            ["__mi_stat_increase", "_mi_os_alloc", "mi_malloc"],
+        )
+
+    def test_musl_layout_no_longer_requires_llvm_libunwind(self):
+        self.assertNotIn("lib/libunwind.a", perf.lb.MUSL_X86_64_LAYOUT.required)
+        self.assertNotIn("lib/libunwind.a", perf.lb.MUSL_X86_64_LAYOUT.library_files)
 
     def regen(self, version: str) -> tuple[Path, Path]:
         root = Path(self.enterContext(tempfile.TemporaryDirectory()))
@@ -97,7 +128,7 @@ class JitConfigurationTests(unittest.TestCase):
                 mock.patch.object(perf.lb, "_require_jit_state"):
             perf.lb.verify_jit_build(
                 build_dir=makefile.parent, python=Path("python"), env={},
-                toolchain=self.toolchain, target_triple="x86_64-unknown-linux-gnu",
+                toolchain=self.toolchain, target_triple="x86_64-unknown-linux-musl",
                 jit=False, logs=())
 
     def test_stencil_clang_scan_ignores_other_clang_tools(self) -> None:
@@ -109,16 +140,16 @@ class JitConfigurationTests(unittest.TestCase):
         root = Path(self.enterContext(tempfile.TemporaryDirectory()))
         makefile = root / "Makefile"
         makefile.write_text(
-            "\t$(PYTHON_FOR_REGEN) Tools/jit/build.py x86_64-unknown-linux-gnu "
+            "\t$(PYTHON_FOR_REGEN) Tools/jit/build.py x86_64-unknown-linux-musl "
             "--llvm-version=\"23\" --llvm-tools-install-dir=\"/opt/llvm/23.1.2\"\n")
         perf.lb._check_jit_command(makefile, self.toolchain)
         makefile.write_text(
-            "\t$(PYTHON_FOR_REGEN) Tools/jit/build.py x86_64-unknown-linux-gnu "
+            "\t$(PYTHON_FOR_REGEN) Tools/jit/build.py x86_64-unknown-linux-musl "
             "--llvm-version=\"21\" --llvm-tools-install-dir=\"/opt/llvm/23.1.2\"\n")
         with self.assertRaisesRegex(perf.lb.LaneError, "selects LLVM 21"):
             perf.lb._check_jit_command(makefile, self.toolchain)
         makefile.write_text(
-            "\t$(PYTHON_FOR_REGEN) Tools/jit/build.py x86_64-unknown-linux-gnu "
+            "\t$(PYTHON_FOR_REGEN) Tools/jit/build.py x86_64-unknown-linux-musl "
             "--llvm-version=\"23\" --llvm-tools-install-dir=\"/usr/lib/llvm\"\n")
         with self.assertRaisesRegex(perf.lb.LaneError, "locked LLVM"):
             perf.lb._check_jit_command(makefile, self.toolchain)
@@ -162,15 +193,15 @@ class JitConfigurationTests(unittest.TestCase):
         python.chmod(0o755)
         (build_dir / "Makefile").write_text(
             f"PYTHON_FOR_REGEN?={script}\n"
-            "\t$(PYTHON_FOR_REGEN) Tools/jit/build.py x86_64-unknown-linux-gnu "
+            "\t$(PYTHON_FOR_REGEN) Tools/jit/build.py x86_64-unknown-linux-musl "
             "--llvm-version=\"23\" --llvm-tools-install-dir=\"/opt/llvm/23.1.2\"\n")
         if header:
-            (build_dir / "jit_stencils-x86_64-unknown-linux-gnu.h").write_bytes(b"stencils\n")
+            (build_dir / "jit_stencils-x86_64-unknown-linux-musl.h").write_bytes(b"stencils\n")
         log = root / "build.log"
         log.write_text("/opt/llvm/23.1.2/bin/clang -c fixture.c\n")
         perf.lb.verify_jit_build(
             build_dir=build_dir, python=python, env={}, toolchain=self.toolchain,
-            target_triple="x86_64-unknown-linux-gnu", jit=jit, logs=(log,))
+            target_triple="x86_64-unknown-linux-musl", jit=jit, logs=(log,))
 
     def test_missing_jit_tools_are_extracted_from_the_locked_archive(self) -> None:
         root = Path(self.enterContext(tempfile.TemporaryDirectory()))

@@ -9066,6 +9066,10 @@ AS_VAR_IF([jit_flags],
          JIT_STENCILS_H="jit_stencils-x86_64-unknown-linux-gnu.h"
          JIT_SHIM_O="jit_shim-x86_64-unknown-linux-gnu.o"
          ;;
+       x86_64-*-linux-musl)
+         JIT_STENCILS_H="jit_stencils-x86_64-unknown-linux-musl.h"
+         JIT_SHIM_O="jit_shim-x86_64-unknown-linux-musl.o"
+         ;;
      esac
      JIT_SHIM_BUILD_O="$JIT_SHIM_O"
    fi])

@@ -1,0 +1,233 @@
+{
+  "target": "x86_64-unknown-linux-musl",
+  "arch": "x86_64",
+  "cpu_baseline": "-march=x86-64",
+  "alpine_release": "3.24.2",
+  "repositories": [
+    "https://cdn.alpinelinux.org/alpine/v3.24/main",
+    "https://cdn.alpinelinux.org/alpine/v3.24/community"
+  ],
+  "production": {
+    "bootstrap_lock": "bootstrap.lock.json",
+    "image_digest": "sha256:d56c381f961d307a21b3ca004cf1e3910f106644aefb1f43e654c8a56c4fd395",
+    "image_revision": "1c744e2d49059e51b063a11a6e3e18c9ccf04ab8",
+    "apk_closure_sha256": "02c25096229b7a595707a6797b48dad2887a61ecbb2f6691da09efa6389375cc",
+    "llvm_sha256": "de3f6d0ad089391482147c61648c511c500b25289132fe7f2c446a0905406d2a"
+  },
+  "lane_apk_cache": ".cache/bootstrap/lane-musl/apk/amd64",
+  "system_package_roots": [
+    "openssl-dev",
+    "sqlite-dev",
+    "libffi-dev",
+    "zlib-dev",
+    "bzip2-dev",
+    "xz-dev",
+    "zstd-dev",
+    "readline-dev",
+    "ncurses-dev",
+    "util-linux-dev",
+    "gdbm-dev",
+    "expat-dev",
+    "valgrind",
+    "libc++-dev",
+    "gcc"
+  ],
+  "build_tool_roots": ["git"],
+  "system_package_substitutions": {
+    "libclang1-18": "libclang.so from the pinned production LLVM archive",
+    "libllvm18": "LLVM libraries from the pinned production LLVM archive",
+    "libicu74": "the pinned production LLVM archive is built for musl and needs no ICU runtime package",
+    "libxml2": "the pinned production LLVM archive is self-contained for this lane",
+    "libgcc-14-dev": "the lane uses Alpine libgcc_s.so.1 for Rust unwinding; musl CRT objects come from Alpine"
+  },
+  "lane_packages": [
+    {"name":"binutils","version":"2.45.1-r1","arch":"x86_64","sha256":"15682887459d216585feb438bbfb7ec63e1f33e77c453f44637d2d9d8c35977d","size":3229647,"license":"GPL-2.0-or-later AND LGPL-2.1-or-later AND BSD-3-Clause","repository":"main"},
+    {"name":"gcc","version":"15.2.0-r5","arch":"x86_64","sha256":"d1d482472ed91240731c60dbae8176bc1e32e1dfb694856da6759f6d32716325","size":60496469,"license":"GPL-2.0-or-later AND LGPL-2.1-or-later","repository":"main"},
+    {"name":"gmp","version":"6.3.0-r4","arch":"x86_64","sha256":"85323ef5bce8ff234736dc2d6592ea37aebdc6348a531e27430bdfe38364d256","size":220074,"license":"LGPL-3.0-or-later OR GPL-2.0-or-later","repository":"main"},
+    {"name":"isl26","version":"0.26-r2","arch":"x86_64","sha256":"30999fb66e296c8ea7aa102cad0d3095519b3022abb622d2951dd29367310ea9","size":915985,"license":"MIT","repository":"main"},
+    {"name":"jansson","version":"2.15.0-r0","arch":"x86_64","sha256":"7681b41486e1f2b2efce11875c839533464ae8857d30fc49130f0039c6585fdb","size":48950,"license":"MIT","repository":"main"},
+    {"name":"libatomic","version":"15.2.0-r5","arch":"x86_64","sha256":"c5ec550c73dd7b4e81e206fdff3cf4c46b0ae1b29fec1db5cd4e12d88416abbf","size":10241,"license":"GPL-2.0-or-later AND LGPL-2.1-or-later","repository":"main"},
+    {"name":"libgcc","version":"15.2.0-r5","arch":"x86_64","sha256":"393dcd32629f06d7d85409c272d142d0c082772d10b87ef55ee82f47de3be637","size":80348,"license":"GPL-3.0-or-later WITH GCC-exception-3.1","apkindex_license":"GPL-2.0-or-later AND LGPL-2.1-or-later","repository":"main","role":"lane runtime library libgcc_s.so.1, not a compiler"},
+    {"name":"libgcc-static","version":"15.2.0-r5","arch":"x86_64","sha256":"563244a562f5c48b921f7f0b4a571e373cfcba65175fe2d4f752c5f975738bcd","size":2249602,"license":"GPL-2.0-or-later AND LGPL-2.1-or-later","repository":"main"},
+    {"name":"libgomp","version":"15.2.0-r5","arch":"x86_64","sha256":"e7204aad00e31d544e0a34eac5a7eb7d3586d2b7b22afd6e5907189c4e0337cc","size":153729,"license":"GPL-2.0-or-later AND LGPL-2.1-or-later","repository":"main"},
+    {"name":"mpc1","version":"1.3.1-r1","arch":"x86_64","sha256":"c2247438e163f1c11646428f07576ceb3cf3167f9a9a5c6526021f778d77adb6","size":48549,"license":"LGPL-3.0-or-later","repository":"main"},
+    {"name":"mpfr4","version":"4.2.2-r0","arch":"x86_64","sha256":"93620a803d416e8c05150fb14413796df14ea370322dff6bd106455deab15646","size":313348,"license":"LGPL-3.0-or-later","repository":"main"},
+    {"name":"brotli-libs","version":"1.2.1-r0","arch":"x86_64","sha256":"62a7e37e43bbfc1f8525a00ad2125fd5897135dc93b849733884cb78ffd8e26c","size":429435,"license":"MIT","repository":"main"},
+    {"name":"bzip2-dev","version":"1.0.8-r6","arch":"x86_64","sha256":"38b1c8a4da3ef0bab15d2549016751a406d8ae33887d4b3956aa6643e1448d04","size":3617,"license":"bzip2-1.0.6","repository":"main"},
+    {"name":"c-ares","version":"1.34.9-r0","arch":"x86_64","sha256":"3539a3e11c1ef1516117d8179a546ac882086e94e0d78ad51d687b3fa2b3b5f2","size":113179,"license":"MIT","repository":"main"},
+    {"name":"expat","version":"2.10.0-r0","arch":"x86_64","sha256":"f6344485c6bde88611e8ce77c49ee12209de17468dedcca5e5fa767973bd6f37","size":12952,"license":"MIT","repository":"main"},
+    {"name":"expat-dev","version":"2.10.0-r0","arch":"x86_64","sha256":"13eeeeaf7bb3260b156117559058ed12a491d5bc5516bcda7250e003fce1441d","size":22196,"license":"MIT","repository":"main"},
+    {"name":"gdbm-dev","version":"1.26-r0","arch":"x86_64","sha256":"cd403ce0d9c43641d8fd60abc25947ce9ee1f5b10aab67d41d2ed16e4fad3e05","size":44613,"license":"GPL-3.0-or-later","repository":"main"},
+    {"name":"gdbm-tools","version":"1.26-r0","arch":"x86_64","sha256":"bd696819a9e51f541f4b9c033c9b8b7158b14e2b9cc083d914f14cdf5b80222b","size":69124,"license":"GPL-3.0-or-later","repository":"main"},
+    {"name":"git","version":"2.54.1-r0","arch":"x86_64","sha256":"a8d6464152f823b28d80876142649bfddd8ac7959b5c24be9f8f7f2b5e2421dc","size":3548109,"license":"GPL-2.0-only","repository":"main"},
+    {"name":"git-init-template","version":"2.54.1-r0","arch":"x86_64","sha256":"d64eeddb867cdb678944535e1e56d0438a9ca5114344cbf624abae31519f2afd","size":10826,"license":"GPL-2.0-only","repository":"main"},
+    {"name":"libblkid","version":"2.42.3-r1","arch":"x86_64","sha256":"2512c2bff496ac2b8561a3c814d21d35ce10cda579b3d410f9f96da93a5aaac1","size":98429,"license":"LGPL-2.1-or-later","repository":"main"},
+    {"name":"libc++","version":"22.1.3-r0","arch":"x86_64","sha256":"c2937e1730dba2ae542ba6127358cdabc2db6bf1fdc9621bf46b1c4ab68abf73","size":444088,"license":"Apache-2.0","repository":"main"},
+    {"name":"libc++-dev","version":"22.1.3-r0","arch":"x86_64","sha256":"0d41363e1fbcc8e7472bd7de7edc69c8808b42b5523a85d074e09d29d385cc80","size":1818523,"license":"Apache-2.0","repository":"main"},
+    {"name":"libcrypto3","version":"3.5.9-r1","arch":"x86_64","sha256":"042026082cc9bc7872d1baa81755c50efa70b05f03b5369fdc5f0a1303009720","size":1980117,"license":"Apache-2.0","repository":"main","supersedes_production_pin":"libcrypto3=3.5.8-r0"},
+    {"name":"libcurl","version":"8.23.0-r0","arch":"x86_64","sha256":"1f70ca404818805a6465b615bbfe84ef861488a963d7e630108ebd7fbaa51665","size":364567,"license":"curl","repository":"main"},
+    {"name":"libeconf","version":"0.8.3-r0","arch":"x86_64","sha256":"2a791c7957961f830cf31b04f35f814a63afcf633badc9052425ff1cf2f64380","size":26054,"license":"MIT","repository":"main"},
+    {"name":"libfdisk","version":"2.42.3-r1","arch":"x86_64","sha256":"9775aae10e103c128e6b8424585f5d2dac6d8e8e386cc8365a46358ccd6aa7d0","size":125583,"license":"LGPL-2.1-or-later","repository":"main"},
+    {"name":"libffi-dev","version":"3.5.2-r1","arch":"x86_64","sha256":"2d70bc8758f9cac44c3456510b68b0ef03b2f762ead698af64e314a898846d17","size":92286,"license":"MIT","repository":"main"},
+    {"name":"libformw","version":"6.6_p20260516-r0","arch":"x86_64","sha256":"3a1d3bf08911655e3c7674931887a78867d57065e8156c95d21f6fdf8ee37d1d","size":27416,"license":"X11","repository":"main"},
+    {"name":"libhistory","version":"8.3.3-r1","arch":"x86_64","sha256":"a56e28a1b015fb9527996df8ad0411aebb20b33a990215a7922e34900ea1ef8c","size":20152,"license":"GPL-3.0-or-later","repository":"main"},
+    {"name":"libidn2","version":"2.3.8-r0","arch":"x86_64","sha256":"7d038ac558dde464964b033ce5126dd2eaf84cc414dc15e77c5424a321d0ebee","size":104623,"license":"GPL-2.0-or-later OR LGPL-3.0-or-later","repository":"main"},
+    {"name":"liblastlog2","version":"2.42.3-r1","arch":"x86_64","sha256":"09d27e6d1bbef602dedc25cdac922e5f61daed6aa8ac68b237e63edadf78984c","size":9988,"license":"BSD-2-Clause","repository":"main"},
+    {"name":"libmenuw","version":"6.6_p20260516-r0","arch":"x86_64","sha256":"6a73daf427999bc74516fb0a4b1a6b11096f67817d10a067ab00e7f5e517e7c4","size":13852,"license":"X11","repository":"main"},
+    {"name":"libmount","version":"2.42.3-r1","arch":"x86_64","sha256":"e2ae003260f2c1ec13666c6e108d5e8e3d64974b0667166a02432bd3be263a7a","size":134799,"license":"LGPL-2.1-or-later","repository":"main"},
+    {"name":"libncurses++","version":"6.6_p20260516-r0","arch":"x86_64","sha256":"4899499124fe34c4a28d4e77cc857d1646bb01538c839efb93cc823f1b92444e","size":24366,"license":"X11","repository":"main"},
+    {"name":"libpsl","version":"0.21.5-r3","arch":"x86_64","sha256":"ec665a344b6e887f00f0a47015cc732c3a281b69e84641dc8662ea234fde6cdb","size":54692,"license":"MIT","repository":"main"},
+    {"name":"libsmartcols","version":"2.42.3-r1","arch":"x86_64","sha256":"5e3a457257d9c0e6799ab5d544ca4f172c4e19e02adcde94c72343ed3f6d8b26","size":56244,"license":"LGPL-2.1-or-later","repository":"main"},
+    {"name":"libssl3","version":"3.5.9-r1","arch":"x86_64","sha256":"18c5778cbe52e1991303f8531970b05d4e6e036ea08349322f7422f42a689dc7","size":382098,"license":"Apache-2.0","repository":"main","supersedes_production_pin":"libssl3=3.5.8-r0"},
+    {"name":"libunistring","version":"1.4.2-r0","arch":"x86_64","sha256":"3aa6030e603e34d96192742f327c0509f409c6769ce2e7b1463685dede38d714","size":743597,"license":"GPL-2.0-or-later OR LGPL-3.0-or-later","repository":"main"},
+    {"name":"libuuid","version":"2.42.3-r1","arch":"x86_64","sha256":"8306e5bb577696c9069fe1dfd9e1dcc39d2d481c6a1b0e707fd03c3e21aa6aa2","size":14261,"license":"BSD-3-Clause","repository":"main"},
+    {"name":"linux-pam","version":"1.7.1-r2","arch":"x86_64","sha256":"73c327468bfd849bf078fb3d59516f1adc54685682dec6386d8d9d75c00e939d","size":203565,"license":"BSD-3-Clause","repository":"main"},
+    {"name":"llvm-libunwind","version":"22.1.3-r0","arch":"x86_64","sha256":"43288d4302ae678c0b34cebdd117424f56c7e102b777b842a5fe2eb5d86638c4","size":24382,"license":"Apache-2.0","repository":"main"},
+    {"name":"ncurses-dev","version":"6.6_p20260516-r0","arch":"x86_64","sha256":"f619c185ae571d0cc78b2f78e578f560a243a4153ae849de0c25564e73b98023","size":72033,"license":"X11","repository":"main"},
+    {"name":"nghttp2-libs","version":"1.70.0-r0","arch":"x86_64","sha256":"f0c4014eb2f10308dcdfd84cd49c121673c7b78cb8182b6e7a1388d8ae112a3b","size":63259,"license":"MIT","repository":"main"},
+    {"name":"openssl-dev","version":"3.5.9-r1","arch":"x86_64","sha256":"6a5734c3a00cf03aaa9cb0f4ff8c6d12d3b0c0c5f1490a3491eaf13a16ae044c","size":365989,"license":"Apache-2.0","repository":"main"},
+    {"name":"pcre2","version":"10.49-r0","arch":"x86_64","sha256":"2919897914820f42a17a8d7d37df310d2dfad1c82ebe5f539cc5c765f916752a","size":323099,"license":"BSD-3-Clause","repository":"main"},
+    {"name":"readline-dev","version":"8.3.3-r1","arch":"x86_64","sha256":"dfad181f0ad4e6e5156dc2605ebf3ccdac46e4f5d215d167d56345bf232b1203","size":40654,"license":"GPL-3.0-or-later","repository":"main"},
+    {"name":"skalibs-libs","version":"2.15.0.0-r0","arch":"x86_64","sha256":"3301f6ccbeaea49cdd966c7e636898a8612fb8fe964a15f24f6d204b3944c3f3","size":84969,"license":"ISC","repository":"main"},
+    {"name":"sqlite","version":"3.53.4-r0","arch":"x86_64","sha256":"c51f4aae4fdbbec678639cdaa7af6758eef331dbf7299e2777fa7020b41ff194","size":1094286,"license":"blessing","repository":"main"},
+    {"name":"sqlite-dev","version":"3.53.4-r0","arch":"x86_64","sha256":"c30a6155ebd456f37524242c2a60690e516666fa487fba6630280e7ecdf9442f","size":186458,"license":"blessing","repository":"main"},
+    {"name":"util-linux-dev","version":"2.42.3-r1","arch":"x86_64","sha256":"2c8d9fc69aaa85d9fb24bba9bb0efb38c06f11b368edd6385b66c0760c640d23","size":28206,"license":"GPL-3.0-or-later AND GPL-2.0-or-later AND GPL-2.0-only AND GPL-1.0-only AND LGPL-2.1-or-later AND BSD-1-Clause AND BSD-3-Clause AND BSD-4-Clause-UC AND MIT AND Public-Domain","repository":"main"},
+    {"name":"utmps-libs","version":"0.1.3.3-r0","arch":"x86_64","sha256":"497f0f1cb51f0e6c1acc338fded0dc7722b1d43ea17bdb749f0d556794f8b2d8","size":5206,"license":"ISC","repository":"main"},
+    {"name":"valgrind","version":"3.25.1-r2","arch":"x86_64","sha256":"d36913cabc3982bec110f437f2604b38e3b765a3ea37000f1ee8afabab108801","size":39671188,"license":"GPL-2.0-or-later","repository":"main"},
+    {"name":"xz-dev","version":"5.8.4-r0","arch":"x86_64","sha256":"9292f2044e1f93fff3997b449f95567fcd9356b931cdac1baa2578f24592732a","size":56209,"license":"GPL-2.0-or-later AND 0BSD AND Public-Domain AND LGPL-2.1-or-later","repository":"main"},
+    {"name":"zlib","version":"1.4-r0","arch":"x86_64","sha256":"7b05bc778b8b25cd880835b40114182bd4d1581717504d0129c810c0a14291cb","size":56761,"license":"Zlib","repository":"main","supersedes_production_pin":"zlib=1.3.2-r0"},
+    {"name":"zlib-dev","version":"1.4-r0","arch":"x86_64","sha256":"889ed6014fc9acb815a7755732d4099bd84b1176b4845853bb050361d8b876b2","size":34787,"license":"Zlib","repository":"main"},
+    {"name":"zstd","version":"1.5.7-r2","arch":"x86_64","sha256":"774da060da278110a2075de01ecee04fb036033ec19de9f3c36f0283c150a487","size":129675,"license":"BSD-3-Clause OR GPL-2.0-or-later","repository":"main"},
+    {"name":"zstd-dev","version":"1.5.7-r2","arch":"x86_64","sha256":"1b548f46268e658cdd79fc65eb3e58e627d57d8694c3615f6e9490e6f70ba0cd","size":54950,"license":"BSD-3-Clause OR GPL-2.0-or-later","repository":"main"},
+    {"name":"zstd-libs","version":"1.5.7-r2","arch":"x86_64","sha256":"23c6065b0049b2406441564bcf0032515a43f78e80d76fcb85535a3803ef5d4e","size":376646,"license":"BSD-3-Clause OR GPL-2.0-or-later","repository":"main"}
+  ],
+  "production_tools": {
+    "make": "make=4.4.1-r4",
+    "pkgconf": "pkgconf=2.5.1-r0"
+  },
+  "llvm": {
+    "version": "23.1.5",
+    "release": "release-b29e4d07a2b9a5e72319b37429cf375149212755",
+    "archive_url": "https://github.com/laputa-systems/llvm-prebuilt-musl/releases/download/release-b29e4d07a2b9a5e72319b37429cf375149212755/clang+llvm-23.1.5-x86_64-linux-musl.tar.xz",
+    "sha256": "de3f6d0ad089391482147c61648c511c500b25289132fe7f2c446a0905406d2a",
+    "size": 101344736,
+    "archive_root": "clang+llvm-23.1.5-x86_64-linux-musl",
+    "license": "Apache-2.0 WITH LLVM-exception",
+    "rust_native_static_libs": {
+      "probe": "rustc --target x86_64-unknown-linux-musl -C target-feature=-crt-static --crate-type staticlib --print native-static-libs",
+      "reported": ["-lgcc_s", "-lc"],
+      "musl_link_args": ["-lgcc_s", "-lc"],
+      "runtime_package": "libgcc=15.2.0-r5, providing libgcc_s.so.1",
+      "make_path": "configure --with-libs populates LIBS; SHLIBS expands LIBS for libpython and the program and freeze-module links use LIBS"
+    }
+  },
+  "allocators": {
+    "mimalloc": {
+      "version": "3.7.0",
+      "url": "https://github.com/microsoft/mimalloc/releases/download/v3.7.0/mimalloc-v3.7.0-source.tar.gz",
+      "sha256": "a207a0802234ff9d21e7511eee52375e6299fa2ac7b25eb4ce26b579a7735c8c",
+      "size": 1904233,
+      "license": "MIT",
+      "cache_path": ".cache/bootstrap/lane-musl/allocators/mimalloc-v3.7.0-source.tar.gz",
+      "archive_root": "mimalloc-1ed67b5156a763441d2ec3c20221a7b3cd866129",
+      "build": {
+        "source": "src/static.c",
+        "cflags": ["-O2", "-fPIC", "-DMI_MALLOC_OVERRIDE"],
+        "localize_prefixes": ["mi_", "_mi_", "__mi_"],
+        "archive": "libmimalloc.a",
+        "link": ["-Wl,--whole-archive", "<libmimalloc.a>", "-Wl,--no-whole-archive"]
+      }
+    },
+    "jemalloc": {
+      "version": "5.4.0",
+      "url": "https://github.com/jemalloc/jemalloc/releases/download/5.4.0/jemalloc-5.4.0.tar.bz2",
+      "sha256": "200776fac271093e7c2f21edd6d62657ecd2be578d9328633f2a86bfa6ef4f1d",
+      "size": 913812,
+      "license": "BSD-2-Clause",
+      "cache_path": ".cache/bootstrap/lane-musl/allocators/jemalloc-5.4.0.tar.bz2",
+      "archive_root": "jemalloc-5.4.0",
+      "build": {
+        "configure": ["./configure", "--with-pic", "--disable-cxx"],
+        "make": ["make", "build_lib_static"],
+        "archive": "lib/libjemalloc.a",
+        "link": ["-Wl,--whole-archive", "<libjemalloc.a>", "-Wl,--no-whole-archive"]
+      }
+    }
+  },
+  "llvm_dwarfdump": {
+    "version": "23.1.5",
+    "license": "Apache-2.0 WITH LLVM-exception",
+    "source": {
+      "repository": "https://github.com/llvm/llvm-project",
+      "release": "llvmorg-23.1.5",
+      "archive_url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.5/llvm-project-23.1.5.src.tar.xz",
+      "archive_sha256": "fb50b1eac93ddeb3aa8dab4cfe324dff74f4a9c2bdee6160c9e36188f8d06a6e",
+      "archive_size": 179220264,
+      "cache_path": ".cache/bootstrap/lane-musl/llvm-project-23.1.5.src.tar.xz",
+      "attestation_url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.5/llvm-project-23.1.5.src.tar.xz.jsonl",
+      "attestation_sha256": "d7e58d1a885d793ad3a95e5f5f47d7f17ca52f7b9350c4763caadf7d36db48c1",
+      "attestation_cache_path": ".cache/bootstrap/lane-musl/llvm-project-23.1.5.src.tar.xz.jsonl"
+    },
+    "dev_archive": {
+      "repository": "https://github.com/laputa-systems/llvm-prebuilt-musl",
+      "release": "release-b29e4d07a2b9a5e72319b37429cf375149212755",
+      "archive_url": "https://github.com/laputa-systems/llvm-prebuilt-musl/releases/download/release-b29e4d07a2b9a5e72319b37429cf375149212755/clang+llvm-23.1.5-x86_64-linux-musl-dev.tar.xz",
+      "archive_sha256": "8ba12abc4023facc35b7cd036b2e26124b704b4d2fc1fc031bf3d00d3030ab75",
+      "archive_size": 32993804,
+      "cache_path": ".cache/bootstrap/lane-musl/clang+llvm-23.1.5-x86_64-linux-musl-dev.tar.xz",
+      "extracted_prefix": ".cache/bootstrap/lane-musl/llvm-dev-prefix/clang+llvm-23.1.5-x86_64-linux-musl"
+    },
+    "build": {
+      "source_files": "llvm/tools/llvm-dwarfdump/*.cpp",
+      "compiler": "production LLVM 23.1.5 clang++",
+      "llvm_config": "llvm-config --link-static --cxxflags; llvm-config --link-static --ldflags --libs <llvm_config_components> --system-libs",
+      "llvm_link_components": [
+        "BinaryFormat",
+        "DebugInfoDWARF",
+        "DebugInfoDWARFLowLevel",
+        "AllTargetsDescs",
+        "AllTargetsInfos",
+        "Core",
+        "IRReader",
+        "MC",
+        "Object",
+        "Support",
+        "TargetParser"
+      ],
+      "llvm_config_components": [
+        "binaryformat",
+        "debuginfodwarf",
+        "debuginfodwarflowlevel",
+        "all-targets",
+        "core",
+        "irreader",
+        "mc",
+        "object",
+        "support",
+        "targetparser"
+      ],
+      "component_aliases": {
+        "AllTargetsDescs": "all-targets",
+        "AllTargetsInfos": "all-targets"
+      },
+      "cxx_headers": "libc++-dev=22.1.3-r0",
+      "cxx_include_flag": "-isystem /usr/include/c++/v1",
+      "cxx_runtime_packages": [
+        "libc++=22.1.3-r0",
+        "llvm-libunwind=22.1.3-r0"
+      ],
+      "cxx_runtime": "production LLVM static libc++.a and libc++abi.a are preferred via -L <production LLVM>/lib",
+      "cxx_startup_files_package": "gcc=15.2.0-r5 supplies crtbeginS.o/crtendS.o for the production clang++ driver",
+      "cache_path": ".cache/bootstrap/lane-musl/llvm-dwarfdump/23.1.5/bin/llvm-dwarfdump",
+      "binary_sha256": "b323a79e2f687bb3b950f308fdeeea412f95a8e282ee15cc26277f25502265a5",
+      "binary_size": 18704168,
+      "rebuild_when": "cached binary is missing or its SHA-256 differs from build.binary_sha256",
+      "version_check": "llvm-dwarfdump --version reports 23.1.5"
+    }
+  },
+  "rust": {
+    "channel": "nightly-2026-09-15",
+    "host": "x86_64-unknown-linux-musl",
+    "cache": ".cache/rustup-musl"
+  }
+}

@@ -56,13 +56,63 @@ def module(base, cand):
     return pv.module_observation(base, cand)
 
 
+class AllocatorIdentityTests(unittest.TestCase):
+    def test_build_option_defaults_and_forwards_allocator(self):
+        with mock.patch.object(perf, "build", return_value=0) as build:
+            self.assertEqual(perf.main(["build", "--name", "fixture"]), 0)
+            self.assertEqual(build.call_args.kwargs["allocator"], "musl")
+            self.assertEqual(perf.main([
+                "build", "--name", "fixture", "--allocator", "jemalloc",
+            ]), 0)
+            self.assertEqual(build.call_args.kwargs["allocator"], "jemalloc")
+
+    def test_measure_refuses_mismatched_allocators_before_sampling(self):
+        root = Path("/stage")
+        sides = {
+            "@base": {"ref": "@base", "name": "base", "stage": root / "base",
+                      "python": Path("/base/python"),
+                      "report": {"allocator": "musl", "build_identity": {"allocator": "musl"}}},
+            "@candidate": {"ref": "@candidate", "name": "candidate", "stage": root / "candidate",
+                           "python": Path("/candidate/python"),
+                           "report": {"allocator": "jemalloc",
+                                      "build_identity": {"allocator": "jemalloc"}}},
+        }
+
+        @perf.contextlib.contextmanager
+        def lease(*args, **kwargs):
+            yield
+
+        with mock.patch.object(perf, "selection",
+                               return_value=(["workload"], ["workload"], [])), \
+                mock.patch.object(perf, "host_lease", lease), \
+                mock.patch.object(perf, "_harness_identity",
+                                  return_value={"source_sha256": "fixture"}), \
+                mock.patch.object(perf, "resolve", side_effect=sides.__getitem__), \
+                mock.patch.object(perf, "_run_bench") as run:
+            with self.assertRaisesRegex(perf.LaneError, "allocator mismatch"):
+                perf._measure(
+                    baseline_ref="@base", candidate_ref="@candidate", workloads=["workload"],
+                    modules=[], gate=False, runs=1, profile="standard", timing_only=False,
+                    min_idle=0, self_compare=False, record_baselines=False)
+            run.assert_not_called()
+
+    def test_comparison_rejects_receipts_without_allocator_identity(self):
+        with self.assertRaisesRegex(perf.LaneError, "no complete allocator identity"):
+            perf._require_allocator_match(
+                {"name": "old", "report": {}},
+                {"name": "new", "report": {
+                    "allocator": "musl", "build_identity": {"allocator": "musl"}}},
+            )
+
+
 class ExploratoryEarlyRejectionTests(unittest.TestCase):
     def measure(self, classes=("worse", "worse"), *, bad_module=False, mismatch=False,
                 guard_error=None, harness_changed=False, sampling_error=None, expected_events=None, **options):
         with tempfile.TemporaryDirectory() as temp, ExitStack() as patches:
             root = Path(temp)
             sides = {ref: {"ref": ref, "name": ref[1:], "stage": root / ref[1:],
-                           "python": Path("/python"), "report": {}}
+                           "python": Path("/python"),
+                           "report": {"allocator": "musl", "build_identity": {"allocator": "musl"}}}
                      for ref in ("@control", "@incumbent")}
             calls = []
             events = []
@@ -271,12 +321,22 @@ class ReceiptTimingTests(unittest.TestCase):
             for name, value in fixtures.items():
                 patches.enter_context(mock.patch.object(perf, name, value))
             patches.enter_context(mock.patch.object(perf.lb, "IS_LINUX", False))
-            patches.enter_context(mock.patch.object(perf.lb, "doctor_report", return_value={"ok": True}))
+            reason = (
+                "OD23: pinned Alpine container on an unqualified host; timing needs a "
+                "qualified quiet x86-64 host"
+            )
+            host = {"spec": "pinned-alpine", "provisional": True,
+                    "provisional_reason": reason}
+            patches.enter_context(mock.patch.object(
+                perf.lb, "doctor_report", return_value={"ok": True, "host": host}))
             patches.enter_context(mock.patch.object(perf.time, "monotonic", side_effect=lambda: clock[0]))
             self.assertEqual(perf.build(name="fixture", empty_overlay=False), 0)
             saved = json.loads(report.read_text())
             self.assertEqual(saved["build_seconds"], 30.0)
             self.assertEqual(saved["phase_seconds"], {"lease_wait": 7.0})
+            self.assertEqual(saved["allocator"], "musl")
+            self.assertEqual(saved["build_identity"], {"allocator": "musl"})
+            self.assertEqual(saved["host"], host)
 
     def test_phase_receipt_uses_operation_boundaries_and_preserves_sampling(self):
         clock = [0.0]
@@ -287,7 +347,8 @@ class ReceiptTimingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp, ExitStack() as patches:
             root = Path(temp)
             sides = {ref: {"ref": ref, "name": ref[1:], "stage": root / ref[1:],
-                           "python": Path("/python"), "report": {}}
+                           "python": Path("/python"),
+                           "report": {"allocator": "musl", "build_identity": {"allocator": "musl"}}}
                      for ref in ("@control", "@incumbent")}
             @perf.contextlib.contextmanager
             def lease(kind, what, *, timings):
@@ -412,7 +473,9 @@ class WorkloadProfileTests(unittest.TestCase):
             stage = Path(temp) / "stage"
             stage.mkdir()
             side = {"ref": "@control", "name": "control", "stage": stage,
-                    "python": stage / "bin/python", "report": {"commit": "fixture"}}
+                    "python": stage / "bin/python",
+                    "report": {"commit": "fixture", "allocator": "musl",
+                               "build_identity": {"allocator": "musl"}}}
             with mock.patch.object(perf, "LANE", Path(temp)), \
                     mock.patch.object(perf, "_harness_identity", return_value={"source_sha256": "fixture"}), \
                     mock.patch.object(perf, "selection", return_value=(["json"], [], ["json"])), \
@@ -441,7 +504,9 @@ class WorkloadProfileTests(unittest.TestCase):
             python.parent.mkdir(parents=True)
             python.write_text("fixture")
             side = {"ref": "@control", "name": "control", "stage": stage,
-                    "python": python, "report": {"commit": "fixture"}}
+                    "python": python,
+                    "report": {"commit": "fixture", "allocator": "musl",
+                               "build_identity": {"allocator": "musl"}}}
             with mock.patch.object(perf, "LANE", Path(temp)), \
                     mock.patch.object(perf, "_harness_identity", return_value={"source_sha256": "fixture"}), \
                     mock.patch.object(perf, "selection", return_value=(["json"], [], ["json"])), \
@@ -961,7 +1026,9 @@ class MemoryOnlyTests(unittest.TestCase):
     def test_measure_records_policy_and_preserves_sampling_without_host_waits(self):
         with tempfile.TemporaryDirectory() as temp:
             sides = {ref: {"ref": ref, "name": ref[1:], "stage": Path(temp) / ref[1:],
-                           "python": Path("/python"), "report": {"commit": "fixture"}}
+                           "python": Path("/python"),
+                           "report": {"commit": "fixture", "allocator": "musl",
+                                      "build_identity": {"allocator": "musl"}}}
                      for ref in ("@control", "@incumbent")}
             with mock.patch.object(perf, "LANE", Path(temp)), \
                     mock.patch.object(perf, "_harness_identity", return_value={"source_sha256": "fixture"}), \
@@ -1356,7 +1423,7 @@ class IncrementalRecipeTests(unittest.TestCase):
                 patches.enter_context(mock.patch.object(perf.lb, "IS_LINUX", False))
             patches.enter_context(mock.patch.object(
                 perf.lb, "TARGET",
-                "x86_64-unknown-linux-gnu" if linux else "aarch64-apple-darwin"))
+                "x86_64-unknown-linux-musl" if linux else "aarch64-apple-darwin"))
             source = root / "source"
             source.mkdir()
             (source / "Cargo.lock").write_text("locked fixture")
@@ -1473,6 +1540,7 @@ class IncrementalRecipeTests(unittest.TestCase):
                 paths['report'].write_text(json.dumps({
                     'configured': True, 'pristine': False, 'source_commit': 'source',
                     'source_archive_sha256': 'source hash', 'target': perf.lb.TARGET,
+                    'allocator': 'musl', 'build_identity': {'allocator': 'musl'},
                     'cargo_lock_sha256': perf._sha256_file(source / 'Cargo.lock')}))
                 patches.enter_context(mock.patch.object(perf, '_stage_overlay',
                     return_value=({'sha256': 'fixture'}, [template])))
@@ -1574,6 +1642,8 @@ class IncrementalRecipeTests(unittest.TestCase):
                                  perf._sha256_file(source / "Cargo.lock"))
                 self.assertEqual(report["rust_builtin_artifacts"], {} if empty_overlay else {"fixture": "verified"})
                 self.assertEqual(report["stage_identity"], perf.tree_digest(paths["stage"]))
+                self.assertEqual(report["allocator"], "musl")
+                self.assertEqual(report["build_identity"], {"allocator": "musl"})
                 self.assertEqual(report["incremental"], incremental)
                 self.assertEqual(report["rust_source_aggregate"], {"fixture": "verified"} if source_std and aggregate and not empty_overlay else None)
                 self.assertEqual((source / "Lib/pickle.py").read_text(), "old" if empty_overlay else "new")
@@ -1620,6 +1690,10 @@ class IncrementalRecipeTests(unittest.TestCase):
         report = self.exercise(False, jit=True)
         self.assertFalse(report["pystats"])
         self.assertNotIn("--enable-pystats", report["configure_arguments"])
+
+    def test_musl_build_uses_rust_dynamic_unwinder_arguments(self):
+        report = self.exercise(False, linux=True, source_std=False, aggregate=False)
+        self.assertIn("--with-libs=-lgcc_s -lc", report["configure_arguments"])
 
     def test_serc_build_defines_the_hook_and_requests_serc_staging(self):
         self.exercise(False, serc=True)
@@ -2474,7 +2548,7 @@ class JitStatsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp, ExitStack() as patches:
             side = {"ref": "@control-jit", "name": "perf-upstream-jit",
                     "stage": Path(temp), "python": Path("/python"),
-                    "report": {"target": "x86_64-unknown-linux-gnu"}}
+                    "report": {"target": "x86_64-unknown-linux-musl"}}
             patches.enter_context(mock.patch.object(perf, "resolve", return_value=side))
             patches.enter_context(mock.patch.object(perf, "host_lease",
                                                     return_value=nullcontext()))

@@ -963,7 +963,8 @@ def _worker_count(jobs: int | None) -> int:
 
 
 def _build_environment(toolchain, target, paths: dict[str, Path], *, workers: int, sandbox,
-                       jit: bool = False, serc: bool = False) -> dict[str, str]:
+                       jit: bool = False, serc: bool = False,
+                       allocator_link_flags: str = "") -> dict[str, str]:
     env = lb._environment(toolchain, offline=True, build_dir=paths["build"])
     env.update(_perf_flags(toolchain, target, stage=paths["stage"]))
     env.update(lb.jit_configuration(toolchain, jit=jit).environment)
@@ -976,6 +977,7 @@ def _build_environment(toolchain, target, paths: dict[str, Path], *, workers: in
         "PYTHON_BUILD_DIR": str(paths["build"]),
         "CARGO_BUILD_JOBS": str(workers),
         lb._cargo_linker_variable(): str(toolchain.llvm_prefix / "bin" / "clang"),
+        "RUST_CPYTHON_ALLOCATOR_LDFLAGS": allocator_link_flags,
         "IPHONEOS_DEPLOYMENT_TARGET": "",
     })
     if jit:
@@ -1017,8 +1019,11 @@ def cargo(*, name: str, arguments: list[str]) -> int:
 
 def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
           incremental: bool = False, upstream_compression: bool = False,
-          jit: bool = False, pystats: bool = False, serc: bool = False) -> int:
+          jit: bool = False, pystats: bool = False, serc: bool = False,
+          allocator: str = "musl") -> int:
     _check_name(name)
+    if not isinstance(allocator, str) or allocator not in {"musl", "mimalloc", "jemalloc"}:
+        raise LaneError(f"unknown allocator {allocator!r}")
     if jobs is not None and jobs < 1:
         raise LaneError("build jobs must be positive")
     if pystats and not jit:
@@ -1030,7 +1035,8 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
     if upstream_compression and (incremental or empty_overlay):
         raise LaneError("--upstream-compression selects the route of a clean candidate build; "
                         "an incremental build keeps its recorded route and the control has no overlay")
-    if not lb.doctor_report()["ok"]:
+    doctor = lb.doctor_report()
+    if not doctor["ok"]:
         raise LaneError("doctor found prerequisites missing; run `build.py doctor` for details")
     paths = _paths(name)
     started = time.monotonic()
@@ -1054,11 +1060,17 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
             if bool(previous.get("serc", False)) != serc:
                 raise LaneError("incremental build refused: the Serc flag changed; "
                                 "run a clean build")
+            if previous.get("allocator") != allocator:
+                raise LaneError("incremental build refused: the allocator changed or is unrecorded; "
+                                "run a clean build")
             configured = True
             route = _report_route(previous)
         _write_json(paths["report"], {"status": "building", "name": _tag(name),
                                       "pristine": empty_overlay, "configured": configured,
                                       "jit": jit, "pystats": pystats, "serc": serc,
+                                      "allocator": allocator,
+                                      "build_identity": {"allocator": allocator},
+                                      "host": doctor.get("host"),
                                       "compression_route": route})
         state = {"configured": configured}
         if incremental:
@@ -1066,13 +1078,20 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
         try:
             report = _build_locked(name, paths, empty_overlay=empty_overlay, jobs=jobs,
                                    incremental=incremental, state=state, route=route, jit=jit,
-                                   pystats=pystats, serc=serc)
+                                   pystats=pystats, serc=serc, allocator=allocator,
+                                   host_report=doctor.get("host"))
         except BaseException as error:
             _write_json(paths["report"], {"status": "failed", "name": _tag(name),
                                           "pristine": empty_overlay, "configured": state["configured"],
                                           "jit": jit, "pystats": pystats, "serc": serc,
+                                          "allocator": allocator,
+                                          "build_identity": {"allocator": allocator},
+                                          "host": doctor.get("host"),
                                           "compression_route": route, "error": str(error)})
             raise
+        report.setdefault("allocator", allocator)
+        report.setdefault("build_identity", {"allocator": allocator})
+        report.setdefault("host", doctor.get("host"))
         report["build_seconds"] = round(time.monotonic() - started, 1)
         report["phase_seconds"] = phase_seconds
         _write_json(paths["report"], report)
@@ -1087,9 +1106,13 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
 def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, jobs: int | None,
                   incremental: bool, state: dict[str, Any],
                   route: CompressionRoute = "private", jit: bool = False,
-                  pystats: bool = False, serc: bool = False) -> dict[str, Any]:
+                  pystats: bool = False, serc: bool = False,
+                  allocator: str = "musl",
+                  host_report: dict[str, Any] | None = None) -> dict[str, Any]:
     toolchain, target = lb._toolchain()
     lb._llvm_ready(toolchain)
+    allocator_build = lb.build_musl_allocator(
+        allocator, paths["build"].parent / "allocator", toolchain)
     git_state = _git_state()
     changes: dict[str, list[str]] | None = None
     placement: dict[str, tuple[str, ...]] = {}
@@ -1179,11 +1202,14 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
     workers = _worker_count(jobs)
     sandbox = lb._sealed_sandbox()
     env = _build_environment(toolchain, target, paths, workers=workers, sandbox=sandbox, jit=jit,
-                             serc=serc)
+                             serc=serc,
+                             allocator_link_flags=allocator_build.get("link_flags") or "")
     jit_config = lb.jit_configuration(toolchain, jit=jit)
     configure = [str(source / "configure"), f"--prefix={paths['stage']}", "--enable-shared",
                  jit_config.argument, "--with-tail-call-interp=no",
                  "--without-ensurepip"]
+    if lb.TARGET.endswith("-musl"):
+        configure.append("--with-libs=-lgcc_s -lc")
     if pystats:
         configure.append("--enable-pystats")
     # Only the aggregate workspace requires the pinned source-built runtime.
@@ -1293,6 +1319,7 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
     report = {
         "status": "built",
         "configured": True,
+        "host": host_report,
         "build_mode": "perf-no-pgo-thinlto",
         "compression_route": route,
         "compression_engine_environment": (
@@ -1320,6 +1347,9 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
         "jit": jit,
         "pystats": pystats,
         "serc": serc,
+        "allocator": allocator,
+        "build_identity": {"allocator": allocator},
+        "allocator_build": allocator_build,
         "cargo_profile": None if empty_overlay else "release",
         "cargo_profile_selected_by": None if empty_overlay else
             "make command-line override on build and install "
@@ -1644,6 +1674,30 @@ def _measure_module(baseline: dict[str, Any], candidate: dict[str, Any], route: 
     return observation
 
 
+def _allocator_identity(side: dict[str, Any]) -> str:
+    report = side.get("report") or {}
+    allocator = report.get("allocator")
+    identity = report.get("build_identity")
+    if not isinstance(allocator, str) or allocator not in {"musl", "mimalloc", "jemalloc"} \
+            or not isinstance(identity, dict) \
+            or identity.get("allocator") != allocator:
+        raise LaneError(
+            f"comparison refused: {side.get('name', side.get('ref', 'stage'))} "
+            "has no complete allocator identity; rebuild the stage"
+        )
+    return allocator
+
+
+def _require_allocator_match(baseline: dict[str, Any], candidate: dict[str, Any]) -> None:
+    baseline_allocator = _allocator_identity(baseline)
+    candidate_allocator = _allocator_identity(candidate)
+    if baseline_allocator != candidate_allocator:
+        raise LaneError(
+            "comparison refused: allocator mismatch "
+            f"(baseline={baseline_allocator}, candidate={candidate_allocator})"
+        )
+
+
 def _measure(*, baseline_ref: str, candidate_ref: str, workloads: list[str], modules: list[str],
              gate: bool, runs: int, profile: str, timing_only: bool, min_idle: float,
              self_compare: bool, record_baselines: bool, slug_prefix: str = "",
@@ -1691,6 +1745,7 @@ def _measure(*, baseline_ref: str, candidate_ref: str, workloads: list[str], mod
         # replace a stage between this check and the last measurement.
         baseline = resolve(baseline_ref)
         candidate = baseline if self_compare else resolve(candidate_ref)
+        _require_allocator_match(baseline, candidate)
         serc_pair = _serc_candidate_pair(baseline, candidate, memory_only=memory_only,
                                          self_compare=self_compare)
         if not self_compare and baseline["stage"] == candidate["stage"]:
@@ -2750,6 +2805,8 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("status", help="show the host lease and perf builds")
     build_parser = commands.add_parser("build", help="build an optimized no-PGO no-LTO interpreter")
     build_parser.add_argument("--name", required=True, help="isolated build name, e.g. perf-rust")
+    build_parser.add_argument("--allocator", choices=("musl", "mimalloc", "jemalloc"),
+                              default="musl", help="allocator linked into libpython")
     build_parser.add_argument("--empty-overlay", action="store_true",
                               help="build the pristine fork without the Rust overlay")
     build_parser.add_argument("--incremental", action="store_true",
@@ -2876,7 +2933,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "build":
             return build(name=args.name, empty_overlay=args.empty_overlay, jobs=args.jobs,
                          incremental=args.incremental, upstream_compression=args.upstream_compression,
-                         jit=args.jit, pystats=args.pystats, serc=args.serc)
+                         jit=args.jit, pystats=args.pystats, serc=args.serc,
+                         allocator=args.allocator)
         if args.command == "cargo":
             return cargo(name=args.name, arguments=args.cargo_args)
         if args.command == "test":
