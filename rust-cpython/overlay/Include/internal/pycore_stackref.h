@@ -822,17 +822,15 @@ static_assert(sizeof(double) == sizeof(_PyStackRef), "an unboxed float fills one
 static inline _PyStackRef
 PyStackRef_FromUnboxedFloat(double value)
 {
-    _PyStackRef ref;
-    memcpy(&ref, &value, sizeof(value));
-    return ref;
+    union { double value; _PyStackRef ref; } cast = { .value = value };
+    return cast.ref;
 }
 
 static inline double
 PyStackRef_AsUnboxedFloat(_PyStackRef ref)
 {
-    double value;
-    memcpy(&value, &ref, sizeof(value));
-    return value;
+    union { double value; _PyStackRef ref; } cast = { .ref = ref };
+    return cast.value;
 }
 
 static_assert(sizeof(Py_ssize_t) == sizeof(_PyStackRef), "an unboxed compact int fills one stack ref");
@@ -840,17 +838,15 @@ static_assert(sizeof(Py_ssize_t) == sizeof(_PyStackRef), "an unboxed compact int
 static inline _PyStackRef
 PyStackRef_FromUnboxedInt(Py_ssize_t value)
 {
-    _PyStackRef ref;
-    memcpy(&ref, &value, sizeof(value));
-    return ref;
+    union { Py_ssize_t value; _PyStackRef ref; } cast = { .value = value };
+    return cast.ref;
 }
 
 static inline Py_ssize_t
 PyStackRef_AsUnboxedInt(_PyStackRef ref)
 {
-    Py_ssize_t value;
-    memcpy(&value, &ref, sizeof(value));
-    return value;
+    union { Py_ssize_t value; _PyStackRef ref; } cast = { .ref = ref };
+    return cast.value;
 }
 
 static inline PyTypeObject *
