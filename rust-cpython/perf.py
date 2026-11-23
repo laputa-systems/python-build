@@ -1158,6 +1158,7 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
                                    allocator_profile=allocator_profile,
                                    host_report=doctor.get("host"))
         except BaseException as error:
+            toolchain_identity = state.get("toolchain_identity", toolchain_identity)
             _write_json(paths["report"], {"status": "failed", "name": _tag(name),
                                           "pristine": empty_overlay, "configured": state["configured"],
                                           "jit": jit, "pystats": pystats, "serc": serc,
@@ -1337,6 +1338,8 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
             env.update(lb._build_mpdecimal(toolchain, target, workers, sandbox))
         lb._require_command(configure, cwd=paths["build"], env=env,
                             log=paths["configure_log"], sealed=sandbox)
+        state["configured"] = True
+        state["toolchain_identity"] = toolchain_identity
         if not empty_overlay:
             lb._python_for_regen_version(paths["build"] / "Makefile", env)
         setup_local = source / "Modules" / "Setup.local"
@@ -1348,7 +1351,6 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
             setup_target.parent.mkdir(parents=True, exist_ok=True)
             setup_target.write_text(contents)
             setup_target.chmod(setup_local.stat().st_mode & 0o777)
-        state["configured"] = True
     lb._write_cargo_source_config(paths["build"])
     if placement:
         # The existing generators own module registration and linker recipes.
