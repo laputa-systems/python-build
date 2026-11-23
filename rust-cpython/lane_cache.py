@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import filecmp
+import hashlib
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -24,6 +26,47 @@ def _cache_directory_is_shared_contents(local: Path, shared: Path) -> bool:
         else:
             return False
     return True
+
+
+def musl_llvm_prepared_additions_sha256(target: str, repo: Path | None = None) -> str:
+    root = Path(repo).resolve() if repo is not None else Path(__file__).resolve().parents[1]
+    patcher = root / "build" / "patch_llvm_stack.py"
+    target_config = "\n".join((
+        "--rtlib=compiler-rt",
+        "--unwindlib=none",
+        f"-L{Path('/prepared-llvm') / 'lib'}",
+        "-isystem /usr/include/fortify",
+        "",
+    ))
+    recipe = {
+        "schema": 2,
+        "target": target,
+        "stack_patcher_sha256": hashlib.sha256(patcher.read_bytes()).hexdigest(),
+        "target_config": target_config.replace(str(Path("/prepared-llvm")), "{LLVM_PREFIX}"),
+        "clangxx_additions": ["-lc++abi", "-lunwind"],
+        "strip_link": "llvm-strip",
+        "runtime_files": [
+            "clang_rt.crtbegin.o",
+            "clang_rt.crtend.o",
+            "clang_rt.crtbegin-x86_64.o",
+            "clang_rt.crtend-x86_64.o",
+            "crtbegin.o",
+            "crtbeginS.o",
+            "crtbeginT.o",
+            "crtend.o",
+            "crtendS.o",
+        ],
+    }
+    return hashlib.sha256(
+        json.dumps(recipe, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def musl_llvm_prepared_prefix(
+    cache: Path, target: str, archive_sha256: str
+) -> tuple[Path, str]:
+    key = f"{archive_sha256}-{musl_llvm_prepared_additions_sha256(target)}"
+    return (Path(cache) / "llvm" / "prepared" / key).resolve(), key
 
 
 def checkout_root(repo: Path) -> Path:

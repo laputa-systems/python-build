@@ -50,6 +50,7 @@ sys.path.insert(0, str(LANE))
 from lane_cache import (
     cache_root,
     git_common_dir,
+    musl_llvm_prepared_prefix,
     primary_checkout,
     share_worktree_caches,
 )

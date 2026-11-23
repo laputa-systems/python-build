@@ -32,6 +32,32 @@ musl_run = importlib.util.module_from_spec(_MUSL_RUN_SPEC)
 _MUSL_RUN_SPEC.loader.exec_module(musl_run)
 
 
+class MuslRunLLVMPathTests(unittest.TestCase):
+    def test_container_path_uses_the_prepared_prefix_cache_key(self):
+        lane, _production = musl_run.lock_data()
+        with tempfile.TemporaryDirectory() as temporary:
+            cache = Path(temporary) / ".cache"
+            prefix, key = perf.musl_llvm_prepared_prefix(
+                cache, lane["target"], lane["llvm"]["sha256"])
+            run = mock.Mock(return_value=SimpleNamespace(returncode=0))
+            with mock.patch.object(musl_run, "CACHE_ROOT", cache), \
+                    mock.patch.object(musl_run, "verify_cache"), \
+                    mock.patch.object(musl_run, "mount_root", return_value=Path(temporary)), \
+                    mock.patch.object(musl_run.subprocess, "run", run):
+                self.assertEqual(
+                    musl_run.run_container("command", ["clang", "--version"]), 0)
+            argv = run.call_args.args[0]
+            script = argv[argv.index("-euc") + 1]
+            dwarfdump = musl_run.cache_path(
+                musl_run.REPO, lane["llvm_dwarfdump"]["build"]["cache_path"])
+            expected_path = (
+                f"{LANE / '.cargo-home' / 'bin'}:{prefix / 'bin'}:"
+                f"{dwarfdump.parent}:/usr/bin:/bin"
+            )
+            self.assertIn(f"export PATH={expected_path}", script)
+            self.assertIn(key, str(prefix))
+
+
 class RustLauncherTests(unittest.TestCase):
     def test_cargo_can_find_the_pinned_rustc_on_the_private_path(self):
         with tempfile.TemporaryDirectory(prefix="rust launcher ") as temporary:
@@ -622,7 +648,7 @@ class MuslAPKVerificationTests(unittest.TestCase):
         with mock.patch.object(musl_run, "share_worktree_caches") as share, \
                 mock.patch.object(musl_run, "run_container", return_value=0) as run:
             self.assertEqual(musl_run.main(command), 0)
-        share.assert_called_once_with(musl_run.REPO)
+        share.assert_called_once_with(musl_run.REPO, musl=True)
         run.assert_called_once_with("command", command, download_missing=True)
 
     def test_lane_lock_keeps_runtime_libgcc_but_excludes_gcc_toolchain(self):
