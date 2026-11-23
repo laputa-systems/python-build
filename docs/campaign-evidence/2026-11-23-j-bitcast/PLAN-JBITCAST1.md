@@ -39,7 +39,7 @@ a prepared Track J slot on this lane. The slots are J-ES-2 and, if this holds, J
 
 Net kernel `Ir` is whole minus setup-only. Each prediction names the number it is judged on.
 
-- B1, structural: the candidate's stencil header has zero `memcpy` relocations, against 108
+- B1, structural: the candidate's stencil header has zero `memcpy` relocations, against 96
   on the parent.
 - B2, net kernel `Ir`: at least 30% lower on nbody and sparse_mat_mult, and at least 15%
   lower on scimark_fft. Expected: about −40% on nbody and sparse and −30% on fft. Whole `Ir`
