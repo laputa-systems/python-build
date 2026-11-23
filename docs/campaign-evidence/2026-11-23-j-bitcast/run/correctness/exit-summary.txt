@@ -8,3 +8,5 @@ cand fuzz 0
 parent rust-jit 101
 cand rust-jit 101
 cand ctypes 0
+parent rust-jit-followup-reused 0
+cand rust-jit-followup 0

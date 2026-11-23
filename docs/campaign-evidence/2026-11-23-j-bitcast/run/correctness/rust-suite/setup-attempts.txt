@@ -1,0 +1,7 @@
+The first host invocation stopped before Cargo because the host-side lane
+helper required `/usr/bin/sandbox-exec`; it was redirected to the pinned
+Alpine container.
+
+The first container launch also stopped before Cargo because the runner
+dispatches its script through `sh`, while the target was Python source. The
+follow-up shell wrapper dispatches the Python helper correctly.

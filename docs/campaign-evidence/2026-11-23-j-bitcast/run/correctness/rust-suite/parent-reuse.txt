@@ -1,0 +1,16 @@
+The parent receipt reuses the J-ES-3 H2 baseline:
+docs/campaign-evidence/2026-11-22-musl-alloc/rebaseline/correctness-followup/h2-jit-opt-rs-tests.log
+SHA-256: bcfda9fc7e1eaf84b6f0ec3d8cfde00e6329c72d117f295cedddf8ebc79de8db
+
+It is reusable for perf-calloc3-parent (source a8c5e2a): both build reports
+have the same 532-file overlay SHA-256
+73e80ff7c6e57fcebbcf36676d50423dcad523bf563d0a92285ae569f79f4443, the
+same Cargo.lock SHA-256
+27c9e6ba9417daab90715b72d428c0b65e27e4faf4a83402c3af533b8196f80e, and the
+same CPython source tree cpython-e891a9117985888df3e5d48145cf07ddda098335.
+The _jit_opt_rs source directory and Cargo.lock also compare byte-identically.
+Both builds use musl, x86_64-unknown-linux-musl, JIT + Serc, and
+perf-no-pgo-thinlto.
+
+The reused parent log records 120 unit tests and 2 integration tests passed,
+0 failed; doc tests ran 0 tests.
