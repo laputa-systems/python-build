@@ -2,9 +2,71 @@
 
 from __future__ import annotations
 
+import filecmp
+import hashlib
+import json
 import os
 import subprocess
 from pathlib import Path
+
+
+def _cache_directory_is_shared_contents(local: Path, shared: Path) -> bool:
+    for item in local.rglob("*"):
+        relative = item.relative_to(local)
+        other = shared / relative
+        if item.is_dir() and not item.is_symlink():
+            if not other.is_dir():
+                return False
+        elif item.is_symlink():
+            if not other.is_symlink() or os.readlink(item) != os.readlink(other):
+                return False
+        elif item.is_file():
+            if not other.is_file() or not filecmp.cmp(item, other, shallow=False):
+                return False
+        else:
+            return False
+    return True
+
+
+def musl_llvm_prepared_additions_sha256(target: str, repo: Path | None = None) -> str:
+    root = Path(repo).resolve() if repo is not None else Path(__file__).resolve().parents[1]
+    patcher = root / "build" / "patch_llvm_stack.py"
+    target_config = "\n".join((
+        "--rtlib=compiler-rt",
+        "--unwindlib=none",
+        f"-L{Path('/prepared-llvm') / 'lib'}",
+        "-isystem /usr/include/fortify",
+        "",
+    ))
+    recipe = {
+        "schema": 2,
+        "target": target,
+        "stack_patcher_sha256": hashlib.sha256(patcher.read_bytes()).hexdigest(),
+        "target_config": target_config.replace(str(Path("/prepared-llvm")), "{LLVM_PREFIX}"),
+        "clangxx_additions": ["-lc++abi", "-lunwind"],
+        "strip_link": "llvm-strip",
+        "runtime_files": [
+            "clang_rt.crtbegin.o",
+            "clang_rt.crtend.o",
+            "clang_rt.crtbegin-x86_64.o",
+            "clang_rt.crtend-x86_64.o",
+            "crtbegin.o",
+            "crtbeginS.o",
+            "crtbeginT.o",
+            "crtend.o",
+            "crtendS.o",
+        ],
+    }
+    return hashlib.sha256(
+        json.dumps(recipe, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def musl_llvm_prepared_prefix(
+    cache: Path, target: str, archive_sha256: str
+) -> tuple[Path, str]:
+    key = f"{archive_sha256}-{musl_llvm_prepared_additions_sha256(target)}"
+    return (Path(cache) / "llvm" / "prepared" / key).resolve(), key
 
 
 def checkout_root(repo: Path) -> Path:
@@ -50,7 +112,7 @@ def primary_checkout(repo: Path) -> Path:
 
 
 def share_worktree_caches(
-    repo: Path, primary: Path | None = None
+    repo: Path, primary: Path | None = None, *, musl: bool
 ) -> tuple[Path, list[tuple[Path, Path]]]:
     checkout = checkout_root(repo)
     owner = checkout_root(primary) if primary is not None else primary_checkout(checkout)
@@ -61,8 +123,20 @@ def share_worktree_caches(
     worktree_cache = cache_root(checkout)
     links = [
         (primary_cache / "objects", worktree_cache / "objects"),
-        (primary_cache / "bootstrap", worktree_cache / "bootstrap"),
     ]
+    if musl:
+        links.extend((
+            (primary_cache / "bootstrap", worktree_cache / "bootstrap"),
+            (
+                owner / "rust-cpython" / ".cache" / "rustup-musl",
+                checkout / "rust-cpython" / ".cache" / "rustup-musl",
+            ),
+        ))
+    else:
+        links.append((
+            primary_cache / "llvm" / "objects",
+            worktree_cache / "llvm" / "objects",
+        ))
     wheelhouse = owner / "benchmarks" / ".cache" / "wheelhouse"
     if wheelhouse.is_dir():
         links.append((wheelhouse, checkout / "benchmarks" / ".cache" / "wheelhouse"))
@@ -76,8 +150,22 @@ def share_worktree_caches(
             if target.resolve() != source:
                 raise RuntimeError(f"worktree cache link points elsewhere: {target}")
         elif target.exists():
-            raise RuntimeError(f"worktree cache path is not shared: {target}")
-        else:
+            if target.is_dir() and (
+                not any(target.iterdir())
+                or _cache_directory_is_shared_contents(target, source)
+            ):
+                if any(target.iterdir()):
+                    backup = target.with_name(target.name + ".local-backup")
+                    suffix = 1
+                    while backup.exists():
+                        backup = target.with_name(f"{target.name}.local-backup-{suffix}")
+                        suffix += 1
+                    os.replace(target, backup)
+                else:
+                    target.rmdir()
+            else:
+                raise RuntimeError(f"worktree cache path is not shared: {target}")
+        if not target.exists():
             target.parent.mkdir(parents=True, exist_ok=True)
             target.symlink_to(source)
         linked.append((target, source))

@@ -15,7 +15,13 @@ import urllib.request
 LANE = pathlib.Path(__file__).resolve().parents[1]
 REPO = LANE.parent
 sys.path.insert(0, str(LANE))
-from lane_cache import cache_path, cache_root, mount_root, share_worktree_caches
+from lane_cache import (
+    cache_path,
+    cache_root,
+    mount_root,
+    musl_llvm_prepared_prefix,
+    share_worktree_caches,
+)
 
 CACHE_ROOT = cache_root(REPO)
 LOCK_PATH = LANE / "linux-musl-toolchain.lock.json"
@@ -200,9 +206,20 @@ def run_container(mode: str, command: list[str], *, download_missing: bool = Fal
     ]
     rustup_home = LANE / lane["rust"]["cache"]
     cargo_home = LANE / ".cargo-home"
-    llvm_prefix = CACHE_ROOT / "llvm" / "toolchains" / (
-        lane["llvm"]["version"] + "-" + lane["llvm"]["sha256"] + "-musl"
+    llvm_prefix, _llvm_key = musl_llvm_prepared_prefix(
+        CACHE_ROOT, lane["target"], lane["llvm"]["sha256"]
     )
+    dwarfdump_recipe = lane["llvm_dwarfdump"]["build"]
+    llvm_dwarfdump = cache_path(REPO, dwarfdump_recipe["cache_path"])
+    dwarfdump_path = ""
+    if (
+        llvm_dwarfdump.is_file()
+        and not llvm_dwarfdump.is_symlink()
+        and llvm_dwarfdump.stat().st_size == dwarfdump_recipe["binary_size"]
+        and hashlib.sha256(llvm_dwarfdump.read_bytes()).hexdigest()
+        == dwarfdump_recipe["binary_sha256"]
+    ):
+        dwarfdump_path = str(llvm_dwarfdump.parent) + ":"
     script = f'''set -eu
 apk --no-network --repositories-file /dev/null add -- {shlex.join(map(str, base_apks))}
 apk --no-network --repositories-file /dev/null add -- {shlex.join(map(str, lane_apks))}
@@ -212,7 +229,7 @@ export HOME={LANE / ".home"}
 export CARGO_HOME={cargo_home}
 export RUSTUP_HOME={rustup_home}
 export RUSTUP_TOOLCHAIN={lane["rust"]["channel"]}
-export PATH={cargo_home / "bin"}:{llvm_prefix / "bin"}:/usr/bin:/bin
+export PATH={cargo_home / "bin"}:{llvm_prefix / "bin"}:{dwarfdump_path}/usr/bin:/bin
 export LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC
 export PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1
 export SOURCE_DATE_EPOCH=1704067200
@@ -273,7 +290,7 @@ def main(argv: list[str]) -> int:
         and argv[2] == "setup-worktree"
     ):
         try:
-            share_worktree_caches(REPO)
+            share_worktree_caches(REPO, musl=True)
         except RuntimeError as error:
             raise SystemExit(str(error)) from error
     return run_container("command", argv, download_missing=True)

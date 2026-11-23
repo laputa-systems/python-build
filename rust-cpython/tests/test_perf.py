@@ -110,12 +110,48 @@ class WorktreeSetupTests(unittest.TestCase):
                 (worktree / "rust-cpython" / ".cache" / "rustup-musl" / "marker").read_text(),
                 "rustup home\n",
             )
-            self.assertFalse((worktree / "rust-cpython" / ".cache" / "rustup-musl").is_symlink())
+            self.assertTrue(
+                (worktree / "rust-cpython" / ".cache" / "rustup-musl").is_symlink()
+            )
             self.assertEqual(ready.call_args.args[0], toolchain)
             self.assertEqual(
                 (worktree / ".cache" / "llvm" / "prepared" / "prefix" / "marker").read_text(),
                 "prepared locally\n",
             )
+            doctor.assert_called_once_with()
+
+    def test_fresh_macos_worktree_shares_llvm_cache_without_musl_prerequisites(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            primary = root / "primary"
+            worktree = root / "fresh"
+            (primary / ".cache" / "objects").mkdir(parents=True)
+            (primary / ".cache" / "llvm" / "objects").mkdir(parents=True)
+            (primary / "rust-cpython" / ".cargo-home").mkdir(parents=True)
+            doctor = mock.Mock(return_value={"ok": True})
+            toolchain = object()
+            ready = mock.Mock(return_value=worktree / ".cache" / "llvm" / "prepared")
+            with mock.patch.object(perf, "REPO", worktree), \
+                    mock.patch.object(perf, "LANE", worktree / "rust-cpython"), \
+                    mock.patch.object(perf, "_primary_repo", return_value=primary), \
+                    mock.patch.object(perf, "_clone_tree") as clone, \
+                    mock.patch.object(perf.lb, "IS_LINUX", False), \
+                    mock.patch.object(perf.lb, "_toolchain", return_value=(toolchain, "target")), \
+                    mock.patch.object(perf.lb, "_llvm_ready", ready), \
+                    mock.patch.object(perf.lb, "doctor_report", doctor):
+                self.assertEqual(perf.setup_worktree(), 0)
+            self.assertTrue((worktree / ".cache" / "llvm" / "objects").is_symlink())
+            self.assertEqual(
+                (worktree / ".cache" / "llvm" / "objects").resolve(),
+                (primary / ".cache" / "llvm" / "objects").resolve(),
+            )
+            self.assertFalse((worktree / ".cache" / "bootstrap").exists())
+            self.assertFalse((worktree / "rust-cpython" / ".cache" / "rustup-musl").exists())
+            clone.assert_called_once_with(
+                primary / "rust-cpython" / ".cargo-home",
+                worktree / "rust-cpython" / ".cargo-home",
+            )
+            ready.assert_called_once_with(toolchain)
             doctor.assert_called_once_with()
 
 
@@ -131,6 +167,148 @@ class EmptyOverlayAllocatorTests(unittest.TestCase):
                     "fixture", {}, empty_overlay=True, jobs=None, incremental=False,
                     state={}, allocator="jemalloc")
         toolchain.assert_not_called()
+
+
+class IncrementalToolchainIdentityTests(unittest.TestCase):
+    def test_incremental_refuses_allocator_config_change_with_toolchain_identity(self):
+        current = {
+            "prepared_llvm_prefix": "/cache/llvm/prepared/prefix",
+            "prepared_llvm_key": "a" * 128,
+            "musl_link_arguments": "--with-libs=-Wl,-l:libgcc_s.so.1 -lc",
+            "llvm_dwarfdump_sha256": "b" * 64,
+        }
+        config = perf.lb.allocator_profile_config("jemalloc", "default")
+        previous = {
+            "configured": True,
+            "pristine": False,
+            "jit": False,
+            "pystats": False,
+            "serc": False,
+            "allocator": "jemalloc",
+            "allocator_profile": "default",
+            "allocator_config": "stale allocator configuration",
+            "toolchain_identity": current,
+        }
+        with tempfile.TemporaryDirectory() as temporary, ExitStack() as patches:
+            patches.enter_context(mock.patch.object(
+                perf.lb, "doctor_report", return_value={"ok": True}))
+            patches.enter_context(mock.patch.object(perf.lb, "IS_LINUX", True))
+            patches.enter_context(mock.patch.object(
+                perf, "_paths", return_value={"report": Path(temporary) / "report.json"}))
+            patches.enter_context(mock.patch.object(perf, "_read_report", return_value=previous))
+            patches.enter_context(mock.patch.object(
+                perf, "_current_musl_toolchain_identity", return_value=current))
+            patches.enter_context(mock.patch.object(
+                perf, "host_lease", return_value=nullcontext()))
+            built = patches.enter_context(mock.patch.object(perf, "_build_locked"))
+            with self.assertRaisesRegex(perf.LaneError, "allocator profile/config changed"):
+                perf.build(name="fixture", empty_overlay=False, incremental=True,
+                           allocator="jemalloc", allocator_profile="default")
+            self.assertEqual(config, perf.lb.allocator_profile_config("jemalloc", "default"))
+            built.assert_not_called()
+
+    def test_incremental_refuses_any_musl_toolchain_identity_change(self):
+        current = {
+            "prepared_llvm_prefix": "/cache/llvm/prepared/prefix",
+            "prepared_llvm_key": "a" * 128,
+            "musl_link_arguments": "--with-libs=-Wl,-l:libgcc_s.so.1 -lc",
+            "llvm_dwarfdump_sha256": "b" * 64,
+        }
+        for field in current:
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as temporary, \
+                    ExitStack() as patches:
+                previous_identity = dict(current)
+                previous_identity[field] = "changed"
+                previous = {
+                    "configured": True,
+                    "pristine": False,
+                    "jit": False,
+                    "pystats": False,
+                    "serc": False,
+                    "allocator": "musl",
+                    "toolchain_identity": previous_identity,
+                }
+                paths = {"report": Path(temporary) / "report.json"}
+                patches.enter_context(mock.patch.object(
+                    perf.lb, "doctor_report", return_value={"ok": True}))
+                patches.enter_context(mock.patch.object(
+                    perf.lb, "IS_LINUX", True))
+                patches.enter_context(mock.patch.object(
+                    perf, "_paths", return_value=paths))
+                patches.enter_context(mock.patch.object(
+                    perf, "_read_report", return_value=previous))
+                patches.enter_context(mock.patch.object(
+                    perf, "_current_musl_toolchain_identity", return_value=current))
+                patches.enter_context(mock.patch.object(
+                    perf, "host_lease", return_value=nullcontext()))
+                built = patches.enter_context(mock.patch.object(perf, "_build_locked"))
+                with self.assertRaisesRegex(
+                    perf.LaneError, "toolchain identity changed.*clean build"):
+                    perf.build(name="fixture", empty_overlay=False, incremental=True)
+                built.assert_not_called()
+
+
+class IncrementalFailureRecoveryTests(unittest.TestCase):
+    def test_post_configure_failure_keeps_identity_for_incremental_recovery(self):
+        current = {
+            "prepared_llvm_prefix": "/cache/llvm/prepared/prefix",
+            "prepared_llvm_key": "a" * 128,
+            "musl_link_arguments": "--with-libs=-Wl,-l:libgcc_s.so.1 -lc",
+            "llvm_dwarfdump_sha256": "b" * 64,
+        }
+        with tempfile.TemporaryDirectory() as temporary, ExitStack() as patches:
+            root = Path(temporary)
+            report_path = root / "report.json"
+            paths = {"report": report_path, "stage": root / "stage"}
+
+            def build_locked(*args, **kwargs):
+                if not kwargs["incremental"]:
+                    state = kwargs["state"]
+                    state["configured"] = True
+                    state["toolchain_identity"] = current
+                    raise RuntimeError("post-configure failure")
+                return {
+                    "status": "built",
+                    "configured": True,
+                    "pristine": False,
+                    "jit": False,
+                    "pystats": False,
+                    "serc": False,
+                    "allocator": "musl",
+                    "allocator_profile": "default",
+                    "allocator_config": "",
+                    "toolchain_identity": current,
+                    "build_identity": perf._build_identity("musl", "default", "", current),
+                    "compression_route": "private",
+                    "interpreter": {"version": "3.16.0"},
+                    "rust_extensions_sha256": {"fixture": "sha256"},
+                }
+
+            patches.enter_context(mock.patch.object(perf.lb, "doctor_report",
+                                                    return_value={"ok": True}))
+            patches.enter_context(mock.patch.object(perf.lb, "IS_LINUX", True))
+            identity = patches.enter_context(mock.patch.object(
+                perf, "_current_musl_toolchain_identity", return_value=current))
+            patches.enter_context(mock.patch.object(perf, "_paths", return_value=paths))
+            patches.enter_context(mock.patch.object(perf, "host_lease",
+                                                    return_value=nullcontext()))
+            builder = patches.enter_context(mock.patch.object(
+                perf, "_build_locked", side_effect=build_locked))
+
+            with self.assertRaisesRegex(RuntimeError, "post-configure failure"):
+                perf.build(name="fixture", empty_overlay=False)
+            failed = json.loads(report_path.read_text())
+            self.assertTrue(failed["configured"])
+            self.assertEqual(failed["toolchain_identity"], current)
+
+            self.assertEqual(perf.build(name="fixture", empty_overlay=False,
+                                        incremental=True), 0)
+            self.assertEqual(builder.call_count, 2)
+            changed = dict(current, llvm_dwarfdump_sha256="c" * 64)
+            identity.return_value = changed
+            with self.assertRaisesRegex(perf.LaneError, "toolchain identity changed.*clean build"):
+                perf.build(name="fixture", empty_overlay=False, incremental=True)
+            self.assertEqual(builder.call_count, 2)
 
 
 def summary(wall_ci, *, wall_ratios=(1.0, 1.0, 1.0),
@@ -1567,7 +1745,8 @@ class IncrementalRecipeTests(unittest.TestCase):
     def exercise(self, incremental, *, bad_install=False, failed_install=False, source_std=True,
                  empty_overlay=False, missing_current_member=False, aggregate=True, missing_aggregate=False,
                  late_placement_failure=False, abrupt_placement_failure=False, route="private",
-                 linux=False, jit=False, pystats=False, serc=False):
+                 linux=False, jit=False, pystats=False, serc=False,
+                 fail_after_configure=False, toolchain_identity=None):
         with tempfile.TemporaryDirectory() as temp, ExitStack() as patches:
             root = Path(temp)
             if linux:
@@ -1655,6 +1834,8 @@ class IncrementalRecipeTests(unittest.TestCase):
             }
             for name, value in fixtures.items():
                 patches.enter_context(mock.patch.object(perf, name, value))
+            patches.enter_context(mock.patch.object(
+                perf, "_musl_toolchain_identity", return_value=toolchain_identity))
             for name, value in {
                 "_toolchain": (toolchain, "fixture"), "_environment": {},
                 "_sealed_sandbox": sandbox, "_read_lock": ({"commit": "source"}, mock.Mock(sha256="source hash")),
@@ -1671,7 +1852,11 @@ class IncrementalRecipeTests(unittest.TestCase):
             patches.enter_context(mock.patch.object(perf.lb, "_extract_fresh", return_value=source))
             patches.enter_context(mock.patch.object(perf.lb, "_verify_cargo_lock"))
             regen = patches.enter_context(
-                mock.patch.object(perf.lb, "_python_for_regen_version", return_value="3.15.1"))
+                mock.patch.object(
+                    perf.lb, "_python_for_regen_version",
+                    side_effect=RuntimeError("post-configure failure")
+                    if fail_after_configure else None,
+                    return_value=None if fail_after_configure else "3.15.1"))
             patches.enter_context(mock.patch.object(perf.lb, "_require_command", side_effect=command))
             patches.enter_context(mock.patch.object(perf.lb, "_make_value", return_value="dev"))
             engines = patches.enter_context(mock.patch.object(
@@ -1683,6 +1868,14 @@ class IncrementalRecipeTests(unittest.TestCase):
             checks = patches.enter_context(mock.patch.object(perf, "_check_logs", wraps=perf._check_logs))
             compiled = patches.enter_context(mock.patch.object(perf, "_built_members", wraps=perf._built_members))
             single_install = incremental or (source_std and aggregate and not empty_overlay)
+            if fail_after_configure:
+                state = {"configured": False, "toolchain_identity": None}
+                with self.assertRaisesRegex(RuntimeError, "post-configure failure"):
+                    perf._build_locked(
+                        "fixture", paths, empty_overlay=empty_overlay, jobs=4,
+                        incremental=False, state=state, route=route, jit=jit,
+                        pystats=pystats, serc=serc)
+                return state
             if late_placement_failure or abrupt_placement_failure:
                 original = CPlacementIncrementalTests.original
                 template = 'Modules/Setup.stdlib.in'
@@ -1832,6 +2025,18 @@ class IncrementalRecipeTests(unittest.TestCase):
 
     def test_abrupt_placement_mutation_persists_nonresumable_state_before_copy(self):
         self.exercise(True, aggregate=False, abrupt_placement_failure=True)
+
+    def test_post_configure_failure_persists_toolchain_identity(self):
+        identity = {
+            "prepared_llvm_prefix": "/cache/llvm/prepared/prefix",
+            "prepared_llvm_key": "a" * 128,
+            "musl_link_arguments": "--with-libs=-Wl,-l:libgcc_s.so.1 -lc",
+            "llvm_dwarfdump_sha256": "b" * 64,
+        }
+        state = self.exercise(
+            False, linux=True, fail_after_configure=True, toolchain_identity=identity)
+        self.assertTrue(state["configured"])
+        self.assertEqual(state["toolchain_identity"], identity)
 
     def test_jit_build_records_llvm_stencil_and_regen(self):
         report = self.exercise(False, jit=True)

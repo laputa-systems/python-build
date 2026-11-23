@@ -35,7 +35,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from lane_cache import cache_root as lane_cache_root
+from lane_cache import (
+    cache_root as lane_cache_root,
+    musl_llvm_prepared_additions_sha256,
+    musl_llvm_prepared_prefix,
+)
 
 from buildsys.bootstrap import BootstrapError, load_linux_bootstrap
 from buildsys.inputs import Cache, Input, InputError
@@ -484,9 +488,8 @@ def load_musl_toolchain(path: Path, cache_root: Path | None = None) -> MuslToolc
     version = llvm["version"]
     local_cache = lane_cache_root(Path(path).resolve().parents[1], cache_root)
     raw_prefix = (local_cache / "llvm" / "raw" / f"{version}-{archive.sha256}-musl").resolve()
-    additions_sha256 = _llvm_prepared_additions_sha256(TARGET)
-    prefix = (local_cache / "llvm" / "prepared"
-              / f"{archive.sha256}-{additions_sha256}").resolve()
+    prefix, _key = musl_llvm_prepared_prefix(
+        local_cache, TARGET, archive.sha256)
     package_pins = tuple(f"{name}={value}" for name, value in sorted(expected.items()))
     return MuslToolchain(
         lock_path=Path(path),
@@ -869,36 +872,7 @@ def package_report(toolchain: LinuxToolchain | MuslToolchain) -> dict[str, str]:
 
 
 def _llvm_prepared_additions_sha256(target: str) -> str:
-    patcher = Path(__file__).resolve().parents[1] / "build" / "patch_llvm_stack.py"
-    target_config = "\n".join((
-        "--rtlib=compiler-rt",
-        "--unwindlib=none",
-        f"-L{Path('/prepared-llvm') / 'lib'}",
-        "-isystem /usr/include/fortify",
-        "",
-    ))
-    recipe = {
-        "schema": 2,
-        "target": target,
-        "stack_patcher_sha256": hashlib.sha256(patcher.read_bytes()).hexdigest(),
-        "target_config": target_config.replace(str(Path("/prepared-llvm")), "{LLVM_PREFIX}"),
-        "clangxx_additions": ["-lc++abi", "-lunwind"],
-        "strip_link": "llvm-strip",
-        "runtime_files": [
-            "clang_rt.crtbegin.o",
-            "clang_rt.crtend.o",
-            "clang_rt.crtbegin-x86_64.o",
-            "clang_rt.crtend-x86_64.o",
-            "crtbegin.o",
-            "crtbeginS.o",
-            "crtbeginT.o",
-            "crtend.o",
-            "crtendS.o",
-        ],
-    }
-    return hashlib.sha256(
-        json.dumps(recipe, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
+    return musl_llvm_prepared_additions_sha256(target)
 
 
 def _prepared_files(root: Path) -> dict[str, dict[str, Any]]:

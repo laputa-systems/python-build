@@ -1038,12 +1038,12 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
     recipe = entry["build"]
     dev = entry["dev_archive"]
     cached = cache_path(REPO, recipe["cache_path"])
-    expected_binary_sha = recipe.get("binary_sha256")
-    expected_binary_size = recipe.get("binary_size")
+    expected_binary_sha = recipe["binary_sha256"]
+    expected_binary_size = recipe["binary_size"]
     if (
-        expected_binary_sha
-        and cached.is_file()
-        and (expected_binary_size is None or cached.stat().st_size == expected_binary_size)
+        cached.is_file()
+        and not cached.is_symlink()
+        and cached.stat().st_size == expected_binary_size
         and _file_sha256(cached) == expected_binary_sha
     ):
         return cached

@@ -50,6 +50,7 @@ sys.path.insert(0, str(LANE))
 from lane_cache import (
     cache_root,
     git_common_dir,
+    musl_llvm_prepared_prefix,
     primary_checkout,
     share_worktree_caches,
 )
@@ -946,6 +947,47 @@ def _refuse_unsyncable(changes: dict[str, list[str]]) -> None:
                         f"{changes['clean_only'] or 'none'}")
 
 
+def _musl_with_libs_argument() -> str:
+    lock = json.loads(lb.LINUX_TOOLCHAIN_LOCK.read_text())
+    arguments = lock["llvm"]["rust_native_static_libs"]["musl_link_args"]
+    return "--with-libs=" + " ".join(arguments)
+
+
+def _musl_toolchain_identity(toolchain) -> dict[str, str] | None:
+    if not isinstance(toolchain, lb.lane_linux.MuslToolchain):
+        return None
+    prefix, key = musl_llvm_prepared_prefix(
+        cache_root(REPO), toolchain.target, toolchain.llvm_archive_sha256)
+    if prefix != toolchain.llvm_prefix.resolve():
+        raise LaneError("loaded musl LLVM prefix disagrees with its cache identity")
+    dwarfdump = lb._cached_musl_llvm_dwarfdump(toolchain)
+    return {
+        "prepared_llvm_prefix": str(prefix),
+        "prepared_llvm_key": key,
+        "musl_link_arguments": _musl_with_libs_argument(),
+        "llvm_dwarfdump_sha256": _sha256_file(dwarfdump),
+    }
+
+
+def _build_identity(allocator: str, allocator_profile: str, allocator_config: str,
+                    toolchain_identity: dict[str, str] | None) -> dict[str, Any]:
+    identity: dict[str, Any] = {
+        "allocator": allocator,
+        "allocator_profile": allocator_profile,
+        "allocator_config": allocator_config,
+    }
+    if toolchain_identity is not None:
+        identity["toolchain"] = toolchain_identity
+    return identity
+
+
+def _current_musl_toolchain_identity() -> dict[str, str] | None:
+    toolchain, _target = lb._toolchain()
+    if isinstance(toolchain, lb.lane_linux.MuslToolchain):
+        lb._llvm_ready(toolchain)
+    return _musl_toolchain_identity(toolchain)
+
+
 def _copy_changed_overlay(paths: dict[str, Path], source: Path, changes: dict[str, list[str]]) -> None:
     for item in changes["changed"]:
         _copy_file(paths["overlay_staging"] / item, source / item)
@@ -1077,24 +1119,36 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
             if previous.get("allocator") != allocator:
                 raise LaneError("incremental build refused: the allocator changed or is unrecorded; "
                                 "run a clean build")
+            toolchain_identity = (
+                _current_musl_toolchain_identity() if lb.IS_LINUX else None
+            )
+            if previous.get("toolchain_identity") != toolchain_identity:
+                raise LaneError(
+                    "incremental build refused: the musl toolchain identity changed or is "
+                    "unrecorded; run a clean build"
+                )
             if (previous.get("allocator_profile", "default") != allocator_profile
                     or previous.get("allocator_config", "") != allocator_config):
                 raise LaneError("incremental build refused: allocator profile/config changed or is "
                                 "unrecorded; run a clean build")
             configured = True
             route = _report_route(previous)
+        else:
+            toolchain_identity = None
         _write_json(paths["report"], {"status": "building", "name": _tag(name),
                                       "pristine": empty_overlay, "configured": configured,
                                       "jit": jit, "pystats": pystats, "serc": serc,
                                       "allocator": allocator,
+                                      "toolchain_identity": toolchain_identity,
                                       "allocator_profile": allocator_profile,
                                       "allocator_config": allocator_config,
-                                      "build_identity": {"allocator": allocator,
-                                                         "allocator_profile": allocator_profile,
-                                                         "allocator_config": allocator_config},
+                                      "build_identity": _build_identity(
+                                          allocator, allocator_profile, allocator_config,
+                                          toolchain_identity),
                                       "host": doctor.get("host"),
                                       "compression_route": route})
-        state = {"configured": configured}
+        state = {"configured": configured, "toolchain_identity": toolchain_identity,
+                 "allocator_profile": allocator_profile, "allocator_config": allocator_config}
         if incremental:
             state["previous"] = previous
         try:
@@ -1104,24 +1158,28 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
                                    allocator_profile=allocator_profile,
                                    host_report=doctor.get("host"))
         except BaseException as error:
+            toolchain_identity = state.get("toolchain_identity", toolchain_identity)
             _write_json(paths["report"], {"status": "failed", "name": _tag(name),
                                           "pristine": empty_overlay, "configured": state["configured"],
                                           "jit": jit, "pystats": pystats, "serc": serc,
                                           "allocator": allocator,
+                                          "toolchain_identity": toolchain_identity,
                                           "allocator_profile": allocator_profile,
                                           "allocator_config": allocator_config,
-                                          "build_identity": {"allocator": allocator,
-                                                             "allocator_profile": allocator_profile,
-                                                             "allocator_config": allocator_config},
+                                          "build_identity": _build_identity(
+                                              allocator, allocator_profile, allocator_config,
+                                              toolchain_identity),
                                           "host": doctor.get("host"),
                                           "compression_route": route, "error": str(error)})
             raise
         report.setdefault("allocator", allocator)
         report.setdefault("allocator_profile", allocator_profile)
         report.setdefault("allocator_config", allocator_config)
-        report.setdefault("build_identity", {"allocator": allocator,
-                                             "allocator_profile": allocator_profile,
-                                             "allocator_config": allocator_config})
+        report.setdefault(
+            "build_identity",
+            _build_identity(allocator, allocator_profile, allocator_config,
+                            toolchain_identity),
+        )
         report.setdefault("host", doctor.get("host"))
         report["build_seconds"] = round(time.monotonic() - started, 1)
         report["phase_seconds"] = phase_seconds
@@ -1148,6 +1206,11 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
         raise LaneError("--empty-overlay does not support allocator profiles")
     toolchain, target = lb._toolchain()
     lb._llvm_ready(toolchain)
+    toolchain_identity = _musl_toolchain_identity(toolchain)
+    if incremental and state.get("toolchain_identity") != toolchain_identity:
+        raise LaneError(
+            "incremental build refused: the musl toolchain identity changed; run a clean build"
+        )
     allocator_build = lb.build_musl_allocator(
         allocator,
         paths["build"].parent / "allocator" / lb.allocator_cache_key(allocator, allocator_profile),
@@ -1250,7 +1313,7 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
                  jit_config.argument, "--with-tail-call-interp=no",
                  "--without-ensurepip"]
     if lb.TARGET.endswith("-musl"):
-        configure.append("--with-libs=-Wl,-l:libgcc_s.so.1 -lc")
+        configure.append(_musl_with_libs_argument())
     if pystats:
         configure.append("--enable-pystats")
     # Only the aggregate workspace requires the pinned source-built runtime.
@@ -1275,6 +1338,8 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
             env.update(lb._build_mpdecimal(toolchain, target, workers, sandbox))
         lb._require_command(configure, cwd=paths["build"], env=env,
                             log=paths["configure_log"], sealed=sandbox)
+        state["configured"] = True
+        state["toolchain_identity"] = toolchain_identity
         if not empty_overlay:
             lb._python_for_regen_version(paths["build"] / "Makefile", env)
         setup_local = source / "Modules" / "Setup.local"
@@ -1286,7 +1351,6 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
             setup_target.parent.mkdir(parents=True, exist_ok=True)
             setup_target.write_text(contents)
             setup_target.chmod(setup_local.stat().st_mode & 0o777)
-        state["configured"] = True
     lb._write_cargo_source_config(paths["build"])
     if placement:
         # The existing generators own module registration and linker recipes.
@@ -1389,11 +1453,11 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
         "pystats": pystats,
         "serc": serc,
         "allocator": allocator,
+        "toolchain_identity": toolchain_identity,
         "allocator_profile": allocator_profile,
         "allocator_config": allocator_config,
-        "build_identity": {"allocator": allocator,
-                           "allocator_profile": allocator_profile,
-                           "allocator_config": allocator_config},
+        "build_identity": _build_identity(
+            allocator, allocator_profile, allocator_config, toolchain_identity),
         "allocator_build": allocator_build,
         "cargo_profile": None if empty_overlay else "release",
         "cargo_profile_selected_by": None if empty_overlay else
@@ -2767,7 +2831,7 @@ def setup_worktree() -> int:
         print("OK    primary checkout; nothing to share")
         return 0
     try:
-        _owner, links = share_worktree_caches(REPO, primary)
+        _owner, links = share_worktree_caches(REPO, primary, musl=lb.IS_LINUX)
     except RuntimeError as error:
         raise LaneError(str(error)) from error
     for target, source in links:
@@ -2775,20 +2839,16 @@ def setup_worktree() -> int:
     toolchain, _target = lb._toolchain()
     llvm_prefix = lb._llvm_ready(toolchain)
     print(f"OK    {llvm_prefix} (prepared locally)")
-    # Cargo and Rustup write into their homes, so keep those state trees local.
-    private_homes = (
-        (primary / "rust-cpython" / ".cargo-home", LANE / ".cargo-home"),
-        (primary / "rust-cpython" / ".cache" / "rustup-musl",
-         LANE / ".cache" / "rustup-musl"),
-    )
-    for source, target in private_homes:
-        if not source.is_dir():
-            raise LaneError(f"primary checkout lacks {source}; run fetch there first")
-        if target.is_dir() and not any(target.iterdir()):
-            target.rmdir()
-        if not target.exists():
-            _clone_tree(source, target)
-        print(f"OK    {target} (clone)")
+    # Cargo writes into its home, so keep that state tree local.
+    source = primary / "rust-cpython" / ".cargo-home"
+    target = LANE / ".cargo-home"
+    if not source.is_dir():
+        raise LaneError(f"primary checkout lacks {source}; run fetch there first")
+    if target.is_dir() and not any(target.iterdir()):
+        target.rmdir()
+    if not target.exists():
+        _clone_tree(source, target)
+    print(f"OK    {target} (clone)")
     report = lb.doctor_report()
     if not report["ok"]:
         raise LaneError("doctor still reports problems: " + "; ".join(report.get("problems", [])))
