@@ -1,0 +1,14 @@
+crel3-parent-parity 127
+crel3-parent-serc-verify 0
+h2-parity 127
+h2-serc-verify 0
+jes2-parent-jit-suites 1
+h2-jit-suites 1
+jes3-candidate-jit-suites 1
+h2-fuzz 1
+jes3-candidate-fuzz 1
+jes2-parent-capi-opt-verbose 127
+h2-capi-opt-verbose 127
+jes3-candidate-capi-opt-verbose 127
+h2-jit-opt-rs-tests 101
+jes3-candidate-jit-opt-rs-tests 101

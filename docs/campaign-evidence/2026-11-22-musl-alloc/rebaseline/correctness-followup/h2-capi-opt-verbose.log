@@ -1,0 +1,549 @@
+== CPython 3.16.0a1+dev (main, Jan 1 2024, 00:00:00) [Clang 23.1.5 ]
+== Linux-6.8.0-1060-aws-x86_64-with-musl1.2.6 little-endian
+== Python build: release JIT shared
+== cwd: /tmp/test_python_worker_2139æ
+== CPU count: 8
+== encodings: locale=UTF-8 FS=utf-8
+== resources: all test resources are disabled, use -u option to unskip tests
+
+Using random seed: 1704067200
+0:00:00 load avg: 3.17 mem:   28.8 MiB Run 1 test in parallel using 1 worker process (timeout: 15 min, worker timeout: 20 min)
+0:00:04 load avg: 3.08 mem:   30.5 MiB [1/1/1] test_capi.test_opt failed (20 failures)
+test_invalidate_object (test.test_capi.test_opt.TestExecutorInvalidation.test_invalidate_object) ... ok
+test_prev_executor_freed_while_tracing (test.test_capi.test_opt.TestExecutorInvalidation.test_prev_executor_freed_while_tracing) ... ok
+test_sys__clear_internal_caches (test.test_capi.test_opt.TestExecutorInvalidation.test_sys__clear_internal_caches) ... ok
+test_uop_optimizer_invalidation (test.test_capi.test_opt.TestExecutorInvalidation.test_uop_optimizer_invalidation) ... ok
+test_basic_loop (test.test_capi.test_opt.TestUops.test_basic_loop) ... ok
+test_branch_coincident_targets (test.test_capi.test_opt.TestUops.test_branch_coincident_targets) ... ok
+test_branch_taken (test.test_capi.test_opt.TestUops.test_branch_taken) ... ok
+test_call_py_ex (test.test_capi.test_opt.TestUops.test_call_py_ex) ... ok
+test_call_py_exact_args (test.test_capi.test_opt.TestUops.test_call_py_exact_args) ... FAIL
+test_extended_arg (test.test_capi.test_opt.TestUops.test_extended_arg)
+Check EXTENDED_ARG handling in superblock creation ... ok
+test_for_iter_list (test.test_capi.test_opt.TestUops.test_for_iter_list) ... ok
+test_for_iter_range (test.test_capi.test_opt.TestUops.test_for_iter_range) ... ok
+test_for_iter_tier_two (test.test_capi.test_opt.TestUops.test_for_iter_tier_two) ... ok
+test_for_iter_tuple (test.test_capi.test_opt.TestUops.test_for_iter_tuple) ... ok
+test_get_iter_gen (test.test_capi.test_opt.TestUops.test_get_iter_gen) ... ok
+test_get_iter_list (test.test_capi.test_opt.TestUops.test_get_iter_list) ... ok
+test_get_iter_trad (test.test_capi.test_opt.TestUops.test_get_iter_trad) ... ok
+test_jump_backward (test.test_capi.test_opt.TestUops.test_jump_backward) ... ok
+test_jump_backward_extended_arg (test.test_capi.test_opt.TestUops.test_jump_backward_extended_arg) ... ok
+test_jump_forward (test.test_capi.test_opt.TestUops.test_jump_forward) ... ok
+test_list_edge_case (test.test_capi.test_opt.TestUops.test_list_edge_case) ... ok
+test_pop_jump_if_false (test.test_capi.test_opt.TestUops.test_pop_jump_if_false) ... ok
+test_pop_jump_if_none (test.test_capi.test_opt.TestUops.test_pop_jump_if_none) ... ok
+test_pop_jump_if_not_none (test.test_capi.test_opt.TestUops.test_pop_jump_if_not_none) ... ok
+test_pop_jump_if_true (test.test_capi.test_opt.TestUops.test_pop_jump_if_true) ... ok
+test_resume (test.test_capi.test_opt.TestUops.test_resume) ... ok
+test_unspecialized_unpack (test.test_capi.test_opt.TestUops.test_unspecialized_unpack) ... ok
+test_143026 (test.test_capi.test_opt.TestUopsOptimization.test_143026) ... ok
+test_143092 (test.test_capi.test_opt.TestUopsOptimization.test_143092) ... ok
+test_143183 (test.test_capi.test_opt.TestUopsOptimization.test_143183) ... ok
+test_143358 (test.test_capi.test_opt.TestUopsOptimization.test_143358) ... ok
+test_144068_daemon_thread_jit_cleanup (test.test_capi.test_opt.TestUopsOptimization.test_144068_daemon_thread_jit_cleanup) ... ok
+test_149335_trace_buffer_guard (test.test_capi.test_opt.TestUopsOptimization.test_149335_trace_buffer_guard) ... ok
+test_add_unicode_propagation (test.test_capi.test_opt.TestUopsOptimization.test_add_unicode_propagation) ... ok
+test_attr_promotion_failure (test.test_capi.test_opt.TestUopsOptimization.test_attr_promotion_failure) ... ok
+test_attribute_changes_are_watched (test.test_capi.test_opt.TestUopsOptimization.test_attribute_changes_are_watched) ... ok
+test_binary_op_constant_evaluate (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_constant_evaluate) ... ok
+test_binary_op_extend_float_long_add_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_extend_float_long_add_refcount_elimination) ... ok
+test_binary_op_extend_float_result_enables_inplace_multiply (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_extend_float_result_enables_inplace_multiply) ... ok
+test_binary_op_extend_guard_elimination (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_extend_guard_elimination) ... ok
+test_binary_op_extend_list_concat_type_propagation (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_extend_list_concat_type_propagation) ... ok
+test_binary_op_extend_partial_guard_lhs_known (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_extend_partial_guard_lhs_known) ... ok
+test_binary_op_extend_partial_guard_rhs_known (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_extend_partial_guard_rhs_known) ... ok
+test_binary_op_extend_tuple_concat_type_propagation (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_extend_tuple_concat_type_propagation) ... ok
+test_binary_op_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_refcount_elimination) ... ok
+test_binary_op_subscr_constant_frozendict_known_hash (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_subscr_constant_frozendict_known_hash) ... ok
+test_binary_op_subscr_defaultdict_known_hash (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_subscr_defaultdict_known_hash) ... ok
+test_binary_op_subscr_dict (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_subscr_dict) ... ok
+test_binary_op_subscr_dict_known_hash (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_subscr_dict_known_hash) ... ok
+test_binary_op_subscr_init_frame (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_subscr_init_frame) ... ok
+test_binary_op_subscr_str_int (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_subscr_str_int) ... ok
+test_binary_op_subscr_tuple_int (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_subscr_tuple_int) ... ok
+test_binary_op_subscr_ustr_int (test.test_capi.test_opt.TestUopsOptimization.test_binary_op_subscr_ustr_int) ... ok
+test_binary_subcsr_str_int_narrows_to_str (test.test_capi.test_opt.TestUopsOptimization.test_binary_subcsr_str_int_narrows_to_str) ... ok
+test_binary_subcsr_ustr_int_narrows_to_str (test.test_capi.test_opt.TestUopsOptimization.test_binary_subcsr_ustr_int_narrows_to_str) ... ok
+test_binary_subscr_frozendict_const_fold (test.test_capi.test_opt.TestUopsOptimization.test_binary_subscr_frozendict_const_fold) ... ok
+test_binary_subscr_frozendict_lowering (test.test_capi.test_opt.TestUopsOptimization.test_binary_subscr_frozendict_lowering) ... ok
+test_binary_subscr_list_int (test.test_capi.test_opt.TestUopsOptimization.test_binary_subscr_list_int) ... ok
+test_binary_subscr_list_slice (test.test_capi.test_opt.TestUopsOptimization.test_binary_subscr_list_slice) ... FAIL
+test_binary_subscr_tuple_int (test.test_capi.test_opt.TestUopsOptimization.test_binary_subscr_tuple_int) ... ok
+test_builtins_guard_emitted_once_per_frame (test.test_capi.test_opt.TestUopsOptimization.test_builtins_guard_emitted_once_per_frame) ... FAIL
+test_cached_attributes (test.test_capi.test_opt.TestUopsOptimization.test_cached_attributes) ... ok
+test_cached_attributes_fixed_version_tag (test.test_capi.test_opt.TestUopsOptimization.test_cached_attributes_fixed_version_tag) ... ok
+test_cached_load_special (test.test_capi.test_opt.TestUopsOptimization.test_cached_load_special) ... ok
+test_call_builtin_class (test.test_capi.test_opt.TestUopsOptimization.test_call_builtin_class) ... ok
+test_call_builtin_fast (test.test_capi.test_opt.TestUopsOptimization.test_call_builtin_fast) ... ok
+test_call_builtin_fast_extra_flags (test.test_capi.test_opt.TestUopsOptimization.test_call_builtin_fast_extra_flags) ... ok
+test_call_builtin_fast_with_keywords (test.test_capi.test_opt.TestUopsOptimization.test_call_builtin_fast_with_keywords) ... ok
+test_call_builtin_fast_with_keywords_extra_flags (test.test_capi.test_opt.TestUopsOptimization.test_call_builtin_fast_with_keywords_extra_flags) ... ok
+test_call_builtin_o (test.test_capi.test_opt.TestUopsOptimization.test_call_builtin_o) ... ok
+test_call_builtin_o_extra_flags (test.test_capi.test_opt.TestUopsOptimization.test_call_builtin_o_extra_flags) ... ok
+test_call_intrinsic_1 (test.test_capi.test_opt.TestUopsOptimization.test_call_intrinsic_1) ... ok
+test_call_intrinsic_2 (test.test_capi.test_opt.TestUopsOptimization.test_call_intrinsic_2) ... ok
+test_call_isinstance_guards_removed (test.test_capi.test_opt.TestUopsOptimization.test_call_isinstance_guards_removed) ... ok
+test_call_isinstance_is_false (test.test_capi.test_opt.TestUopsOptimization.test_call_isinstance_is_false) ... ok
+test_call_isinstance_is_true (test.test_capi.test_opt.TestUopsOptimization.test_call_isinstance_is_true) ... ok
+test_call_isinstance_metaclass (test.test_capi.test_opt.TestUopsOptimization.test_call_isinstance_metaclass) ... ok
+test_call_isinstance_subclass (test.test_capi.test_opt.TestUopsOptimization.test_call_isinstance_subclass) ... ok
+test_call_isinstance_tuple_of_classes (test.test_capi.test_opt.TestUopsOptimization.test_call_isinstance_tuple_of_classes) ... ok
+test_call_isinstance_unknown_object (test.test_capi.test_opt.TestUopsOptimization.test_call_isinstance_unknown_object) ... ok
+test_call_kw (test.test_capi.test_opt.TestUopsOptimization.test_call_kw) ... ok
+test_call_kw_bound_method (test.test_capi.test_opt.TestUopsOptimization.test_call_kw_bound_method) ... ok
+test_call_len (test.test_capi.test_opt.TestUopsOptimization.test_call_len) ... ok
+test_call_len_known_length (test.test_capi.test_opt.TestUopsOptimization.test_call_len_known_length) ... ok
+test_call_len_known_length_small_int (test.test_capi.test_opt.TestUopsOptimization.test_call_len_known_length_small_int) ... ok
+test_call_len_string_frozen_set_dict (test.test_capi.test_opt.TestUopsOptimization.test_call_len_string_frozen_set_dict) ... ok
+test_call_list_append (test.test_capi.test_opt.TestUopsOptimization.test_call_list_append) ... ok
+test_call_list_append_pop_top (test.test_capi.test_opt.TestUopsOptimization.test_call_list_append_pop_top) ... ok
+test_call_method_descriptor_fast (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_fast) ... ok
+test_call_method_descriptor_fast_extra_flags (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_fast_extra_flags) ... ok
+test_call_method_descriptor_fast_with_keywords (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_fast_with_keywords) ... ok
+test_call_method_descriptor_fast_with_keywords_extra_flags (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_fast_with_keywords_extra_flags) ... ok
+test_call_method_descriptor_noargs (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_noargs) ... FAIL
+test_call_method_descriptor_noargs_extra_flags (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_noargs_extra_flags) ... ok
+test_call_method_descriptor_o (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_o) ... ok
+test_call_method_descriptor_o_extra_flags (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_o_extra_flags) ... ok
+test_call_py_exact_args (test.test_capi.test_opt.TestUopsOptimization.test_call_py_exact_args) ... FAIL
+test_call_py_exact_args_disappearing (test.test_capi.test_opt.TestUopsOptimization.test_call_py_exact_args_disappearing) ... ok
+test_call_str_1 (test.test_capi.test_opt.TestUopsOptimization.test_call_str_1) ... ok
+test_call_str_1_pop_top (test.test_capi.test_opt.TestUopsOptimization.test_call_str_1_pop_top) ... ok
+test_call_str_1_result_is_const_for_str_input (test.test_capi.test_opt.TestUopsOptimization.test_call_str_1_result_is_const_for_str_input) ... ok
+test_call_str_1_result_is_str (test.test_capi.test_opt.TestUopsOptimization.test_call_str_1_result_is_str) ... ok
+test_call_super (test.test_capi.test_opt.TestUopsOptimization.test_call_super) ... ok
+test_call_tuple_1 (test.test_capi.test_opt.TestUopsOptimization.test_call_tuple_1) ... ok
+test_call_tuple_1_pop_top (test.test_capi.test_opt.TestUopsOptimization.test_call_tuple_1_pop_top) ... ok
+test_call_tuple_1_result_is_tuple (test.test_capi.test_opt.TestUopsOptimization.test_call_tuple_1_result_is_tuple) ... ok
+test_call_tuple_1_result_propagates_for_tuple_input (test.test_capi.test_opt.TestUopsOptimization.test_call_tuple_1_result_propagates_for_tuple_input) ... ok
+test_call_type_1_guards_removed (test.test_capi.test_opt.TestUopsOptimization.test_call_type_1_guards_removed) ... ok
+test_call_type_1_known_type (test.test_capi.test_opt.TestUopsOptimization.test_call_type_1_known_type) ... ok
+test_call_type_1_pop_top (test.test_capi.test_opt.TestUopsOptimization.test_call_type_1_pop_top) ... ok
+test_call_type_1_result_is_const (test.test_capi.test_opt.TestUopsOptimization.test_call_type_1_result_is_const) ... ok
+test_check_is_not_py_callable (test.test_capi.test_opt.TestUopsOptimization.test_check_is_not_py_callable) ... ok
+test_check_is_not_py_callable_ex (test.test_capi.test_opt.TestUopsOptimization.test_check_is_not_py_callable_ex) ... ok
+test_check_is_not_py_callable_kw (test.test_capi.test_opt.TestUopsOptimization.test_check_is_not_py_callable_kw) ... ok
+test_check_recursion_limit_deduplicated (test.test_capi.test_opt.TestUopsOptimization.test_check_recursion_limit_deduplicated) ... ok
+test_cold_exit_on_init_cleanup_frame (test.test_capi.test_opt.TestUopsOptimization.test_cold_exit_on_init_cleanup_frame) ... ok
+test_combine_stack_space_checks_large_framesize (test.test_capi.test_opt.TestUopsOptimization.test_combine_stack_space_checks_large_framesize) ... skipped 'reopen when we combine multiple stack space checks into one'
+test_combine_stack_space_checks_nested (test.test_capi.test_opt.TestUopsOptimization.test_combine_stack_space_checks_nested) ... ok
+test_combine_stack_space_checks_recursion (test.test_capi.test_opt.TestUopsOptimization.test_combine_stack_space_checks_recursion) ... skipped 'reopen when we combine multiple stack space checks into one'
+test_combine_stack_space_checks_sequential (test.test_capi.test_opt.TestUopsOptimization.test_combine_stack_space_checks_sequential) ... ok
+test_combine_stack_space_checks_several_calls (test.test_capi.test_opt.TestUopsOptimization.test_combine_stack_space_checks_several_calls) ... ok
+test_combine_stack_space_checks_several_calls_different_order (test.test_capi.test_opt.TestUopsOptimization.test_combine_stack_space_checks_several_calls_different_order) ... ok
+test_combine_stack_space_complex (test.test_capi.test_opt.TestUopsOptimization.test_combine_stack_space_complex) ... skipped 'reopen when we combine multiple stack space checks into one'
+test_compare_float_eq_narrows_to_constant (test.test_capi.test_opt.TestUopsOptimization.test_compare_float_eq_narrows_to_constant) ... ok
+test_compare_float_ne_narrows_to_constant (test.test_capi.test_opt.TestUopsOptimization.test_compare_float_ne_narrows_to_constant) ... ok
+test_compare_int_eq_narrows_to_constant (test.test_capi.test_opt.TestUopsOptimization.test_compare_int_eq_narrows_to_constant) ... ok
+test_compare_int_ne_narrows_to_constant (test.test_capi.test_opt.TestUopsOptimization.test_compare_int_ne_narrows_to_constant) ... ok
+test_compare_op_float_insert_two_load_const_inline_borrow (test.test_capi.test_opt.TestUopsOptimization.test_compare_op_float_insert_two_load_const_inline_borrow) ... ok
+test_compare_op_int_insert_two_load_const_inline_borrow (test.test_capi.test_opt.TestUopsOptimization.test_compare_op_int_insert_two_load_const_inline_borrow) ... ok
+test_compare_op_pop_two_load_const_inline_borrow (test.test_capi.test_opt.TestUopsOptimization.test_compare_op_pop_two_load_const_inline_borrow) ... ok
+test_compare_op_str_insert_two_load_const_inline_borrow (test.test_capi.test_opt.TestUopsOptimization.test_compare_op_str_insert_two_load_const_inline_borrow) ... ok
+test_compare_op_type_propagation_float (test.test_capi.test_opt.TestUopsOptimization.test_compare_op_type_propagation_float) ... ok
+test_compare_op_type_propagation_float_partial (test.test_capi.test_opt.TestUopsOptimization.test_compare_op_type_propagation_float_partial) ... ok
+test_compare_op_type_propagation_int (test.test_capi.test_opt.TestUopsOptimization.test_compare_op_type_propagation_int) ... ok
+test_compare_op_type_propagation_int_partial (test.test_capi.test_opt.TestUopsOptimization.test_compare_op_type_propagation_int_partial) ... ok
+test_compare_op_type_propagation_unicode (test.test_capi.test_opt.TestUopsOptimization.test_compare_op_type_propagation_unicode) ... ok
+test_comprehension (test.test_capi.test_opt.TestUopsOptimization.test_comprehension) ... ok
+test_constant_fold_tuple (test.test_capi.test_opt.TestUopsOptimization.test_constant_fold_tuple) ... ok
+test_contains_op (test.test_capi.test_opt.TestUopsOptimization.test_contains_op) ... ok
+test_contains_op_dict (test.test_capi.test_opt.TestUopsOptimization.test_contains_op_dict) ... ok
+test_contains_op_frozendict_const_fold (test.test_capi.test_opt.TestUopsOptimization.test_contains_op_frozendict_const_fold) ... ok
+test_contains_op_frozenset_const_fold (test.test_capi.test_opt.TestUopsOptimization.test_contains_op_frozenset_const_fold) ... ok
+test_contains_op_pop_two_load_const_inline_borrow (test.test_capi.test_opt.TestUopsOptimization.test_contains_op_pop_two_load_const_inline_borrow) ... ok
+test_contains_op_set (test.test_capi.test_opt.TestUopsOptimization.test_contains_op_set) ... ok
+test_decref_escapes (test.test_capi.test_opt.TestUopsOptimization.test_decref_escapes) ... ok
+test_dict_merge (test.test_capi.test_opt.TestUopsOptimization.test_dict_merge) ... ok
+test_dict_subclass_subscr (test.test_capi.test_opt.TestUopsOptimization.test_dict_subclass_subscr) ... ok
+test_dict_subclass_subscr_with_override (test.test_capi.test_opt.TestUopsOptimization.test_dict_subclass_subscr_with_override) ... ok
+test_dict_subscr_probable_type (test.test_capi.test_opt.TestUopsOptimization.test_dict_subscr_probable_type) ... ok
+test_dict_update (test.test_capi.test_opt.TestUopsOptimization.test_dict_update) ... ok
+test_enter_executor_valid_op_arg (test.test_capi.test_opt.TestUopsOptimization.test_enter_executor_valid_op_arg) ... ok
+test_executor_side_exits_create_another_executor (test.test_capi.test_opt.TestUopsOptimization.test_executor_side_exits_create_another_executor) ... ok
+test_float_add_chain_both_unique (test.test_capi.test_opt.TestUopsOptimization.test_float_add_chain_both_unique) ... FAIL
+test_float_add_constant_propagation (test.test_capi.test_opt.TestUopsOptimization.test_float_add_constant_propagation) ... ok
+test_float_add_inplace_unique_lhs (test.test_capi.test_opt.TestUopsOptimization.test_float_add_inplace_unique_lhs) ... ok
+test_float_add_inplace_unique_rhs (test.test_capi.test_opt.TestUopsOptimization.test_float_add_inplace_unique_rhs) ... ok
+test_float_add_no_inplace_non_unique (test.test_capi.test_opt.TestUopsOptimization.test_float_add_no_inplace_non_unique) ... ok
+test_float_cmp_op_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_float_cmp_op_refcount_elimination) ... ok
+test_float_inplace_chain_propagation (test.test_capi.test_opt.TestUopsOptimization.test_float_inplace_chain_propagation) ... FAIL
+test_float_multiply_constant_propagation (test.test_capi.test_opt.TestUopsOptimization.test_float_multiply_constant_propagation) ... ok
+test_float_multiply_inplace_unique_lhs (test.test_capi.test_opt.TestUopsOptimization.test_float_multiply_inplace_unique_lhs) ... ok
+test_float_multiply_inplace_unique_rhs (test.test_capi.test_opt.TestUopsOptimization.test_float_multiply_inplace_unique_rhs) ... ok
+test_float_negate_inplace_unique (test.test_capi.test_opt.TestUopsOptimization.test_float_negate_inplace_unique) ... ok
+test_float_negate_no_inplace_non_unique (test.test_capi.test_opt.TestUopsOptimization.test_float_negate_no_inplace_non_unique) ... ok
+test_float_op_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_float_op_refcount_elimination) ... ok
+test_float_remainder_speculative_guards_from_tracing (test.test_capi.test_opt.TestUopsOptimization.test_float_remainder_speculative_guards_from_tracing) ... ok
+test_float_subtract_constant_propagation (test.test_capi.test_opt.TestUopsOptimization.test_float_subtract_constant_propagation) ... ok
+test_float_subtract_inplace_unique_lhs (test.test_capi.test_opt.TestUopsOptimization.test_float_subtract_inplace_unique_lhs) ... ok
+test_float_subtract_inplace_unique_rhs (test.test_capi.test_opt.TestUopsOptimization.test_float_subtract_inplace_unique_rhs) ... ok
+test_float_truediv_inplace_unique_lhs (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_inplace_unique_lhs) ... FAIL
+test_float_truediv_inplace_unique_rhs (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_inplace_unique_rhs) ... ok
+test_float_truediv_mixed_float_fraction_no_crash (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_mixed_float_fraction_no_crash) ... ok
+test_float_truediv_non_float_type_no_crash (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_non_float_type_no_crash) ... ok
+test_float_truediv_partial_float_no_stack_underflow (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_partial_float_no_stack_underflow) ... ok
+test_float_truediv_speculative_guards_from_tracing (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_speculative_guards_from_tracing) ... FAIL
+test_float_truediv_type_propagation (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_type_propagation) ... ok
+test_float_truediv_unique_result_enables_inplace (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_unique_result_enables_inplace) ... FAIL
+test_for_iter (test.test_capi.test_opt.TestUopsOptimization.test_for_iter) ... ok
+test_for_iter_direct_dict_items (test.test_capi.test_opt.TestUopsOptimization.test_for_iter_direct_dict_items) ... ok
+test_for_iter_direct_dict_keys (test.test_capi.test_opt.TestUopsOptimization.test_for_iter_direct_dict_keys) ... ok
+test_for_iter_direct_dict_values (test.test_capi.test_opt.TestUopsOptimization.test_for_iter_direct_dict_values) ... ok
+test_for_iter_direct_enumerate (test.test_capi.test_opt.TestUopsOptimization.test_for_iter_direct_enumerate) ... ok
+test_for_iter_direct_reversed (test.test_capi.test_opt.TestUopsOptimization.test_for_iter_direct_reversed) ... ok
+test_for_iter_direct_set (test.test_capi.test_opt.TestUopsOptimization.test_for_iter_direct_set) ... ok
+test_for_iter_direct_zip (test.test_capi.test_opt.TestUopsOptimization.test_for_iter_direct_zip) ... ok
+test_for_iter_gen_cleared_frame_does_not_crash (test.test_capi.test_opt.TestUopsOptimization.test_for_iter_gen_cleared_frame_does_not_crash) ... ok
+test_for_iter_gen_frame (test.test_capi.test_opt.TestUopsOptimization.test_for_iter_gen_frame) ... ok
+test_for_iter_side_exit_does_not_self_link (test.test_capi.test_opt.TestUopsOptimization.test_for_iter_side_exit_does_not_self_link) ... ok
+test_func_guards_removed_or_reduced (test.test_capi.test_opt.TestUopsOptimization.test_func_guards_removed_or_reduced) ... FAIL
+test_func_version_guarded_on_change (test.test_capi.test_opt.TestUopsOptimization.test_func_version_guarded_on_change) ... FAIL
+test_get_len_with_const_tuple (test.test_capi.test_opt.TestUopsOptimization.test_get_len_with_const_tuple) ... ok
+test_get_len_with_non_const_tuple (test.test_capi.test_opt.TestUopsOptimization.test_get_len_with_non_const_tuple) ... ok
+test_get_len_with_non_tuple (test.test_capi.test_opt.TestUopsOptimization.test_get_len_with_non_tuple) ... ok
+test_guard_type_version_executor_invalidated (test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_executor_invalidated)
+Verify that the executor is invalided on a type change. ... ok
+test_guard_type_version_locked_propagates (test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_locked_propagates)
+_GUARD_TYPE_VERSION_LOCKED should set the type version on the ... FAIL
+test_guard_type_version_locked_removed (test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_locked_removed)
+Verify that redundant _GUARD_TYPE_VERSION_LOCKED guards are ... ok
+test_guard_type_version_removed (test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_removed) ... ok
+test_guard_type_version_removed_escaping (test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_removed_escaping) ... ok
+test_guard_type_version_removed_inlined (test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_removed_inlined)
+Verify that the guard type version if we have an inlined function ... ok
+test_guard_type_version_removed_invalidation (test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_removed_invalidation) ... ok
+test_handling_of_tos_cache_with_side_exits (test.test_capi.test_opt.TestUopsOptimization.test_handling_of_tos_cache_with_side_exits) ... ok
+test_init_guards_removed (test.test_capi.test_opt.TestUopsOptimization.test_init_guards_removed) ... ok
+test_init_guards_removed_global (test.test_capi.test_opt.TestUopsOptimization.test_init_guards_removed_global) ... ok
+test_init_resolves_callable (test.test_capi.test_opt.TestUopsOptimization.test_init_resolves_callable)
+_CHECK_AND_ALLOCATE_OBJECT should resolve __init__ to a constant, ... ok
+test_init_with_changed_code_argcount (test.test_capi.test_opt.TestUopsOptimization.test_init_with_changed_code_argcount) ... ok
+test_init_with_default_argument (test.test_capi.test_opt.TestUopsOptimization.test_init_with_default_argument) ... ok
+test_int_add_inplace_small_int_result (test.test_capi.test_opt.TestUopsOptimization.test_int_add_inplace_small_int_result) ... ok
+test_int_add_inplace_unique_lhs (test.test_capi.test_opt.TestUopsOptimization.test_int_add_inplace_unique_lhs) ... ok
+test_int_add_inplace_unique_rhs (test.test_capi.test_opt.TestUopsOptimization.test_int_add_inplace_unique_rhs) ... ok
+test_int_add_no_inplace_non_unique (test.test_capi.test_opt.TestUopsOptimization.test_int_add_no_inplace_non_unique) ... ok
+test_int_add_op_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_int_add_op_refcount_elimination) ... ok
+test_int_cmp_op_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_int_cmp_op_refcount_elimination) ... ok
+test_int_impure_region (test.test_capi.test_opt.TestUopsOptimization.test_int_impure_region) ... ok
+test_int_inplace_chain_propagation (test.test_capi.test_opt.TestUopsOptimization.test_int_inplace_chain_propagation) ... FAIL
+test_int_mul_op_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_int_mul_op_refcount_elimination) ... ok
+test_int_multiply_inplace_unique_lhs (test.test_capi.test_opt.TestUopsOptimization.test_int_multiply_inplace_unique_lhs) ... ok
+test_int_multiply_inplace_unique_rhs (test.test_capi.test_opt.TestUopsOptimization.test_int_multiply_inplace_unique_rhs) ... ok
+test_int_sub_op_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_int_sub_op_refcount_elimination) ... ok
+test_int_subtract_inplace_unique_lhs (test.test_capi.test_opt.TestUopsOptimization.test_int_subtract_inplace_unique_lhs) ... ok
+test_int_subtract_inplace_unique_rhs (test.test_capi.test_opt.TestUopsOptimization.test_int_subtract_inplace_unique_rhs) ... ok
+test_int_type_propagate_through_range (test.test_capi.test_opt.TestUopsOptimization.test_int_type_propagate_through_range) ... ok
+test_int_type_propagation (test.test_capi.test_opt.TestUopsOptimization.test_int_type_propagation) ... ok
+test_int_type_propagation_from_frame (test.test_capi.test_opt.TestUopsOptimization.test_int_type_propagation_from_frame) ... ok
+test_int_type_propagation_through_frame (test.test_capi.test_opt.TestUopsOptimization.test_int_type_propagation_through_frame) ... ok
+test_int_value_numbering (test.test_capi.test_opt.TestUopsOptimization.test_int_value_numbering) ... ok
+test_interpreter_finalization_with_generator_alive (test.test_capi.test_opt.TestUopsOptimization.test_interpreter_finalization_with_generator_alive) ... ok
+test_is_false_narrows_to_constant (test.test_capi.test_opt.TestUopsOptimization.test_is_false_narrows_to_constant) ... ok
+test_is_none_narrows_to_constant (test.test_capi.test_opt.TestUopsOptimization.test_is_none_narrows_to_constant) ... ok
+test_is_op (test.test_capi.test_opt.TestUopsOptimization.test_is_op) ... ok
+test_is_true_narrows_to_constant (test.test_capi.test_opt.TestUopsOptimization.test_is_true_narrows_to_constant) ... ok
+test_iter_check_list (test.test_capi.test_opt.TestUopsOptimization.test_iter_check_list) ... ok
+test_jit_error_pops (test.test_capi.test_opt.TestUopsOptimization.test_jit_error_pops)
+Tests that the correct number of pops are inserted into the ... ok
+test_jit_shutdown_after_cold_executor_creation (test.test_capi.test_opt.TestUopsOptimization.test_jit_shutdown_after_cold_executor_creation) ... ok
+test_jitted_code_sees_changed_copied_builtins (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_changed_copied_builtins) ... ok
+test_jitted_code_sees_changed_copied_globals (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_changed_copied_globals) ... 
+  test_jitted_code_sees_changed_copied_globals (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_changed_copied_globals) (copy=<method 'copy' of 'dict' objects>) ... FAIL
+  test_jitted_code_sees_changed_copied_globals (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_changed_copied_globals) (copy=<class 'dict'>) ... FAIL
+test_jitted_code_sees_changed_globals (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_changed_globals)
+Issue 136154: Check that jitted code spots the change in the globals ... ok
+test_jitted_code_sees_different_builtins (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_different_builtins) ... ok
+test_list_extend (test.test_capi.test_opt.TestUopsOptimization.test_list_extend) ... ok
+test_load_addr_slot (test.test_capi.test_opt.TestUopsOptimization.test_load_addr_slot) ... ok
+test_load_attr_getattribute_frame (test.test_capi.test_opt.TestUopsOptimization.test_load_attr_getattribute_frame) ... ok
+test_load_attr_instance_value (test.test_capi.test_opt.TestUopsOptimization.test_load_attr_instance_value) ... FAIL
+test_load_attr_module (test.test_capi.test_opt.TestUopsOptimization.test_load_attr_module) ... ok
+test_load_attr_property_frame (test.test_capi.test_opt.TestUopsOptimization.test_load_attr_property_frame) ... ok
+test_load_attr_property_frame_invalidates_on_code_change (test.test_capi.test_opt.TestUopsOptimization.test_load_attr_property_frame_invalidates_on_code_change) ... ok
+test_load_attr_with_hint (test.test_capi.test_opt.TestUopsOptimization.test_load_attr_with_hint) ... ok
+test_load_common_constant (test.test_capi.test_opt.TestUopsOptimization.test_load_common_constant) ... ok
+test_load_common_constant_new_literals (test.test_capi.test_opt.TestUopsOptimization.test_load_common_constant_new_literals) ... ok
+test_load_small_int (test.test_capi.test_opt.TestUopsOptimization.test_load_small_int) ... ok
+test_load_special_type_guard_deopt (test.test_capi.test_opt.TestUopsOptimization.test_load_special_type_guard_deopt) ... ok
+test_make_function (test.test_capi.test_opt.TestUopsOptimization.test_make_function) ... ok
+test_make_heap_safe_not_optimized_for_owned (test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_not_optimized_for_owned) ... FAIL
+test_make_heap_safe_optimized_immortal (test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_optimized_immortal) ... FAIL
+test_make_heap_safe_optimized_yield (test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_optimized_yield) ... ok
+test_many_nested (test.test_capi.test_opt.TestUopsOptimization.test_many_nested) ... ok
+test_match_class (test.test_capi.test_opt.TestUopsOptimization.test_match_class) ... ok
+test_method_chain_guard_elimination (test.test_capi.test_opt.TestUopsOptimization.test_method_chain_guard_elimination)
+Calling two methods on the same object should share the outer ... ok
+test_method_guards_removed_or_reduced (test.test_capi.test_opt.TestUopsOptimization.test_method_guards_removed_or_reduced) ... ok
+test_modified_local_is_seen_by_optimized_code (test.test_capi.test_opt.TestUopsOptimization.test_modified_local_is_seen_by_optimized_code) ... ok
+test_narrow_type_to_constant_bool_false (test.test_capi.test_opt.TestUopsOptimization.test_narrow_type_to_constant_bool_false) ... ok
+test_narrow_type_to_constant_bool_true (test.test_capi.test_opt.TestUopsOptimization.test_narrow_type_to_constant_bool_true) ... ok
+test_narrow_type_to_constant_int_zero (test.test_capi.test_opt.TestUopsOptimization.test_narrow_type_to_constant_int_zero) ... ok
+test_narrow_type_to_constant_str_empty (test.test_capi.test_opt.TestUopsOptimization.test_narrow_type_to_constant_str_empty) ... ok
+test_next_instr_for_exception_handler_set (test.test_capi.test_opt.TestUopsOptimization.test_next_instr_for_exception_handler_set) ... ok
+test_next_instr_for_exception_handler_set_lasts_instr (test.test_capi.test_opt.TestUopsOptimization.test_next_instr_for_exception_handler_set_lasts_instr) ... ok
+test_non_unique_three_tuple_unpack (test.test_capi.test_opt.TestUopsOptimization.test_non_unique_three_tuple_unpack) ... ok
+test_non_unique_tuple_unpack (test.test_capi.test_opt.TestUopsOptimization.test_non_unique_tuple_unpack) ... ok
+test_non_unique_two_tuple_unpack (test.test_capi.test_opt.TestUopsOptimization.test_non_unique_two_tuple_unpack) ... ok
+test_not_contains_op_frozendict_const_fold (test.test_capi.test_opt.TestUopsOptimization.test_not_contains_op_frozendict_const_fold) ... ok
+test_pop_top_specialize_float (test.test_capi.test_opt.TestUopsOptimization.test_pop_top_specialize_float) ... ok
+test_pop_top_specialize_int (test.test_capi.test_opt.TestUopsOptimization.test_pop_top_specialize_int) ... ok
+test_pop_top_specialize_none (test.test_capi.test_opt.TestUopsOptimization.test_pop_top_specialize_none) ... ok
+test_power_type_depends_on_input_values (test.test_capi.test_opt.TestUopsOptimization.test_power_type_depends_on_input_values) ... ok
+test_promote_globals_to_constants (test.test_capi.test_opt.TestUopsOptimization.test_promote_globals_to_constants) ... ok
+test_promoted_global_refcount_eliminated (test.test_capi.test_opt.TestUopsOptimization.test_promoted_global_refcount_eliminated) ... ok
+test_record_bound_method_exact_args (test.test_capi.test_opt.TestUopsOptimization.test_record_bound_method_exact_args) ... FAIL
+test_record_bound_method_general (test.test_capi.test_opt.TestUopsOptimization.test_record_bound_method_general) ... ok
+test_reference_tracking_across_call_doesnt_crash (test.test_capi.test_opt.TestUopsOptimization.test_reference_tracking_across_call_doesnt_crash) ... ok
+test_remove_guard_for_known_type_dict (test.test_capi.test_opt.TestUopsOptimization.test_remove_guard_for_known_type_dict) ... ok
+test_remove_guard_for_known_type_list (test.test_capi.test_opt.TestUopsOptimization.test_remove_guard_for_known_type_list) ... ok
+test_remove_guard_for_known_type_set (test.test_capi.test_opt.TestUopsOptimization.test_remove_guard_for_known_type_set) ... ok
+test_remove_guard_for_known_type_slice (test.test_capi.test_opt.TestUopsOptimization.test_remove_guard_for_known_type_slice) ... ok
+test_remove_guard_for_known_type_str (test.test_capi.test_opt.TestUopsOptimization.test_remove_guard_for_known_type_str) ... ok
+test_remove_guard_for_known_type_tuple (test.test_capi.test_opt.TestUopsOptimization.test_remove_guard_for_known_type_tuple) ... ok
+test_remove_guard_for_slice_list (test.test_capi.test_opt.TestUopsOptimization.test_remove_guard_for_slice_list) ... ok
+test_remove_guard_for_slice_tuple (test.test_capi.test_opt.TestUopsOptimization.test_remove_guard_for_slice_tuple) ... ok
+test_remove_guard_for_tuple_bounds_check (test.test_capi.test_opt.TestUopsOptimization.test_remove_guard_for_tuple_bounds_check) ... ok
+test_return_generator (test.test_capi.test_opt.TestUopsOptimization.test_return_generator) ... ok
+test_send_gen_frame (test.test_capi.test_opt.TestUopsOptimization.test_send_gen_frame) ... ok
+test_send_virtual (test.test_capi.test_opt.TestUopsOptimization.test_send_virtual) ... ok
+test_send_virtual_exhausted (test.test_capi.test_opt.TestUopsOptimization.test_send_virtual_exhausted) ... ok
+test_set_type_version_sets_type (test.test_capi.test_opt.TestUopsOptimization.test_set_type_version_sets_type) ... ok
+test_set_update (test.test_capi.test_opt.TestUopsOptimization.test_set_update) ... ok
+test_settrace_then_polymorphic_call_does_not_crash (test.test_capi.test_opt.TestUopsOptimization.test_settrace_then_polymorphic_call_does_not_crash) ... ok
+test_store_attr_instance_value (test.test_capi.test_opt.TestUopsOptimization.test_store_attr_instance_value) ... ok
+test_store_attr_slot (test.test_capi.test_opt.TestUopsOptimization.test_store_attr_slot) ... ok
+test_store_attr_with_hint (test.test_capi.test_opt.TestUopsOptimization.test_store_attr_with_hint) ... ok
+test_store_fast_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_store_fast_refcount_elimination) ... ok
+test_store_fast_refcount_elimination_when_uninitialized (test.test_capi.test_opt.TestUopsOptimization.test_store_fast_refcount_elimination_when_uninitialized) ... ok
+test_store_subscr_defaultdict_known_hash (test.test_capi.test_opt.TestUopsOptimization.test_store_subscr_defaultdict_known_hash) ... ok
+test_store_subscr_dict (test.test_capi.test_opt.TestUopsOptimization.test_store_subscr_dict) ... ok
+test_store_subscr_dict_known_hash (test.test_capi.test_opt.TestUopsOptimization.test_store_subscr_dict_known_hash) ... ok
+test_store_subscr_int (test.test_capi.test_opt.TestUopsOptimization.test_store_subscr_int) ... ok
+test_str_cmp_op_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_str_cmp_op_refcount_elimination) ... ok
+test_symbols_flow_through_tuples (test.test_capi.test_opt.TestUopsOptimization.test_symbols_flow_through_tuples) ... ok
+test_to_bool_always_true (test.test_capi.test_opt.TestUopsOptimization.test_to_bool_always_true) ... ok
+test_to_bool_bool_contains_op_dict (test.test_capi.test_opt.TestUopsOptimization.test_to_bool_bool_contains_op_dict)
+Test that _TO_BOOL_BOOL is removed from code like: ... ok
+test_to_bool_bool_contains_op_set (test.test_capi.test_opt.TestUopsOptimization.test_to_bool_bool_contains_op_set)
+Test that _TO_BOOL_BOOL is removed from code like: ... ok
+test_to_bool_int (test.test_capi.test_opt.TestUopsOptimization.test_to_bool_int) ... ok
+test_to_bool_list (test.test_capi.test_opt.TestUopsOptimization.test_to_bool_list) ... ok
+test_to_bool_noncompact_int (test.test_capi.test_opt.TestUopsOptimization.test_to_bool_noncompact_int) ... ok
+test_to_bool_str (test.test_capi.test_opt.TestUopsOptimization.test_to_bool_str) ... ok
+test_type_version_doesnt_segfault (test.test_capi.test_opt.TestUopsOptimization.test_type_version_doesnt_segfault)
+Tests that setting a type version doesn't cause a segfault when later looking at the stack. ... ok
+test_unary_invert (test.test_capi.test_opt.TestUopsOptimization.test_unary_invert) ... ok
+test_unary_invert_insert_1_load_const_inline_borrow (test.test_capi.test_opt.TestUopsOptimization.test_unary_invert_insert_1_load_const_inline_borrow) ... ok
+test_unary_invert_long_type (test.test_capi.test_opt.TestUopsOptimization.test_unary_invert_long_type) ... ok
+test_unary_negative (test.test_capi.test_opt.TestUopsOptimization.test_unary_negative) ... ok
+test_unary_negative_long_float_type (test.test_capi.test_opt.TestUopsOptimization.test_unary_negative_long_float_type) ... ok
+test_unary_negative_pop_top_load_const_inline_borrow (test.test_capi.test_opt.TestUopsOptimization.test_unary_negative_pop_top_load_const_inline_borrow) ... ok
+test_unary_not_pop_top_load_const_inline_borrow (test.test_capi.test_opt.TestUopsOptimization.test_unary_not_pop_top_load_const_inline_borrow) ... ok
+test_unicode_add_op_refcount_elimination (test.test_capi.test_opt.TestUopsOptimization.test_unicode_add_op_refcount_elimination) ... ok
+test_unique_three_tuple_unpack (test.test_capi.test_opt.TestUopsOptimization.test_unique_three_tuple_unpack) ... ok
+test_unique_tuple_unpack (test.test_capi.test_opt.TestUopsOptimization.test_unique_tuple_unpack) ... ok
+test_unique_two_tuple_unpack (test.test_capi.test_opt.TestUopsOptimization.test_unique_two_tuple_unpack) ... ok
+
+======================================================================
+FAIL: test_call_py_exact_args (test.test_capi.test_opt.TestUops.test_call_py_exact_args)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/python3.16/test/test_capi/test_opt.py", line 550, in test_call_py_exact_args
+    self.assertIn("_PUSH_FRAME", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_PUSH_FRAME' not found in ['_START_EXECUTOR', '_MAKE_WARM', '_SET_IP', '_CHECK_PERIODIC', '_CHECK_VALIDITY', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_SPILL_OR_RELOAD', '_STORE_FAST_FUSED', '_CHECK_VALIDITY', '_LOAD_FAST_BORROW_1', '_PUSH_NULL', '_LOAD_FAST_BORROW_2', '_SET_IP', '_SPILL_OR_RELOAD', '_CHECK_FUNCTION_VERSION', '_CHECK_STACK_SPACE_OPERAND', '_CHECK_RECURSION_REMAINING', '_SAVE_RETURN_OFFSET', '_BEGIN_VIRTUAL_CALL', '_LOAD_VIRTUAL_ARGUMENT', '_LOAD_CONST_INLINE_BORROW', '_GUARD_NOS_INT', '_GUARD_NOS_OVERFLOWED', '_GUARD_TOS_INT', '_BINARY_OP_ADD_INT', '_POP_TOP_NOP', '_POP_TOP_NOP', '_MAKE_HEAP_SAFE', '_RETURN_VIRTUAL_CALL', '_CHECK_VALIDITY', '_POP_TOP_INT', '_JUMP_TO_TOP', '_DEOPT', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_DEOPT', '_EXIT_TRACE', '_SPILL_OR_RELOAD', '_MATERIALIZE_VIRTUAL_FRAME', '_DEOPT']
+
+======================================================================
+FAIL: test_binary_subscr_list_slice (test.test_capi.test_opt.TestUopsOptimization.test_binary_subscr_list_slice)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/python3.16/test/test_capi/test_opt.py", line 5752, in test_binary_subscr_list_slice
+    self.assertEqual(count_ops(ex, "_POP_TOP"), 2)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 2
+
+======================================================================
+FAIL: test_builtins_guard_emitted_once_per_frame (test.test_capi.test_opt.TestUopsOptimization.test_builtins_guard_emitted_once_per_frame)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/python3.16/test/test_capi/test_opt.py", line 5391, in test_builtins_guard_emitted_once_per_frame
+    self.assertEqual(uop_names.count("_GUARD_GLOBALS_VERSION"), 1)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0 != 1
+
+======================================================================
+FAIL: test_call_method_descriptor_noargs (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_noargs)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/python3.16/test/test_capi/test_opt.py", line 3569, in test_call_method_descriptor_noargs
+    self.assertGreaterEqual(count_ops(ex, "_POP_TOP"), 5)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 2 not greater than or equal to 5
+
+======================================================================
+FAIL: test_call_py_exact_args (test.test_capi.test_opt.TestUopsOptimization.test_call_py_exact_args)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/python3.16/test/test_capi/test_opt.py", line 736, in test_call_py_exact_args
+    self.assertIn("_PUSH_FRAME", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_PUSH_FRAME' not found in ['_START_EXECUTOR', '_MAKE_WARM', '_SET_IP', '_CHECK_PERIODIC', '_CHECK_VALIDITY', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_SPILL_OR_RELOAD', '_STORE_FAST_FUSED', '_CHECK_VALIDITY', '_LOAD_FAST_BORROW_1', '_PUSH_NULL', '_LOAD_FAST_BORROW_2', '_SET_IP', '_SPILL_OR_RELOAD', '_CHECK_FUNCTION_VERSION', '_CHECK_STACK_SPACE_OPERAND', '_CHECK_RECURSION_REMAINING', '_SAVE_RETURN_OFFSET', '_BEGIN_VIRTUAL_CALL', '_LOAD_VIRTUAL_ARGUMENT', '_LOAD_CONST_INLINE_BORROW', '_GUARD_NOS_INT', '_GUARD_NOS_OVERFLOWED', '_GUARD_TOS_INT', '_BINARY_OP_ADD_INT', '_POP_TOP_NOP', '_POP_TOP_NOP', '_MAKE_HEAP_SAFE', '_RETURN_VIRTUAL_CALL', '_CHECK_VALIDITY', '_POP_TOP_INT', '_JUMP_TO_TOP', '_DEOPT', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_DEOPT', '_EXIT_TRACE', '_SPILL_OR_RELOAD', '_MATERIALIZE_VIRTUAL_FRAME', '_DEOPT']
+
+======================================================================
+FAIL: test_float_add_chain_both_unique (test.test_capi.test_opt.TestUopsOptimization.test_float_add_chain_both_unique)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/python3.16/test/test_capi/test_opt.py", line 4361, in test_float_add_chain_both_unique
+    self.assertTrue(inplace, "Expected inplace add for unique sub-results")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : Expected inplace add for unique sub-results
+
+======================================================================
+FAIL: test_float_inplace_chain_propagation (test.test_capi.test_opt.TestUopsOptimization.test_float_inplace_chain_propagation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/python3.16/test/test_capi/test_opt.py", line 4197, in test_float_inplace_chain_propagation
+    self.assertTrue(inplace_add,
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+        "Expected an inplace add for unique intermediate results")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : Expected an inplace add for unique intermediate results
+
+======================================================================
+FAIL: test_float_truediv_inplace_unique_lhs (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_inplace_unique_lhs)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/python3.16/test/test_capi/test_opt.py", line 4244, in test_float_truediv_inplace_unique_lhs
+    self.assertIn("_BINARY_OP_TRUEDIV_FLOAT_INPLACE", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_BINARY_OP_TRUEDIV_FLOAT_INPLACE' not found in ['_START_EXECUTOR', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_INT', '_MAKE_WARM', '_SET_IP', '_TIER2_RESUME_CHECK', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_STORE_FAST_FUSED_INT', '_LOAD_FAST_BORROW_6', '_SPILL_OR_RELOAD', '_LOAD_FAST_BORROW_1', '_LOAD_FAST_BORROW_2', '_UNBOX_FLOAT_NOS', '_UNBOX_FLOAT_TOS', '_BINARY_OP_ADD_FLOAT_UNBOXED', '_LOAD_FAST_BORROW_3', '_LOAD_FAST_BORROW_4', '_UNBOX_FLOAT_NOS', '_UNBOX_FLOAT_TOS', '_BINARY_OP_ADD_FLOAT_UNBOXED', '_BINARY_OP_TRUEDIV_FLOAT_UNBOXED', '_UNBOX_FLOAT_NOS', '_BINARY_OP_ADD_FLOAT_UNBOXED', '_BOX_FLOAT', '_STORE_FAST_FUSED_FLOAT', '_JUMP_TO_TOP', '_DEOPT', '_EXIT_TRACE', '_HANDLE_PENDING_AND_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_SPILL_OR_RELOAD', '_BOX_UNBOXED_SLOTS', '_DEOPT', '_ERROR_POP_N', '_ERROR_POP_N']
+
+======================================================================
+FAIL: test_float_truediv_speculative_guards_from_tracing (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_speculative_guards_from_tracing)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/python3.16/test/test_capi/test_opt.py", line 4279, in test_float_truediv_speculative_guards_from_tracing
+    self.assertIn("_GUARD_TOS_FLOAT", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_GUARD_TOS_FLOAT' not found in ['_START_EXECUTOR', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_INT', '_MAKE_WARM', '_SET_IP', '_TIER2_RESUME_CHECK', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_STORE_FAST_FUSED_INT', '_LOAD_FAST_BORROW_4', '_SPILL_OR_RELOAD', '_LOAD_FAST_BORROW_1', '_LOAD_FAST_BORROW_2', '_SET_IP', '_BINARY_OP_TRUEDIV_FLOAT', '_POP_TOP_NOP', '_POP_TOP_NOP', '_CHECK_VALIDITY', '_BINARY_OP_ADD_FLOAT_INPLACE_RIGHT', '_POP_TOP_NOP', '_POP_TOP_NOP', '_STORE_FAST_FUSED_FLOAT', '_JUMP_TO_TOP', '_DEOPT', '_EXIT_TRACE', '_HANDLE_PENDING_AND_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_ERROR_POP_N', '_DEOPT']
+
+======================================================================
+FAIL: test_float_truediv_unique_result_enables_inplace (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_unique_result_enables_inplace)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/python3.16/test/test_capi/test_opt.py", line 4340, in test_float_truediv_unique_result_enables_inplace
+    self.assertIn("_BINARY_OP_TRUEDIV_FLOAT_INPLACE", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_BINARY_OP_TRUEDIV_FLOAT_INPLACE' not found in ['_START_EXECUTOR', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_FLOAT', '_GUARD_LOCAL_INT', '_MAKE_WARM', '_SET_IP', '_TIER2_RESUME_CHECK', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_STORE_FAST_FUSED_INT', '_LOAD_FAST_BORROW', '_SPILL_OR_RELOAD', '_LOAD_FAST_BORROW_1', '_LOAD_FAST_BORROW_2', '_UNBOX_FLOAT_NOS', '_UNBOX_FLOAT_TOS', '_BINARY_OP_ADD_FLOAT_UNBOXED', '_LOAD_FAST_BORROW_3', '_LOAD_FAST_BORROW_4', '_UNBOX_FLOAT_NOS', '_UNBOX_FLOAT_TOS', '_BINARY_OP_ADD_FLOAT_UNBOXED', '_BINARY_OP_TRUEDIV_FLOAT_UNBOXED', '_LOAD_FAST_BORROW_5', '_LOAD_FAST_BORROW_6', '_UNBOX_FLOAT_NOS', '_UNBOX_FLOAT_TOS', '_BINARY_OP_ADD_FLOAT_UNBOXED', '_BINARY_OP_TRUEDIV_FLOAT_UNBOXED', '_UNBOX_FLOAT_NOS', '_BINARY_OP_ADD_FLOAT_UNBOXED', '_BOX_FLOAT', '_STORE_FAST_FUSED_FLOAT', '_JUMP_TO_TOP', '_DEOPT', '_EXIT_TRACE', '_HANDLE_PENDING_AND_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_SPILL_OR_RELOAD', '_BOX_UNBOXED_SLOTS', '_DEOPT', '_ERROR_POP_N', '_SPILL_OR_RELOAD', '_BOX_UNBOXED_SLOTS', '_DEOPT', '_ERROR_POP_N', '_ERROR_POP_N']
+
+======================================================================
+FAIL: test_func_guards_removed_or_reduced (test.test_capi.test_opt.TestUopsOptimization.test_func_guards_removed_or_reduced)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/python3.16/test/test_capi/test_opt.py", line 1960, in test_func_guards_removed_or_reduced
+    self.assertIn("_PUSH_FRAME", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_PUSH_FRAME' not found in ['_START_EXECUTOR', '_GUARD_LOOP_GLOBALS_VERSION', '_MAKE_WARM', '_SET_IP', '_CHECK_PERIODIC', '_CHECK_VALIDITY', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_SPILL_OR_RELOAD', '_STORE_FAST_FUSED', '_CHECK_VALIDITY', '_LOAD_CONST_INLINE', '_PUSH_NULL', '_LOAD_FAST_BORROW_1', '_SET_IP', '_SPILL_OR_RELOAD', '_CHECK_FUNCTION_VERSION', '_CHECK_STACK_SPACE_OPERAND', '_CHECK_RECURSION_REMAINING', '_SAVE_RETURN_OFFSET', '_CALL_PY_LEAF', '_CHECK_VALIDITY', '_POP_TOP_INT', '_JUMP_TO_TOP', '_DEOPT', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_DEOPT', '_DEOPT', '_DEOPT']
+
+======================================================================
+FAIL: test_func_version_guarded_on_change (test.test_capi.test_opt.TestUopsOptimization.test_func_version_guarded_on_change)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/python3.16/test/test_capi/test_opt.py", line 6520, in test_func_version_guarded_on_change
+    self.assertIn("_PUSH_FRAME", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_PUSH_FRAME' not found in ['_START_EXECUTOR', '_GUARD_LOOP_GLOBALS_VERSION', '_MAKE_WARM', '_SET_IP', '_CHECK_PERIODIC', '_CHECK_VALIDITY', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_SPILL_OR_RELOAD', '_STORE_FAST_FUSED', '_CHECK_VALIDITY', '_LOAD_CONST_INLINE', '_PUSH_NULL', '_LOAD_FAST_BORROW_1', '_SET_IP', '_SPILL_OR_RELOAD', '_CHECK_FUNCTION_VERSION', '_CHECK_STACK_SPACE_OPERAND', '_CHECK_RECURSION_REMAINING', '_SAVE_RETURN_OFFSET', '_CALL_PY_LEAF', '_CHECK_VALIDITY', '_POP_TOP_INT', '_JUMP_TO_TOP', '_DEOPT', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_DEOPT', '_DEOPT', '_DEOPT']
+
+======================================================================
+FAIL: test_guard_type_version_locked_propagates (test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_locked_propagates)
+_GUARD_TYPE_VERSION_LOCKED should set the type version on the
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/python3.16/test/test_capi/test_opt.py", line 1912, in test_guard_type_version_locked_propagates
+    self.assertEqual(uops.count("_PUSH_FRAME"), 2)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0 != 2
+
+======================================================================
+FAIL: test_int_inplace_chain_propagation (test.test_capi.test_opt.TestUopsOptimization.test_int_inplace_chain_propagation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/python3.16/test/test_capi/test_opt.py", line 4572, in test_int_inplace_chain_propagation
+    self.assertTrue(inplace_add,
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+        "Expected an inplace add for unique intermediate results")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : Expected an inplace add for unique intermediate results
+
+======================================================================
+FAIL: test_jitted_code_sees_changed_copied_globals (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_changed_copied_globals) (copy=<method 'copy' of 'dict' objects>)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/python3.16/test/test_capi/test_opt.py", line 5326, in test_jitted_code_sees_changed_copied_globals
+    self.assertIn("_GUARD_GLOBALS_VERSION", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_GUARD_GLOBALS_VERSION' not found in ['_START_EXECUTOR', '_GUARD_LOOP_GLOBALS_VERSION', '_MAKE_WARM', '_SET_IP', '_CHECK_PERIODIC', '_CHECK_VALIDITY', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_SPILL_OR_RELOAD', '_STORE_FAST_FUSED', '_CHECK_VALIDITY', '_LOAD_CONST_INLINE_BORROW', '_SET_IP', '_STORE_FAST_FUSED', '_JUMP_TO_TOP', '_DEOPT', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT']
+
+======================================================================
+FAIL: test_jitted_code_sees_changed_copied_globals (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_changed_copied_globals) (copy=<class 'dict'>)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/python3.16/test/test_capi/test_opt.py", line 5326, in test_jitted_code_sees_changed_copied_globals
+    self.assertIn("_GUARD_GLOBALS_VERSION", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_GUARD_GLOBALS_VERSION' not found in ['_START_EXECUTOR', '_GUARD_LOOP_GLOBALS_VERSION', '_MAKE_WARM', '_SET_IP', '_CHECK_PERIODIC', '_CHECK_VALIDITY', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_SPILL_OR_RELOAD', '_STORE_FAST_FUSED', '_CHECK_VALIDITY', '_LOAD_CONST_INLINE_BORROW', '_SET_IP', '_STORE_FAST_FUSED', '_JUMP_TO_TOP', '_DEOPT', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT']
+
+======================================================================
+FAIL: test_load_attr_instance_value (test.test_capi.test_opt.TestUopsOptimization.test_load_attr_instance_value)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/python3.16/test/test_capi/test_opt.py", line 4590, in test_load_attr_instance_value
+    self.assertIn("_LOAD_ATTR_INSTANCE_VALUE", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_LOAD_ATTR_INSTANCE_VALUE' not found in ['_START_EXECUTOR', '_MAKE_WARM', '_SET_IP', '_CHECK_PERIODIC', '_CHECK_VALIDITY', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_SPILL_OR_RELOAD', '_STORE_FAST_FUSED', '_CHECK_VALIDITY', '_LOAD_FAST_BORROW_2', '_GUARD_TYPE_VERSION', '_LOAD_ATTR_INSTANCE_VALUE_CHECKED', '_POP_TOP_NOP', '_SET_IP', '_STORE_FAST_FUSED', '_JUMP_TO_TOP', '_DEOPT', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE']
+
+======================================================================
+FAIL: test_make_heap_safe_not_optimized_for_owned (test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_not_optimized_for_owned)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/python3.16/test/test_capi/test_opt.py", line 1478, in test_make_heap_safe_not_optimized_for_owned
+    self.assertIn("_RETURN_VALUE", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_RETURN_VALUE' not found in ['_START_EXECUTOR', '_MAKE_WARM', '_SET_IP', '_CHECK_PERIODIC', '_CHECK_VALIDITY', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_SPILL_OR_RELOAD', '_STORE_FAST_FUSED', '_CHECK_VALIDITY', '_SET_IP', '_LOAD_DEREF', '_CHECK_VALIDITY', '_PUSH_NULL', '_LOAD_FAST_BORROW_1', '_SET_IP', '_SPILL_OR_RELOAD', '_CHECK_FUNCTION_VERSION', '_CHECK_STACK_SPACE_OPERAND', '_CHECK_RECURSION_REMAINING', '_SAVE_RETURN_OFFSET', '_BEGIN_VIRTUAL_CALL', '_LOAD_VIRTUAL_ARGUMENT', '_LOAD_CONST_INLINE_BORROW', '_GUARD_NOS_INT', '_GUARD_TOS_INT', '_BINARY_OP_ADD_INT', '_POP_TOP_NOP', '_POP_TOP_NOP', '_MAKE_HEAP_SAFE', '_RETURN_VIRTUAL_CALL', '_CHECK_VALIDITY', '_STORE_FAST_FUSED_INT', '_JUMP_TO_TOP', '_DEOPT', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_DEOPT', '_EXIT_TRACE', '_SPILL_OR_RELOAD', '_MATERIALIZE_VIRTUAL_FRAME', '_DEOPT']
+
+======================================================================
+FAIL: test_make_heap_safe_optimized_immortal (test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_optimized_immortal)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/python3.16/test/test_capi/test_opt.py", line 1445, in test_make_heap_safe_optimized_immortal
+    self.assertIn("_RETURN_VALUE", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_RETURN_VALUE' not found in ['_START_EXECUTOR', '_MAKE_WARM', '_SET_IP', '_CHECK_PERIODIC', '_CHECK_VALIDITY', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_SPILL_OR_RELOAD', '_STORE_FAST_FUSED', '_CHECK_VALIDITY', '_SET_IP', '_LOAD_DEREF', '_CHECK_VALIDITY', '_PUSH_NULL', '_SET_IP', '_SPILL_OR_RELOAD', '_CHECK_FUNCTION_VERSION', '_CHECK_STACK_SPACE_OPERAND', '_CHECK_RECURSION_REMAINING', '_SAVE_RETURN_OFFSET', '_CALL_PY_LEAF', '_CHECK_VALIDITY', '_SET_IP', '_STORE_FAST_FUSED', '_JUMP_TO_TOP', '_DEOPT', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_DEOPT', '_DEOPT', '_DEOPT']
+
+======================================================================
+FAIL: test_record_bound_method_exact_args (test.test_capi.test_opt.TestUopsOptimization.test_record_bound_method_exact_args)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/python3.16/test/test_capi/test_opt.py", line 2020, in test_record_bound_method_exact_args
+    self.assertIn("_PUSH_FRAME", uops)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '_PUSH_FRAME' not found in ['_START_EXECUTOR', '_MAKE_WARM', '_SET_IP', '_CHECK_PERIODIC', '_CHECK_VALIDITY', '_ITER_CHECK_RANGE', '_GUARD_NOT_EXHAUSTED_RANGE', '_ITER_NEXT_RANGE', '_SET_IP', '_SPILL_OR_RELOAD', '_STORE_FAST_FUSED', '_CHECK_VALIDITY', '_LOAD_FAST_BORROW_3', '_LOAD_FAST_BORROW_2', '_PUSH_NULL', '_SPILL_OR_RELOAD', '_LOAD_FAST_BORROW_4', '_SET_IP', '_SPILL_OR_RELOAD', '_CHECK_CALL_BOUND_METHOD_EXACT_ARGS', '_INIT_CALL_BOUND_METHOD_EXACT_ARGS', '_CHECK_FUNCTION_VERSION', '_CHECK_STACK_SPACE_OPERAND', '_CHECK_RECURSION_REMAINING', '_SAVE_RETURN_OFFSET', '_BEGIN_VIRTUAL_CALL', '_LOAD_VIRTUAL_ARGUMENT', '_LOAD_CONST_INLINE_BORROW', '_GUARD_NOS_INT', '_GUARD_NOS_OVERFLOWED', '_GUARD_TOS_INT', '_BINARY_OP_ADD_INT', '_POP_TOP_NOP', '_POP_TOP_NOP', '_MAKE_HEAP_SAFE', '_RETURN_VIRTUAL_CALL', '_CHECK_VALIDITY', '_GUARD_NOS_INT', '_BINARY_OP_ADD_INT_INPLACE_RIGHT', '_POP_TOP_INT', '_POP_TOP_NOP', '_STORE_FAST_FUSED_INT', '_JUMP_TO_TOP', '_DEOPT', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE', '_ERROR_POP_N', '_DEOPT', '_EXIT_TRACE', '_DEOPT', '_EXIT_TRACE', '_SPILL_OR_RELOAD', '_MATERIALIZE_VIRTUAL_FRAME', '_DEOPT', '_EXIT_TRACE', '_EXIT_TRACE']
+
+----------------------------------------------------------------------
+Ran 323 tests in 3.823s
+
+FAILED (failures=20, skipped=3)
+test test_capi.test_opt failed
+
+== Tests result: FAILURE ==
+
+1 test failed:
+    test_capi.test_opt
+
+Total duration: 4.0 sec
+Total tests: run=323 failures=20 skipped=3
+Total test files: run=1/1 failed=1
+Result: FAILURE

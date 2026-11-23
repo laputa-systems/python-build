@@ -1,0 +1,7 @@
+crel3-parent-parity 0
+h2-parity 0
+h2-fuzz 0
+jes3-candidate-fuzz 0
+jes2-parent-capi-opt-verbose 2
+h2-capi-opt-verbose 2
+jes3-candidate-capi-opt-verbose 2

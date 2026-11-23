@@ -1,0 +1,20 @@
+A4 process Private_Dirty (KiB): six observations per mode; all raw values retained in a4/*.json.
+Percentages are relative to the base-stage median for the same mode.
+base: all_valid=True
+base pyc: raw=[4044, 4020, 4064, 4084, 4076, 4028] median=4054 KiB
+base source: raw=[4512, 4528, 4484, 4488, 4488, 4520] median=4500 KiB
+base source-x20: raw=[4852, 4852, 4852, 4872, 4872, 4876] median=4862 KiB
+mi: all_valid=True
+mi pyc: raw=[4680, 4648, 4672, 4700, 4692, 4656] median=4676 KiB
+mi source: raw=[6628, 6664, 6620, 6616, 6656, 6624] median=6626 KiB
+mi source-x20: raw=[7016, 7060, 7032, 7036, 7028, 7044] median=7034 KiB
+je: all_valid=True
+je pyc: raw=[4364, 4376, 4360, 4380, 4392, 4400] median=4378 KiB
+je source: raw=[5640, 5596, 5652, 5636, 5588, 5664] median=5638 KiB
+je source-x20: raw=[6180, 6068, 6084, 6156, 6068, 6112] median=6098 KiB
+mi vs base pyc: +15.342871%
+je vs base pyc: +7.992107%
+mi vs base source: +47.244444%
+je vs base source: +25.288889%
+mi vs base source-x20: +44.672974%
+je vs base source-x20: +25.421637%

@@ -1,0 +1,37 @@
+Using random seed: 1704067200
+0:00:00 load avg: 2.71 mem:   17.8 MiB Run 7 tests in parallel using 4 worker processes (timeout: 15 min, worker timeout: 20 min)
+0:00:01 load avg: 3.06 mem:   81.8 MiB [1/7] test_thread passed
+0:00:03 load avg: 3.06 mem:   87.6 MiB [2/7/1] test_sys failed (1 error)
+test test_sys failed -- Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-allocretry/rust-cpython/work/perf/perf-musl-base2/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_sys.py", line 2413, in test_remote_exec_deleted_libpython
+    self._run_remote_exec_with_deleted_mapping(copied_libpython,
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+                                               env=env)
+                                               ^^^^^^^^
+  File "/home/ubuntu/repos/python-build/wt-allocretry/rust-cpython/work/perf/perf-musl-base2/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_sys.py", line 2250, in _run_remote_exec_with_deleted_mapping
+    returncode, stdout, stderr = self._run_remote_exec_test(
+                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        script, after_ready=delete_loaded_mapping, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/repos/python-build/wt-allocretry/rust-cpython/work/perf/perf-musl-base2/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Lib/test/test_sys.py", line 2222, in _run_remote_exec_test
+    sys.remote_exec(proc.pid, script_path)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: Can't find a running interpreter in the remote process
+0:00:05 load avg: 3.06 mem:   93.5 MiB [3/7/1] test__interpreters passed
+0:00:06 load avg: 3.21 mem:   88.7 MiB [4/7/1] test_embed passed
+0:00:15 load avg: 3.28 mem:   70.6 MiB [5/7/1] test_interpreters passed
+0:00:17 load avg: 3.42 mem:   41.0 MiB [6/7/2] test_capi failed (20 failures)
+test test_capi failed -- multiple errors occurred; run in verbose mode for details
+0:00:18 load avg: 3.42 mem:   19.7 MiB [7/7/2] test_threading passed
+
+== Tests result: FAILURE ==
+
+2 tests failed:
+    test_capi test_sys
+
+5 tests OK.
+
+Total duration: 18.9 sec
+Total tests: run=2,358 failures=20 skipped=69
+Total test files: run=7/7 failed=2
+Result: FAILURE

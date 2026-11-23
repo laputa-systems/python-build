@@ -1,0 +1,129 @@
+    Blocking waiting for file lock on package cache
+   Compiling _jit_opt_rs v0.1.0 (/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/work/perf/perf-rb2-jes2-parent-serc/source/cpython-e891a9117985888df3e5d48145cf07ddda098335/Modules/_jit_opt_rs)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.75s
+     Running unittests src/lib.rs (/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/work/perf/perf-rb2-jes2-parent-serc/build/target/debug/build/_jit_opt_rs/005a166e114cf2e1/out/_jit_opt_rs-005a166e114cf2e1)
+
+running 114 tests
+test attributes::tests::ffi_initializes_only_complete_output ... ok
+test exit_stubs::tests::ffi_layout ... ok
+test cache::tests::invalid_maps_and_short_ffi_output_are_transactional ... ok
+test exit_stubs::tests::malformed ... ok
+test exit_stubs::tests::masked_recipe_components ... ok
+test exit_stubs::tests::recipes_and_regions ... ok
+test exit_stubs_ffi_uninitialized_and_atomic ... ok
+test leaf::tests::a_leaf_reuses_the_callers_stack_and_deopt_target ... ok
+test leaf::tests::bool_mutation_ffi_uninitialized_and_atomic ... ok
+test leaf::tests::argument_owner_does_not_hide_bound_method_shape ... ok
+test leaf::tests::bound_method_setup_prevents_receiver_writes_from_using_standalone_proof ... ok
+test leaf::tests::constants_and_bound_arguments_keep_distinct_results ... ok
+test leaf::tests::ffi_rejects_without_partially_writing_a_plan ... ok
+test leaf::tests::escaping_observed_partial_and_repeated_pairs_remain_concrete ... ok
+test leaf::tests::bool_mutation_proof_and_refusals ... ok
+test leaf::tests::floats_keep_distinct_call_exit_and_callee_error_recipes ... ok
+test leaf::tests::constants_and_unproved_arguments_get_original_pc_guards_transactionally ... ok
+test leaf::tests::global_guards_keep_callee_context_and_precall_deopt ... ok
+test leaf::tests::incompatible_call_shape_rewrites_keep_the_fixed_standalone_guard ... ok
+test leaf::tests::inferred_call_shape_preserves_both_numeric_entry_guard_indices ... ok
+test leaf::tests::list_construction_validity_is_consumed_with_the_allocation ... ok
+test leaf::tests::compact_integer_calls_preserve_range_guards_and_inplace_operand_ownership ... ok
+test leaf::tests::list_pairs_require_a_matching_two_item_unpack ... ok
+test leaf::tests::instance_values_require_valid_inline_storage_and_complete_cleanup ... ok
+test leaf::tests::float_callbacks_partial_cleanup_and_extra_state_keep_real_frames ... ok
+test leaf::tests::malformed_constants_and_descriptors_are_distinguishable ... ok
+test leaf::tests::bound_calls_retain_storage_and_attribute_type_guards ... ok
+test leaf::tests::local_borrows_and_argument_copies_cannot_outlive_their_anchors ... ok
+test leaf::tests::mixed_add_preserves_integer_proofs_ownership_and_error_target ... ok
+test leaf::tests::nested_identity_composes_source_cache_and_guards ... ok
+test leaf::tests::nested_identity_keeps_inferred_shape_and_both_numeric_entry_guards ... ok
+test leaf::tests::numeric_entry_guards_preserve_single_and_bounded_multiple_indices ... ok
+test leaf::tests::nested_identity_rejects_other_shapes ... ok
+test leaf::tests::pair_calls_preserve_order_targets_and_return_offsets ... ok
+test leaf::tests::power_and_repeated_arguments_keep_original_virtual_operand_order ... ok
+test leaf::tests::observers_errors_nested_calls_and_entry_guards_keep_real_frames ... ok
+test leaf::tests::predicate_ffi_uninitialized_and_short_output ... ok
+test leaf::tests::nested_identity_refuses_callbacks_and_live_copy_uses ... ok
+test leaf::tests::projection_preserves_unabsorbed_inner_leaf_cache_and_source ... ok
+test leaf::tests::scalar_local_overwrites_clean_the_old_kind_and_preserve_borrow_anchors ... ok
+test leaf::tests::slot_results_require_a_borrowed_owner_and_complete_cleanup ... ok
+test leaf::tests::unknown_integer_overflow_inputs_get_exact_compact_guards_first ... ok
+test leaf::tests::predicate_aliases_and_short_circuit_preserve_sources ... ok
+test leaf::tests::numeric_parameter_stores_preserve_aliases_and_reject_live_argument_anchors ... ok
+test leaf::tests::virtual_locals_preserve_nullable_cleanup_aliases_and_required_extent ... ok
+test leaf::tests::virtual_calls_preserve_arithmetic_and_per_operation_error_targets ... ok
+test leaf::tests::virtual_argument_owners_keep_identity_and_refuse_unproved_storage ... ok
+test loop_globals::tests::ffi_errors_and_short_output_do_not_write_partial_plans ... ok
+test leaf::tests::virtual_invert_drops_compact_proof_and_preserves_cleanup_and_targets ... ok
+test leaf::tests::virtual_inplace_shapes_restore_allocation_and_the_reused_operand_cleanup ... ok
+test loop_globals::tests::mutation_barriers_frame_changes_and_resumable_roots_keep_the_guard ... ok
+test leaf::tests::virtual_unary_preserves_proof_ownership_and_error_source ... ok
+test loop_globals::tests::prologue_uses_entry_state_and_keeps_the_steady_body_order ... ok
+test loop_types::tests::callbacks_unproved_iterators_and_noninductive_assignments_keep_originals ... ok
+test loop_types::tests::exact_entry_guards_prove_backedges_and_preserve_checkpoint_metadata ... ok
+test loop_types::tests::ffi_capacity_and_bad_descriptors_do_not_partially_write ... ok
+test loop_types::tests::integer_seeds_never_erase_compactness_or_overflow_checks ... ok
+test store::tests::entry_store_refuses_observation_but_later_stores_keep_hints ... ok
+test store::tests::ffi_initializes_only_complete_output ... ok
+test store::tests::ffi_rejects_bad_hint_without_writes ... ok
+test store::tests::ffi_rejects_short_output_without_partial_writes ... ok
+test store::tests::first_local_store_consumes_hint_eligibility_even_without_a_fusible_cleanup ... ok
+test store::tests::hinted_stores_guard_before_replacement_only_in_root_interval ... ok
+test store::tests::interstitial_operations_and_partial_pairs_remain_unchanged ... ok
+test store::tests::list_store_ffi_is_atomic_for_uninitialized_and_short_output ... ok
+test store::tests::replicas_keep_local_indices_and_decref_metadata ... ok
+test store::tests::list_store_selection_refuses_unknown_effects_and_wrong_stack_operations ... ok
+test store::tests::numeric_list_stores_keep_original_stack_and_exit_source ... ok
+test store::tests::virtual_argument_stores_preserve_numeric_cleanup_and_its_source ... ok
+test tests::a_rejected_plan_writes_no_steps ... ok
+test tests::a_rewrite_longer_than_the_buffer_leaves_the_trace_unchanged ... ok
+test tests::a_rewrite_writes_exactly_its_steps ... ok
+test unbox::tests::a_boxed_index_keeps_the_plain_float_array_read ... ok
+test store::tests::typed_local_stores_preserve_replicas_indices_and_cleanup_metadata ... ok
+test tests::array_read_ffi_uninit_short_and_malformed_are_atomic ... ok
+test leaf::tests::numeric_entry_guard_capacity_indices_and_bound_mapping ... ok
+test unbox::tests::a_chain_that_reuses_its_temporary_stays_boxed ... ok
+test unbox::tests::a_compared_integer_temporary_is_never_boxed ... ok
+test unbox::tests::a_compared_temporary_is_never_boxed ... ok
+test unbox::tests::a_float_guard_on_a_boxed_value_is_kept ... ok
+test unbox::tests::a_float_index_cannot_feed_a_float_array_read_unboxed ... ok
+test unbox::tests::a_float_guard_on_an_unboxed_read_is_elided ... ok
+test unbox::tests::a_side_exit_over_a_live_temporary_records_its_stack_slot ... ok
+test unbox::tests::a_temporary_read_by_another_uop_stays_boxed ... ok
+test unbox::tests::action_codes_round_trip ... ok
+test unbox::tests::a_list_float_read_unboxes_for_float_arithmetic ... ok
+test unbox::tests::a_temporary_live_across_an_escaping_uop_stays_boxed ... ok
+test unbox::tests::an_exit_after_its_pops_counts_slots_from_the_new_top ... ok
+test unbox::tests::an_int_array_read_unboxes_its_result_for_int_arithmetic ... ok
+test unbox::tests::an_exit_records_floats_and_ints_in_their_own_masks ... ok
+test unbox::tests::an_error_below_a_live_temporary_records_the_slots_left_after_its_pops ... ok
+test unbox::tests::an_integer_result_never_feeds_a_float_operation ... ok
+test unbox::tests::an_integer_overflow_exit_boxes_both_raw_operands ... ok
+test unbox::tests::an_unboxed_int_index_reads_a_float_array_without_boxing ... ok
+test unbox::tests::an_unboxed_int_index_reads_a_float_list_without_boxing ... ok
+test unbox::tests::boxing_a_result_records_unboxed_slots_below_it ... ok
+test unbox::tests::contradictory_descriptors_are_rejected ... ok
+test unbox::tests::borrowed_array_reads_feed_float_products_and_record_exit_prefixes ... ok
+test unbox::tests::ffi_layouts_match_the_c_glue ... ok
+test unbox::tests::array_reads_require_borrowed_cleanup_and_do_not_accept_raw_inputs ... ok
+test unbox::tests::dividing_records_both_unboxed_operands_for_its_deopt ... ok
+test unbox::tests::integer_division_is_contradictory ... ok
+test unbox::tests::malformed_array_descriptors_refuse_the_plan ... ok
+test unbox::tests::integer_temporaries_merge_like_floats ... ok
+test unbox::tests::malformed_int_array_descriptors_refuse_the_plan ... ok
+test unbox::tests::malformed_list_read_descriptors_refuse_the_plan ... ok
+test unbox::tests::merging_two_temporaries_boxes_only_the_sum ... ok
+test unbox::tests::operand_pops_must_follow_the_node ... ok
+test unbox::tests::opaque_regions_keep_live_prefixes_boxed_and_independent_chains_unboxed ... ok
+test unbox::tests::variable_shaped_uops_end_tracking ... ok
+test unbox::tests::virtual_boundaries_box_integer_body_and_track_overflow_masks ... ok
+test unbox::tests::virtual_boundaries_box_float_body_and_track_resume_and_error_masks ... ok
+test unbox::tests::temporaries_deeper_than_the_mask_stay_boxed ... ok
+test cache::tests::agrees_with_exhaustive_search_and_never_prefetches ... ok
+
+test result: ok. 114 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+   Doc-tests _jit_opt_rs
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

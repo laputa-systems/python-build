@@ -1,0 +1,3 @@
+RUN   /home/ubuntu/repos/python-build/wt-allocretry/rust-cpython/work/perf/perf-musl-je2/build/python -m test -j 4 --timeout=900 test_compile test_marshal test_dis test_import
+LOG   /home/ubuntu/repos/python-build/wt-allocretry/rust-cpython/logs/perf-musl-je2-test_compile-test_marshal-test_dis-test_import-serc-verify.log
+OK    CPython suites: test_compile, test_marshal, test_dis, test_import

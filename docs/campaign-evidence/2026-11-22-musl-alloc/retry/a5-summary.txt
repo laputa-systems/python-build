@@ -1,0 +1,7 @@
+A5 peak RSS in KiB from /usr/bin/time -f %M; three corpus runs per stage.
+Percentages are relative to the base-stage median.
+base: raw=[56384, 56608, 56244] median=56384 KiB
+mi: raw=[58084, 58088, 57964] median=58084 KiB
+je: raw=[56748, 56596, 56704] median=56704 KiB
+mi vs base: +3.015040%
+je vs base: +0.567537%

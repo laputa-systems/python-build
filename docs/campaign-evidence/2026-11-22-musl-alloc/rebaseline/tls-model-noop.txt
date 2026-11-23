@@ -1,0 +1,15 @@
+Allocator for this rebaseline: musl (provisional; owner's choice is pending).
+
+J-TLS-1 and C-TLS-2 are no-op on musl by construction (ca3d710):
+- J-TLS-1's _Py_thread_local initial-exec override is guarded by __GLIBC__.
+- C-TLS-2's Cargo -Z tls-model=initial-exec flag is restricted to %-linux-gnu.
+- The mimalloc TLS guard is part of ca3d710 and remains in H.
+
+Existing evidence is under /home/ubuntu/repos/python-build/wt-musl/rust-cpython/logs/tls-model-fix/:
+- preprocessor-before.txt, preprocessor-after.txt, preprocessor-comparison.txt
+- make-gnu-before.txt, make-gnu-after.txt, make-musl-after.txt, make-comparison.txt
+- pyport-header-include-order.txt
+
+The musl make -n output contains the Cargo invocation without the initial-exec flag.
+The GNU before/after invocation comparison is identical. Copies of make-musl-after.txt
+and make-comparison.txt are included beside this note.

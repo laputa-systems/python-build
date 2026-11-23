@@ -1,0 +1,7 @@
+Allocator retry stage provenance (per campaign handoff):
+
+perf-musl-base2 allocator=musl build_commit=975335b
+perf-musl-mi2 allocator=mimalloc profile=low-retention build_commit=975335b
+perf-musl-je2 allocator=jemalloc profile=low-retention build_commit=cdc2c68
+
+No stages were built for this retry.

@@ -1,0 +1,11 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s
+     Running tests/jes2_replay.rs (/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/work/perf/perf-rb2-h-serc/build/target/debug/build/_jit_opt_rs/8ca2af794b11b6ba/out/jes2_replay-8ca2af794b11b6ba)
+
+running 1 test
+TRACE sparse code=SparseCompRow_matmult file=pyperformance/data-files/benchmarks/bm_scimark/run_benchmark.py firstline=164 source_line=172 length=66 initial_depth=6 decision=Ok(Some) plan_len=68
+TRACE fft_inverse code=FFT_inverse file=pyperformance/data-files/benchmarks/bm_scimark/run_benchmark.py firstline=362 source_line=368 length=51 initial_depth=2 decision=Ok(None) reason=unsupported_opcode index=49 opcode=_STORE_SUBSCR_ARRAY_D
+TRACE fft_transform_internal code=FFT_transform_internal file=pyperformance/data-files/benchmarks/bm_scimark/run_benchmark.py firstline=286 source_line=316 length=255 initial_depth=2 decision=Ok(None) reason=unsupported_opcode index=49 opcode=_BINARY_OP_MULTIPLY_INT_INPLACE_RIGHT
+test replay_captured_sparse_and_fft_traces ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+

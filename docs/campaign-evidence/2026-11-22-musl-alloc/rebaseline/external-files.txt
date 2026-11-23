@@ -1,0 +1,16 @@
+correctness-followup/crel3-parent-parity.log -> /home/ubuntu/exp-musl-rebase/campaign-receipts/rebaseline/correctness-followup/crel3-parent-parity.log
+correctness-followup/h2-parity.log -> /home/ubuntu/exp-musl-rebase/campaign-receipts/rebaseline/correctness-followup/h2-parity.log
+pystats/h-pystats/deltablue/jit-map.tsv -> /home/ubuntu/exp-musl-rebase/campaign-receipts/rebaseline/pystats/h-pystats/deltablue/jit-map.tsv
+pystats/h-pystats/go/jit-map.tsv -> /home/ubuntu/exp-musl-rebase/campaign-receipts/rebaseline/pystats/h-pystats/go/jit-map.tsv
+pystats/h-pystats/hexiom/jit-map.tsv -> /home/ubuntu/exp-musl-rebase/campaign-receipts/rebaseline/pystats/h-pystats/hexiom/jit-map.tsv
+pystats/h-pystats/raytrace/jit-map.tsv -> /home/ubuntu/exp-musl-rebase/campaign-receipts/rebaseline/pystats/h-pystats/raytrace/jit-map.tsv
+pystats/jes2-parent-pystats/deltablue/jit-map.tsv -> /home/ubuntu/exp-musl-rebase/campaign-receipts/rebaseline/pystats/jes2-parent-pystats/deltablue/jit-map.tsv
+pystats/jes2-parent-pystats/go/jit-map.tsv -> /home/ubuntu/exp-musl-rebase/campaign-receipts/rebaseline/pystats/jes2-parent-pystats/go/jit-map.tsv
+pystats/jes2-parent-pystats/hexiom/jit-map.tsv -> /home/ubuntu/exp-musl-rebase/campaign-receipts/rebaseline/pystats/jes2-parent-pystats/hexiom/jit-map.tsv
+pystats/jes2-parent-pystats/raytrace/jit-map.tsv -> /home/ubuntu/exp-musl-rebase/campaign-receipts/rebaseline/pystats/jes2-parent-pystats/raytrace/jit-map.tsv
+pystats/jes3-candidate-pystats/deltablue/jit-map.tsv -> /home/ubuntu/exp-musl-rebase/campaign-receipts/rebaseline/pystats/jes3-candidate-pystats/deltablue/jit-map.tsv
+pystats/jes3-candidate-pystats/go/jit-map.tsv -> /home/ubuntu/exp-musl-rebase/campaign-receipts/rebaseline/pystats/jes3-candidate-pystats/go/jit-map.tsv
+pystats/jes3-candidate-pystats/hexiom/jit-map.tsv -> /home/ubuntu/exp-musl-rebase/campaign-receipts/rebaseline/pystats/jes3-candidate-pystats/hexiom/jit-map.tsv
+pystats/jes3-candidate-pystats/raytrace/jit-map.tsv -> /home/ubuntu/exp-musl-rebase/campaign-receipts/rebaseline/pystats/jes3-candidate-pystats/raytrace/jit-map.tsv
+relocations/crel3-parent.relocations.txt -> /home/ubuntu/exp-musl-rebase/campaign-receipts/rebaseline/relocations/crel3-parent.relocations.txt
+relocations/h2-candidate.relocations.txt -> /home/ubuntu/exp-musl-rebase/campaign-receipts/rebaseline/relocations/h2-candidate.relocations.txt

@@ -1,0 +1,13 @@
+Symmetric relative difference = abs(run1-run2) / mean(run1,run2) * 100.
+initial corpus base 37,962,722,154 37,964,890,311 0.005711% within
+initial corpus mi 39,675,655,591 39,677,233,367 0.003977% within
+initial corpus je 36,019,374,055 36,003,917,823 0.042920% within
+initial scimark_fft base 4,328,616,220 4,328,619,513 0.000076% within
+initial scimark_fft mi 4,661,481,571 4,661,504,147 0.000484% within
+initial scimark_fft je 4,321,239,914 4,321,431,428 0.004432% within
+initial nbody base 3,010,240,270 3,010,189,699 0.001680% within
+initial nbody mi 3,341,314,585 3,341,294,613 0.000598% within
+initial nbody je 3,002,575,376 3,002,620,251 0.001495% within
+initial scimark_sparse_mat_mult base 6,586,917,658 6,586,984,483 0.001015% within
+initial scimark_sparse_mat_mult mi 6,919,440,977 6,919,673,511 0.003361% within
+initial scimark_sparse_mat_mult je 6,579,566,466 6,579,710,426 0.002188% within

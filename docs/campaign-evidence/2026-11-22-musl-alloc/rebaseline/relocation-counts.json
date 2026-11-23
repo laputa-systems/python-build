@@ -1,0 +1,22 @@
+{
+  "crel3-parent": {
+    "stage": "perf-rb2-crel3-parent-serc",
+    "library": "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-crel3-parent-serc/lib/libpython3.16.so.1.0",
+    "section": {
+      "address": 17053376,
+      "size": 863976
+    },
+    "relative_relocations": 27332,
+    "distinct_pages": 140
+  },
+  "h2-candidate": {
+    "stage": "perf-rb2-h-serc",
+    "library": "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/stage-perf-rb2-h-serc/lib/libpython3.16.so.1.0",
+    "section": {
+      "address": 16885440,
+      "size": 617824
+    },
+    "relative_relocations": 11905,
+    "distinct_pages": 80
+  }
+}

@@ -1,0 +1,15 @@
+Using random seed: 1704067200
+0:00:00 load avg: 4.20 mem:   34.4 MiB Run 4 tests in parallel using 4 worker processes (timeout: 15 min, worker timeout: 20 min)
+0:00:01 load avg: 4.20 mem:   89.4 MiB [1/4] test_dis passed
+0:00:01 load avg: 4.20 mem:   80.3 MiB [2/4] test_marshal passed
+0:00:04 load avg: 4.18 mem:   44.6 MiB [3/4] test_compile passed
+0:00:05 load avg: 4.18 mem:   26.0 MiB [4/4] test_import passed
+
+== Tests result: SUCCESS ==
+
+All 4 tests OK.
+
+Total duration: 5.9 sec
+Total tests: run=574 skipped=13
+Total test files: run=4/4
+Result: SUCCESS

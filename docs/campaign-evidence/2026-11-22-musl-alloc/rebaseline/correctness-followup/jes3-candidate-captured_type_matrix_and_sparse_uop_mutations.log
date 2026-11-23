@@ -1,0 +1,22 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s
+     Running tests/jes2_replay.rs (/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/work/perf/perf-rb2-jes3-candidate-serc/build/target/debug/build/_jit_opt_rs/8ca2af794b11b6ba/out/jes2_replay-8ca2af794b11b6ba)
+
+running 1 test
+PROVENANCE trace=sparse used={2, 4, 5, 11, 12} index_feeding={} arithmetic_feeding={11} first_sink={11: 58} first_sink_type_guard={11: Some((57, 498))}
+RULE_B_SAFE trace=sparse local=11 kind=492->0 first_sink=Some(58) guard=Some((57, 498)) steps=67
+PROVENANCE trace=fft_inverse used={1, 3, 4} index_feeding={} arithmetic_feeding={3} first_sink={3: 38} first_sink_type_guard={3: Some((36, 518))}
+RULE_B_SAFE trace=fft_inverse local=3 kind=492->0 first_sink=Some(38) guard=Some((36, 518)) steps=52
+PROVENANCE trace=fft_transform_internal used={1, 5, 13, 14, 15, 16, 17} index_feeding={5} arithmetic_feeding={} first_sink={5: 64} first_sink_type_guard={5: None}
+DERIVED_INDEX_FEEDING={("fft_transform_internal", 5)}
+DERIVED_ARITHMETIC_FEEDING={("fft_inverse", 3), ("sparse", 11)}
+MUTATION array-D-to-I trace=sparse index=44 decision=Ok(None)
+MUTATION array-I-to-D-index trace=sparse index=26 decision=Ok(None)
+JES2_MATRIX rule=a-unused-identical cases=46 failures=0
+JES2_MATRIX rule=b-sensitive-refuse cases=6 failures=0
+JES2_MATRIX rule=c-other-used-guarded cases=14 failures=0
+JES2_MATRIX rule=d-uop-mutations-refuse cases=2 failures=0
+JES2_MATRIX failures=[]
+test captured_type_matrix_and_sparse_uop_mutations ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+

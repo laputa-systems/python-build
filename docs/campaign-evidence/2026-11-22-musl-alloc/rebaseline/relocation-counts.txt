@@ -1,0 +1,2 @@
+crel3-parent: .data.rel.ro RELATIVE=27,332; distinct_pages=140; section_size=863,976 bytes
+h2-candidate: .data.rel.ro RELATIVE=11,905; distinct_pages=80; section_size=617,824 bytes

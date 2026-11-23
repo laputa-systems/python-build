@@ -1,0 +1,3 @@
+RUN   /home/ubuntu/repos/python-build/wt-rebase/rust-cpython/work/perf/perf-rb2-crel3-parent-serc/build/python -m test -j 4 --timeout=900 test_compile test_marshal test_dis test_import
+LOG   /home/ubuntu/repos/python-build/wt-rebase/rust-cpython/logs/perf-rb2-crel3-parent-serc-test_compile-test_marshal-test_dis-test_import-serc-verify.log
+OK    CPython suites: test_compile, test_marshal, test_dis, test_import

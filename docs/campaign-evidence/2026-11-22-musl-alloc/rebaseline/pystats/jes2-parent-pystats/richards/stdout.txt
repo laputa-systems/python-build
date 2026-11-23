@@ -1,0 +1,1 @@
+{'operation_count': 1, 'digest': '064217329087ea7d05ee543cf1c94806255e58183c72b3f2574f374f91be4c19', 'elapsed_seconds': 0.1546122969884891, 'cpu_user_seconds': 0.151454, 'cpu_system_seconds': 0.0030950000000000005}

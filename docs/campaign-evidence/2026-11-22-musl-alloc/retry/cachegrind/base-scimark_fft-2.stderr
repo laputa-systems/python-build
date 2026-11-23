@@ -1,0 +1,7 @@
+==29== Cachegrind, a high-precision tracing profiler
+==29== Copyright (C) 2002-2024, and GNU GPL'd, by Nicholas Nethercote et al.
+==29== Using Valgrind-3.25.1 and LibVEX; rerun with -h for copyright info
+==29== Command: /home/ubuntu/repos/python-build/wt-allocretry/rust-cpython/stage-perf-musl-base2/bin/python3.16 -S -c import\ sys;\ from\ benchmarks.workloads\ import\ jit_kernels;\ print(jit_kernels.run(sys.argv[1])) scimark_fft
+==29== 
+==29== 
+==29== I refs:        4,328,619,513

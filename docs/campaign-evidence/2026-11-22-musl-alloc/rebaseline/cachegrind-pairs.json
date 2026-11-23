@@ -1,0 +1,259 @@
+{
+  "comparison_runs": [
+    {
+      "stage": "jes2-parent-serc",
+      "workload": "scimark_sparse_mat_mult",
+      "run": 1,
+      "tag": "initial",
+      "i_refs": 6789567137,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-jes2-parent-serc-scimark_sparse_mat_mult-run1.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-jes2-parent-serc-scimark_sparse_mat_mult-run1.cg",
+      "raw_sha256": "aaf0173dc273efada78dff98f78af3d08f93760211cbb92657488a0920e2e402"
+    },
+    {
+      "stage": "jes2-parent-serc",
+      "workload": "scimark_sparse_mat_mult",
+      "run": 2,
+      "tag": "initial",
+      "i_refs": 6789549324,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-jes2-parent-serc-scimark_sparse_mat_mult-run2.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-jes2-parent-serc-scimark_sparse_mat_mult-run2.cg",
+      "raw_sha256": "3826f4c4dc74eadee67a843c6c249fa07208c6ce408c681944949a29ffa24b1b"
+    },
+    {
+      "stage": "jes2-parent-serc",
+      "workload": "scimark_fft",
+      "run": 1,
+      "tag": "initial",
+      "i_refs": 4328804405,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-jes2-parent-serc-scimark_fft-run1.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-jes2-parent-serc-scimark_fft-run1.cg",
+      "raw_sha256": "2d2d0580bee9f8be26ae47544c3cfed0368e617e9f36c4f53b12c9a1c530a20f"
+    },
+    {
+      "stage": "jes2-parent-serc",
+      "workload": "scimark_fft",
+      "run": 2,
+      "tag": "initial",
+      "i_refs": 4328925056,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-jes2-parent-serc-scimark_fft-run2.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-jes2-parent-serc-scimark_fft-run2.cg",
+      "raw_sha256": "3923094cebf1da6050afc660d75dc2e792319ed43ba6e1981d6f902539bbfb96"
+    },
+    {
+      "stage": "jes2-parent-serc",
+      "workload": "nbody",
+      "run": 1,
+      "tag": "initial",
+      "i_refs": 3010539877,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-jes2-parent-serc-nbody-run1.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-jes2-parent-serc-nbody-run1.cg",
+      "raw_sha256": "b42adf9071bad7cbf6862c00eec0ca310491a682728bf560f907fdd66c477bc6"
+    },
+    {
+      "stage": "jes2-parent-serc",
+      "workload": "nbody",
+      "run": 2,
+      "tag": "initial",
+      "i_refs": 3010608935,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-jes2-parent-serc-nbody-run2.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-jes2-parent-serc-nbody-run2.cg",
+      "raw_sha256": "1e4fcf51d8d7b757409cf8dc06fa3763692de3085edbefe87b92e1ae102cefa4"
+    },
+    {
+      "stage": "jes2-parent-serc",
+      "workload": "compile-corpus",
+      "run": 1,
+      "tag": "initial",
+      "i_refs": 37976962849,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-jes2-parent-serc-compile-corpus-run1.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-jes2-parent-serc-compile-corpus-run1.cg",
+      "raw_sha256": "485aeeab3b57c53146a12dc10c3e11321a6f9ba9ca07b957559298450f1845b2"
+    },
+    {
+      "stage": "jes2-parent-serc",
+      "workload": "compile-corpus",
+      "run": 2,
+      "tag": "initial",
+      "i_refs": 37976417915,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-jes2-parent-serc-compile-corpus-run2.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-jes2-parent-serc-compile-corpus-run2.cg",
+      "raw_sha256": "c480cbee7704c270886a9a84b180f1546a8e1f72dca6289e0a08175f36bbfc3f"
+    },
+    {
+      "stage": "h-serc",
+      "workload": "scimark_sparse_mat_mult",
+      "run": 1,
+      "tag": "initial",
+      "i_refs": 6587250750,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-h-serc-scimark_sparse_mat_mult-run1.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-h-serc-scimark_sparse_mat_mult-run1.cg",
+      "raw_sha256": "07f5adc1c352e95d6db4e5f6a18ed5f435338d47b1c75f20edfec27aeadd5886"
+    },
+    {
+      "stage": "h-serc",
+      "workload": "scimark_sparse_mat_mult",
+      "run": 2,
+      "tag": "initial",
+      "i_refs": 6587085353,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-h-serc-scimark_sparse_mat_mult-run2.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-h-serc-scimark_sparse_mat_mult-run2.cg",
+      "raw_sha256": "72ce85c57192d04dd9c6b1a688130bfda422ad0d7a88c8e1d45f490193aa50fa"
+    },
+    {
+      "stage": "h-serc",
+      "workload": "scimark_fft",
+      "run": 1,
+      "tag": "initial",
+      "i_refs": 4328765999,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-h-serc-scimark_fft-run1.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-h-serc-scimark_fft-run1.cg",
+      "raw_sha256": "f61abeb61f8b846b6375937bc2ddf32a13e9f4486e22145d2c965ed26258ef2c"
+    },
+    {
+      "stage": "h-serc",
+      "workload": "scimark_fft",
+      "run": 2,
+      "tag": "initial",
+      "i_refs": 4328740532,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-h-serc-scimark_fft-run2.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-h-serc-scimark_fft-run2.cg",
+      "raw_sha256": "dc6b086fdef998f301e6d7b77ffd9d86782cc676e57e77aa23d8dbcf3ebb8ca0"
+    },
+    {
+      "stage": "h-serc",
+      "workload": "nbody",
+      "run": 1,
+      "tag": "initial",
+      "i_refs": 3010293153,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-h-serc-nbody-run1.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-h-serc-nbody-run1.cg",
+      "raw_sha256": "7bb504f52752534c671ff3479026f576296762f76ef4e9b0be84aa89f0864df5"
+    },
+    {
+      "stage": "h-serc",
+      "workload": "nbody",
+      "run": 2,
+      "tag": "initial",
+      "i_refs": 3010310186,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-h-serc-nbody-run2.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-h-serc-nbody-run2.cg",
+      "raw_sha256": "c06ec4e1c1a87bf92e7bdff8e6fca3c807f63fa6657731e806d67708a4797ded"
+    },
+    {
+      "stage": "h-serc",
+      "workload": "compile-corpus",
+      "run": 1,
+      "tag": "initial",
+      "i_refs": 37973321171,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-h-serc-compile-corpus-run1.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-h-serc-compile-corpus-run1.cg",
+      "raw_sha256": "e3e1570a4be566ed9ae9882eb9a03e3b508c90c51431f90058ff94a1bc562391"
+    },
+    {
+      "stage": "h-serc",
+      "workload": "compile-corpus",
+      "run": 2,
+      "tag": "initial",
+      "i_refs": 37972322853,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-h-serc-compile-corpus-run2.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-h-serc-compile-corpus-run2.cg",
+      "raw_sha256": "8453f0aad01e3d888fd49b3fb649b31459ca6e1f0d23749abfb9641ed7acd4eb"
+    },
+    {
+      "stage": "jes3-candidate-serc",
+      "workload": "scimark_sparse_mat_mult",
+      "run": 1,
+      "tag": "initial",
+      "i_refs": 6587205103,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-jes3-candidate-serc-scimark_sparse_mat_mult-run1.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-jes3-candidate-serc-scimark_sparse_mat_mult-run1.cg",
+      "raw_sha256": "669ca22ddcd49c0eefabbe8d19bbc1c5e2ad24e5305df6e18825bb900ffcc666"
+    },
+    {
+      "stage": "jes3-candidate-serc",
+      "workload": "scimark_sparse_mat_mult",
+      "run": 2,
+      "tag": "initial",
+      "i_refs": 6587125976,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-jes3-candidate-serc-scimark_sparse_mat_mult-run2.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-jes3-candidate-serc-scimark_sparse_mat_mult-run2.cg",
+      "raw_sha256": "79a921b7ef6e3b1ef96385f1e8d12920d5cd403dacf31b5372b59d249377aba6"
+    },
+    {
+      "stage": "jes3-candidate-serc",
+      "workload": "scimark_fft",
+      "run": 1,
+      "tag": "initial",
+      "i_refs": 4325731348,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-jes3-candidate-serc-scimark_fft-run1.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-jes3-candidate-serc-scimark_fft-run1.cg",
+      "raw_sha256": "167f80283e91cc7f6602d7f782c1191fa968b1a787aa13fa7f32a6f9c1991259"
+    },
+    {
+      "stage": "jes3-candidate-serc",
+      "workload": "scimark_fft",
+      "run": 2,
+      "tag": "initial",
+      "i_refs": 4325941286,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-jes3-candidate-serc-scimark_fft-run2.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-jes3-candidate-serc-scimark_fft-run2.cg",
+      "raw_sha256": "6770d9d8b6f489226183316c5717a83020d223b03d450e35678d8f83d22505d1"
+    },
+    {
+      "stage": "jes3-candidate-serc",
+      "workload": "nbody",
+      "run": 1,
+      "tag": "initial",
+      "i_refs": 3010585333,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-jes3-candidate-serc-nbody-run1.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-jes3-candidate-serc-nbody-run1.cg",
+      "raw_sha256": "ddb523a38fc76ebfa90687ff388fc28a0f26eb29708a0b49300a782e623e97a7"
+    },
+    {
+      "stage": "jes3-candidate-serc",
+      "workload": "nbody",
+      "run": 2,
+      "tag": "initial",
+      "i_refs": 3010512547,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-jes3-candidate-serc-nbody-run2.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-jes3-candidate-serc-nbody-run2.cg",
+      "raw_sha256": "b10fe51b085367df5165b649c9f9d4637493dd6dd71783861d95d9fd5464dcaa"
+    },
+    {
+      "stage": "jes3-candidate-serc",
+      "workload": "compile-corpus",
+      "run": 1,
+      "tag": "initial",
+      "i_refs": 37981242819,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-jes3-candidate-serc-compile-corpus-run1.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-jes3-candidate-serc-compile-corpus-run1.cg",
+      "raw_sha256": "aba0f099a9587063cd6d11d27c3760351a74eae211f5449c0c2ce3812ad6dbf2"
+    },
+    {
+      "stage": "jes3-candidate-serc",
+      "workload": "compile-corpus",
+      "run": 2,
+      "tag": "initial",
+      "i_refs": 37981566577,
+      "log": "/home/ubuntu/exp-musl-rebase/cachegrind-logs/initial-jes3-candidate-serc-compile-corpus-run2.log",
+      "raw": "/home/ubuntu/exp-musl-rebase/cachegrind/initial-jes3-candidate-serc-compile-corpus-run2.cg",
+      "raw_sha256": "cf1ae2ffacf1007f59621ce774b1fe3011761ceea14913c0c42f7db838a55278"
+    }
+  ],
+  "one_fresh_pair_reruns": [],
+  "within_stage_repeatability_percent": {
+    "initial:jes2-parent-serc:scimark_sparse_mat_mult": 0.00026235874846732417,
+    "initial:jes2-parent-serc:scimark_fft": 0.0027871279772252056,
+    "initial:jes2-parent-serc:nbody": 0.0022938479734089653,
+    "initial:jes2-parent-serc:compile-corpus": 0.0014349170359992324,
+    "initial:h-serc:scimark_sparse_mat_mult": 0.002510896924245565,
+    "initial:h-serc:scimark_fft": 0.0005883218201178391,
+    "initial:h-serc:nbody": 0.0005658236904485762,
+    "initial:h-serc:compile-corpus": 0.0026290329427834363,
+    "initial:jes3-candidate-serc:scimark_sparse_mat_mult": 0.001201229869289214,
+    "initial:jes3-candidate-serc:scimark_fft": 0.004853119365033987,
+    "initial:jes3-candidate-serc:nbody": 0.002417698614127163,
+    "initial:jes3-candidate-serc:compile-corpus": 0.0008524118646329272
+  }
+}

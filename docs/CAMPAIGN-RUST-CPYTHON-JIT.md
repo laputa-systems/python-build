@@ -62,6 +62,17 @@ Everything measured under glibc becomes historical, not a baseline:
 A qualified host is now the pinned Alpine container on a quiet x86-64 machine. Timing
 claims still need one.
 
+OD23 results (2026-11-22, `RESULT-ALLOC-RETRY.md` and `RESULT-REBASELINE.md` in
+`campaign-evidence/2026-11-22-musl-alloc/`), all instruction counts and memory on an
+unqualified host:
+- Allocator: neither tuned arm passes. mimalloc fails S0–S2. jemalloc passes CPU (−1.44%
+  geomean) but its source-mode private memory is +1,138 KiB, over the 1 MiB limit. musl
+  malloc stays the lane allocator.
+- C-REL-3 and J-ES-2 hold on musl (sparse `Ir` −2.98%).
+- J-TLS-1 and C-TLS-2 are null on musl: their code applies only to glibc and is kept there.
+- J-ES-3 is retired at attempt 1/1: FFT `_CHECK_PERIODIC` −11.25% (rule ≥20%), `Ir`
+  −0.07% (rule ≥1%). This closes the loop-type extensions.
+
 
 Rewrite this section at each checkpoint. Keep it short: scorecard, blockers,
 next experiments. Receipts go to the [Ledger](#ledger); the pre-2026-11-18

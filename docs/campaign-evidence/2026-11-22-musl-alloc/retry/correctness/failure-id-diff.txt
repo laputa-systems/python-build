@@ -1,0 +1,77 @@
+CPython suite-level failures from the preregistered runs:
+base, mi, je: test_capi and test_sys.
+The test_sys ID in all three is test_remote_exec_deleted_libpython.
+
+test_capi individual failure IDs from verbose diagnostic reruns:
+base (20):
+  test_binary_subscr_list_slice (test.test_capi.test_opt.TestUopsOptimization.test_binary_subscr_list_slice)
+  test_builtins_guard_emitted_once_per_frame (test.test_capi.test_opt.TestUopsOptimization.test_builtins_guard_emitted_once_per_frame)
+  test_call_method_descriptor_noargs (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_noargs)
+  test_call_py_exact_args (test.test_capi.test_opt.TestUops.test_call_py_exact_args)
+  test_call_py_exact_args (test.test_capi.test_opt.TestUopsOptimization.test_call_py_exact_args)
+  test_float_add_chain_both_unique (test.test_capi.test_opt.TestUopsOptimization.test_float_add_chain_both_unique)
+  test_float_inplace_chain_propagation (test.test_capi.test_opt.TestUopsOptimization.test_float_inplace_chain_propagation)
+  test_float_truediv_inplace_unique_lhs (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_inplace_unique_lhs)
+  test_float_truediv_speculative_guards_from_tracing (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_speculative_guards_from_tracing)
+  test_float_truediv_unique_result_enables_inplace (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_unique_result_enables_inplace)
+  test_func_guards_removed_or_reduced (test.test_capi.test_opt.TestUopsOptimization.test_func_guards_removed_or_reduced)
+  test_func_version_guarded_on_change (test.test_capi.test_opt.TestUopsOptimization.test_func_version_guarded_on_change)
+  test_guard_type_version_locked_propagates (test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_locked_propagates)
+  test_int_inplace_chain_propagation (test.test_capi.test_opt.TestUopsOptimization.test_int_inplace_chain_propagation)
+  test_jitted_code_sees_changed_copied_globals (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_changed_copied_globals) (copy=<class 'dict'>)
+  test_jitted_code_sees_changed_copied_globals (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_changed_copied_globals) (copy=<method 'copy' of 'dict' objects>)
+  test_load_attr_instance_value (test.test_capi.test_opt.TestUopsOptimization.test_load_attr_instance_value)
+  test_make_heap_safe_not_optimized_for_owned (test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_not_optimized_for_owned)
+  test_make_heap_safe_optimized_immortal (test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_optimized_immortal)
+  test_record_bound_method_exact_args (test.test_capi.test_opt.TestUopsOptimization.test_record_bound_method_exact_args)
+mi (21):
+  test_binary_subscr_list_slice (test.test_capi.test_opt.TestUopsOptimization.test_binary_subscr_list_slice)
+  test_builtins_guard_emitted_once_per_frame (test.test_capi.test_opt.TestUopsOptimization.test_builtins_guard_emitted_once_per_frame)
+  test_call_method_descriptor_noargs (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_noargs)
+  test_call_py_exact_args (test.test_capi.test_opt.TestUops.test_call_py_exact_args)
+  test_call_py_exact_args (test.test_capi.test_opt.TestUopsOptimization.test_call_py_exact_args)
+  test_float_add_chain_both_unique (test.test_capi.test_opt.TestUopsOptimization.test_float_add_chain_both_unique)
+  test_float_inplace_chain_propagation (test.test_capi.test_opt.TestUopsOptimization.test_float_inplace_chain_propagation)
+  test_float_truediv_inplace_unique_lhs (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_inplace_unique_lhs)
+  test_float_truediv_speculative_guards_from_tracing (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_speculative_guards_from_tracing)
+  test_float_truediv_unique_result_enables_inplace (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_unique_result_enables_inplace)
+  test_func_guards_removed_or_reduced (test.test_capi.test_opt.TestUopsOptimization.test_func_guards_removed_or_reduced)
+  test_func_version_guarded_on_change (test.test_capi.test_opt.TestUopsOptimization.test_func_version_guarded_on_change)
+  test_guard_type_version_locked_propagates (test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_locked_propagates)
+  test_int_inplace_chain_propagation (test.test_capi.test_opt.TestUopsOptimization.test_int_inplace_chain_propagation)
+  test_jitted_code_sees_changed_copied_globals (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_changed_copied_globals) (copy=<class 'dict'>)
+  test_jitted_code_sees_changed_copied_globals (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_changed_copied_globals) (copy=<method 'copy' of 'dict' objects>)
+  test_load_attr_instance_value (test.test_capi.test_opt.TestUopsOptimization.test_load_attr_instance_value)
+  test_make_heap_safe_not_optimized_for_owned (test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_not_optimized_for_owned)
+  test_make_heap_safe_optimized_immortal (test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_optimized_immortal)
+  test_pyobject_freed_is_freed (test.test_capi.test_mem.PyMemMallocDebugTests.test_pyobject_freed_is_freed)
+  test_record_bound_method_exact_args (test.test_capi.test_opt.TestUopsOptimization.test_record_bound_method_exact_args)
+je (20):
+  test_binary_subscr_list_slice (test.test_capi.test_opt.TestUopsOptimization.test_binary_subscr_list_slice)
+  test_builtins_guard_emitted_once_per_frame (test.test_capi.test_opt.TestUopsOptimization.test_builtins_guard_emitted_once_per_frame)
+  test_call_method_descriptor_noargs (test.test_capi.test_opt.TestUopsOptimization.test_call_method_descriptor_noargs)
+  test_call_py_exact_args (test.test_capi.test_opt.TestUops.test_call_py_exact_args)
+  test_call_py_exact_args (test.test_capi.test_opt.TestUopsOptimization.test_call_py_exact_args)
+  test_float_add_chain_both_unique (test.test_capi.test_opt.TestUopsOptimization.test_float_add_chain_both_unique)
+  test_float_inplace_chain_propagation (test.test_capi.test_opt.TestUopsOptimization.test_float_inplace_chain_propagation)
+  test_float_truediv_inplace_unique_lhs (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_inplace_unique_lhs)
+  test_float_truediv_speculative_guards_from_tracing (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_speculative_guards_from_tracing)
+  test_float_truediv_unique_result_enables_inplace (test.test_capi.test_opt.TestUopsOptimization.test_float_truediv_unique_result_enables_inplace)
+  test_func_guards_removed_or_reduced (test.test_capi.test_opt.TestUopsOptimization.test_func_guards_removed_or_reduced)
+  test_func_version_guarded_on_change (test.test_capi.test_opt.TestUopsOptimization.test_func_version_guarded_on_change)
+  test_guard_type_version_locked_propagates (test.test_capi.test_opt.TestUopsOptimization.test_guard_type_version_locked_propagates)
+  test_int_inplace_chain_propagation (test.test_capi.test_opt.TestUopsOptimization.test_int_inplace_chain_propagation)
+  test_jitted_code_sees_changed_copied_globals (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_changed_copied_globals) (copy=<class 'dict'>)
+  test_jitted_code_sees_changed_copied_globals (test.test_capi.test_opt.TestUopsOptimization.test_jitted_code_sees_changed_copied_globals) (copy=<method 'copy' of 'dict' objects>)
+  test_load_attr_instance_value (test.test_capi.test_opt.TestUopsOptimization.test_load_attr_instance_value)
+  test_make_heap_safe_not_optimized_for_owned (test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_not_optimized_for_owned)
+  test_make_heap_safe_optimized_immortal (test.test_capi.test_opt.TestUopsOptimization.test_make_heap_safe_optimized_immortal)
+  test_record_bound_method_exact_args (test.test_capi.test_opt.TestUopsOptimization.test_record_bound_method_exact_args)
+
+mi relative to base:
+  base-only: []
+  mi-only: ['test_pyobject_freed_is_freed (test.test_capi.test_mem.PyMemMallocDebugTests.test_pyobject_freed_is_freed)']
+
+je relative to base:
+  base-only: []
+  je-only: []

@@ -1,0 +1,14 @@
+base parity 0
+mi parity 0
+je parity 0
+base suites 1
+mi suites 1
+je suites 1
+mi serc 0
+je serc 0
+mi fuzz 0
+mi threaded 0
+mi ctypes 0
+je fuzz 0
+je threaded 0
+je ctypes 0

@@ -1,0 +1,46 @@
+Traceback (most recent call last):
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/tests/jit_fuzz.py", line 473, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/tests/jit_fuzz.py", line 432, in main
+    result = fuzz(args.python, programs=args.programs, seed=args.seed, jobs=args.jobs,
+                  scratch=Path(temporary))
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/tests/jit_fuzz.py", line 393, in fuzz
+    jit_out = list(pool.map(lambda path: _run_batch(python, path, True), paths))
+  File "/usr/lib/python3.14/concurrent/futures/_base.py", line 645, in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/usr/lib/python3.14/concurrent/futures/_base.py", line 312, in _result_or_cancel
+    return fut.result(timeout)
+           ~~~~~~~~~~^^^^^^^^^
+  File "/usr/lib/python3.14/concurrent/futures/_base.py", line 447, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/concurrent/futures/_base.py", line 396, in __get_result
+    raise self._exception
+  File "/usr/lib/python3.14/concurrent/futures/thread.py", line 86, in run
+    result = ctx.run(self.task)
+  File "/usr/lib/python3.14/concurrent/futures/thread.py", line 73, in run
+    return fn(*args, **kwargs)
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/tests/jit_fuzz.py", line 393, in <lambda>
+    jit_out = list(pool.map(lambda path: _run_batch(python, path, True), paths))
+                                         ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/tests/jit_fuzz.py", line 367, in _run_batch
+    completed = subprocess.run(argv, env=env, capture_output=True, check=False,
+                               text=True, timeout=BATCH_TIMEOUT_SECONDS)
+  File "/usr/lib/python3.14/subprocess.py", line 555, in run
+    with Popen(*popenargs, **kwargs) as process:
+         ~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/subprocess.py", line 1039, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                        pass_fds, cwd, env,
+                        ^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+                        gid, gids, uid, umask,
+                        ^^^^^^^^^^^^^^^^^^^^^^
+                        start_new_session, process_group)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/subprocess.py", line 1990, in _execute_child
+    raise child_exception_type(errno_num, err_msg, err_filename)
+FileNotFoundError: [Errno 2] No such file or directory: '/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/perf-rb2-jes3-candidate-serc/bin/python3.16'
