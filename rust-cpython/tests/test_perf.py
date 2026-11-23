@@ -165,10 +165,51 @@ class AllocatorIdentityTests(unittest.TestCase):
         with mock.patch.object(perf, "build", return_value=0) as build:
             self.assertEqual(perf.main(["build", "--name", "fixture"]), 0)
             self.assertEqual(build.call_args.kwargs["allocator"], "musl")
+            self.assertEqual(build.call_args.kwargs["allocator_profile"], "default")
             self.assertEqual(perf.main([
                 "build", "--name", "fixture", "--allocator", "jemalloc",
+                "--allocator-profile", "low-retention",
             ]), 0)
             self.assertEqual(build.call_args.kwargs["allocator"], "jemalloc")
+            self.assertEqual(build.call_args.kwargs["allocator_profile"], "low-retention")
+
+    def test_low_retention_profile_requires_custom_allocator_and_overlay(self):
+        with mock.patch.object(perf.lb, "doctor_report") as doctor:
+            with self.assertRaisesRegex(perf.LaneError, "requires mimalloc or jemalloc"):
+                perf.build(name="fixture", empty_overlay=False, allocator="musl",
+                           allocator_profile="low-retention")
+            with self.assertRaisesRegex(perf.LaneError, "does not support allocator profiles"):
+                perf.build(name="fixture", empty_overlay=True, allocator="mimalloc",
+                           allocator_profile="low-retention")
+        doctor.assert_not_called()
+
+    def test_allocator_config_is_part_of_the_stage_identity(self):
+        config = perf.lb.allocator_profile_config("mimalloc", "low-retention")
+        side = {"name": "mi-low-retention", "report": {
+            "allocator": "mimalloc", "allocator_profile": "low-retention",
+            "allocator_config": config, "build_identity": {
+                "allocator": "mimalloc", "allocator_profile": "low-retention",
+                "allocator_config": config}}}
+        self.assertEqual(
+            perf._allocator_identity(side),
+            ("mimalloc", "low-retention", config),
+        )
+
+    def test_comparison_refuses_allocator_config_mismatch(self):
+        baseline_config = perf.lb.allocator_profile_config("jemalloc", "default")
+        candidate_config = perf.lb.allocator_profile_config("jemalloc", "low-retention")
+        baseline = {"name": "default", "report": {
+            "allocator": "jemalloc", "allocator_profile": "default",
+            "allocator_config": baseline_config, "build_identity": {
+                "allocator": "jemalloc", "allocator_profile": "default",
+                "allocator_config": baseline_config}}}
+        candidate = {"name": "low-retention", "report": {
+            "allocator": "jemalloc", "allocator_profile": "low-retention",
+            "allocator_config": candidate_config, "build_identity": {
+                "allocator": "jemalloc", "allocator_profile": "low-retention",
+                "allocator_config": candidate_config}}}
+        with self.assertRaisesRegex(perf.LaneError, "allocator_config mismatch"):
+            perf._require_allocator_match(baseline, candidate)
 
     def test_measure_refuses_mismatched_allocators_before_sampling(self):
         root = Path("/stage")
@@ -439,7 +480,8 @@ class ReceiptTimingTests(unittest.TestCase):
             self.assertEqual(saved["build_seconds"], 30.0)
             self.assertEqual(saved["phase_seconds"], {"lease_wait": 7.0})
             self.assertEqual(saved["allocator"], "musl")
-            self.assertEqual(saved["build_identity"], {"allocator": "musl"})
+            self.assertEqual(saved["build_identity"], {
+                "allocator": "musl", "allocator_profile": "default", "allocator_config": ""})
             self.assertEqual(saved["host"], host)
 
     def test_phase_receipt_uses_operation_boundaries_and_preserves_sampling(self):
@@ -1747,7 +1789,8 @@ class IncrementalRecipeTests(unittest.TestCase):
                 self.assertEqual(report["rust_builtin_artifacts"], {} if empty_overlay else {"fixture": "verified"})
                 self.assertEqual(report["stage_identity"], perf.tree_digest(paths["stage"]))
                 self.assertEqual(report["allocator"], "musl")
-                self.assertEqual(report["build_identity"], {"allocator": "musl"})
+                self.assertEqual(report["build_identity"], {
+                    "allocator": "musl", "allocator_profile": "default", "allocator_config": ""})
                 self.assertEqual(report["incremental"], incremental)
                 self.assertEqual(report["rust_source_aggregate"], {"fixture": "verified"} if source_std and aggregate and not empty_overlay else None)
                 self.assertEqual((source / "Lib/pickle.py").read_text(), "old" if empty_overlay else "new")

@@ -99,6 +99,35 @@ class JitConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(perf.lb.LaneError, "invalid allocator link request"):
             perf.lb.allocator_link_flags("jemalloc")
 
+    def test_allocator_profile_configs_and_cache_keys_are_separate(self):
+        self.assertEqual(perf.lb.allocator_profile_config("musl", "default"), "")
+        self.assertEqual(
+            perf.lb.allocator_profile_config("mimalloc", "low-retention"),
+            "-DMI_DEFAULT_ARENA_EAGER_COMMIT=0 -DMI_DEFAULT_PAGE_FULL_RETAIN=0",
+        )
+        self.assertEqual(
+            perf.lb.allocator_profile_config("jemalloc", "low-retention"),
+            "--with-malloc-conf=dirty_decay_ms:0,muzzy_decay_ms:0,narenas:1",
+        )
+        self.assertNotEqual(
+            perf.lb.allocator_cache_key("mimalloc", "default"),
+            perf.lb.allocator_cache_key("mimalloc", "low-retention"),
+        )
+        with self.assertRaisesRegex(perf.lb.LaneError, "requires mimalloc or jemalloc"):
+            perf.lb.allocator_profile_config("musl", "low-retention")
+
+    def test_mimalloc_low_retention_patch_digest_is_verified(self):
+        locked = perf.lb._musl_allocator_metadata("mimalloc")["low_retention_patch"]
+        patch = LANE / locked["path"]
+        digest = hashlib.sha256(patch.read_bytes()).hexdigest()
+        self.assertEqual(digest, locked["sha256"])
+        self.assertEqual(perf.lb.verify_locked_patch(patch, digest), digest)
+        with tempfile.TemporaryDirectory() as temporary:
+            changed = Path(temporary) / "patch"
+            changed.write_text("tampered")
+            with self.assertRaisesRegex(perf.lb.LaneError, "patch digest mismatch"):
+                perf.lb.verify_locked_patch(changed, digest)
+
     def test_mimalloc_internal_symbols_are_localized_without_hiding_malloc(self):
         output = (
             "00000000 T __mi_stat_increase\n"
