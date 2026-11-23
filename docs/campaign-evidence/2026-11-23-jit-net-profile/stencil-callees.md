@@ -37,5 +37,5 @@ nbody.
 - **Box and free pairs:** 21% of sparse's net `Ir` and 16% of nbody's. Sparse boxes 5.4 M
   ints and 5.0 M floats, and frees about as many. The values are boxed only to be freed again.
   The remedy is wider unboxing, not a faster boxing call.
-- **nbody's JIT code itself** has 554 M `Ir` (77% of net) and calls out rarely. Splitting
+- **nbody's JIT code itself** executes 501 M `Ir` of its own (69% of net, cachegrind `???`) and calls out rarely. Splitting
   that cost by uop needs per-address `Ir` mapped through the JIT map; that is the next profile.
