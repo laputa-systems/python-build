@@ -14,7 +14,7 @@
     "apk_closure_sha256": "02c25096229b7a595707a6797b48dad2887a61ecbb2f6691da09efa6389375cc",
     "llvm_sha256": "de3f6d0ad089391482147c61648c511c500b25289132fe7f2c446a0905406d2a"
   },
-  "lane_apk_cache": ".cache/bootstrap/lane-musl/apk/amd64",
+  "lane_apk_cache": ".cache/bootstrap/lane-musl/apk/amd64-no-gcc",
   "system_package_roots": [
     "openssl-dev",
     "sqlite-dev",
@@ -29,8 +29,7 @@
     "gdbm-dev",
     "expat-dev",
     "valgrind",
-    "libc++-dev",
-    "gcc"
+    "libc++-dev"
   ],
   "build_tool_roots": ["git"],
   "system_package_substitutions": {
@@ -38,20 +37,10 @@
     "libllvm18": "LLVM libraries from the pinned production LLVM archive",
     "libicu74": "the pinned production LLVM archive is built for musl and needs no ICU runtime package",
     "libxml2": "the pinned production LLVM archive is self-contained for this lane",
-    "libgcc-14-dev": "the lane uses Alpine libgcc_s.so.1 for Rust unwinding; musl CRT objects come from Alpine"
+    "libgcc-14-dev": "the lane uses Alpine libgcc_s.so.1 for Rust unwinding; musl startup objects come from the locked LLVM compiler-rt archive"
   },
   "lane_packages": [
-    {"name":"binutils","version":"2.45.1-r1","arch":"x86_64","sha256":"15682887459d216585feb438bbfb7ec63e1f33e77c453f44637d2d9d8c35977d","size":3229647,"license":"GPL-2.0-or-later AND LGPL-2.1-or-later AND BSD-3-Clause","repository":"main"},
-    {"name":"gcc","version":"15.2.0-r5","arch":"x86_64","sha256":"d1d482472ed91240731c60dbae8176bc1e32e1dfb694856da6759f6d32716325","size":60496469,"license":"GPL-2.0-or-later AND LGPL-2.1-or-later","repository":"main"},
-    {"name":"gmp","version":"6.3.0-r4","arch":"x86_64","sha256":"85323ef5bce8ff234736dc2d6592ea37aebdc6348a531e27430bdfe38364d256","size":220074,"license":"LGPL-3.0-or-later OR GPL-2.0-or-later","repository":"main"},
-    {"name":"isl26","version":"0.26-r2","arch":"x86_64","sha256":"30999fb66e296c8ea7aa102cad0d3095519b3022abb622d2951dd29367310ea9","size":915985,"license":"MIT","repository":"main"},
-    {"name":"jansson","version":"2.15.0-r0","arch":"x86_64","sha256":"7681b41486e1f2b2efce11875c839533464ae8857d30fc49130f0039c6585fdb","size":48950,"license":"MIT","repository":"main"},
-    {"name":"libatomic","version":"15.2.0-r5","arch":"x86_64","sha256":"c5ec550c73dd7b4e81e206fdff3cf4c46b0ae1b29fec1db5cd4e12d88416abbf","size":10241,"license":"GPL-2.0-or-later AND LGPL-2.1-or-later","repository":"main"},
     {"name":"libgcc","version":"15.2.0-r5","arch":"x86_64","sha256":"393dcd32629f06d7d85409c272d142d0c082772d10b87ef55ee82f47de3be637","size":80348,"license":"GPL-3.0-or-later WITH GCC-exception-3.1","apkindex_license":"GPL-2.0-or-later AND LGPL-2.1-or-later","repository":"main","role":"lane runtime library libgcc_s.so.1, not a compiler"},
-    {"name":"libgcc-static","version":"15.2.0-r5","arch":"x86_64","sha256":"563244a562f5c48b921f7f0b4a571e373cfcba65175fe2d4f752c5f975738bcd","size":2249602,"license":"GPL-2.0-or-later AND LGPL-2.1-or-later","repository":"main"},
-    {"name":"libgomp","version":"15.2.0-r5","arch":"x86_64","sha256":"e7204aad00e31d544e0a34eac5a7eb7d3586d2b7b22afd6e5907189c4e0337cc","size":153729,"license":"GPL-2.0-or-later AND LGPL-2.1-or-later","repository":"main"},
-    {"name":"mpc1","version":"1.3.1-r1","arch":"x86_64","sha256":"c2247438e163f1c11646428f07576ceb3cf3167f9a9a5c6526021f778d77adb6","size":48549,"license":"LGPL-3.0-or-later","repository":"main"},
-    {"name":"mpfr4","version":"4.2.2-r0","arch":"x86_64","sha256":"93620a803d416e8c05150fb14413796df14ea370322dff6bd106455deab15646","size":313348,"license":"LGPL-3.0-or-later","repository":"main"},
     {"name":"brotli-libs","version":"1.2.1-r0","arch":"x86_64","sha256":"62a7e37e43bbfc1f8525a00ad2125fd5897135dc93b849733884cb78ffd8e26c","size":429435,"license":"MIT","repository":"main"},
     {"name":"bzip2-dev","version":"1.0.8-r6","arch":"x86_64","sha256":"38b1c8a4da3ef0bab15d2549016751a406d8ae33887d4b3956aa6643e1448d04","size":3617,"license":"bzip2-1.0.6","repository":"main"},
     {"name":"c-ares","version":"1.34.9-r0","arch":"x86_64","sha256":"3539a3e11c1ef1516117d8179a546ac882086e94e0d78ad51d687b3fa2b3b5f2","size":113179,"license":"MIT","repository":"main"},
@@ -180,6 +169,21 @@
     "build": {
       "source_files": "llvm/tools/llvm-dwarfdump/*.cpp",
       "compiler": "production LLVM 23.1.5 clang++",
+      "deterministic": {
+        "environment": {
+          "ARFLAGS": "rcD",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "SOURCE_DATE_EPOCH": "1704067200",
+          "TZ": "UTC",
+          "ZERO_AR_DATE": "1"
+        },
+        "path_maps": {
+          "source": "llvm-project/llvm/tools/llvm-dwarfdump",
+          "build": "llvm-dwarfdump-build",
+          "checkout": "rust-cpython"
+        }
+      },
       "llvm_config": "llvm-config --link-static --cxxflags; llvm-config --link-static --ldflags --libs <llvm_config_components> --system-libs",
       "llvm_link_components": [
         "BinaryFormat",
@@ -217,11 +221,14 @@
         "llvm-libunwind=22.1.3-r0"
       ],
       "cxx_runtime": "production LLVM static libc++.a and libc++abi.a are preferred via -L <production LLVM>/lib",
-      "cxx_startup_files_package": "gcc=15.2.0-r5 supplies crtbeginS.o/crtendS.o for the production clang++ driver",
+      "cxx_startup_files": "clang_rt.crtbegin.o and clang_rt.crtend.o from the locked LLVM archive",
       "cache_path": ".cache/bootstrap/lane-musl/llvm-dwarfdump/23.1.5/bin/llvm-dwarfdump",
+      "previous_binary_sha256": "b323a79e2f687bb3b950f308fdeeea412f95a8e282ee15cc26277f25502265a5",
+      "previous_binary_size": 18704168,
       "binary_sha256": "b323a79e2f687bb3b950f308fdeeea412f95a8e282ee15cc26277f25502265a5",
       "binary_size": 18704168,
-      "rebuild_when": "cached binary is missing or its SHA-256 differs from build.binary_sha256",
+      "binary_pin_note": "The prior binary was built with GCC crtbeginS.o/crtendS.o. Compiler-rt startup objects and deterministic path, time, and archive settings produce the replacement.",
+      "rebuild_when": "cached binary is missing or its SHA-256 or size differs from the locked output",
       "version_check": "llvm-dwarfdump --version reports 23.1.5"
     }
   },

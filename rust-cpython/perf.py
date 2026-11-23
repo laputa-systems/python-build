@@ -46,8 +46,8 @@ LANE = Path(__file__).resolve().parent
 REPO = LANE.parent
 SCRATCH = REPO / ".work" / "tmp"
 
-sys.path.insert(0, str(REPO))
-from cache_paths import git_common_dir
+sys.path.insert(0, str(LANE))
+from lane_cache import cache_root, git_common_dir, primary_checkout
 
 
 def _lane_build():
@@ -205,10 +205,10 @@ def _common_dir() -> Path:
 
 
 def _primary_repo() -> Path:
-    common = _common_dir()
-    if common.name != ".git":
-        raise LaneError(f"cannot locate the primary checkout from git common dir {common}")
-    return common.parent
+    try:
+        return primary_checkout(REPO)
+    except RuntimeError as error:
+        raise LaneError(str(error)) from error
 
 
 def _git_state() -> dict[str, Any]:
@@ -689,12 +689,10 @@ def _install_source_aggregate(source: Path, paths: dict[str, Path],
 
 def _builtin_artifact_verifier():
     proof_path = LANE / "builtin_modules.py"
-    common_dir = _common_dir()
-    if common_dir.name != ".git":
-        raise LaneError(f"cannot locate primary Git storage from common dir {common_dir}")
     git_dir = Path(_git("rev-parse", "--absolute-git-dir"))
-    object_stores = (REPO / ".cache/objects", common_dir.parent / ".cache/objects",
-                     REPO / ".git/objects", git_dir / "objects", common_dir / "objects")
+    common_objects = Path(_git("rev-parse", "--path-format=absolute", "--git-path", "objects"))
+    object_stores = (cache_root(REPO) / "objects", REPO / ".git/objects",
+                     git_dir / "objects", common_objects)
     identities = {(info.st_dev, info.st_ino) for path in object_stores
                   if path.exists() for info in [path.stat()]}
     for path in (proof_path,):
@@ -2721,9 +2719,11 @@ def setup_worktree() -> int:
     if primary == REPO:
         print("OK    primary checkout; nothing to share")
         return 0
+    primary_cache = cache_root(primary)
+    worktree_cache = cache_root(REPO)
     links = (
-        (primary / ".cache" / "objects", REPO / ".cache" / "objects"),
-        (primary / ".cache" / "bootstrap", REPO / ".cache" / "bootstrap"),
+        (primary_cache / "objects", worktree_cache / "objects"),
+        (primary_cache / "bootstrap", worktree_cache / "bootstrap"),
         (primary / "benchmarks" / ".cache" / "wheelhouse", REPO / "benchmarks" / ".cache" / "wheelhouse"),
     )
     for source, target in links:
@@ -2732,6 +2732,13 @@ def setup_worktree() -> int:
         if not target.exists():
             target.parent.mkdir(parents=True, exist_ok=True)
             target.symlink_to(source)
+        print(f"OK    {target} -> {target.resolve()}")
+    llvm_objects = primary_cache / "llvm" / "objects"
+    if llvm_objects.is_dir():
+        target = worktree_cache / "llvm" / "objects"
+        if not target.exists():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.symlink_to(llvm_objects)
         print(f"OK    {target} -> {target.resolve()}")
     toolchain, _target = lb._toolchain()
     llvm_prefix = lb._llvm_ready(toolchain)

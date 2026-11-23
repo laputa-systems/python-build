@@ -25,7 +25,7 @@ sys.path.insert(0, str(LANE))
 import builtin_modules
 import perf
 import perf_verdict as pv
-import cache_paths
+import lane_cache
 
 
 NO_CPU = object()
@@ -39,6 +39,7 @@ class PrimaryCheckoutTests(unittest.TestCase):
             root.mkdir()
             subprocess.run(["git", "init", "-q", str(root)], check=True)
             (root / "tracked").write_text("tracked\n")
+            (root / ".cache" / "llvm" / "objects").mkdir(parents=True)
             subprocess.run(["git", "-C", str(root), "add", "tracked"], check=True)
             subprocess.run(
                 ["git", "-C", str(root), "-c", "user.name=Test",
@@ -49,9 +50,16 @@ class PrimaryCheckoutTests(unittest.TestCase):
                 ["git", "-C", str(root), "worktree", "add", "--detach", str(worktree), "HEAD"],
                 check=True,
             )
-            self.assertEqual(cache_paths.primary_checkout(worktree), root.resolve())
-            self.assertEqual(cache_paths.shared_cache_root(worktree), root / ".cache")
-            self.assertEqual(cache_paths.mount_root(worktree), root.resolve())
+            (root / ".cache" / "bootstrap").mkdir(parents=True)
+            (worktree / ".cache").mkdir()
+            (worktree / ".cache" / "bootstrap").symlink_to(root / ".cache" / "bootstrap")
+            (worktree / ".cache" / "llvm").mkdir()
+            (worktree / ".cache" / "llvm" / "objects").symlink_to(
+                root / ".cache" / "llvm" / "objects"
+            )
+            self.assertEqual(lane_cache.primary_checkout(worktree), root.resolve())
+            self.assertEqual(lane_cache.cache_root(worktree), worktree / ".cache")
+            self.assertEqual(lane_cache.mount_root(worktree), root.resolve())
 
 
 class WorktreeSetupTests(unittest.TestCase):
@@ -62,7 +70,7 @@ class WorktreeSetupTests(unittest.TestCase):
             worktree = root / "fresh"
             (primary / ".cache" / "objects").mkdir(parents=True)
             (primary / ".cache" / "bootstrap" / "lane-musl" / "apk").mkdir(parents=True)
-            (primary / ".cache" / "llvm").mkdir(parents=True)
+            (primary / ".cache" / "llvm" / "objects").mkdir(parents=True)
             (primary / "benchmarks" / ".cache" / "wheelhouse").mkdir(parents=True)
             (primary / "rust-cpython" / ".cargo-home").mkdir(parents=True)
             (primary / "rust-cpython" / ".cargo-home" / "marker").write_text("cargo home\n")
@@ -93,6 +101,7 @@ class WorktreeSetupTests(unittest.TestCase):
                 (primary / ".cache" / "bootstrap").resolve(),
             )
             self.assertTrue((worktree / ".cache" / "bootstrap").is_symlink())
+            self.assertTrue((worktree / ".cache" / "llvm" / "objects").is_symlink())
             self.assertFalse((worktree / ".cache" / "llvm").is_symlink())
             self.assertEqual(ready.call_args.args[0], toolchain)
             self.assertEqual(

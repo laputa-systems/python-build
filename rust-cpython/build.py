@@ -35,7 +35,7 @@ LANE = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(LANE))
 
-from cache_paths import local_cache_root, shared_cache_root
+from lane_cache import cache_path, cache_root
 
 import lane_linux
 
@@ -108,18 +108,22 @@ MUSL_X86_64_LAYOUT = ExtractionLayout(
         "bin/llvm-nm", "bin/llvm-objcopy",
         "lib/clang/23/include/stdint.h",
         "lib/clang/23/lib/linux/libclang_rt.builtins-x86_64.a",
+        "lib/clang/23/lib/linux/clang_rt.crtbegin.o",
+        "lib/clang/23/lib/linux/clang_rt.crtend.o",
         "lib/libclang.so.23.1.5",
     }),
     library_files=frozenset({"lib/libclang.so.23.1.5"}),
     resource_prefixes=("lib/clang/23/include/",),
     resource_files=frozenset({
         "lib/clang/23/lib/linux/libclang_rt.builtins-x86_64.a",
+        "lib/clang/23/lib/linux/clang_rt.crtbegin.o",
+        "lib/clang/23/lib/linux/clang_rt.crtend.o",
     }),
     max_member_bytes=320 * 1024 * 1024,
     max_prefix_bytes=900 * 1024 * 1024,
 )
-LOCAL_CACHE_ROOT = local_cache_root(REPO)
-CACHE_ROOT = shared_cache_root(REPO)
+LOCAL_CACHE_ROOT = cache_root(REPO)
+CACHE_ROOT = cache_root(REPO)
 CARGO_HOME = LANE / ".cargo-home"
 CARGO_CONFIG_ISOLATED_CWD = Path("/")
 INDEX_FORWARDER_PORT = 18737
@@ -315,7 +319,7 @@ def _toolchain():
     if IS_LINUX:
         try:
             toolchain = lane_linux.load_musl_toolchain(
-                LINUX_TOOLCHAIN_LOCK, local_cache_root(REPO, LOCAL_CACHE_ROOT))
+                LINUX_TOOLCHAIN_LOCK, cache_root(REPO, LOCAL_CACHE_ROOT))
         except lane_linux.LinuxHostError as error:
             raise LaneError(str(error)) from error
         return toolchain, LaneTarget(LINUX_TARGET, toolchain.cpu_baseline)
@@ -990,7 +994,7 @@ def _musl_llvm_dwarfdump_inputs(toolchain, *, fetch: bool) -> dict[str, Path]:
     )
     cache = Cache(CACHE_ROOT / "bootstrap")
     paths = {}
-    for name, url, sha256, size, cache_path in inputs:
+    for name, url, sha256, size, cache_relative_path in inputs:
         input_ = Input(
             name=f"llvm-dwarfdump-{name}",
             version=entry["version"],
@@ -1003,7 +1007,7 @@ def _musl_llvm_dwarfdump_inputs(toolchain, *, fetch: bool) -> dict[str, Path]:
             purpose="locked input for lane-only llvm-dwarfdump",
         )
         blob = cache.fetch(input_) if fetch else cache.require(input_)
-        path = (REPO / cache_path).resolve()
+        path = cache_path(REPO, cache_relative_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
             dir=path.parent, prefix=f".{path.name}-", delete=False
@@ -1026,11 +1030,13 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
     entry = document["llvm_dwarfdump"]
     recipe = entry["build"]
     dev = entry["dev_archive"]
-    cached = (REPO / recipe["cache_path"]).resolve()
+    cached = cache_path(REPO, recipe["cache_path"])
     expected_binary_sha = recipe.get("binary_sha256")
+    expected_binary_size = recipe.get("binary_size")
     if (
         expected_binary_sha
         and cached.is_file()
+        and (expected_binary_size is None or cached.stat().st_size == expected_binary_size)
         and _file_sha256(cached) == expected_binary_sha
     ):
         return cached
@@ -1045,7 +1051,7 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
     if not attestation.is_file():
         raise LaneError(f"LLVM source attestation bundle is missing: {attestation}")
 
-    dev_prefix = (REPO / dev["extracted_prefix"]).resolve()
+    dev_prefix = cache_path(REPO, dev["extracted_prefix"])
     llvm_config = dev_prefix / "bin" / "llvm-config"
     if not llvm_config.is_file():
         extraction_root = dev_prefix.parent
@@ -1111,6 +1117,26 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
             *recipe["llvm_config_components"],
             "--system-libs",
         )
+        build_recipe = recipe["deterministic"]
+        build_env = os.environ.copy()
+        build_env.update({
+            name: str(value) for name, value in build_recipe["environment"].items()
+        })
+        path_maps = build_recipe["path_maps"]
+        prefix_maps = (
+            (source_dir, path_maps["source"]),
+            (Path(temporary), path_maps["build"]),
+            (REPO, path_maps["checkout"]),
+        )
+        prefix_flags = [
+            f"{flag}={source}={destination}"
+            for source, destination in prefix_maps
+            for flag in (
+                "-ffile-prefix-map",
+                "-fdebug-prefix-map",
+                "-fmacro-prefix-map",
+            )
+        ]
         binary = Path(temporary) / "llvm-dwarfdump"
         unwind_library = Path("/usr/lib/libunwind.so.1")
         if not unwind_library.is_file():
@@ -1121,7 +1147,10 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
             "-fuse-ld=lld",
             "-rtlib=compiler-rt",
             "-unwindlib=libunwind",
+            "-Wl,--build-id=sha1",
             *cxxflags,
+            *prefix_flags,
+            f"-fdebug-compilation-dir={path_maps['build']}",
             "-isystem",
             "/usr/include/c++/v1",
             "-I",
@@ -1135,7 +1164,14 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
             "-o",
             str(binary),
         ]
-        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        result = subprocess.run(
+            command,
+            cwd=source_dir,
+            env=build_env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
         if result.returncode:
             raise LaneError(
                 f"cannot build locked llvm-dwarfdump:\n{result.stdout}{result.stderr}"
@@ -1152,6 +1188,11 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
         if expected_binary_sha and actual_sha != expected_binary_sha:
             raise LaneError(
                 f"built llvm-dwarfdump digest {actual_sha} != locked {expected_binary_sha}"
+            )
+        actual_size = binary.stat().st_size
+        if expected_binary_size is not None and actual_size != expected_binary_size:
+            raise LaneError(
+                f"built llvm-dwarfdump size {actual_size} != locked {expected_binary_size}"
             )
         with tempfile.NamedTemporaryFile(
             dir=cached.parent, prefix=f".{cached.name}-", delete=False
@@ -1478,7 +1519,7 @@ def _musl_allocator_input(name: str, metadata: dict[str, Any], target: str) -> I
 
 def _cache_musl_allocator_source(name: str, toolchain, *, fetch: bool) -> Path:
     metadata = _musl_allocator_metadata(name)
-    path = (REPO / metadata["cache_path"]).resolve()
+    path = cache_path(REPO, metadata["cache_path"]).resolve()
     bootstrap_cache = (CACHE_ROOT / "bootstrap").resolve()
     if not path.is_relative_to(bootstrap_cache):
         raise LaneError(f"{name} source cache path escapes the repository")

@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from cache_paths import local_cache_root
+from lane_cache import cache_root as lane_cache_root
 
 from buildsys.bootstrap import BootstrapError, load_linux_bootstrap
 from buildsys.inputs import Cache, Input, InputError
@@ -481,7 +481,7 @@ def load_musl_toolchain(path: Path, cache_root: Path | None = None) -> MuslToolc
     if rust.get("host") != TARGET or rust.get("channel") != "nightly-2026-09-15":
         raise LinuxHostError(f"{path}: Rust toolchain pin is not the musl lane toolchain")
     version = llvm["version"]
-    local_cache = local_cache_root(Path(path).resolve().parents[1], cache_root)
+    local_cache = lane_cache_root(Path(path).resolve().parents[1], cache_root)
     raw_prefix = (local_cache / "llvm" / "raw" / f"{version}-{archive.sha256}-musl").resolve()
     additions_sha256 = _llvm_prepared_additions_sha256(TARGET)
     prefix = (local_cache / "llvm" / "prepared"
@@ -687,6 +687,16 @@ def _musl_problems(toolchain: MuslToolchain) -> list[str]:
         resource = _tool_output([str(toolchain.clang), "-print-resource-dir"])
         if Path(resource) != toolchain.llvm_resource_dir:
             found.append(f"clang resource directory is {resource!r}")
+        for name in ("clang_rt.crtbegin.o", "clang_rt.crtend.o"):
+            expected_crt = toolchain.llvm_resource_dir / "lib" / "linux" / name
+            reported_crt = _tool_output(
+                [str(toolchain.clang), f"-print-file-name={name}"]
+            )
+            if not expected_crt.is_file() or Path(reported_crt) != expected_crt:
+                found.append(
+                    f"clang resolves {name} to {reported_crt!r}; "
+                    f"expected {expected_crt}"
+                )
         for name in ("ld.lld", "llvm-ar", "llvm-nm", "llvm-readelf"):
             reported = _tool_output([str(toolchain.llvm_prefix / "bin" / name), "--version"])
             if toolchain.llvm_version not in reported:
@@ -867,12 +877,13 @@ def _llvm_prepared_additions_sha256(target: str) -> str:
         "",
     ))
     recipe = {
-        "schema": 1,
+        "schema": 2,
         "target": target,
         "stack_patcher_sha256": hashlib.sha256(patcher.read_bytes()).hexdigest(),
         "target_config": target_config.replace(str(Path("/prepared-llvm")), "{LLVM_PREFIX}"),
         "clangxx_additions": ["-lc++abi", "-lunwind"],
         "strip_link": "llvm-strip",
+        "runtime_files": ["clang_rt.crtbegin.o", "clang_rt.crtend.o"],
     }
     return hashlib.sha256(
         json.dumps(recipe, sort_keys=True, separators=(",", ":")).encode()
@@ -905,9 +916,9 @@ def _prepared_files(root: Path) -> dict[str, dict[str, Any]]:
 def _prepared_prefix_matches(toolchain: MuslToolchain, additions_sha256: str) -> bool:
     manifest = toolchain.llvm_prefix / ".prepared-manifest.json"
     try:
-        record = json.loads(manifest.read_text())
+            record = json.loads(manifest.read_text())
         return (
-            record.get("schema") == 1
+            record.get("schema") == 2
             and record.get("raw_archive_sha256") == toolchain.llvm_archive_sha256
             and record.get("prepared_additions_sha256") == additions_sha256
             and record.get("files") == _prepared_files(toolchain.llvm_prefix)

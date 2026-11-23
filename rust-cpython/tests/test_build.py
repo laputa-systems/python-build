@@ -114,6 +114,10 @@ class JitConfigurationTests(unittest.TestCase):
     def test_musl_layout_no_longer_requires_llvm_libunwind(self):
         self.assertNotIn("lib/libunwind.a", perf.lb.MUSL_X86_64_LAYOUT.required)
         self.assertNotIn("lib/libunwind.a", perf.lb.MUSL_X86_64_LAYOUT.library_files)
+        for name in ("clang_rt.crtbegin.o", "clang_rt.crtend.o"):
+            member = f"lib/clang/23/lib/linux/{name}"
+            self.assertIn(member, perf.lb.MUSL_X86_64_LAYOUT.required)
+            self.assertIn(member, perf.lb.MUSL_X86_64_LAYOUT.resource_files)
 
     def regen(self, version: str) -> tuple[Path, Path]:
         root = Path(self.enterContext(tempfile.TemporaryDirectory()))
@@ -523,6 +527,25 @@ class PreparedLinuxLLVMTests(unittest.TestCase):
 
 
 class LinuxDwarfdumpInputTests(unittest.TestCase):
+    def test_dwarfdump_lock_records_reproducible_build_inputs(self):
+        entry = json.loads(build.LINUX_TOOLCHAIN_LOCK.read_text())["llvm_dwarfdump"]
+        recipe = entry["build"]
+        deterministic = recipe["deterministic"]
+        self.assertEqual(
+            deterministic["environment"]["SOURCE_DATE_EPOCH"], "1704067200"
+        )
+        self.assertEqual(deterministic["environment"]["ZERO_AR_DATE"], "1")
+        self.assertEqual(
+            set(deterministic["path_maps"]),
+            {"source", "build", "checkout"},
+        )
+        self.assertRegex(recipe["binary_sha256"], r"^[0-9a-f]{64}$")
+        self.assertGreater(recipe["binary_size"], 0)
+        self.assertEqual(
+            recipe["previous_binary_sha256"],
+            "b323a79e2f687bb3b950f308fdeeea412f95a8e282ee15cc26277f25502265a5",
+        )
+
     def test_fetch_provisions_source_dev_and_attestation_from_locked_urls(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -579,6 +602,18 @@ class LinuxDwarfdumpInputTests(unittest.TestCase):
 
 
 class MuslAPKVerificationTests(unittest.TestCase):
+    def test_lane_lock_keeps_runtime_libgcc_but_excludes_gcc_toolchain(self):
+        lock = json.loads(build.LINUX_TOOLCHAIN_LOCK.read_text())
+        names = {package["name"] for package in lock["lane_packages"]}
+        compiler_only = {
+            "binutils", "gcc", "gmp", "isl26", "jansson", "libatomic",
+            "libgcc-static", "libgomp", "mpc1", "mpfr4",
+        }
+        self.assertFalse(names & compiler_only)
+        self.assertNotIn("gcc", lock["system_package_roots"])
+        runtime = next(package for package in lock["lane_packages"] if package["name"] == "libgcc")
+        self.assertEqual(runtime["role"], "lane runtime library libgcc_s.so.1, not a compiler")
+
     def test_tampered_and_extra_apks_are_rejected_before_container_install(self):
         payload = b"locked"
         package = {
@@ -590,7 +625,7 @@ class MuslAPKVerificationTests(unittest.TestCase):
             "sha256": hashlib.sha256(payload).hexdigest(),
         }
         lane = {
-            "lane_apk_cache": ".cache/bootstrap/lane-musl/apk/amd64",
+            "lane_apk_cache": ".cache/bootstrap/lane-musl/apk/amd64-no-gcc",
             "lane_packages": [package],
             "repositories": ["https://example.invalid/main"],
         }
@@ -611,9 +646,9 @@ class MuslAPKVerificationTests(unittest.TestCase):
                 docker = mock.Mock()
                 with mock.patch.object(musl_run, "lock_data",
                                        return_value=(lane, production)), \
-                        mock.patch.object(musl_run, "shared_path",
+                        mock.patch.object(musl_run, "cache_path",
                                           return_value=lane_cache), \
-                        mock.patch.object(musl_run, "SHARED_CACHE", root), \
+                        mock.patch.object(musl_run, "CACHE_ROOT", root), \
                         mock.patch.object(musl_run.subprocess, "run", docker):
                     with self.assertRaisesRegex(SystemExit, message):
                         musl_run.main(["python3", "--version"])

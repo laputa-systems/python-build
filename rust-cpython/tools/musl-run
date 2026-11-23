@@ -14,11 +14,10 @@ import urllib.request
 
 LANE = pathlib.Path(__file__).resolve().parents[1]
 REPO = LANE.parent
-sys.path.insert(0, str(REPO))
-from cache_paths import local_cache_root, mount_root, primary_checkout, shared_cache_root, shared_path
+sys.path.insert(0, str(LANE))
+from lane_cache import cache_path, cache_root, mount_root
 
-PRIMARY = primary_checkout(REPO)
-SHARED_CACHE = shared_cache_root(REPO)
+CACHE_ROOT = cache_root(REPO)
 LOCK_PATH = LANE / "linux-musl-toolchain.lock.json"
 BOOTSTRAP_PATH = REPO / "bootstrap.lock.json"
 
@@ -31,8 +30,8 @@ def lock_data() -> tuple[dict, dict]:
 
 def verify_cache(*, download_missing: bool) -> None:
     lane, production = lock_data()
-    base_cache = SHARED_CACHE / "bootstrap" / "apk" / "amd64"
-    cache = shared_path(REPO, lane["lane_apk_cache"])
+    base_cache = CACHE_ROOT / "bootstrap" / "apk" / "amd64"
+    cache = cache_path(REPO, lane["lane_apk_cache"])
     base_packages = production["apk_closure"]["x86_64"]
     lane_packages = lane["lane_packages"]
     _verify_apk_directory(base_cache, base_packages, by_digest=True)
@@ -189,8 +188,8 @@ def run_container(mode: str, command: list[str], *, download_missing: bool = Fal
     verify_cache(download_missing=download_missing)
     lane, _production = lock_data()
     image = "alpine@" + lane["production"]["image_digest"]
-    cache = shared_path(REPO, lane["lane_apk_cache"])
-    base_cache = SHARED_CACHE / "bootstrap" / "apk" / "amd64"
+    cache = cache_path(REPO, lane["lane_apk_cache"])
+    base_cache = CACHE_ROOT / "bootstrap" / "apk" / "amd64"
     base_apks = [
         base_cache / f'{item["sha256"]}.apk'
         for item in _production["apk_closure"]["x86_64"]
@@ -201,7 +200,7 @@ def run_container(mode: str, command: list[str], *, download_missing: bool = Fal
     ]
     rustup_home = LANE / lane["rust"]["cache"]
     cargo_home = LANE / ".cargo-home"
-    llvm_prefix = local_cache_root(REPO) / "llvm" / "toolchains" / (
+    llvm_prefix = CACHE_ROOT / "llvm" / "toolchains" / (
         lane["llvm"]["version"] + "-" + lane["llvm"]["sha256"] + "-musl"
     )
     script = f'''set -eu
