@@ -1296,7 +1296,7 @@ def _musl_rustc_wrapper() -> Path:
         "        --target|--target=*) exec \"$rustc\" \"$@\" ;;\n"
         "    esac\n"
         "done\n"
-        "exec \"$rustc\" -C target-feature=-crt-static \"$@\"\n"
+        "exec \"$rustc\" -C target-feature=-crt-static -C link-arg=-fuse-ld=lld \"$@\"\n"
     )
     if not wrapper.is_file() or wrapper.read_text() != script:
         wrapper.write_text(script)
