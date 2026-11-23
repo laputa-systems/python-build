@@ -44,3 +44,15 @@ and +0.24%), and the retention settings do not reduce user-space instructions. I
 purging adds `madvise` calls, which Cachegrind counts only as the user-side instructions
 around the syscalls. Prediction: both arms fail S1 again, and jemalloc may pass S2. The
 retry is still run in full, as directed.
+
+## Amendment A (2026-11-22, before any measurement)
+
+The `perf-musl-je2` smoke shows jemalloc's static archive uses initial-exec TLS
+(`GOTTPOFF` against `je_tsd_tls`). musl therefore refuses to dlopen the stage's
+libpython, and Alpine `ctypes.CDLL` fails with `explicit_bzero: initial-exec TLS resolves
+to dynamic definition`. This is the defect `ca3d710` removed from the lane on musl, so the
+jemalloc arm, in every profile, is now configured with `--disable-initial-exec-tls`.
+
+- The flag is recorded in `allocator_config`.
+- No retention setting changes, and no rule or threshold changes.
+- The mimalloc arm is unaffected: its archive has no `TPOFF`/`GOTTPOFF` relocations.

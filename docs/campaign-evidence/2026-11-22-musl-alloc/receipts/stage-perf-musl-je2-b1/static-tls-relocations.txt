@@ -1,0 +1,2 @@
+TPOFF/GOTTPOFF relocation count: 0
+

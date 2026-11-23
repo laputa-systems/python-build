@@ -119,6 +119,10 @@
       "license": "MIT",
       "cache_path": ".cache/bootstrap/lane-musl/allocators/mimalloc-v3.7.0-source.tar.gz",
       "archive_root": "mimalloc-1ed67b5156a763441d2ec3c20221a7b3cd866129",
+      "low_retention_patch": {
+        "path": "patches/mimalloc-v3.7.0-purge-delay-0.patch",
+        "sha256": "d7103fd6b7f2280ebbd27ad339bb6ba278ea063a2bbb440653337d7ec36537ef"
+      },
       "build": {
         "source": "src/static.c",
         "cflags": ["-O2", "-fPIC", "-DMI_MALLOC_OVERRIDE"],

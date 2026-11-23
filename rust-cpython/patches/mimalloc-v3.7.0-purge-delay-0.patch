@@ -1,0 +1,6 @@
+diff --git a/src/util/options.c b/src/util/options.c
+--- a/src/util/options.c
++++ b/src/util/options.c
+@@ -149 +149 @@
+-  { 1000, MI_OPTION_LEGACY(purge_delay,reset_delay) },  // purge delay in milli-seconds
++  { 0, MI_OPTION_LEGACY(purge_delay,reset_delay) },  // purge delay in milli-seconds
