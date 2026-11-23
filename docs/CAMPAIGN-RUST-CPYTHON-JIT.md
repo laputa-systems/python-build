@@ -41,6 +41,92 @@ ledger are evidence to consult by item, not a queue of work to repeat.
 
 ## Status
 
+### OD24 (2026-11-23, owner): qualify prepared work, one C-LOC-1 correction
+
+Owner review of `44de748a` (and `385314d0`, which changes no result). Credited:
+J-BITCAST-1's code-generation mechanism (96 static `memcpy` relocations removed;
+whole-process instructions −28.25% nbody, −26.49% FFT, −40.78% sparse), C-REL-3's
+whole-process memory benefit on musl, the corrected probe, and the retained allocator
+failures. Still zero qualified Linux performance gains. This direction takes priority
+over conflicting active queue text in the runbook until the worker reconciles it (item 5).
+
+Continue the Linux x86-64 campaign under OD21 and OD23. The immediate priority is to
+qualify the prepared improvements and make continuation reliable. Read the latest
+remote state before working. Preserve concurrent work, the current source epoch,
+production boundaries, acceptance thresholds, and per-hypothesis budgets.
+
+1. **Finish the musl qualification path.** Audit and repair the complete
+   H0 → A/A → P0 path for the pinned Alpine/musl environment. `tools/perf-gate-ready`
+   still hardcodes Ubuntu and reads the GNU toolchain lock. Separate host readiness
+   (architecture, contention, steal time, swapping, resources, existing statistical
+   qualification) from measured-stage identity (pinned image, target, allocator,
+   toolchain, source and binary identity). Preserve all thresholds and statistical
+   requirements. Add focused tests for the changed host/target behavior, then exercise
+   the complete path before expensive qualification runs. A failed precheck still
+   yields DEFERRED without running the benchmark; requested diagnostics stay
+   ineligible. Carry the `--init` child-reaping protection from `cloud-ubuntu.sh` into
+   `musl-run`, or demonstrate equivalent reaping. Clarify the musl lane's explicit
+   `libgcc_s` dependency against the GCC-free production contract: reuse the production
+   Rust/LLVM unwinder approach where appropriate; if the dependency is intentionally
+   research-only, record that scope and its authorization. Do not call the runtime
+   closure production-equivalent or weaken the production invariant.
+2. **Qualify the prepared candidates.** Musl malloc stays the baseline allocator; the
+   failed allocator results and consumed budgets stand, and that mechanism stays
+   closed. Track J keeps its limit of two prepared candidates: J-ES-2 and J-BITCAST-1.
+   Prioritize qualified measurements of those and the landed C-REL-3 on an authorized
+   quiet x86-64 host: clean matched builds in the current musl epoch, H0 and A/A, then
+   native training, guard, correctness and memory gates; held-out and M4 at the
+   prescribed milestone. Preserve attribution; report individual and combined results
+   where required. Keep instruction-count evidence, structural memory evidence, native
+   timing acceptance and the qualified score separate. Setup-subtracted Cachegrind
+   counts are differences between separate runs; always report whole-process counts
+   beside them. If no suitable host is available, finish the harness and evidence
+   repairs, state the exact missing host capability or access, and do not repeat timing
+   on an unchanged disqualified host.
+3. **One C-LOC-1 measurement-defect correction.** Authorized once, on the current musl
+   epoch, because the corrected probe invalidated the original control-failure
+   rationale (pyc control +68 KiB, inside its 100 KiB limit; source executable PSS
+   −1,276 KiB). Keep the original retired attempt and evidence intact. Write a
+   separately identified, preregistered correction plan before building: matched
+   parent/candidate pair, corrected pyc/source/repeated-source probe, executable
+   residency, whole-process private memory, peak RSS, compile correctness and an
+   appropriate instruction-count screen, with prediction, controls, limits and decision
+   rule. Native acceptance still needs qualification. This does not reset allocator
+   budgets or reopen other retired mechanisms; if it fails, record it and move on. Do
+   not generalize an allocator experiment's 4% instruction prediction into a universal
+   Serc admission threshold: locality hypotheses need mechanism-specific evidence and
+   eventual native (IPC) measurement.
+4. **J-ARRAY-1 stays next, queued.** Start it only when a prepared J slot clears; do not
+   expand the queue. Before implementing, inspect emitted code and separate necessary
+   array-access instructions from removable call overhead, spills and redundant checks;
+   derive the predicted saving from the removable costs. The ~31% profile share is the
+   affected region, not the expected saving. The frame-representation project stays
+   paused; the J-ES-3 retirement and its consumed attempt stand. For J-BITCAST-1, retain
+   compact before/after disassembly, relocation evidence, exact flags, counts and input
+   identities sufficient to reproduce the arithmetic off the VM, and add a narrow
+   regression check for the bit patterns and the absence of out-of-line `memcpy` under
+   the actual stencil flags. Make "inspect what the compiler emitted before paying for
+   architecture" part of the experimental method.
+5. **Reconcile instructions and prove continuation.** Update the runbook, this Status,
+   AGENTS guidance and the results summary so they agree on the musl target, allocator,
+   prepared candidates, qualification state, execution branch and next commands
+   (the runbook still lists J-TLS-1 in a J slot, an Ubuntu-specific host blocker, and
+   the already-implemented precheck-before-bench repair). Preserve historical evidence;
+   remove completed repairs from the active queue. Make the continuation mechanism
+   concrete: verify the actual worker and arrangement, keep one writer, and demonstrate
+   one checkpoint-and-resume cycle under it, respecting pauses, cancellation,
+   authentication and resource limits. Writing a continuation plan is not resuming a
+   worker.
+
+A checkpoint, exhausted finite hypothesis, or deferred timing gate does not complete the
+campaign. When every permitted action is blocked, record the exact blocker and reopening
+condition without busy polling or inventing progress.
+
+**Next checkpoint must contain:** a working end-to-end musl qualification path; a
+qualified measurement decision or a precise infrastructure blocker; and the bounded
+C-LOC-1 correction result. Report what changed in code, what was measured, what passed
+or failed, and the next executable action.
+
 ### OD23 (2026-11-22, owner): the lane targets musl
 
 The owner directed that the lane build for `x86_64-unknown-linux-musl`, to match what

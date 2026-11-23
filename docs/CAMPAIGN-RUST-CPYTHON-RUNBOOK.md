@@ -38,6 +38,13 @@ them or silently raises a budget.
 
 ## Current position and immediate queue
 
+**Steering (OD24, 2026-11-23).** Read
+[OD24](CAMPAIGN-RUST-CPYTHON-JIT.md#od24-2026-11-23-owner-qualify-prepared-work-one-c-loc-1-correction)
+first. It takes priority over the queue table below until that table is
+reconciled. Order of work: the musl H0 → A/A → P0 path, qualification of J-ES-2,
+J-BITCAST-1 and C-REL-3, one C-LOC-1 correction, then J-ARRAY-1 when a J slot
+clears.
+
 On resume, inspect local state and fetch the steering before selecting work:
 
 ```sh
