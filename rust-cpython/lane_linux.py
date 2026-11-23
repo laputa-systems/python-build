@@ -365,7 +365,7 @@ class MuslToolchain:
             "STRIP": str(binary / "llvm-strip"),
             "READELF": str(binary / "llvm-readelf"),
             "LIBCLANG_PATH": str(self.libclang_path),
-            "CARGO_ENCODED_RUSTFLAGS": "-C\x1flink-arg=-fuse-ld=lld",
+            "RUSTFLAGS": "-C link-arg=-fuse-ld=lld",
         })
         env.pop("LD", None)
         return env
