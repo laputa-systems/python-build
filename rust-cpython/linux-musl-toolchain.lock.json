@@ -14,6 +14,20 @@
     "apk_closure_sha256": "02c25096229b7a595707a6797b48dad2887a61ecbb2f6691da09efa6389375cc",
     "llvm_sha256": "de3f6d0ad089391482147c61648c511c500b25289132fe7f2c446a0905406d2a"
   },
+  "measurement": {
+    "debug": {
+      "musl-dbg": {
+        "version": "1.2.6-r3",
+        "matches_musl": "1.2.6-r3",
+        "arch": "x86_64",
+        "repository": "main",
+        "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/musl-dbg-1.2.6-r3.apk",
+        "sha256": "6ac917e29afef12b05d5e71c747af48ff4bafda3b85f4e964e9849b86309f330",
+        "size": 1028777,
+        "role": "measurement-only debug symbols; excluded from stage package closure and identity"
+      }
+    }
+  },
   "lane_apk_cache": ".cache/bootstrap/lane-musl/apk/amd64-no-gcc",
   "system_package_roots": [
     "openssl-dev",
