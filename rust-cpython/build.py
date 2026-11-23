@@ -1840,7 +1840,7 @@ def _configuration(toolchain, target, *, jit: bool = False,
         "--without-ensurepip",
     ]
     args.append("--with-pydebug")
-    if TARGET.endswith("-musl"):
+    if target.triple.endswith("-musl"):
         args.append("--with-libs=-lgcc_s -lc")
     env = _environment(toolchain, offline=True)
     env.update(platform_flags)

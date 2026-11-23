@@ -983,7 +983,7 @@ def configure_llvm(toolchain: MuslToolchain) -> Path:
             strip.unlink()
         strip.symlink_to("llvm-strip")
         record = {
-            "schema": 1,
+            "schema": 2,
             "raw_archive_sha256": toolchain.llvm_archive_sha256,
             "prepared_additions_sha256": additions_sha256,
             "files": _prepared_files(staged),

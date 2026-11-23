@@ -543,7 +543,7 @@ class PreparedLinuxLLVMTests(unittest.TestCase):
 
 class LinuxDwarfdumpInputTests(unittest.TestCase):
     def test_dwarfdump_lock_records_reproducible_build_inputs(self):
-        entry = json.loads(build.LINUX_TOOLCHAIN_LOCK.read_text())["llvm_dwarfdump"]
+        entry = json.loads(perf.lb.LINUX_TOOLCHAIN_LOCK.read_text())["llvm_dwarfdump"]
         recipe = entry["build"]
         deterministic = recipe["deterministic"]
         self.assertEqual(
@@ -626,7 +626,7 @@ class MuslAPKVerificationTests(unittest.TestCase):
         run.assert_called_once_with("command", command, download_missing=True)
 
     def test_lane_lock_keeps_runtime_libgcc_but_excludes_gcc_toolchain(self):
-        lock = json.loads(build.LINUX_TOOLCHAIN_LOCK.read_text())
+        lock = json.loads(perf.lb.LINUX_TOOLCHAIN_LOCK.read_text())
         names = {package["name"] for package in lock["lane_packages"]}
         compiler_only = {
             "binutils", "gcc", "gmp", "isl26", "jansson", "libatomic",
