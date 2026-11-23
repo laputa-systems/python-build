@@ -1,0 +1,18 @@
+Means use the initial pair unless a fresh retry pair was scheduled.
+net = whole-kernel mean - matching setup-only mean.
+parent-to-candidate change = 100 * (candidate / parent - 1).
+nbody parent: whole_mean=2983802927.0 setup_mean=1417515942.0 net=1566286985.0
+nbody cand: whole_mean=2140971925.0 setup_mean=1417562211.0 net=723409714.0
+nbody parent_to_cand whole: parent=2983802927.0 cand=2140971925.0 change=-28.246872%
+nbody parent_to_cand setup: parent=1417515942.0 cand=1417562211.0 change=+0.003264%
+nbody parent_to_cand net: parent=1566286985.0 cand=723409714.0 change=-53.813719%
+scimark_fft parent: whole_mean=4302329034.5 setup_mean=1430778080.0 net=2871550954.5
+scimark_fft cand: whole_mean=3162468900.5 setup_mean=1430663170.5 net=1731805730.0
+scimark_fft parent_to_cand whole: parent=4302329034.5 cand=3162468900.5 change=-26.494025%
+scimark_fft parent_to_cand setup: parent=1430778080.0 cand=1430663170.5 change=-0.008031%
+scimark_fft parent_to_cand net: parent=2871550954.5 cand=1731805730.0 change=-39.690928%
+scimark_sparse_mat_mult parent: whole_mean=6560670240.5 setup_mean=1430875656.0 net=5129794584.5
+scimark_sparse_mat_mult cand: whole_mean=3884999751.5 setup_mean=1430782468.0 net=2454217283.5
+scimark_sparse_mat_mult parent_to_cand whole: parent=6560670240.5 cand=3884999751.5 change=-40.783493%
+scimark_sparse_mat_mult parent_to_cand setup: parent=1430875656.0 cand=1430782468.0 change=-0.006513%
+scimark_sparse_mat_mult parent_to_cand net: parent=5129794584.5 cand=2454217283.5 change=-52.157591%

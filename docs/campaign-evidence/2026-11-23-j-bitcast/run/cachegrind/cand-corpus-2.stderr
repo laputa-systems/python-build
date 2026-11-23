@@ -1,0 +1,7 @@
+==44== Cachegrind, a high-precision tracing profiler
+==44== Copyright (C) 2002-2024, and GNU GPL'd, by Nicholas Nethercote et al.
+==44== Using Valgrind-3.25.1 and LibVEX; rerun with -h for copyright info
+==44== Command: /home/ubuntu/repos/python-build/wt-jbitcast1/rust-cpython/stage-perf-jbitcast1-cand/bin/python3.16 -S -W ignore /home/ubuntu/repos/python-build/wt-jbitcast1-run/docs/campaign-evidence/2026-11-23-j-bitcast/run/support/compile_corpus.py compile /home/ubuntu/repos/python-build/wt-jbitcast1/rust-cpython/stage-perf-jbitcast1-cand/lib/python3.16
+==44== 
+==44== 
+==44== I refs:        37,964,725,630

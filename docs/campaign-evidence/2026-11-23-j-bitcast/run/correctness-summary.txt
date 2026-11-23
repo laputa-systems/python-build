@@ -1,0 +1,35 @@
+Selected correctness evidence; this is not an experiment verdict.
+
+Compile parity:
+- 2,104 entries on each stage.
+- Raw difference: _sysconfigdata__linux_x86_64-linux-musl.py only.
+- Normalized every wt-* worktree root and Rust stage/work/perf path.
+- Normalized source equality: true; normalized compile hashes equal
+  (455d96df9bfa6f878ac280177729c46f0e1118022652e6a2f7a13c76ed93d915).
+
+JIT test suites:
+- Both stages ran test_array, test_sys_settrace, test_monitoring,
+  test_frame, and test_capi.test_opt through the J-ES-3 perf.py test recipe.
+- test_array, test_sys_settrace, test_monitoring, and test_frame passed on
+  both stages.
+- test_capi.test_opt failed with 20 failures on each stage; 1,978 total tests
+  ran in the combined five-module suite on each stage (20 failures, 12 skips).
+- The standalone PYTHON_JIT=1 test_capi.test_opt run had 323 tests, 20
+  failures, and 3 skips on each stage. The 20 failure IDs are identical;
+  see capi-opt-failure-ids.txt.
+
+JIT fuzz:
+- Parent receipt reused from C-ALLOC-3: seed 0, 2,000 programs,
+  jit_coverage=0.9745, mismatches=0, nondeterministic=0.
+- Candidate: seed 0, 2,000 programs, jit_coverage=0.9745, mismatches=0,
+  nondeterministic=0.
+
+Lane Rust JIT suite:
+- cargo test -p _jit_opt_rs --locked --offline exited 101 on both stages.
+- Both logs report that the offline registry has no matching package named
+  bindgen, required by cpython-sys. No network retry was made.
+
+Alpine ctypes.CDLL + Py_GetVersion:
+- Parent C-ALLOC-3 receipt reused; exit 0, Py_GetVersion
+  3.16.0a1+dev.
+- Candidate exit 0, Py_GetVersion 3.16.0a1+dev.

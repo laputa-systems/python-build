@@ -1,0 +1,9 @@
+Candidate stage: perf-jbitcast1-cand
+Source SHA: 92a1111a59cde7b2c675c515c7cd8838e62a7bf1
+Target: x86_64-unknown-linux-musl
+Header: /home/ubuntu/repos/python-build/wt-jbitcast1/rust-cpython/work/perf/perf-jbitcast1-cand/build/jit_stencils-x86_64-unknown-linux-musl.h
+External copy: /home/ubuntu/exp-jbitcast1/stencil-output/perf-jbitcast1-cand-jit_stencils-x86_64-unknown-linux-musl.h
+Header SHA-256: 3c99949fca19820f475e7593c44e89bd5db649479e8fcbf3d4b697a05ecb7158
+Command: grep -c 'R_X86_64.*memcpy' <header>
+Output: 0 (grep exits 1 because there are no matches)
+Parent header relocation count: 96

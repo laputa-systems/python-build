@@ -1,0 +1,3 @@
+FAIL  CPython suite failed; inspect /home/ubuntu/repos/python-build/wt-jbitcast1/rust-cpython/logs/perf-jbitcast1-cand-test_array-test_sys_settrace-test_monitoring-test_frame-test_capi.test_opt.log
+RUN   /home/ubuntu/repos/python-build/wt-jbitcast1/rust-cpython/work/perf/perf-jbitcast1-cand/build/python -m test -j 4 --timeout=900 test_array test_sys_settrace test_monitoring test_frame test_capi.test_opt
+LOG   /home/ubuntu/repos/python-build/wt-jbitcast1/rust-cpython/logs/perf-jbitcast1-cand-test_array-test_sys_settrace-test_monitoring-test_frame-test_capi.test_opt.log

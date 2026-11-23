@@ -1,0 +1,6 @@
+Compile parity comparison; raw digest JSON is preserved in correctness/parity/.
+parent entries: 2104
+cand entries: 2104
+Normalized every /home/ubuntu/repos/python-build/wt-* root and /rust-cpython/{stage-*,work/perf/*} path.
+raw differences=1 sysconfigdata=['_sysconfigdata__linux_x86_64-linux-musl.py'] other_differences=[]
+_sysconfigdata__linux_x86_64-linux-musl.py normalized_source_equal=True normalized_compile_hashes={'parent': '455d96df9bfa6f878ac280177729c46f0e1118022652e6a2f7a13c76ed93d915', 'cand': '455d96df9bfa6f878ac280177729c46f0e1118022652e6a2f7a13c76ed93d915'} normalized_compile_equal=True
