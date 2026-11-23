@@ -1286,22 +1286,41 @@ def _jit_llvm_tools(toolchain) -> Path:
 
 
 def _musl_rustc_wrapper() -> Path:
+    runtime_lib_dir = _musl_runtime_link_dir()
     wrapper = WORK / "musl-rustc-wrapper"
     script = (
         "#!/bin/sh\n"
         "rustc=$1\n"
         "shift\n"
+        f"runtime_lib_dir={str(runtime_lib_dir)!r}\n"
         "for arg in \"$@\"; do\n"
         "    case \"$arg\" in\n"
-        "        --target|--target=*) exec \"$rustc\" \"$@\" ;;\n"
+        "        --target|--target=*) exec \"$rustc\" -L \"native=$runtime_lib_dir\" -C link-arg=-fuse-ld=lld \"$@\" ;;\n"
         "    esac\n"
         "done\n"
-        "exec \"$rustc\" -C target-feature=-crt-static -C link-arg=-fuse-ld=lld \"$@\"\n"
+        "exec \"$rustc\" -L \"native=$runtime_lib_dir\" -C target-feature=-crt-static -C link-arg=-fuse-ld=lld \"$@\"\n"
     )
     if not wrapper.is_file() or wrapper.read_text() != script:
         wrapper.write_text(script)
     wrapper.chmod(0o755)
     return wrapper
+
+
+def _musl_runtime_link_dir() -> Path:
+    directory = WORK / "musl-runtime-lib"
+    directory.mkdir(parents=True, exist_ok=True)
+    runtime = Path("/usr/lib/libgcc_s.so.1")
+    if not runtime.is_file():
+        raise LaneError(f"Alpine libgcc runtime is missing: {runtime}")
+    alias = directory / "libgcc_s.so"
+    if alias.is_symlink():
+        if os.readlink(alias) != str(runtime):
+            raise LaneError(f"unexpected musl runtime link: {alias} -> {os.readlink(alias)}")
+    elif alias.exists():
+        raise LaneError(f"musl runtime link path is occupied: {alias}")
+    else:
+        alias.symlink_to(runtime)
+    return directory
 
 
 def _environment(toolchain, *, offline: bool, build_dir: Path | None = None) -> dict[str, str]:
@@ -1349,11 +1368,14 @@ def _environment(toolchain, *, offline: bool, build_dir: Path | None = None) -> 
     })
     if IS_LINUX:
         env[_cargo_linker_variable()] = str(llvm_bin / "clang")
-        env[_cargo_rustflags_variable()] = (
-            "-C link-arg=-fuse-ld=lld -C target-feature=-crt-static"
-        )
+        rustflags = "-C link-arg=-fuse-ld=lld -C target-feature=-crt-static"
         if TARGET.endswith("-musl"):
+            runtime_lib_dir = _musl_runtime_link_dir()
+            rustflags = f"-L native={runtime_lib_dir} {rustflags}"
+            env[_cargo_rustflags_variable()] = rustflags
             env["RUSTC_WRAPPER"] = str(_musl_rustc_wrapper())
+        else:
+            env[_cargo_rustflags_variable()] = rustflags
     # Regeneration needs >= 3.11; a distro may only ship an older python3 on
     # the sealed PATH. Bind the newest versioned python3.N the host's ambient
     # PATH offers when it is new enough.
