@@ -72,6 +72,10 @@ unqualified host:
 - J-TLS-1 and C-TLS-2 are null on musl: their code applies only to glibc and is kept there.
 - J-ES-3 is retired at attempt 1/1: FFT `_CHECK_PERIODIC` −11.25% (rule ≥20%), `Ir`
   −0.07% (rule ≥1%). This closes the loop-type extensions.
+- C-ALLOC-3 (Serc's Rust allocations to libpython's mimalloc, attempt 1/1) is retired: corpus
+  `Ir` −8.91% and mallocng self `Ir` −98.07% hold, and so do net-kernel controls, but source-mode
+  private memory is +724 KiB (rule ≤+100 KiB). This closes the Serc allocator mechanism
+  (`campaign-evidence/2026-11-23-c-alloc3/RESULT-CALLOC3.md`).
 
 
 Rewrite this section at each checkpoint. Keep it short: scorecard, blockers,
