@@ -1111,6 +1111,10 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
             "--system-libs",
         )
         binary = Path(temporary) / "llvm-dwarfdump"
+        unwind_library = Path("/usr/lib/libunwind.so.1")
+        if not unwind_library.is_file():
+            raise LaneError(f"locked llvm-libunwind runtime is missing: {unwind_library}")
+        (Path(temporary) / "libunwind.so").symlink_to(unwind_library)
         command = [
             str(toolchain.llvm_prefix / "bin" / "clang++"),
             "-fuse-ld=lld",
@@ -1121,6 +1125,8 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
             "/usr/include/c++/v1",
             "-I",
             str(source_dir),
+            "-L",
+            str(Path(temporary)),
             "-L",
             str(toolchain.llvm_prefix / "lib"),
             *(str(source_dir / name) for name in names[:4]),
