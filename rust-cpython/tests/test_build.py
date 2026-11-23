@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import concurrent.futures
 import hashlib
+import importlib.util
 import io
+from importlib.machinery import SourceFileLoader
 import json
 import os
 import subprocess
@@ -21,6 +23,13 @@ LANE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(LANE))
 
 import perf
+
+_MUSL_RUN_LOADER = SourceFileLoader(
+    "musl_run_review_test", str(LANE / "tools" / "musl-run"))
+_MUSL_RUN_SPEC = importlib.util.spec_from_loader(
+    _MUSL_RUN_LOADER.name, _MUSL_RUN_LOADER)
+musl_run = importlib.util.module_from_spec(_MUSL_RUN_SPEC)
+_MUSL_RUN_SPEC.loader.exec_module(musl_run)
 
 
 class RustLauncherTests(unittest.TestCase):
@@ -72,7 +81,7 @@ class JitConfigurationTests(unittest.TestCase):
             disabled_args, disabled_env = perf.lb._configuration(self.toolchain, target, jit=False)
         self.assertIn("--enable-experimental-jit=yes", enabled_args)
         self.assertIn("--enable-experimental-jit=no", disabled_args)
-        self.assertIn("--with-libs=-lgcc_s -lc", enabled_args)
+        self.assertIn("--with-libs=-Wl,-l:libgcc_s.so.1 -lc", enabled_args)
         self.assertFalse(any("-lunwind" in item for item in enabled_args))
         self.assertEqual(enabled_env["LLVM_TOOLS_INSTALL_DIR"], "/opt/llvm/23.1.2")
         self.assertEqual(disabled_env["LLVM_VERSION"], "23")
@@ -105,6 +114,25 @@ class JitConfigurationTests(unittest.TestCase):
     def test_musl_layout_no_longer_requires_llvm_libunwind(self):
         self.assertNotIn("lib/libunwind.a", perf.lb.MUSL_X86_64_LAYOUT.required)
         self.assertNotIn("lib/libunwind.a", perf.lb.MUSL_X86_64_LAYOUT.library_files)
+        for name in ("clang_rt.crtbegin.o", "clang_rt.crtend.o"):
+            member = f"lib/clang/23/lib/linux/{name}"
+            self.assertIn(member, perf.lb.MUSL_X86_64_LAYOUT.links)
+        for name in (
+            "clang_rt.crtbegin-x86_64.o",
+            "clang_rt.crtend-x86_64.o",
+        ):
+            member = f"lib/clang/23/lib/linux/{name}"
+            self.assertIn(member, perf.lb.MUSL_X86_64_LAYOUT.required)
+            self.assertIn(member, perf.lb.MUSL_X86_64_LAYOUT.resource_files)
+        for name in (
+            "crtbegin.o",
+            "crtbeginS.o",
+            "crtbeginT.o",
+            "crtend.o",
+            "crtendS.o",
+        ):
+            member = f"lib/clang/23/lib/linux/{name}"
+            self.assertIn(member, perf.lb.MUSL_X86_64_LAYOUT.links)
 
     def regen(self, version: str) -> tuple[Path, Path]:
         root = Path(self.enterContext(tempfile.TemporaryDirectory()))
@@ -429,6 +457,227 @@ class LinuxLLVMRuntimeTests(unittest.TestCase):
         self.assertEqual(events, ["extract", "icu"])
 
 
+class PreparedLinuxLLVMTests(unittest.TestCase):
+    def test_second_llvm_ready_reuses_the_manifest_verified_prefix(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive = root / "llvm.tar.xz"
+            archive.write_bytes(b"locked archive")
+            raw_prefix = root / "llvm" / "raw"
+            binary = raw_prefix / "bin"
+            binary.mkdir(parents=True)
+
+            def elf_with_gnu_stack():
+                data = bytearray(0x100)
+                data[:6] = b"\x7fELF\x02\x01"
+                data[0x20:0x28] = (0x40).to_bytes(8, "little")
+                data[0x36:0x38] = (56).to_bytes(2, "little")
+                data[0x38:0x3a] = (1).to_bytes(2, "little")
+                data[0x40:0x44] = (0x6474E551).to_bytes(4, "little")
+                return bytes(data)
+
+            raw_contents = elf_with_gnu_stack()
+            for name in ("clang", "lld"):
+                (binary / name).write_bytes(raw_contents)
+            (binary / "llvm-strip").write_text("strip\n")
+            (binary / "llvm-readelf").write_text("readelf\n")
+            (binary / "clang++").write_text("clang++\n")
+            archive_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
+            prepared_prefix = root / "llvm" / "prepared" / "prefix"
+            toolchain = perf.lb.lane_linux.MuslToolchain(
+                lock_path=root / "linux-musl-toolchain.lock.json",
+                target="x86_64-unknown-linux-musl",
+                cpu_baseline="x86-64",
+                alpine_release="3.22",
+                image_digest="sha256:" + "0" * 64,
+                image_revision="r0",
+                repositories=(),
+                package_pins=(),
+                lane_packages=(),
+                lane_apk_cache=".cache/bootstrap/lane-musl/apk/amd64",
+                system_package_roots=(),
+                llvm_raw_prefix=raw_prefix,
+                llvm_prefix=prepared_prefix,
+                llvm_resource_dir=prepared_prefix / "lib" / "clang" / "23",
+                llvm_version="23.1.5",
+                llvm_archive_url="https://example.invalid/llvm.tar.xz",
+                llvm_archive_sha256=archive_sha256,
+                llvm_archive_size=archive.stat().st_size,
+                llvm_archive_root="llvm",
+                llvm_license="Apache-2.0 WITH LLVM-exception",
+                rust_channel="nightly-2026-09-15",
+                rust_host="x86_64-unknown-linux-musl",
+                make=Path("/usr/bin/make"),
+                make_version="4.4.1",
+                pkgconf=Path("/usr/bin/pkgconf"),
+                pkgconf_version="2.3.0",
+            )
+            cache = mock.Mock()
+            cache.require.return_value = archive
+
+            def extract(_archive, destination, **_kwargs):
+                self.assertEqual(Path(destination), raw_prefix)
+                return raw_prefix
+
+            with mock.patch.object(perf.lb, "Cache", return_value=cache), \
+                    mock.patch.object(perf.lb, "_llvm_cache_root", return_value=root / "cache"), \
+                    mock.patch.object(perf.lb, "_llvm_layout", return_value=object()), \
+                    mock.patch.object(perf.lb, "extract_llvm_archive", side_effect=extract), \
+                    mock.patch.object(perf.lb, "_toolchain", return_value=(toolchain, object())), \
+                    mock.patch.object(
+                        perf.lb.lane_linux, "_tool_output", return_value="GNU_STACK 0x800000"):
+                first = perf.lb._llvm_ready(toolchain)
+                watched = [prepared_prefix / "bin" / "clang",
+                           prepared_prefix / "bin" / "x86_64-unknown-linux-musl.cfg",
+                           prepared_prefix / "bin" / "strip"]
+                before = [(path.lstat().st_mtime_ns, path.lstat().st_size) for path in watched]
+                second = perf.lb._llvm_ready(toolchain)
+            after = [(path.lstat().st_mtime_ns, path.lstat().st_size) for path in watched]
+            self.assertEqual(first, prepared_prefix)
+            self.assertEqual(second, prepared_prefix)
+            self.assertEqual(before, after)
+            self.assertEqual((binary / "clang").read_bytes(), raw_contents)
+            self.assertEqual((binary / "lld").read_bytes(), raw_contents)
+            self.assertTrue((prepared_prefix / ".prepared-manifest.json").is_file())
+
+
+class LinuxDwarfdumpInputTests(unittest.TestCase):
+    def test_dwarfdump_lock_records_reproducible_build_inputs(self):
+        entry = json.loads(perf.lb.LINUX_TOOLCHAIN_LOCK.read_text())["llvm_dwarfdump"]
+        recipe = entry["build"]
+        deterministic = recipe["deterministic"]
+        self.assertEqual(
+            deterministic["environment"]["SOURCE_DATE_EPOCH"], "1704067200"
+        )
+        self.assertEqual(deterministic["environment"]["ZERO_AR_DATE"], "1")
+        self.assertEqual(
+            set(deterministic["path_maps"]),
+            {"source", "build", "llvm_dev", "llvm_toolchain", "checkout"},
+        )
+        self.assertRegex(recipe["binary_sha256"], r"^[0-9a-f]{64}$")
+        self.assertGreater(recipe["binary_size"], 0)
+        self.assertEqual(
+            recipe["previous_binary_sha256"],
+            "b323a79e2f687bb3b950f308fdeeea412f95a8e282ee15cc26277f25502265a5",
+        )
+
+    def test_fetch_provisions_source_dev_and_attestation_from_locked_urls(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            payloads = {
+                "source": b"llvm source archive",
+                "dev": b"llvm dev archive",
+                "attestation": b"published attestation",
+            }
+
+            def pin(name, cache_path, url):
+                data = payloads[name]
+                return {
+                    "archive_url": url,
+                    "archive_sha256": hashlib.sha256(data).hexdigest(),
+                    "archive_size": len(data),
+                    "cache_path": cache_path,
+                }
+
+            source = pin("source", ".cache/llvm-source", "https://example.invalid/source")
+            source.update({
+                "attestation_url": "https://example.invalid/attestation",
+                "attestation_sha256": hashlib.sha256(payloads["attestation"]).hexdigest(),
+                "attestation_cache_path": ".cache/attestation",
+            })
+            dev = pin("dev", ".cache/llvm-dev", "https://example.invalid/dev")
+            lock = root / "linux-musl-toolchain.lock.json"
+            lock.write_text(json.dumps({
+                "llvm_dwarfdump": {
+                    "version": "23.1.5",
+                    "license": "Apache-2.0 WITH LLVM-exception",
+                    "source": source,
+                    "dev_archive": dev,
+                }
+            }))
+            cache = mock.Mock()
+            def fetch(input_):
+                name = input_.name.removeprefix("llvm-dwarfdump-")
+                blob = root / "downloaded" / name
+                blob.parent.mkdir(parents=True, exist_ok=True)
+                blob.write_bytes(payloads[name])
+                return blob
+            cache.fetch.side_effect = fetch
+            toolchain = SimpleNamespace(
+                target="x86_64-unknown-linux-musl", llvm_version="23.1.5")
+            with mock.patch.object(perf.lb, "LINUX_TOOLCHAIN_LOCK", lock), \
+                    mock.patch.object(perf.lb, "REPO", root / "repo"), \
+                    mock.patch.object(perf.lb, "CACHE_ROOT", root / "cache"), \
+                    mock.patch.object(perf.lb, "Cache", return_value=cache):
+                paths = perf.lb._musl_llvm_dwarfdump_inputs(toolchain, fetch=True)
+            self.assertEqual(set(paths), {"source", "dev", "attestation"})
+            for name, path in paths.items():
+                self.assertEqual(path.read_bytes(), payloads[name])
+            self.assertEqual(cache.fetch.call_count, 3)
+
+
+class MuslAPKVerificationTests(unittest.TestCase):
+    def test_setup_worktree_shares_inputs_before_container_preflight(self):
+        command = ["python3", "rust-cpython/perf.py", "setup-worktree"]
+        with mock.patch.object(musl_run, "share_worktree_caches") as share, \
+                mock.patch.object(musl_run, "run_container", return_value=0) as run:
+            self.assertEqual(musl_run.main(command), 0)
+        share.assert_called_once_with(musl_run.REPO)
+        run.assert_called_once_with("command", command, download_missing=True)
+
+    def test_lane_lock_keeps_runtime_libgcc_but_excludes_gcc_toolchain(self):
+        lock = json.loads(perf.lb.LINUX_TOOLCHAIN_LOCK.read_text())
+        names = {package["name"] for package in lock["lane_packages"]}
+        compiler_only = {
+            "binutils", "gcc", "gmp", "isl26", "jansson", "libatomic",
+            "libgcc-static", "libgomp", "mpc1", "mpfr4",
+        }
+        self.assertFalse(names & compiler_only)
+        self.assertNotIn("gcc", lock["system_package_roots"])
+        runtime = next(package for package in lock["lane_packages"] if package["name"] == "libgcc")
+        self.assertEqual(runtime["role"], "lane runtime library libgcc_s.so.1, not a compiler")
+
+    def test_tampered_and_extra_apks_are_rejected_before_container_install(self):
+        payload = b"locked"
+        package = {
+            "name": "lane-pkg",
+            "version": "1.0-r0",
+            "arch": "x86_64",
+            "repository": "main",
+            "size": len(payload),
+            "sha256": hashlib.sha256(payload).hexdigest(),
+        }
+        lane = {
+            "lane_apk_cache": ".cache/bootstrap/lane-musl/apk/amd64-no-gcc",
+            "lane_packages": [package],
+            "repositories": ["https://example.invalid/main"],
+        }
+        production = {"apk_closure": {"x86_64": []}}
+        for scenario, bytes_, extra, message in (
+            ("tampered", b"bad!!!", False, "digest/size mismatch"),
+            ("extra", payload, True, "unexpected cached lane APKs"),
+        ):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                lane_cache = root / "lane-apks"
+                lane_cache.mkdir()
+                (lane_cache / "lane-pkg-1.0-r0.apk").write_bytes(bytes_)
+                if extra:
+                    (lane_cache / "unexpected.apk").write_bytes(b"extra")
+                base_cache = root / "bootstrap" / "apk" / "amd64"
+                base_cache.mkdir(parents=True)
+                docker = mock.Mock()
+                with mock.patch.object(musl_run, "lock_data",
+                                       return_value=(lane, production)), \
+                        mock.patch.object(musl_run, "cache_path",
+                                          return_value=lane_cache), \
+                        mock.patch.object(musl_run, "CACHE_ROOT", root), \
+                        mock.patch.object(musl_run.subprocess, "run", docker):
+                    with self.assertRaisesRegex(SystemExit, message):
+                        musl_run.main(["python3", "--version"])
+                docker.assert_not_called()
+
+
 class LinuxSetupTests(unittest.TestCase):
     def test_ssl_rs_is_shared_in_the_generated_linux_setup(self):
         contents = (
@@ -553,6 +802,43 @@ class MacOSDeploymentProbeTests(unittest.TestCase):
                           perf._perf_flags(toolchain, target, stage=Path("/stage"))):
                 self.assertNotIn("ac_cv_func_dup3", flags)
                 self.assertNotIn("ac_cv_func_pipe2", flags)
+
+
+class MuslRustupPinTests(unittest.TestCase):
+    def test_container_fetch_rejects_rustup_init_before_execution(self):
+        lane = {
+            "rust": {
+                "cache": ".cache/rustup-musl",
+                "channel": "nightly-2026-09-15",
+                "host": "x86_64-unknown-linux-musl",
+                "rustup": {
+                    "version": "1.29.3",
+                    "init_url": "https://static.rust-lang.org/rustup/archive/1.29.3/"
+                                "x86_64-unknown-linux-musl/rustup-init",
+                    "init_sha256": "0" * 64,
+                    "checksum_url": "https://static.rust-lang.org/rustup/archive/1.29.3/"
+                                    "x86_64-unknown-linux-musl/rustup-init.sha256",
+                },
+            }
+        }
+        payload = b"not the pinned rustup-init"
+        with tempfile.TemporaryDirectory() as temporary:
+            lane_root = Path(temporary) / "rust-cpython"
+            lane_root.mkdir()
+            run = mock.Mock()
+            response = io.BytesIO(payload)
+            with mock.patch.object(musl_run, "LANE", lane_root), \
+                    mock.patch.object(musl_run, "lock_data", return_value=(lane, {})), \
+                    mock.patch.object(musl_run.urllib.request, "urlopen",
+                                      return_value=response) as fetch, \
+                    mock.patch.object(musl_run.subprocess, "run", run):
+                with self.assertRaisesRegex(SystemExit, "rustup-init digest mismatch"):
+                    musl_run.container_fetch()
+            self.assertEqual(
+                fetch.call_args.args[0].full_url,
+                lane["rust"]["rustup"]["init_url"],
+            )
+            run.assert_not_called()
 
 
 if __name__ == "__main__":

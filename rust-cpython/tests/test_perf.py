@@ -10,6 +10,7 @@ import fcntl
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import tomllib
@@ -24,9 +25,112 @@ sys.path.insert(0, str(LANE))
 import builtin_modules
 import perf
 import perf_verdict as pv
+import lane_cache
 
 
 NO_CPU = object()
+
+
+class PrimaryCheckoutTests(unittest.TestCase):
+    def test_primary_checkout_and_mount_root_cover_a_linked_worktree(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "primary"
+            worktree = root / "linked"
+            root.mkdir()
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            (root / "tracked").write_text("tracked\n")
+            (root / ".cache" / "llvm" / "objects").mkdir(parents=True)
+            subprocess.run(["git", "-C", str(root), "add", "tracked"], check=True)
+            subprocess.run(
+                ["git", "-C", str(root), "-c", "user.name=Test",
+                 "-c", "user.email=test@example.invalid", "commit", "-qm", "init"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "worktree", "add", "--detach", str(worktree), "HEAD"],
+                check=True,
+            )
+            self.assertEqual(lane_cache.mount_root(worktree), root.resolve())
+            (root / ".cache" / "bootstrap").mkdir(parents=True)
+            (worktree / ".cache").mkdir()
+            (worktree / ".cache" / "bootstrap").symlink_to(root / ".cache" / "bootstrap")
+            (worktree / ".cache" / "llvm").mkdir()
+            (worktree / ".cache" / "llvm" / "objects").symlink_to(
+                root / ".cache" / "llvm" / "objects"
+            )
+            self.assertEqual(lane_cache.primary_checkout(worktree), root.resolve())
+            self.assertEqual(lane_cache.cache_root(worktree), worktree / ".cache")
+            self.assertEqual(lane_cache.mount_root(worktree), root.resolve())
+
+
+class WorktreeSetupTests(unittest.TestCase):
+    def test_fresh_worktree_shares_bootstrap_inputs_and_passes_doctor(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            primary = root / "primary"
+            worktree = root / "fresh"
+            (primary / ".cache" / "objects").mkdir(parents=True)
+            (primary / ".cache" / "bootstrap" / "lane-musl" / "apk").mkdir(parents=True)
+            (primary / "benchmarks" / ".cache" / "wheelhouse").mkdir(parents=True)
+            (primary / "rust-cpython" / ".cargo-home").mkdir(parents=True)
+            (primary / "rust-cpython" / ".cargo-home" / "marker").write_text("cargo home\n")
+            (primary / "rust-cpython" / ".cache" / "rustup-musl").mkdir(parents=True)
+            (primary / "rust-cpython" / ".cache" / "rustup-musl" / "marker").write_text(
+                "rustup home\n"
+            )
+            doctor = mock.Mock(return_value={"ok": True})
+            toolchain = object()
+
+            def prepare_local_prefix(_toolchain):
+                self.assertEqual(
+                    (worktree / ".cache" / "bootstrap").resolve(),
+                    (primary / ".cache" / "bootstrap").resolve(),
+                )
+                prefix = worktree / ".cache" / "llvm" / "prepared" / "prefix"
+                prefix.mkdir(parents=True)
+                (prefix / "marker").write_text("prepared locally\n")
+                return prefix
+
+            ready = mock.Mock(side_effect=prepare_local_prefix)
+            with mock.patch.object(perf, "REPO", worktree), \
+                    mock.patch.object(perf, "LANE", worktree / "rust-cpython"), \
+                    mock.patch.object(perf, "_primary_repo", return_value=primary), \
+                    mock.patch.object(perf.lb, "IS_LINUX", True), \
+                    mock.patch.object(perf.lb, "_toolchain", return_value=(toolchain, "target")), \
+                    mock.patch.object(perf.lb, "_llvm_ready", ready), \
+                    mock.patch.object(perf.lb, "doctor_report", doctor):
+                self.assertEqual(perf.setup_worktree(), 0)
+            self.assertEqual(
+                (worktree / ".cache" / "bootstrap").resolve(),
+                (primary / ".cache" / "bootstrap").resolve(),
+            )
+            self.assertTrue((worktree / ".cache" / "bootstrap").is_symlink())
+            self.assertFalse((worktree / ".cache" / "llvm").is_symlink())
+            self.assertEqual(
+                (worktree / "rust-cpython" / ".cache" / "rustup-musl" / "marker").read_text(),
+                "rustup home\n",
+            )
+            self.assertFalse((worktree / "rust-cpython" / ".cache" / "rustup-musl").is_symlink())
+            self.assertEqual(ready.call_args.args[0], toolchain)
+            self.assertEqual(
+                (worktree / ".cache" / "llvm" / "prepared" / "prefix" / "marker").read_text(),
+                "prepared locally\n",
+            )
+            doctor.assert_called_once_with()
+
+
+class EmptyOverlayAllocatorTests(unittest.TestCase):
+    def test_custom_allocator_is_rejected_before_doctor_or_build_setup(self):
+        with mock.patch.object(perf.lb, "doctor_report") as doctor:
+            with self.assertRaisesRegex(perf.LaneError, "--empty-overlay requires"):
+                perf.build(name="fixture", empty_overlay=True, allocator="mimalloc")
+        doctor.assert_not_called()
+        with mock.patch.object(perf.lb, "_toolchain") as toolchain:
+            with self.assertRaisesRegex(perf.LaneError, "--empty-overlay requires"):
+                perf._build_locked(
+                    "fixture", {}, empty_overlay=True, jobs=None, incremental=False,
+                    state={}, allocator="jemalloc")
+        toolchain.assert_not_called()
 
 
 def summary(wall_ci, *, wall_ratios=(1.0, 1.0, 1.0),
@@ -1693,7 +1797,10 @@ class IncrementalRecipeTests(unittest.TestCase):
 
     def test_musl_build_uses_rust_dynamic_unwinder_arguments(self):
         report = self.exercise(False, linux=True, source_std=False, aggregate=False)
-        self.assertIn("--with-libs=-lgcc_s -lc", report["configure_arguments"])
+        self.assertIn(
+            "--with-libs=-Wl,-l:libgcc_s.so.1 -lc",
+            report["configure_arguments"],
+        )
 
     def test_serc_build_defines_the_hook_and_requests_serc_staging(self):
         self.exercise(False, serc=True)

@@ -46,6 +46,14 @@ LANE = Path(__file__).resolve().parent
 REPO = LANE.parent
 SCRATCH = REPO / ".work" / "tmp"
 
+sys.path.insert(0, str(LANE))
+from lane_cache import (
+    cache_root,
+    git_common_dir,
+    primary_checkout,
+    share_worktree_caches,
+)
+
 
 def _lane_build():
     spec = importlib.util.spec_from_file_location("lane_build", LANE / "build.py")
@@ -195,14 +203,17 @@ def _git(*args: str, cwd: Path = LANE) -> str:
 
 
 def _common_dir() -> Path:
-    return Path(_git("rev-parse", "--path-format=absolute", "--git-common-dir"))
+    try:
+        return git_common_dir(REPO)
+    except RuntimeError as error:
+        raise LaneError(str(error)) from error
 
 
 def _primary_repo() -> Path:
-    common = _common_dir()
-    if common.name != ".git":
-        raise LaneError(f"cannot locate the primary checkout from git common dir {common}")
-    return common.parent
+    try:
+        return primary_checkout(REPO)
+    except RuntimeError as error:
+        raise LaneError(str(error)) from error
 
 
 def _git_state() -> dict[str, Any]:
@@ -683,12 +694,10 @@ def _install_source_aggregate(source: Path, paths: dict[str, Path],
 
 def _builtin_artifact_verifier():
     proof_path = LANE / "builtin_modules.py"
-    common_dir = _common_dir()
-    if common_dir.name != ".git":
-        raise LaneError(f"cannot locate primary Git storage from common dir {common_dir}")
     git_dir = Path(_git("rev-parse", "--absolute-git-dir"))
-    object_stores = (REPO / ".cache/objects", common_dir.parent / ".cache/objects",
-                     REPO / ".git/objects", git_dir / "objects", common_dir / "objects")
+    common_objects = Path(_git("rev-parse", "--path-format=absolute", "--git-path", "objects"))
+    object_stores = (cache_root(REPO) / "objects", REPO / ".git/objects",
+                     git_dir / "objects", common_objects)
     identities = {(info.st_dev, info.st_ino) for path in object_stores
                   if path.exists() for info in [path.stat()]}
     for path in (proof_path,):
@@ -1024,6 +1033,8 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
     _check_name(name)
     if not isinstance(allocator, str) or allocator not in {"musl", "mimalloc", "jemalloc"}:
         raise LaneError(f"unknown allocator {allocator!r}")
+    if empty_overlay and allocator != "musl":
+        raise LaneError("--empty-overlay requires --allocator musl")
     if jobs is not None and jobs < 1:
         raise LaneError("build jobs must be positive")
     if pystats and not jit:
@@ -1109,6 +1120,8 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
                   pystats: bool = False, serc: bool = False,
                   allocator: str = "musl",
                   host_report: dict[str, Any] | None = None) -> dict[str, Any]:
+    if empty_overlay and allocator != "musl":
+        raise LaneError("--empty-overlay requires --allocator musl")
     toolchain, target = lb._toolchain()
     lb._llvm_ready(toolchain)
     allocator_build = lb.build_musl_allocator(
@@ -1209,7 +1222,7 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
                  jit_config.argument, "--with-tail-call-interp=no",
                  "--without-ensurepip"]
     if lb.TARGET.endswith("-musl"):
-        configure.append("--with-libs=-lgcc_s -lc")
+        configure.append("--with-libs=-Wl,-l:libgcc_s.so.1 -lc")
     if pystats:
         configure.append("--enable-pystats")
     # Only the aggregate workspace requires the pinned source-built runtime.
@@ -2711,23 +2724,26 @@ def setup_worktree() -> int:
     if primary == REPO:
         print("OK    primary checkout; nothing to share")
         return 0
-    links = (
-        (primary / ".cache" / "objects", REPO / ".cache" / "objects"),
-        (primary / "benchmarks" / ".cache" / "wheelhouse", REPO / "benchmarks" / ".cache" / "wheelhouse"),
+    try:
+        _owner, links = share_worktree_caches(REPO, primary)
+    except RuntimeError as error:
+        raise LaneError(str(error)) from error
+    for target, source in links:
+        print(f"OK    {target} -> {source}")
+    toolchain, _target = lb._toolchain()
+    llvm_prefix = lb._llvm_ready(toolchain)
+    print(f"OK    {llvm_prefix} (prepared locally)")
+    # Cargo and Rustup write into their homes, so keep those state trees local.
+    private_homes = (
+        (primary / "rust-cpython" / ".cargo-home", LANE / ".cargo-home"),
+        (primary / "rust-cpython" / ".cache" / "rustup-musl",
+         LANE / ".cache" / "rustup-musl"),
     )
-    for source, target in links:
+    for source, target in private_homes:
         if not source.is_dir():
             raise LaneError(f"primary checkout lacks {source}; run fetch there first")
-        if not target.exists():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.symlink_to(source)
-        print(f"OK    {target} -> {target.resolve()}")
-    # The doctor check requires clang's resource directory beneath this
-    # worktree's own prefix, and Cargo writes into its home: clone both.
-    for source, target in ((primary / ".cache" / "llvm", REPO / ".cache" / "llvm"),
-                           (primary / "rust-cpython" / ".cargo-home", LANE / ".cargo-home")):
-        if not source.is_dir():
-            raise LaneError(f"primary checkout lacks {source}; run fetch there first")
+        if target.is_dir() and not any(target.iterdir()):
+            target.rmdir()
         if not target.exists():
             _clone_tree(source, target)
         print(f"OK    {target} (clone)")

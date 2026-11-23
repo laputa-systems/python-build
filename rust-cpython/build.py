@@ -35,6 +35,8 @@ LANE = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(LANE))
 
+from lane_cache import cache_path, cache_root
+
 import lane_linux
 
 from buildsys import macho
@@ -100,23 +102,35 @@ MUSL_X86_64_LAYOUT = ExtractionLayout(
         "bin/llvm-strip": "llvm-objcopy", "bin/llvm-ranlib": "llvm-ar",
         "lib/libclang.so": "libclang.so.23.1",
         "lib/libclang.so.23.1": "libclang.so.23.1.5",
+        "lib/clang/23/lib/linux/clang_rt.crtbegin.o": "clang_rt.crtbegin-x86_64.o",
+        "lib/clang/23/lib/linux/clang_rt.crtend.o": "clang_rt.crtend-x86_64.o",
+        "lib/clang/23/lib/linux/crtbegin.o": "clang_rt.crtbegin-x86_64.o",
+        "lib/clang/23/lib/linux/crtbeginS.o": "clang_rt.crtbegin-x86_64.o",
+        "lib/clang/23/lib/linux/crtbeginT.o": "clang_rt.crtbegin-x86_64.o",
+        "lib/clang/23/lib/linux/crtend.o": "clang_rt.crtend-x86_64.o",
+        "lib/clang/23/lib/linux/crtendS.o": "clang_rt.crtend-x86_64.o",
     },
     required=frozenset({
         "bin/clang-23", "bin/lld", "bin/llvm-readobj", "bin/llvm-ar",
         "bin/llvm-nm", "bin/llvm-objcopy",
         "lib/clang/23/include/stdint.h",
         "lib/clang/23/lib/linux/libclang_rt.builtins-x86_64.a",
+        "lib/clang/23/lib/linux/clang_rt.crtbegin-x86_64.o",
+        "lib/clang/23/lib/linux/clang_rt.crtend-x86_64.o",
         "lib/libclang.so.23.1.5",
     }),
     library_files=frozenset({"lib/libclang.so.23.1.5"}),
     resource_prefixes=("lib/clang/23/include/",),
     resource_files=frozenset({
         "lib/clang/23/lib/linux/libclang_rt.builtins-x86_64.a",
+        "lib/clang/23/lib/linux/clang_rt.crtbegin-x86_64.o",
+        "lib/clang/23/lib/linux/clang_rt.crtend-x86_64.o",
     }),
     max_member_bytes=320 * 1024 * 1024,
     max_prefix_bytes=900 * 1024 * 1024,
 )
-CACHE_ROOT = REPO / ".cache"
+LOCAL_CACHE_ROOT = cache_root(REPO)
+CACHE_ROOT = cache_root(REPO)
 CARGO_HOME = LANE / ".cargo-home"
 CARGO_CONFIG_ISOLATED_CWD = Path("/")
 INDEX_FORWARDER_PORT = 18737
@@ -311,7 +325,8 @@ def _rust_std_source_environment(destination: Path) -> dict[str, str]:
 def _toolchain():
     if IS_LINUX:
         try:
-            toolchain = lane_linux.load_musl_toolchain(LINUX_TOOLCHAIN_LOCK, CACHE_ROOT)
+            toolchain = lane_linux.load_musl_toolchain(
+                LINUX_TOOLCHAIN_LOCK, cache_root(REPO, LOCAL_CACHE_ROOT))
         except lane_linux.LinuxHostError as error:
             raise LaneError(str(error)) from error
         return toolchain, LaneTarget(LINUX_TARGET, toolchain.cpu_baseline)
@@ -857,16 +872,16 @@ def _llvm_ready(toolchain) -> Path:
     llvm_cache = Cache(_llvm_cache_root(toolchain))
     archive = llvm_cache.require(toolchain.llvm_input())
     if isinstance(toolchain, lane_linux.MuslToolchain):
-        prefix = extract_llvm_archive(
+        extract_llvm_archive(
             archive,
-            toolchain.llvm_prefix,
+            toolchain.llvm_raw_prefix,
             archive_root=toolchain.llvm_archive_root,
             sha256=toolchain.llvm_archive_sha256,
             size=toolchain.llvm_archive_size,
             version=toolchain.llvm_version,
             layout=_llvm_layout(),
         )
-        lane_linux.configure_llvm(toolchain)
+        prefix = lane_linux.configure_llvm(toolchain)
         return prefix
     attestation = llvm_cache.require(toolchain.llvm_attestation_input())
     verify_llvm_attestation_metadata(
@@ -912,17 +927,16 @@ def _fetch_llvm_archive(toolchain, llvm_cache: Cache) -> Path:
     try:
         archive = llvm_cache.fetch(toolchain.llvm_input())
         if isinstance(toolchain, lane_linux.MuslToolchain):
-            prefix = extract_llvm_archive(
+            extract_llvm_archive(
                 archive,
-                toolchain.llvm_prefix,
+                toolchain.llvm_raw_prefix,
                 archive_root=toolchain.llvm_archive_root,
                 sha256=toolchain.llvm_archive_sha256,
                 size=toolchain.llvm_archive_size,
                 version=toolchain.llvm_version,
                 layout=_llvm_layout(),
             )
-            lane_linux.configure_llvm(toolchain)
-            return prefix
+            return lane_linux.configure_llvm(toolchain)
         attestation = llvm_cache.fetch(toolchain.llvm_attestation_input())
         verify_llvm_attestation_metadata(
             attestation,
@@ -946,41 +960,61 @@ def _fetch_llvm_archive(toolchain, llvm_cache: Cache) -> Path:
         raise LaneError(f"cannot provision the locked LLVM toolchain: {error}") from error
 
 
-def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
-    """Build the one missing LLVM JIT tool from the locked 23.1.5 inputs."""
+def _file_sha256(path: Path) -> str:
+    checksum = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            checksum.update(chunk)
+    return checksum.hexdigest()
+
+
+def _musl_llvm_dwarfdump_inputs(toolchain, *, fetch: bool) -> dict[str, Path]:
     document = json.loads(LINUX_TOOLCHAIN_LOCK.read_text())
     entry = document["llvm_dwarfdump"]
     source = entry["source"]
     dev = entry["dev_archive"]
-    recipe = entry["build"]
     if entry["version"] != toolchain.llvm_version:
         raise LaneError("llvm-dwarfdump version does not match the musl toolchain")
 
-    def digest(path: Path) -> str:
-        checksum = hashlib.sha256()
-        with path.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                checksum.update(chunk)
-        return checksum.hexdigest()
-
-    def locked_archive(metadata: dict[str, Any], label: str) -> Path:
-        path = (REPO / metadata["cache_path"]).resolve()
-        expected = metadata["archive_sha256"]
-        expected_size = metadata["archive_size"]
-        if path.is_file() and path.stat().st_size == expected_size and digest(path) == expected:
-            return path
+    inputs = (
+        (
+            "source",
+            source["archive_url"],
+            source["archive_sha256"],
+            source["archive_size"],
+            source["cache_path"],
+        ),
+        (
+            "dev",
+            dev["archive_url"],
+            dev["archive_sha256"],
+            dev["archive_size"],
+            dev["cache_path"],
+        ),
+        (
+            "attestation",
+            source["attestation_url"],
+            source["attestation_sha256"],
+            source.get("attestation_size"),
+            source["attestation_cache_path"],
+        ),
+    )
+    cache = Cache(CACHE_ROOT / "bootstrap")
+    paths = {}
+    for name, url, sha256, size, cache_relative_path in inputs:
         input_ = Input(
-            name=label,
+            name=f"llvm-dwarfdump-{name}",
             version=entry["version"],
-            urls=(metadata["archive_url"],),
-            sha256=expected,
-            size=expected_size,
+            urls=(url,),
+            sha256=sha256,
+            size=size,
             role="build-source",
             target=toolchain.target,
             license=entry["license"],
-            purpose="locked source input for lane-only llvm-dwarfdump",
+            purpose="locked input for lane-only llvm-dwarfdump",
         )
-        blob = Cache(CACHE_ROOT / "bootstrap").fetch(input_)
+        blob = cache.fetch(input_) if fetch else cache.require(input_)
+        path = cache_path(REPO, cache_relative_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
             dir=path.parent, prefix=f".{path.name}-", delete=False
@@ -988,29 +1022,43 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
             temporary = Path(handle.name)
         try:
             shutil.copyfile(blob, temporary)
-            if temporary.stat().st_size != expected_size or digest(temporary) != expected:
-                raise LaneError(f"{label}: cached input digest/size mismatch")
+            if (size is not None and temporary.stat().st_size != size) or _file_sha256(temporary) != sha256:
+                raise LaneError(f"{input_.name}: cached input digest/size mismatch")
             os.replace(temporary, path)
         finally:
             temporary.unlink(missing_ok=True)
-        return path
+        paths[name] = path
+    return paths
 
-    cached = (REPO / recipe["cache_path"]).resolve()
+
+def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
+    """Build the one missing LLVM JIT tool from cached locked inputs only."""
+    document = json.loads(LINUX_TOOLCHAIN_LOCK.read_text())
+    entry = document["llvm_dwarfdump"]
+    recipe = entry["build"]
+    dev = entry["dev_archive"]
+    cached = cache_path(REPO, recipe["cache_path"])
     expected_binary_sha = recipe.get("binary_sha256")
+    expected_binary_size = recipe.get("binary_size")
     if (
         expected_binary_sha
         and cached.is_file()
-        and digest(cached) == expected_binary_sha
+        and (expected_binary_size is None or cached.stat().st_size == expected_binary_size)
+        and _file_sha256(cached) == expected_binary_sha
     ):
         return cached
 
-    source_archive = locked_archive(source, "llvm-project-23.1.5-source")
-    dev_archive = locked_archive(dev, "llvm-23.1.5-dev")
-    attestation = (REPO / source["attestation_cache_path"]).resolve()
-    if not attestation.is_file() or digest(attestation) != source["attestation_sha256"]:
-        raise LaneError(f"LLVM source attestation bundle is missing or mismatched: {attestation}")
+    try:
+        inputs = _musl_llvm_dwarfdump_inputs(toolchain, fetch=False)
+    except (InputError, OSError) as error:
+        raise LaneError(f"locked llvm-dwarfdump inputs are not cached: {error}") from error
+    source_archive = inputs["source"]
+    dev_archive = inputs["dev"]
+    attestation = inputs["attestation"]
+    if not attestation.is_file():
+        raise LaneError(f"LLVM source attestation bundle is missing: {attestation}")
 
-    dev_prefix = (REPO / dev["extracted_prefix"]).resolve()
+    dev_prefix = cache_path(REPO, dev["extracted_prefix"])
     llvm_config = dev_prefix / "bin" / "llvm-config"
     if not llvm_config.is_file():
         extraction_root = dev_prefix.parent
@@ -1076,17 +1124,50 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
             *recipe["llvm_config_components"],
             "--system-libs",
         )
+        build_recipe = recipe["deterministic"]
+        build_env = os.environ.copy()
+        build_env.update({
+            name: str(value) for name, value in build_recipe["environment"].items()
+        })
+        path_maps = build_recipe["path_maps"]
+        prefix_maps = (
+            (source_dir, path_maps["source"]),
+            (Path(temporary), path_maps["build"]),
+            (dev_prefix, path_maps["llvm_dev"]),
+            (dev_prefix.resolve(), path_maps["llvm_dev"]),
+            (toolchain.llvm_prefix, path_maps["llvm_toolchain"]),
+            (toolchain.llvm_prefix.resolve(), path_maps["llvm_toolchain"]),
+            (REPO, path_maps["checkout"]),
+        )
+        prefix_flags = [
+            f"{flag}={source}={destination}"
+            for source, destination in prefix_maps
+            for flag in (
+                "-ffile-prefix-map",
+                "-fdebug-prefix-map",
+                "-fmacro-prefix-map",
+            )
+        ]
         binary = Path(temporary) / "llvm-dwarfdump"
+        unwind_library = Path("/usr/lib/libunwind.so.1")
+        if not unwind_library.is_file():
+            raise LaneError(f"locked llvm-libunwind runtime is missing: {unwind_library}")
+        (Path(temporary) / "libunwind.so").symlink_to(unwind_library)
         command = [
             str(toolchain.llvm_prefix / "bin" / "clang++"),
             "-fuse-ld=lld",
             "-rtlib=compiler-rt",
             "-unwindlib=libunwind",
+            "-Wl,--build-id=sha1",
             *cxxflags,
+            *prefix_flags,
+            f"-fdebug-compilation-dir={path_maps['build']}",
             "-isystem",
             "/usr/include/c++/v1",
             "-I",
             str(source_dir),
+            "-L",
+            str(Path(temporary)),
             "-L",
             str(toolchain.llvm_prefix / "lib"),
             *(str(source_dir / name) for name in names[:4]),
@@ -1094,7 +1175,14 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
             "-o",
             str(binary),
         ]
-        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        result = subprocess.run(
+            command,
+            cwd=source_dir,
+            env=build_env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
         if result.returncode:
             raise LaneError(
                 f"cannot build locked llvm-dwarfdump:\n{result.stdout}{result.stderr}"
@@ -1107,10 +1195,16 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
                 f"built llvm-dwarfdump reports {version.stdout.strip()!r}, "
                 f"expected {entry['version']}"
             )
-        actual_sha = digest(binary)
+        actual_sha = _file_sha256(binary)
         if expected_binary_sha and actual_sha != expected_binary_sha:
             raise LaneError(
-                f"built llvm-dwarfdump digest {actual_sha} != locked {expected_binary_sha}"
+                f"built llvm-dwarfdump digest {actual_sha} (size {binary.stat().st_size}) "
+                f"!= locked {expected_binary_sha} (size {expected_binary_size})"
+            )
+        actual_size = binary.stat().st_size
+        if expected_binary_size is not None and actual_size != expected_binary_size:
+            raise LaneError(
+                f"built llvm-dwarfdump size {actual_size} != locked {expected_binary_size}"
             )
         with tempfile.NamedTemporaryFile(
             dir=cached.parent, prefix=f".{cached.name}-", delete=False
@@ -1122,7 +1216,7 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
             os.replace(temporary_cache, cached)
         finally:
             temporary_cache.unlink(missing_ok=True)
-    print(f"llvm-dwarfdump cache: {cached} sha256={digest(cached)}")
+    print(f"llvm-dwarfdump cache: {cached} sha256={_file_sha256(cached)}")
     return cached
 
 
@@ -1192,22 +1286,41 @@ def _jit_llvm_tools(toolchain) -> Path:
 
 
 def _musl_rustc_wrapper() -> Path:
+    runtime_lib_dir = _musl_runtime_link_dir()
     wrapper = WORK / "musl-rustc-wrapper"
     script = (
         "#!/bin/sh\n"
         "rustc=$1\n"
         "shift\n"
+        f"runtime_lib_dir={str(runtime_lib_dir)!r}\n"
         "for arg in \"$@\"; do\n"
         "    case \"$arg\" in\n"
-        "        --target|--target=*) exec \"$rustc\" \"$@\" ;;\n"
+        "        --target|--target=*) exec \"$rustc\" -L \"native=$runtime_lib_dir\" -C link-arg=-fuse-ld=lld \"$@\" ;;\n"
         "    esac\n"
         "done\n"
-        "exec \"$rustc\" -C target-feature=-crt-static \"$@\"\n"
+        "exec \"$rustc\" -L \"native=$runtime_lib_dir\" -C target-feature=-crt-static -C link-arg=-fuse-ld=lld \"$@\"\n"
     )
     if not wrapper.is_file() or wrapper.read_text() != script:
         wrapper.write_text(script)
     wrapper.chmod(0o755)
     return wrapper
+
+
+def _musl_runtime_link_dir() -> Path:
+    directory = WORK / "musl-runtime-lib"
+    directory.mkdir(parents=True, exist_ok=True)
+    runtime = Path("/usr/lib/libgcc_s.so.1")
+    if not runtime.is_file():
+        raise LaneError(f"Alpine libgcc runtime is missing: {runtime}")
+    alias = directory / "libgcc_s.so"
+    if alias.is_symlink():
+        if os.readlink(alias) != str(runtime):
+            raise LaneError(f"unexpected musl runtime link: {alias} -> {os.readlink(alias)}")
+    elif alias.exists():
+        raise LaneError(f"musl runtime link path is occupied: {alias}")
+    else:
+        alias.symlink_to(runtime)
+    return directory
 
 
 def _environment(toolchain, *, offline: bool, build_dir: Path | None = None) -> dict[str, str]:
@@ -1255,11 +1368,14 @@ def _environment(toolchain, *, offline: bool, build_dir: Path | None = None) -> 
     })
     if IS_LINUX:
         env[_cargo_linker_variable()] = str(llvm_bin / "clang")
-        env[_cargo_rustflags_variable()] = (
-            "-C link-arg=-fuse-ld=lld -C target-feature=-crt-static"
-        )
+        rustflags = "-C link-arg=-fuse-ld=lld -C target-feature=-crt-static"
         if TARGET.endswith("-musl"):
+            runtime_lib_dir = _musl_runtime_link_dir()
+            rustflags = f"-L native={runtime_lib_dir} {rustflags}"
+            env[_cargo_rustflags_variable()] = rustflags
             env["RUSTC_WRAPPER"] = str(_musl_rustc_wrapper())
+        else:
+            env[_cargo_rustflags_variable()] = rustflags
     # Regeneration needs >= 3.11; a distro may only ship an older python3 on
     # the sealed PATH. Bind the newest versioned python3.N the host's ambient
     # PATH offers when it is new enough.
@@ -1437,7 +1553,7 @@ def _musl_allocator_input(name: str, metadata: dict[str, Any], target: str) -> I
 
 def _cache_musl_allocator_source(name: str, toolchain, *, fetch: bool) -> Path:
     metadata = _musl_allocator_metadata(name)
-    path = (REPO / metadata["cache_path"]).resolve()
+    path = cache_path(REPO, metadata["cache_path"]).resolve()
     bootstrap_cache = (CACHE_ROOT / "bootstrap").resolve()
     if not path.is_relative_to(bootstrap_cache):
         raise LaneError(f"{name} source cache path escapes the repository")
@@ -1606,6 +1722,8 @@ def fetch() -> int:
     _fetch_llvm(toolchain)
     print(f"OK    LLVM {toolchain.llvm_version} -> {toolchain.llvm_prefix}")
     if IS_LINUX:
+        for name, path in _musl_llvm_dwarfdump_inputs(toolchain, fetch=True).items():
+            print(f"OK    llvm-dwarfdump {name} input -> {path}")
         _fetch_musl_allocator_sources(toolchain)
         mpdecimal = _mpdecimal_input()
         mirror = dataclasses.replace(
@@ -1744,8 +1862,8 @@ def _configuration(toolchain, target, *, jit: bool = False,
         "--without-ensurepip",
     ]
     args.append("--with-pydebug")
-    if TARGET.endswith("-musl"):
-        args.append("--with-libs=-lgcc_s -lc")
+    if target.triple.endswith("-musl"):
+        args.append("--with-libs=-Wl,-l:libgcc_s.so.1 -lc")
     env = _environment(toolchain, offline=True)
     env.update(platform_flags)
     env.update(jit_config.environment)
