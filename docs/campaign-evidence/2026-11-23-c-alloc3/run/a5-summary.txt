@@ -1,0 +1,4 @@
+Peak RSS KiB from /usr/bin/time -f %M; three corpus runs per stage.
+parent: raw=[56144, 55944, 55924] median=55944 KiB
+cand: raw=[56840, 56580, 56808] median=56808 KiB
+cand-parent: +864 KiB (+1.544402%)

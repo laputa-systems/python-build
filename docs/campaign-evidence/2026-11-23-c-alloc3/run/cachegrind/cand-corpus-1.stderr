@@ -1,0 +1,7 @@
+==148== Cachegrind, a high-precision tracing profiler
+==148== Copyright (C) 2002-2024, and GNU GPL'd, by Nicholas Nethercote et al.
+==148== Using Valgrind-3.25.1 and LibVEX; rerun with -h for copyright info
+==148== Command: /home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/bin/python3.16 -S -W ignore /home/ubuntu/repos/python-build/wt-calloc3-run/docs/campaign-evidence/2026-11-23-c-alloc3/run/support/compile_corpus.py compile /home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16
+==148== 
+==148== 
+==148== I refs:        34,580,745,145

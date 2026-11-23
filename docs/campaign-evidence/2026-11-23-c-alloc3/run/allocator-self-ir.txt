@@ -1,0 +1,6 @@
+Allocator-family self Ir per corpus profile.
+Match: every source path containing src/malloc/, plus malloc/free/realloc/calloc at any source path.
+parent-corpus-1 allocator_self_Ir=4,843,775,824 total_Ir=37,961,326,923 share=12.759764%
+parent-corpus-2 allocator_self_Ir=4,843,775,811 total_Ir=37,961,525,989 share=12.759697%
+cand-corpus-1 allocator_self_Ir=93,504,817 total_Ir=34,580,745,145 share=0.270396%
+cand-corpus-2 allocator_self_Ir=93,504,927 total_Ir=34,580,338,253 share=0.270399%

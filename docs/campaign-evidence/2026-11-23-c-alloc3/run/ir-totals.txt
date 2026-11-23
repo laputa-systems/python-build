@@ -1,0 +1,30 @@
+Total Ir is cg_annotate PROGRAM TOTALS; stderr I refs are recorded for cross-check.
+Each line retains the workload's raw stdout (including operation/digest output for kernels).
+parent-corpus-1 total_Ir=37,961,326,923 stderr_I_refs=37961326923 exit=0 stdout=compile 2104 2093 f237f17c0c92635413ec12ffb01ef70ae5f3d507a4f4bc05d38f84ff5cf294b9
+parent-corpus-2 total_Ir=37,961,525,989 stderr_I_refs=37961525989 exit=0 stdout=compile 2104 2093 f237f17c0c92635413ec12ffb01ef70ae5f3d507a4f4bc05d38f84ff5cf294b9
+cand-corpus-1 total_Ir=34,580,745,145 stderr_I_refs=34580745145 exit=0 stdout=compile 2104 2093 1155dd89358201ea98360b9db9a08bfc2bb1b5e1b95d7b586ca926d799333490
+cand-corpus-2 total_Ir=34,580,338,253 stderr_I_refs=34580338253 exit=0 stdout=compile 2104 2093 1155dd89358201ea98360b9db9a08bfc2bb1b5e1b95d7b586ca926d799333490
+parent-scimark_fft-1 total_Ir=4,302,328,583 stderr_I_refs=4302328583 exit=0 stdout={'operation_count': 50, 'digest': '605e8bed1655ba112f3221d40a5d9431896251b95d8b54ba2cdb933728292f23', 'elapsed_seconds': 18.46713844698388, 'cpu_user_seconds': 18.461280999999996, 'cpu_system_seconds': 0.004821999999999993}
+parent-scimark_fft-2 total_Ir=4,302,329,486 stderr_I_refs=4302329486 exit=0 stdout={'operation_count': 50, 'digest': '605e8bed1655ba112f3221d40a5d9431896251b95d8b54ba2cdb933728292f23', 'elapsed_seconds': 19.930959411984077, 'cpu_user_seconds': 19.918236999999998, 'cpu_system_seconds': 0.013027999999999998}
+cand-scimark_fft-1 total_Ir=4,283,228,881 stderr_I_refs=4283228881 exit=0 stdout={'operation_count': 50, 'digest': '605e8bed1655ba112f3221d40a5d9431896251b95d8b54ba2cdb933728292f23', 'elapsed_seconds': 18.27832309700898, 'cpu_user_seconds': 18.276600000000002, 'cpu_system_seconds': 0.002934999999999993}
+cand-scimark_fft-2 total_Ir=4,283,285,152 stderr_I_refs=4283285152 exit=0 stdout={'operation_count': 50, 'digest': '605e8bed1655ba112f3221d40a5d9431896251b95d8b54ba2cdb933728292f23', 'elapsed_seconds': 18.180600357009098, 'cpu_user_seconds': 18.170765000000003, 'cpu_system_seconds': 0.010967999999999992}
+parent-nbody-1 total_Ir=2,983,772,101 stderr_I_refs=2983772101 exit=0 stdout={'operation_count': 20000, 'digest': '3640da69351bfefab701de78301e74a9fd4352c2b115d852e019c715bd23f849', 'elapsed_seconds': 10.168872776004719, 'cpu_user_seconds': 10.169736, 'cpu_system_seconds': 0.0004740000000000022}
+parent-nbody-2 total_Ir=2,983,833,753 stderr_I_refs=2983833753 exit=0 stdout={'operation_count': 20000, 'digest': '3640da69351bfefab701de78301e74a9fd4352c2b115d852e019c715bd23f849', 'elapsed_seconds': 10.437628599000163, 'cpu_user_seconds': 10.432858000000001, 'cpu_system_seconds': 0.004841000000000012}
+cand-nbody-1 total_Ir=2,964,683,543 stderr_I_refs=2964683543 exit=0 stdout={'operation_count': 20000, 'digest': '3640da69351bfefab701de78301e74a9fd4352c2b115d852e019c715bd23f849', 'elapsed_seconds': 10.090374468971277, 'cpu_user_seconds': 10.087026999999999, 'cpu_system_seconds': 0.004683000000000007}
+cand-nbody-2 total_Ir=2,964,817,484 stderr_I_refs=2964817484 exit=0 stdout={'operation_count': 20000, 'digest': '3640da69351bfefab701de78301e74a9fd4352c2b115d852e019c715bd23f849', 'elapsed_seconds': 10.108334630989702, 'cpu_user_seconds': 10.104536, 'cpu_system_seconds': 0.005185999999999996}
+parent-scimark_sparse_mat_mult-1 total_Ir=6,560,665,768 stderr_I_refs=6560665768 exit=0 stdout={'operation_count': 100000, 'digest': '2eebf23cc576a0437d1a3adf926793e018f058f6fe88dca519a9038195fff28f', 'elapsed_seconds': 13.27875964998384, 'cpu_user_seconds': 13.270990000000001, 'cpu_system_seconds': 0.008655999999999997}
+parent-scimark_sparse_mat_mult-2 total_Ir=6,560,674,713 stderr_I_refs=6560674713 exit=0 stdout={'operation_count': 100000, 'digest': '2eebf23cc576a0437d1a3adf926793e018f058f6fe88dca519a9038195fff28f', 'elapsed_seconds': 13.19356857301318, 'cpu_user_seconds': 13.181249000000001, 'cpu_system_seconds': 0.013438999999999993}
+cand-scimark_sparse_mat_mult-1 total_Ir=6,541,941,299 stderr_I_refs=6541941299 exit=0 stdout={'operation_count': 100000, 'digest': '2eebf23cc576a0437d1a3adf926793e018f058f6fe88dca519a9038195fff28f', 'elapsed_seconds': 12.88016626998433, 'cpu_user_seconds': 12.873558999999998, 'cpu_system_seconds': 0.007962999999999998}
+cand-scimark_sparse_mat_mult-2 total_Ir=6,541,728,372 stderr_I_refs=6541728372 exit=0 stdout={'operation_count': 100000, 'digest': '2eebf23cc576a0437d1a3adf926793e018f058f6fe88dca519a9038195fff28f', 'elapsed_seconds': 12.962925605999772, 'cpu_user_seconds': 12.958393999999998, 'cpu_system_seconds': 0.0060120000000000035}
+parent-setup-nbody-1 total_Ir=1,417,451,080 stderr_I_refs=1417451080 exit=0 stdout=setup-only
+parent-setup-nbody-2 total_Ir=1,417,580,804 stderr_I_refs=1417580804 exit=0 stdout=setup-only
+cand-setup-nbody-1 total_Ir=1,398,885,233 stderr_I_refs=1398885233 exit=0 stdout=setup-only
+cand-setup-nbody-2 total_Ir=1,398,718,171 stderr_I_refs=1398718171 exit=0 stdout=setup-only
+parent-setup-scimark_fft-1 total_Ir=1,430,846,583 stderr_I_refs=1430846583 exit=0 stdout=setup-only
+parent-setup-scimark_fft-2 total_Ir=1,430,709,577 stderr_I_refs=1430709577 exit=0 stdout=setup-only
+cand-setup-scimark_fft-1 total_Ir=1,411,817,472 stderr_I_refs=1411817472 exit=0 stdout=setup-only
+cand-setup-scimark_fft-2 total_Ir=1,412,009,096 stderr_I_refs=1412009096 exit=0 stdout=setup-only
+parent-setup-scimark_sparse_mat_mult-1 total_Ir=1,430,968,426 stderr_I_refs=1430968426 exit=0 stdout=setup-only
+parent-setup-scimark_sparse_mat_mult-2 total_Ir=1,430,782,886 stderr_I_refs=1430782886 exit=0 stdout=setup-only
+cand-setup-scimark_sparse_mat_mult-1 total_Ir=1,411,816,253 stderr_I_refs=1411816253 exit=0 stdout=setup-only
+cand-setup-scimark_sparse_mat_mult-2 total_Ir=1,411,946,335 stderr_I_refs=1411946335 exit=0 stdout=setup-only

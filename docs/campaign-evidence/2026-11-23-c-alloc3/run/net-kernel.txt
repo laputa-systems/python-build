@@ -1,0 +1,18 @@
+Means use the fresh retry pair when scheduled; otherwise the initial pair.
+Net kernel Ir = whole-kernel Ir mean - matching setup-only Ir mean.
+Parent-to-candidate percentage = 100 * (candidate / parent - 1).
+nbody parent pair=initial/initial whole_mean=2983802927.0 setup_mean=1417515942.0 net=1566286985.0
+nbody cand pair=initial/initial whole_mean=2964750513.5 setup_mean=1398801702.0 net=1565948811.5
+nbody parent_to_cand whole: parent=2983802927.0 cand=2964750513.5 change=-0.638528%
+nbody parent_to_cand setup: parent=1417515942.0 cand=1398801702.0 change=-1.320214%
+nbody parent_to_cand net: parent=1566286985.0 cand=1565948811.5 change=-0.021591%
+scimark_fft parent pair=initial/initial whole_mean=4302329034.5 setup_mean=1430778080.0 net=2871550954.5
+scimark_fft cand pair=initial/initial whole_mean=4283257016.5 setup_mean=1411913284.0 net=2871343732.5
+scimark_fft parent_to_cand whole: parent=4302329034.5 cand=4283257016.5 change=-0.443295%
+scimark_fft parent_to_cand setup: parent=1430778080.0 cand=1411913284.0 change=-1.318499%
+scimark_fft parent_to_cand net: parent=2871550954.5 cand=2871343732.5 change=-0.007216%
+scimark_sparse_mat_mult parent pair=initial/initial whole_mean=6560670240.5 setup_mean=1430875656.0 net=5129794584.5
+scimark_sparse_mat_mult cand pair=initial/initial whole_mean=6541834835.5 setup_mean=1411881294.0 net=5129953541.5
+scimark_sparse_mat_mult parent_to_cand whole: parent=6560670240.5 cand=6541834835.5 change=-0.287096%
+scimark_sparse_mat_mult parent_to_cand setup: parent=1430875656.0 cand=1411881294.0 change=-1.327464%
+scimark_sparse_mat_mult parent_to_cand net: parent=5129794584.5 cand=5129953541.5 change=+0.003099%

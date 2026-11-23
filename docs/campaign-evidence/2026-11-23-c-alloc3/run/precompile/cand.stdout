@@ -1,0 +1,63 @@
+*** Error compiling '/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/test_future_stmt/badsyntax_future.py'...
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/test_future_stmt/badsyntax_future.py", line 3
+    from __future__ import print_function
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+SyntaxError: from __future__ imports must occur at the beginning of the file
+
+*** Error compiling '/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/test_lazy_import/data/badsyntax/lazy_class_body.py'...
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/test_lazy_import/data/badsyntax/lazy_class_body.py", line 3
+    lazy import json
+    ^^^^^^^^^^^^^^^^
+SyntaxError: lazy import not allowed inside classes
+
+*** Error compiling '/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/test_lazy_import/data/badsyntax/lazy_future_import.py'...
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/test_lazy_import/data/badsyntax/lazy_future_import.py", line 1
+    lazy from __future__ import annotations
+    ^^^^
+SyntaxError: lazy from __future__ import is not allowed
+
+*** Error compiling '/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/test_lazy_import/data/badsyntax/lazy_import_func.py'...
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/test_lazy_import/data/badsyntax/lazy_import_func.py", line 2
+    lazy import foo
+    ^^^^^^^^^^^^^^^
+SyntaxError: lazy import not allowed inside functions
+
+*** Error compiling '/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/test_lazy_import/data/badsyntax/lazy_try_except.py'...
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/test_lazy_import/data/badsyntax/lazy_try_except.py", line 2
+    lazy import foo
+    ^^^^^^^^^^^^^^^
+SyntaxError: lazy import not allowed inside try/except blocks
+
+*** Error compiling '/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/test_lazy_import/data/badsyntax/lazy_try_except_from.py'...
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/test_lazy_import/data/badsyntax/lazy_try_except_from.py", line 2
+    lazy from foo import bar
+    ^^^^^^^^^^^^^^^^^^^^^^^^
+SyntaxError: lazy from ... import not allowed inside try/except blocks
+
+*** Error compiling '/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/test_lazy_import/data/badsyntax/lazy_try_except_from_star.py'...
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/test_lazy_import/data/badsyntax/lazy_try_except_from_star.py", line 1
+    lazy from foo import *
+    ^^^^^^^^^^^^^^^^^^^^^^
+SyntaxError: lazy from ... import * is not allowed
+
+*** Error compiling '/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/tokenizedata/bad_coding.py'...
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/tokenizedata/bad_coding.py", line 0
+SyntaxError: unknown encoding: uft-8
+
+*** Error compiling '/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/tokenizedata/bad_coding2.py'...
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/tokenizedata/bad_coding2.py", line 1
+    #coding: utf8
+SyntaxError: encoding problem: utf8 with BOM
+
+*** Error compiling '/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/tokenizedata/badsyntax_3131.py'...
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/tokenizedata/badsyntax_3131.py", line 2
+    € = 2
+    ^
+SyntaxError: invalid character '€' (U+20AC)
+
+*** Error compiling '/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/tokenizedata/badsyntax_pep3120.py'...
+  File "/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/stage-perf-calloc3-cand/lib/python3.16/test/tokenizedata/badsyntax_pep3120.py", line 1
+    print("b�se")
+            ^
+SyntaxError: Non-UTF-8 code starting with '\xf6' on line 1, but no encoding declared; see https://peps.python.org/pep-0263/ for details
+

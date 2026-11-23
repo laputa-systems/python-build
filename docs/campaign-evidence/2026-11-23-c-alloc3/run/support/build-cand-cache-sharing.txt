@@ -1,0 +1,6 @@
+primary=/home/ubuntu/repos/python-build
+reused_rustup_cache=/home/ubuntu/repos/python-build/wt-allocretry/rust-cpython/.cache/rustup-musl
+/home/ubuntu/repos/python-build/wt-calloc3-cand/.cache/objects -> /home/ubuntu/repos/python-build/.cache/objects
+/home/ubuntu/repos/python-build/wt-calloc3-cand/.cache/bootstrap -> /home/ubuntu/repos/python-build/.cache/bootstrap
+/home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/.cache/rustup-musl -> /home/ubuntu/repos/python-build/wt-allocretry/rust-cpython/.cache/rustup-musl
+/home/ubuntu/repos/python-build/wt-calloc3-cand/benchmarks/.cache/wheelhouse -> /home/ubuntu/repos/python-build/benchmarks/.cache/wheelhouse

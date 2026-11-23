@@ -1,0 +1,21 @@
+Recorded command exit codes; no experiment verdict is computed.
+parent parity 0
+cand parity 0
+parent suites 1
+parent suites-capi-verbose 2
+cand suites 1
+cand suites-capi-verbose 2
+cand serc 0
+parent fuzz 0
+parent threaded 0
+parent ctypes 0
+cand fuzz 0
+cand threaded 0
+cand ctypes 0
+
+Compile parity normalization:
+Compile parity comparison; raw digest JSON is preserved in correctness/parity/.
+parent entries: 2104
+cand entries: 2104
+raw differences=1 sysconfigdata=['_sysconfigdata__linux_x86_64-linux-musl.py'] other_differences=[]
+_sysconfigdata__linux_x86_64-linux-musl.py normalized_source_equal=False normalized_compile_hashes={'parent': '2eab099233957e41ca74d4792b69380a7bb3d21d443dcaef3f0a9379c07f2d4f', 'cand': 'edf690691060c4ff0064394df9e2bdc581e1d5a9bb84e28fc4b0ec9346903b47'} normalized_compile_equal=False

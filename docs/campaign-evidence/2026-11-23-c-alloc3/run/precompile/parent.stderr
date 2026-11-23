@@ -1,0 +1,12 @@
+/home/ubuntu/repos/python-build/wt-calloc3-parent/rust-cpython/stage-perf-calloc3-parent/lib/python3.16/test/test_import/data/syntax_warnings.py:4: SyntaxWarning: invalid decimal literal
+  x = 1or 0  # line 4
+/home/ubuntu/repos/python-build/wt-calloc3-parent/rust-cpython/stage-perf-calloc3-parent/lib/python3.16/test/test_import/data/syntax_warnings.py:7: SyntaxWarning: "\z" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\z"? A raw string is also an option.
+  '\z'  # line 7
+/home/ubuntu/repos/python-build/wt-calloc3-parent/rust-cpython/stage-perf-calloc3-parent/lib/python3.16/test/test_import/data/syntax_warnings.py:10: SyntaxWarning: "\400" is an invalid octal escape sequence. Such sequences will not work in the future. Did you mean "\\400"? A raw string is also an option.
+  '\400'  # line 10
+/home/ubuntu/repos/python-build/wt-calloc3-parent/rust-cpython/stage-perf-calloc3-parent/lib/python3.16/test/test_import/data/syntax_warnings.py:21: SyntaxWarning: 'return' in a 'finally' block
+  return 42  # line 21
+/home/ubuntu/repos/python-build/wt-calloc3-parent/rust-cpython/stage-perf-calloc3-parent/lib/python3.16/test/test_import/data/syntax_warnings.py:13: SyntaxWarning: assertion is always true, perhaps remove parentheses?
+  assert(x, 'message')  # line 13
+/home/ubuntu/repos/python-build/wt-calloc3-parent/rust-cpython/stage-perf-calloc3-parent/lib/python3.16/test/test_import/data/syntax_warnings.py:14: SyntaxWarning: "is" with 'int' literal. Did you mean "=="?
+  x is 1  # line 14

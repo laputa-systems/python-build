@@ -19,7 +19,11 @@ from .models import (
     RESULT_SCHEMA_VERSION,
     validate_workload_result,
 )
-from .process import CGROUP_TREE_CPU_COVERAGE, KERNEL_REGION_CPU_COVERAGE, REAPED_CPU_COVERAGE
+from .process import (
+    CGROUP_TREE_CPU_COVERAGE,
+    KERNEL_REGION_CPU_COVERAGE,
+    REAPED_CPU_COVERAGE,
+)
 
 PAGE_SIZE_FLOOR_BYTES = 4096
 TIMING_RESOLUTION_FLOOR_SECONDS = 0.001
@@ -442,8 +446,10 @@ def _compare_cpu(
         KERNEL_REGION_CPU_COVERAGE,
         REAPED_CPU_COVERAGE,
         "wait4 root only; descendants excluded",
-        "wait4 root plus workload-reported RUSAGE_CHILDREN direct reaped children; "
-        "grandchildren and unreaped descendants excluded",
+        (
+            "wait4 root plus workload-reported RUSAGE_CHILDREN direct reaped children; "
+            "grandchildren and unreaped descendants excluded"
+        ),
     )
     if result["metrics"]:
         result["status"] = (

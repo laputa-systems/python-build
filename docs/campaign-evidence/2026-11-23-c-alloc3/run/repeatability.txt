@@ -1,0 +1,20 @@
+Symmetric difference = abs(run1-run2) / mean(run1,run2) * 100; procedural limit 0.1%.
+Each initial miss triggers exactly one fresh two-run pair on both stages for that workload.
+A retry miss is recorded as non-repeatable; no further pair is scheduled.
+initial corpus parent: 37,961,326,923 / 37,961,525,989 delta=0.000524% within
+initial corpus cand: 34,580,745,145 / 34,580,338,253 delta=0.001177% within
+initial scimark_fft parent: 4,302,328,583 / 4,302,329,486 delta=0.000021% within
+initial scimark_fft cand: 4,283,228,881 / 4,283,285,152 delta=0.001314% within
+initial nbody parent: 2,983,772,101 / 2,983,833,753 delta=0.002066% within
+initial nbody cand: 2,964,683,543 / 2,964,817,484 delta=0.004518% within
+initial scimark_sparse_mat_mult parent: 6,560,665,768 / 6,560,674,713 delta=0.000136% within
+initial scimark_sparse_mat_mult cand: 6,541,941,299 / 6,541,728,372 delta=0.003255% within
+initial setup-nbody parent: 1,417,451,080 / 1,417,580,804 delta=0.009152% within
+initial setup-nbody cand: 1,398,885,233 / 1,398,718,171 delta=0.011943% within
+initial setup-scimark_fft parent: 1,430,846,583 / 1,430,709,577 delta=0.009576% within
+initial setup-scimark_fft cand: 1,411,817,472 / 1,412,009,096 delta=0.013572% within
+initial setup-scimark_sparse_mat_mult parent: 1,430,968,426 / 1,430,782,886 delta=0.012967% within
+initial setup-scimark_sparse_mat_mult cand: 1,411,816,253 / 1,411,946,335 delta=0.009213% within
+
+Scheduled fresh pairs:
+(none)

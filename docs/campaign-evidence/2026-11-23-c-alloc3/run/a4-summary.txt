@@ -1,0 +1,9 @@
+Private_Dirty KiB medians from six residency-probe observations per mode.
+parent: all_valid=True
+parent pyc: raw=[4056, 4044, 4056, 4076, 4052, 4024] median=4054 KiB
+parent source: raw=[4496, 4492, 4488, 4504, 4524, 4492] median=4494 KiB
+cand: all_valid=True
+cand pyc: raw=[4036, 4072, 4072, 4044, 4072, 4052] median=4062 KiB
+cand source: raw=[5216, 5228, 5168, 5188, 5220, 5232] median=5218 KiB
+cand-parent pyc: +8 KiB (+0.197336%)
+cand-parent source: +724 KiB (+16.110369%)

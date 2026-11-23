@@ -1,0 +1,6 @@
+Existing musl lane Cargo launchers copied after perf.py setup-worktree.
+source=/home/ubuntu/repos/python-build/wt-allocretry/rust-cpython/.cargo-home/bin
+destination=/home/ubuntu/repos/python-build/wt-calloc3-parent/rust-cpython/.cargo-home/bin
+cargo sha256=f2e3187d1b0b9846414d958f473c804fa9491da985e2ec396c43334587c4f0d2
+rustc sha256=1f7594af88af35d139d8ce114b056b47f0c0b0acc0e23a9ccb57736b4e121b2b
+rustup sha256=1552169aba2836777136ccff7a381e95c17233b5d8250cd5e10ae3cb971bfcfc

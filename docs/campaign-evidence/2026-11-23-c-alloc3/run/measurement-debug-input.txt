@@ -1,0 +1,7 @@
+package=musl-dbg=1.2.6-r3
+url=https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/musl-dbg-1.2.6-r3.apk
+sha256=6ac917e29afef12b05d5e71c747af48ff4bafda3b85f4e964e9849b86309f330
+size=1028777
+role=measurement-only debug symbols; excluded from stage package closure and identity
+stage_identity=excluded
+source=/home/ubuntu/exp-calloc3/inputs/musl-dbg-1.2.6-r3.apk

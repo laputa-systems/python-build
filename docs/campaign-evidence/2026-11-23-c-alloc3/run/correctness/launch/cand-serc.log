@@ -1,0 +1,3 @@
+RUN   /home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/work/perf/perf-calloc3-cand/build/python -m test -j 4 --timeout=900 test_compile test_marshal test_dis test_import
+LOG   /home/ubuntu/repos/python-build/wt-calloc3-cand/rust-cpython/logs/perf-calloc3-cand-test_compile-test_marshal-test_dis-test_import-serc-verify.log
+OK    CPython suites: test_compile, test_marshal, test_dis, test_import
