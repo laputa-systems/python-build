@@ -2733,10 +2733,17 @@ def setup_worktree() -> int:
     toolchain, _target = lb._toolchain()
     llvm_prefix = lb._llvm_ready(toolchain)
     print(f"OK    {llvm_prefix} (prepared locally)")
-    # Cargo writes into its home, so keep that state checkout-local too.
-    for source, target in ((primary / "rust-cpython" / ".cargo-home", LANE / ".cargo-home"),):
+    # Cargo and Rustup write into their homes, so keep those state trees local.
+    private_homes = (
+        (primary / "rust-cpython" / ".cargo-home", LANE / ".cargo-home"),
+        (primary / "rust-cpython" / ".cache" / "rustup-musl",
+         LANE / ".cache" / "rustup-musl"),
+    )
+    for source, target in private_homes:
         if not source.is_dir():
             raise LaneError(f"primary checkout lacks {source}; run fetch there first")
+        if target.is_dir() and not any(target.iterdir()):
+            target.rmdir()
         if not target.exists():
             _clone_tree(source, target)
         print(f"OK    {target} (clone)")

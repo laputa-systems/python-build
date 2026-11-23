@@ -74,6 +74,10 @@ class WorktreeSetupTests(unittest.TestCase):
             (primary / "benchmarks" / ".cache" / "wheelhouse").mkdir(parents=True)
             (primary / "rust-cpython" / ".cargo-home").mkdir(parents=True)
             (primary / "rust-cpython" / ".cargo-home" / "marker").write_text("cargo home\n")
+            (primary / "rust-cpython" / ".cache" / "rustup-musl").mkdir(parents=True)
+            (primary / "rust-cpython" / ".cache" / "rustup-musl" / "marker").write_text(
+                "rustup home\n"
+            )
             doctor = mock.Mock(return_value={"ok": True})
             toolchain = object()
 
@@ -102,6 +106,11 @@ class WorktreeSetupTests(unittest.TestCase):
             )
             self.assertTrue((worktree / ".cache" / "bootstrap").is_symlink())
             self.assertFalse((worktree / ".cache" / "llvm").is_symlink())
+            self.assertEqual(
+                (worktree / "rust-cpython" / ".cache" / "rustup-musl" / "marker").read_text(),
+                "rustup home\n",
+            )
+            self.assertFalse((worktree / "rust-cpython" / ".cache" / "rustup-musl").is_symlink())
             self.assertEqual(ready.call_args.args[0], toolchain)
             self.assertEqual(
                 (worktree / ".cache" / "llvm" / "prepared" / "prefix" / "marker").read_text(),
