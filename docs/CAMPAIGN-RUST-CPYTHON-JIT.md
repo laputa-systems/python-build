@@ -76,6 +76,10 @@ unqualified host:
   `Ir` −8.91% and mallocng self `Ir` −98.07% hold, and so do net-kernel controls, but source-mode
   private memory is +724 KiB (rule ≤+100 KiB). This closes the Serc allocator mechanism
   (`campaign-evidence/2026-11-23-c-alloc3/RESULT-CALLOC3.md`).
+- J-BITCAST-1 holds: unboxed stack-ref bit casts compiled to out-of-line `memcpy` calls in
+  stencils (`-fno-builtin`); union casts remove all 96. Net kernel `Ir` is −53.8% on nbody,
+  −52.2% on sparse and −39.7% on fft; the corpus moves +0.01%
+  (`campaign-evidence/2026-11-23-j-bitcast/RESULT-JBITCAST1.md`). It is a prepared Track J candidate.
 
 
 Rewrite this section at each checkpoint. Keep it short: scorecard, blockers,
