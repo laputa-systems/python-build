@@ -861,16 +861,16 @@ def _llvm_ready(toolchain) -> Path:
     llvm_cache = Cache(_llvm_cache_root(toolchain))
     archive = llvm_cache.require(toolchain.llvm_input())
     if isinstance(toolchain, lane_linux.MuslToolchain):
-        prefix = extract_llvm_archive(
+        extract_llvm_archive(
             archive,
-            toolchain.llvm_prefix,
+            toolchain.llvm_raw_prefix,
             archive_root=toolchain.llvm_archive_root,
             sha256=toolchain.llvm_archive_sha256,
             size=toolchain.llvm_archive_size,
             version=toolchain.llvm_version,
             layout=_llvm_layout(),
         )
-        lane_linux.configure_llvm(toolchain)
+        prefix = lane_linux.configure_llvm(toolchain)
         return prefix
     attestation = llvm_cache.require(toolchain.llvm_attestation_input())
     verify_llvm_attestation_metadata(
@@ -916,17 +916,16 @@ def _fetch_llvm_archive(toolchain, llvm_cache: Cache) -> Path:
     try:
         archive = llvm_cache.fetch(toolchain.llvm_input())
         if isinstance(toolchain, lane_linux.MuslToolchain):
-            prefix = extract_llvm_archive(
+            extract_llvm_archive(
                 archive,
-                toolchain.llvm_prefix,
+                toolchain.llvm_raw_prefix,
                 archive_root=toolchain.llvm_archive_root,
                 sha256=toolchain.llvm_archive_sha256,
                 size=toolchain.llvm_archive_size,
                 version=toolchain.llvm_version,
                 layout=_llvm_layout(),
             )
-            lane_linux.configure_llvm(toolchain)
-            return prefix
+            return lane_linux.configure_llvm(toolchain)
         attestation = llvm_cache.fetch(toolchain.llvm_attestation_input())
         verify_llvm_attestation_metadata(
             attestation,

@@ -63,15 +63,29 @@ class WorktreeSetupTests(unittest.TestCase):
             (primary / ".cache" / "objects").mkdir(parents=True)
             (primary / ".cache" / "bootstrap" / "lane-musl" / "apk").mkdir(parents=True)
             (primary / ".cache" / "llvm").mkdir(parents=True)
-            (primary / ".cache" / "llvm" / "marker").write_text("checkout-local prefix\n")
             (primary / "benchmarks" / ".cache" / "wheelhouse").mkdir(parents=True)
             (primary / "rust-cpython" / ".cargo-home").mkdir(parents=True)
             (primary / "rust-cpython" / ".cargo-home" / "marker").write_text("cargo home\n")
             doctor = mock.Mock(return_value={"ok": True})
+            toolchain = object()
+
+            def prepare_local_prefix(_toolchain):
+                self.assertEqual(
+                    (worktree / ".cache" / "bootstrap").resolve(),
+                    (primary / ".cache" / "bootstrap").resolve(),
+                )
+                prefix = worktree / ".cache" / "llvm" / "prepared" / "prefix"
+                prefix.mkdir(parents=True)
+                (prefix / "marker").write_text("prepared locally\n")
+                return prefix
+
+            ready = mock.Mock(side_effect=prepare_local_prefix)
             with mock.patch.object(perf, "REPO", worktree), \
                     mock.patch.object(perf, "LANE", worktree / "rust-cpython"), \
                     mock.patch.object(perf, "_primary_repo", return_value=primary), \
                     mock.patch.object(perf.lb, "IS_LINUX", True), \
+                    mock.patch.object(perf.lb, "_toolchain", return_value=(toolchain, "target")), \
+                    mock.patch.object(perf.lb, "_llvm_ready", ready), \
                     mock.patch.object(perf.lb, "doctor_report", doctor):
                 self.assertEqual(perf.setup_worktree(), 0)
             self.assertEqual(
@@ -80,9 +94,10 @@ class WorktreeSetupTests(unittest.TestCase):
             )
             self.assertTrue((worktree / ".cache" / "bootstrap").is_symlink())
             self.assertFalse((worktree / ".cache" / "llvm").is_symlink())
+            self.assertEqual(ready.call_args.args[0], toolchain)
             self.assertEqual(
-                (worktree / ".cache" / "llvm" / "marker").read_text(),
-                "checkout-local prefix\n",
+                (worktree / ".cache" / "llvm" / "prepared" / "prefix" / "marker").read_text(),
+                "prepared locally\n",
             )
             doctor.assert_called_once_with()
 

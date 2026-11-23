@@ -2726,10 +2726,11 @@ def setup_worktree() -> int:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.symlink_to(source)
         print(f"OK    {target} -> {target.resolve()}")
-    # The doctor check requires clang's resource directory beneath this
-    # worktree's own prefix, and Cargo writes into its home: clone both.
-    for source, target in ((primary / ".cache" / "llvm", REPO / ".cache" / "llvm"),
-                           (primary / "rust-cpython" / ".cargo-home", LANE / ".cargo-home")):
+    toolchain, _target = lb._toolchain()
+    llvm_prefix = lb._llvm_ready(toolchain)
+    print(f"OK    {llvm_prefix} (prepared locally)")
+    # Cargo writes into its home, so keep that state checkout-local too.
+    for source, target in ((primary / "rust-cpython" / ".cargo-home", LANE / ".cargo-home"),):
         if not source.is_dir():
             raise LaneError(f"primary checkout lacks {source}; run fetch there first")
         if not target.exists():

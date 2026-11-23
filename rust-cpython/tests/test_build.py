@@ -429,6 +429,90 @@ class LinuxLLVMRuntimeTests(unittest.TestCase):
         self.assertEqual(events, ["extract", "icu"])
 
 
+class PreparedLinuxLLVMTests(unittest.TestCase):
+    def test_second_llvm_ready_reuses_the_manifest_verified_prefix(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive = root / "llvm.tar.xz"
+            archive.write_bytes(b"locked archive")
+            raw_prefix = root / "llvm" / "raw"
+            binary = raw_prefix / "bin"
+            binary.mkdir(parents=True)
+
+            def elf_with_gnu_stack():
+                data = bytearray(0x100)
+                data[:6] = b"\x7fELF\x02\x01"
+                data[0x20:0x28] = (0x40).to_bytes(8, "little")
+                data[0x36:0x38] = (56).to_bytes(2, "little")
+                data[0x38:0x3a] = (1).to_bytes(2, "little")
+                data[0x40:0x44] = (0x6474E551).to_bytes(4, "little")
+                return bytes(data)
+
+            raw_contents = elf_with_gnu_stack()
+            for name in ("clang", "lld"):
+                (binary / name).write_bytes(raw_contents)
+            (binary / "llvm-strip").write_text("strip\n")
+            (binary / "llvm-readelf").write_text("readelf\n")
+            (binary / "clang++").write_text("clang++\n")
+            archive_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
+            prepared_prefix = root / "llvm" / "prepared" / "prefix"
+            toolchain = perf.lb.lane_linux.MuslToolchain(
+                lock_path=root / "linux-musl-toolchain.lock.json",
+                target="x86_64-unknown-linux-musl",
+                cpu_baseline="x86-64",
+                alpine_release="3.22",
+                image_digest="sha256:" + "0" * 64,
+                image_revision="r0",
+                repositories=(),
+                package_pins=(),
+                lane_packages=(),
+                lane_apk_cache=".cache/bootstrap/lane-musl/apk/amd64",
+                system_package_roots=(),
+                llvm_raw_prefix=raw_prefix,
+                llvm_prefix=prepared_prefix,
+                llvm_resource_dir=prepared_prefix / "lib" / "clang" / "23",
+                llvm_version="23.1.5",
+                llvm_archive_url="https://example.invalid/llvm.tar.xz",
+                llvm_archive_sha256=archive_sha256,
+                llvm_archive_size=archive.stat().st_size,
+                llvm_archive_root="llvm",
+                llvm_license="Apache-2.0 WITH LLVM-exception",
+                rust_channel="nightly-2026-09-15",
+                rust_host="x86_64-unknown-linux-musl",
+                make=Path("/usr/bin/make"),
+                make_version="4.4.1",
+                pkgconf=Path("/usr/bin/pkgconf"),
+                pkgconf_version="2.3.0",
+            )
+            cache = mock.Mock()
+            cache.require.return_value = archive
+
+            def extract(_archive, destination, **_kwargs):
+                self.assertEqual(Path(destination), raw_prefix)
+                return raw_prefix
+
+            with mock.patch.object(perf.lb, "Cache", return_value=cache), \
+                    mock.patch.object(perf.lb, "_llvm_cache_root", return_value=root / "cache"), \
+                    mock.patch.object(perf.lb, "_llvm_layout", return_value=object()), \
+                    mock.patch.object(perf.lb, "extract_llvm_archive", side_effect=extract), \
+                    mock.patch.object(perf.lb, "_toolchain", return_value=(toolchain, object())), \
+                    mock.patch.object(
+                        perf.lb.lane_linux, "_tool_output", return_value="GNU_STACK 0x800000"):
+                first = perf.lb._llvm_ready(toolchain)
+                watched = [prepared_prefix / "bin" / "clang",
+                           prepared_prefix / "bin" / "x86_64-unknown-linux-musl.cfg",
+                           prepared_prefix / "bin" / "strip"]
+                before = [(path.lstat().st_mtime_ns, path.lstat().st_size) for path in watched]
+                second = perf.lb._llvm_ready(toolchain)
+            after = [(path.lstat().st_mtime_ns, path.lstat().st_size) for path in watched]
+            self.assertEqual(first, prepared_prefix)
+            self.assertEqual(second, prepared_prefix)
+            self.assertEqual(before, after)
+            self.assertEqual((binary / "clang").read_bytes(), raw_contents)
+            self.assertEqual((binary / "lld").read_bytes(), raw_contents)
+            self.assertTrue((prepared_prefix / ".prepared-manifest.json").is_file())
+
+
 class LinuxDwarfdumpInputTests(unittest.TestCase):
     def test_fetch_provisions_source_dev_and_attestation_from_locked_urls(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -26,6 +26,7 @@ import platform
 import re
 import shutil
 import socket
+import stat
 import subprocess
 import tempfile
 import threading
@@ -302,6 +303,7 @@ class MuslToolchain:
     lane_packages: tuple[dict[str, Any], ...]
     lane_apk_cache: str
     system_package_roots: tuple[str, ...]
+    llvm_raw_prefix: Path
     llvm_prefix: Path
     llvm_resource_dir: Path
     llvm_version: str
@@ -480,10 +482,10 @@ def load_musl_toolchain(path: Path, cache_root: Path | None = None) -> MuslToolc
         raise LinuxHostError(f"{path}: Rust toolchain pin is not the musl lane toolchain")
     version = llvm["version"]
     local_cache = local_cache_root(Path(path).resolve().parents[1], cache_root)
-    prefix = (
-        local_cache / "llvm" / "toolchains"
-        / f"{version}-{archive.sha256}-musl"
-    ).resolve()
+    raw_prefix = (local_cache / "llvm" / "raw" / f"{version}-{archive.sha256}-musl").resolve()
+    additions_sha256 = _llvm_prepared_additions_sha256(TARGET)
+    prefix = (local_cache / "llvm" / "prepared"
+              / f"{archive.sha256}-{additions_sha256}").resolve()
     package_pins = tuple(f"{name}={value}" for name, value in sorted(expected.items()))
     return MuslToolchain(
         lock_path=Path(path),
@@ -497,6 +499,7 @@ def load_musl_toolchain(path: Path, cache_root: Path | None = None) -> MuslToolc
         lane_packages=lane_packages,
         lane_apk_cache=document["lane_apk_cache"],
         system_package_roots=roots,
+        llvm_raw_prefix=raw_prefix,
         llvm_prefix=prefix,
         llvm_resource_dir=prefix / "lib" / "clang" / "23",
         llvm_version=version,
@@ -854,39 +857,131 @@ def package_report(toolchain: LinuxToolchain | MuslToolchain) -> dict[str, str]:
     return _dpkg_versions(list(spec["system_packages"]))
 
 
-def configure_llvm(toolchain: MuslToolchain) -> None:
-    binary = toolchain.llvm_prefix / "bin"
+def _llvm_prepared_additions_sha256(target: str) -> str:
     patcher = Path(__file__).resolve().parents[1] / "build" / "patch_llvm_stack.py"
-    result = subprocess.run(
-        [os.environ.get("PYTHON", "python3"), str(patcher), str(binary)],
-        capture_output=True, text=True, check=False,
-    )
-    if result.returncode:
-        raise LinuxHostError(f"cannot patch the LLVM GNU_STACK headers: {result.stderr.strip()}")
-    for name in ("clang", "lld"):
-        report = _tool_output([str(binary / "llvm-readelf"), "-lW", str(binary / name)])
-        if "GNU_STACK" not in report or "0x800000" not in report:
-            raise LinuxHostError(f"LLVM {name} does not have the locked 8 MiB stack header")
-    target_config = binary / f"{toolchain.target}.cfg"
-    target_config.write_text(
-        "\n".join((
-            "--rtlib=compiler-rt",
-            "--unwindlib=none",
-            f"-L{toolchain.llvm_prefix / 'lib'}",
-            "-isystem /usr/include/fortify",
-            "",
-        ))
-    )
-    cxx_config = binary / "clang++.cfg"
-    existing = cxx_config.read_text() if cxx_config.is_file() else ""
-    suffix = "".join(flag + "\n" for flag in ("-lc++abi", "-lunwind") if flag not in existing)
-    if suffix:
-        with cxx_config.open("a") as stream:
-            stream.write(suffix)
-    strip = binary / "strip"
-    if strip.is_symlink() or strip.exists():
-        strip.unlink()
-    strip.symlink_to("llvm-strip")
+    target_config = "\n".join((
+        "--rtlib=compiler-rt",
+        "--unwindlib=none",
+        f"-L{Path('/prepared-llvm') / 'lib'}",
+        "-isystem /usr/include/fortify",
+        "",
+    ))
+    recipe = {
+        "schema": 1,
+        "target": target,
+        "stack_patcher_sha256": hashlib.sha256(patcher.read_bytes()).hexdigest(),
+        "target_config": target_config.replace(str(Path("/prepared-llvm")), "{LLVM_PREFIX}"),
+        "clangxx_additions": ["-lc++abi", "-lunwind"],
+        "strip_link": "llvm-strip",
+    }
+    return hashlib.sha256(
+        json.dumps(recipe, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def _prepared_files(root: Path) -> dict[str, dict[str, Any]]:
+    files = {}
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root).as_posix()
+        if relative == ".prepared-manifest.json":
+            continue
+        info = path.lstat()
+        mode = stat.S_IMODE(info.st_mode)
+        if path.is_symlink():
+            files[relative] = {"type": "symlink", "target": os.readlink(path), "mode": mode}
+        elif path.is_dir():
+            files[relative] = {"type": "directory", "mode": mode}
+        elif path.is_file():
+            checksum = hashlib.sha256()
+            with path.open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    checksum.update(chunk)
+            files[relative] = {"type": "file", "sha256": checksum.hexdigest(), "mode": mode}
+        else:
+            raise LinuxHostError(f"unsupported prepared LLVM member: {path}")
+    return files
+
+
+def _prepared_prefix_matches(toolchain: MuslToolchain, additions_sha256: str) -> bool:
+    manifest = toolchain.llvm_prefix / ".prepared-manifest.json"
+    try:
+        record = json.loads(manifest.read_text())
+        return (
+            record.get("schema") == 1
+            and record.get("raw_archive_sha256") == toolchain.llvm_archive_sha256
+            and record.get("prepared_additions_sha256") == additions_sha256
+            and record.get("files") == _prepared_files(toolchain.llvm_prefix)
+        )
+    except (OSError, json.JSONDecodeError, LinuxHostError):
+        return False
+
+
+def configure_llvm(toolchain: MuslToolchain) -> Path:
+    additions_sha256 = _llvm_prepared_additions_sha256(toolchain.target)
+    if _prepared_prefix_matches(toolchain, additions_sha256):
+        return toolchain.llvm_prefix
+    if not toolchain.llvm_raw_prefix.is_dir():
+        raise LinuxHostError(f"verified raw LLVM prefix is missing: {toolchain.llvm_raw_prefix}")
+    destination = toolchain.llvm_prefix
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".llvm-prepared-", dir=destination.parent) as temporary:
+        staged = Path(temporary) / "prefix"
+        shutil.copytree(toolchain.llvm_raw_prefix, staged, symlinks=True)
+        binary = staged / "bin"
+        patcher = Path(__file__).resolve().parents[1] / "build" / "patch_llvm_stack.py"
+        result = subprocess.run(
+            [os.environ.get("PYTHON", "python3"), str(patcher), str(binary)],
+            capture_output=True, text=True, check=False,
+        )
+        if result.returncode:
+            raise LinuxHostError(
+                f"cannot patch the LLVM GNU_STACK headers: {result.stderr.strip()}")
+        for name in ("clang", "lld"):
+            report = _tool_output([str(binary / "llvm-readelf"), "-lW", str(binary / name)])
+            if "GNU_STACK" not in report or "0x800000" not in report:
+                raise LinuxHostError(f"LLVM {name} does not have the locked 8 MiB stack header")
+        target_config = binary / f"{toolchain.target}.cfg"
+        target_config.write_text(
+            "\n".join((
+                "--rtlib=compiler-rt",
+                "--unwindlib=none",
+                f"-L{destination / 'lib'}",
+                "-isystem /usr/include/fortify",
+                "",
+            ))
+        )
+        cxx_config = binary / "clang++.cfg"
+        existing = cxx_config.read_text() if cxx_config.is_file() else ""
+        suffix = "".join(flag + "\n" for flag in ("-lc++abi", "-lunwind")
+                         if flag not in existing)
+        if suffix:
+            with cxx_config.open("a") as stream:
+                stream.write(suffix)
+        strip = binary / "strip"
+        if strip.is_symlink() or strip.exists():
+            strip.unlink()
+        strip.symlink_to("llvm-strip")
+        record = {
+            "schema": 1,
+            "raw_archive_sha256": toolchain.llvm_archive_sha256,
+            "prepared_additions_sha256": additions_sha256,
+            "files": _prepared_files(staged),
+        }
+        manifest = staged / ".prepared-manifest.json"
+        manifest.write_text(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n")
+        manifest.chmod(0o644)
+        backup = Path(temporary) / "previous-prefix"
+        moved_existing = False
+        if destination.exists() or destination.is_symlink():
+            os.replace(destination, backup)
+            moved_existing = True
+        try:
+            os.replace(staged, destination)
+        except BaseException:
+            if moved_existing and not (destination.exists() or destination.is_symlink()):
+                os.replace(backup, destination)
+            raise
+    return destination
 
 
 def docker_offline() -> bool:
