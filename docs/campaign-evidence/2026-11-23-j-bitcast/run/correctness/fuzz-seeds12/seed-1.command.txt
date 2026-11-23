@@ -1,0 +1,1 @@
+python3 /home/ubuntu/repos/python-build/wt-jbitcast1/rust-cpython/tools/musl-run sh -c 'set -eu; stage=/home/ubuntu/repos/python-build/wt-jbitcast1/rust-cpython/stage-perf-jbitcast1-cand; lane=/home/ubuntu/repos/python-build/wt-jbitcast1/rust-cpython; LD_LIBRARY_PATH="$stage/lib" python3 "$lane/tests/jit_fuzz.py" --python "$stage/bin/python3.16" --programs 2000 --seed 1'

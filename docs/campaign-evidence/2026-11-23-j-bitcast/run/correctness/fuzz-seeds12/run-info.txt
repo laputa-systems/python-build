@@ -1,0 +1,8 @@
+J-BITCAST-1 additional JIT fuzz checks
+candidate_stage=/home/ubuntu/repos/python-build/wt-jbitcast1/rust-cpython/stage-perf-jbitcast1-cand
+programs=2000
+seeds=1,2
+container=Alpine sha256:d56c381f961d307a21b3ca004cf1e3910f106644aefb1f43e654c8a56c4fd395
+network=none (tools/musl-run command mode)
+reference=same candidate interpreter with PYTHON_JIT=0; JIT run uses PYTHON_JIT=1
+harness=rust-cpython/tests/jit_fuzz.py; omitted --jobs to match seed-0 invocation

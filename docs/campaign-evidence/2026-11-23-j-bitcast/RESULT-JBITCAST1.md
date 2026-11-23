@@ -27,7 +27,7 @@ reloaded the result. The cast is now a register move (`_UNBOX_FLOAT_TOS_r11`: `m
 
 ## Correctness (all pass)
 
-- **Fuzzing:** JIT fuzz seed 0, 2,000 programs: 0 mismatches.
+- **Fuzzing:** JIT fuzz seed 0, 2,000 programs: 0 mismatches. Added after the verdict on the same candidate stage: seeds 1 and 2, 2,000 programs each, 0 mismatches and 0 nondeterministic programs, JIT coverage 0.9775 and 0.9725 (`run/correctness/fuzz-seeds12/`).
 - **Lane Rust JIT suite:** 120 unit and 2 integration tests pass on both stages. The first
   attempts, with a stage-local Cargo index, exited 101 for lack of `bindgen` and are kept in
   `correctness/rust-jit/`.
