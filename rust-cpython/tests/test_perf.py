@@ -213,14 +213,24 @@ class AllocatorIdentityTests(unittest.TestCase):
 
     def test_measure_refuses_mismatched_allocators_before_sampling(self):
         root = Path("/stage")
+        jemalloc_config = perf.lb.allocator_profile_config("jemalloc", "default")
         sides = {
             "@base": {"ref": "@base", "name": "base", "stage": root / "base",
                       "python": Path("/base/python"),
-                      "report": {"allocator": "musl", "build_identity": {"allocator": "musl"}}},
+                      "report": {
+                          "allocator": "musl", "allocator_profile": "default",
+                          "allocator_config": "", "build_identity": {
+                              "allocator": "musl", "allocator_profile": "default",
+                              "allocator_config": ""}}},
             "@candidate": {"ref": "@candidate", "name": "candidate", "stage": root / "candidate",
                            "python": Path("/candidate/python"),
-                           "report": {"allocator": "jemalloc",
-                                      "build_identity": {"allocator": "jemalloc"}}},
+                           "report": {
+                               "allocator": "jemalloc", "allocator_profile": "default",
+                               "allocator_config": jemalloc_config,
+                               "build_identity": {
+                                   "allocator": "jemalloc",
+                                   "allocator_profile": "default",
+                                   "allocator_config": jemalloc_config}}},
         }
 
         @perf.contextlib.contextmanager

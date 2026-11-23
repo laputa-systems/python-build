@@ -1543,11 +1543,14 @@ def allocator_profile_config(allocator: str, profile: str) -> str:
     if profile not in {"default", "low-retention"}:
         raise LaneError(f"unknown allocator profile {profile!r}")
     if profile == "default":
-        return ""
+        return "--disable-initial-exec-tls" if allocator == "jemalloc" else ""
     if allocator == "mimalloc":
         return "-DMI_DEFAULT_ARENA_EAGER_COMMIT=0 -DMI_DEFAULT_PAGE_FULL_RETAIN=0"
     if allocator == "jemalloc":
-        return "--with-malloc-conf=dirty_decay_ms:0,muzzy_decay_ms:0,narenas:1"
+        return (
+            "--disable-initial-exec-tls "
+            "--with-malloc-conf=dirty_decay_ms:0,muzzy_decay_ms:0,narenas:1"
+        )
     raise LaneError(f"allocator profile {profile!r} requires mimalloc or jemalloc")
 
 
@@ -1707,7 +1710,7 @@ def build_musl_allocator(
     else:
         configure = list(metadata["build"]["configure"])
         if config:
-            configure.append(config)
+            configure.extend(shlex.split(config))
         _require_command(
             configure,
             cwd=source, env=environment, log=work / "jemalloc-configure.log",

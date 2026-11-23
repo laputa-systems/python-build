@@ -106,9 +106,19 @@ class JitConfigurationTests(unittest.TestCase):
             "-DMI_DEFAULT_ARENA_EAGER_COMMIT=0 -DMI_DEFAULT_PAGE_FULL_RETAIN=0",
         )
         self.assertEqual(
+            perf.lb.allocator_profile_config("jemalloc", "default"),
+            "--disable-initial-exec-tls",
+        )
+        self.assertEqual(
             perf.lb.allocator_profile_config("jemalloc", "low-retention"),
+            "--disable-initial-exec-tls "
             "--with-malloc-conf=dirty_decay_ms:0,muzzy_decay_ms:0,narenas:1",
         )
+        for profile in ("default", "low-retention"):
+            self.assertIn(
+                "--disable-initial-exec-tls",
+                perf.lb.allocator_profile_config("jemalloc", profile),
+            )
         self.assertNotEqual(
             perf.lb.allocator_cache_key("mimalloc", "default"),
             perf.lb.allocator_cache_key("mimalloc", "low-retention"),
