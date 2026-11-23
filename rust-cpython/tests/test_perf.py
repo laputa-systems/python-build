@@ -50,6 +50,7 @@ class PrimaryCheckoutTests(unittest.TestCase):
                 ["git", "-C", str(root), "worktree", "add", "--detach", str(worktree), "HEAD"],
                 check=True,
             )
+            self.assertEqual(lane_cache.mount_root(worktree), root.resolve())
             (root / ".cache" / "bootstrap").mkdir(parents=True)
             (worktree / ".cache").mkdir()
             (worktree / ".cache" / "bootstrap").symlink_to(root / ".cache" / "bootstrap")

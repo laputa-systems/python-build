@@ -51,7 +51,7 @@ def primary_checkout(repo: Path) -> Path:
 
 def mount_root(repo: Path) -> Path:
     checkout = checkout_root(repo)
-    roots = [checkout]
+    roots = [checkout, primary_checkout(checkout)]
     cache = cache_root(checkout)
     if cache.is_symlink():
         roots.append(cache.resolve())
