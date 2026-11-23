@@ -1024,6 +1024,7 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
     document = json.loads(LINUX_TOOLCHAIN_LOCK.read_text())
     entry = document["llvm_dwarfdump"]
     recipe = entry["build"]
+    dev = entry["dev_archive"]
     cached = (REPO / recipe["cache_path"]).resolve()
     expected_binary_sha = recipe.get("binary_sha256")
     if (
