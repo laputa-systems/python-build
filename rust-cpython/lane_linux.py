@@ -242,7 +242,6 @@ class LinuxToolchain:
             "STRIP": str(binary / "llvm-strip"),
             "READELF": str(binary / "llvm-readelf"),
             "LIBCLANG_PATH": str(self.libclang_path),
-            "CARGO_ENCODED_RUSTFLAGS": "-C\x1flink-arg=-fuse-ld=lld",
         })
         # As on macOS, LD is not exported; `-fuse-ld=lld` in LDFLAGS selects
         # the locked linker through the clang driver.
@@ -366,6 +365,7 @@ class MuslToolchain:
             "STRIP": str(binary / "llvm-strip"),
             "READELF": str(binary / "llvm-readelf"),
             "LIBCLANG_PATH": str(self.libclang_path),
+            "CARGO_ENCODED_RUSTFLAGS": "-C\x1flink-arg=-fuse-ld=lld",
         })
         env.pop("LD", None)
         return env
