@@ -227,9 +227,9 @@
       "cache_path": ".cache/bootstrap/lane-musl/llvm-dwarfdump/23.1.5/bin/llvm-dwarfdump",
       "previous_binary_sha256": "b323a79e2f687bb3b950f308fdeeea412f95a8e282ee15cc26277f25502265a5",
       "previous_binary_size": 18704168,
-      "binary_sha256": "b323a79e2f687bb3b950f308fdeeea412f95a8e282ee15cc26277f25502265a5",
-      "binary_size": 18704168,
-      "binary_pin_note": "The prior binary was built with GCC crtbeginS.o/crtendS.o. Compiler-rt startup objects and deterministic path, time, and archive settings produce the replacement.",
+      "binary_sha256": "54220a36ac12204637fa0cd1e6cae491d8f31cccb84fd3afc980879e32023b5b",
+      "binary_size": 18654488,
+      "binary_pin_note": "Replaces b323a79e2f687bb3b950f308fdeeea412f95a8e282ee15cc26277f25502265a5: the old binary used GCC crtbeginS.o/crtendS.o; the replacement uses locked compiler-rt startup objects and deterministic path, time, and archive settings.",
       "rebuild_when": "cached binary is missing or its SHA-256 or size differs from the locked output",
       "version_check": "llvm-dwarfdump --version reports 23.1.5"
     }
