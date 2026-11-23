@@ -946,13 +946,11 @@ def _fetch_llvm_archive(toolchain, llvm_cache: Cache) -> Path:
         raise LaneError(f"cannot provision the locked LLVM toolchain: {error}") from error
 
 
-def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
-    """Build the one missing LLVM JIT tool from the locked 23.1.5 inputs."""
+def _musl_llvm_dwarfdump_inputs(toolchain, *, fetch: bool) -> dict[str, Path]:
     document = json.loads(LINUX_TOOLCHAIN_LOCK.read_text())
     entry = document["llvm_dwarfdump"]
     source = entry["source"]
     dev = entry["dev_archive"]
-    recipe = entry["build"]
     if entry["version"] != toolchain.llvm_version:
         raise LaneError("llvm-dwarfdump version does not match the musl toolchain")
 
@@ -963,24 +961,45 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
                 checksum.update(chunk)
         return checksum.hexdigest()
 
-    def locked_archive(metadata: dict[str, Any], label: str) -> Path:
-        path = (REPO / metadata["cache_path"]).resolve()
-        expected = metadata["archive_sha256"]
-        expected_size = metadata["archive_size"]
-        if path.is_file() and path.stat().st_size == expected_size and digest(path) == expected:
-            return path
+    inputs = (
+        (
+            "source",
+            source["archive_url"],
+            source["archive_sha256"],
+            source["archive_size"],
+            source["cache_path"],
+        ),
+        (
+            "dev",
+            dev["archive_url"],
+            dev["archive_sha256"],
+            dev["archive_size"],
+            dev["cache_path"],
+        ),
+        (
+            "attestation",
+            source["attestation_url"],
+            source["attestation_sha256"],
+            source.get("attestation_size"),
+            source["attestation_cache_path"],
+        ),
+    )
+    cache = Cache(CACHE_ROOT / "bootstrap")
+    paths = {}
+    for name, url, sha256, size, cache_path in inputs:
         input_ = Input(
-            name=label,
+            name=f"llvm-dwarfdump-{name}",
             version=entry["version"],
-            urls=(metadata["archive_url"],),
-            sha256=expected,
-            size=expected_size,
+            urls=(url,),
+            sha256=sha256,
+            size=size,
             role="build-source",
             target=toolchain.target,
             license=entry["license"],
-            purpose="locked source input for lane-only llvm-dwarfdump",
+            purpose="locked input for lane-only llvm-dwarfdump",
         )
-        blob = Cache(CACHE_ROOT / "bootstrap").fetch(input_)
+        blob = cache.fetch(input_) if fetch else cache.require(input_)
+        path = (REPO / cache_path).resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
             dir=path.parent, prefix=f".{path.name}-", delete=False
@@ -988,13 +1007,20 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
             temporary = Path(handle.name)
         try:
             shutil.copyfile(blob, temporary)
-            if temporary.stat().st_size != expected_size or digest(temporary) != expected:
-                raise LaneError(f"{label}: cached input digest/size mismatch")
+            if (size is not None and temporary.stat().st_size != size) or digest(temporary) != sha256:
+                raise LaneError(f"{input_.name}: cached input digest/size mismatch")
             os.replace(temporary, path)
         finally:
             temporary.unlink(missing_ok=True)
-        return path
+        paths[name] = path
+    return paths
 
+
+def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
+    """Build the one missing LLVM JIT tool from cached locked inputs only."""
+    document = json.loads(LINUX_TOOLCHAIN_LOCK.read_text())
+    entry = document["llvm_dwarfdump"]
+    recipe = entry["build"]
     cached = (REPO / recipe["cache_path"]).resolve()
     expected_binary_sha = recipe.get("binary_sha256")
     if (
@@ -1004,11 +1030,15 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
     ):
         return cached
 
-    source_archive = locked_archive(source, "llvm-project-23.1.5-source")
-    dev_archive = locked_archive(dev, "llvm-23.1.5-dev")
-    attestation = (REPO / source["attestation_cache_path"]).resolve()
-    if not attestation.is_file() or digest(attestation) != source["attestation_sha256"]:
-        raise LaneError(f"LLVM source attestation bundle is missing or mismatched: {attestation}")
+    try:
+        inputs = _musl_llvm_dwarfdump_inputs(toolchain, fetch=False)
+    except (InputError, OSError) as error:
+        raise LaneError(f"locked llvm-dwarfdump inputs are not cached: {error}") from error
+    source_archive = inputs["source"]
+    dev_archive = inputs["dev"]
+    attestation = inputs["attestation"]
+    if not attestation.is_file():
+        raise LaneError(f"LLVM source attestation bundle is missing: {attestation}")
 
     dev_prefix = (REPO / dev["extracted_prefix"]).resolve()
     llvm_config = dev_prefix / "bin" / "llvm-config"
@@ -1606,6 +1636,8 @@ def fetch() -> int:
     _fetch_llvm(toolchain)
     print(f"OK    LLVM {toolchain.llvm_version} -> {toolchain.llvm_prefix}")
     if IS_LINUX:
+        for name, path in _musl_llvm_dwarfdump_inputs(toolchain, fetch=True).items():
+            print(f"OK    llvm-dwarfdump {name} input -> {path}")
         _fetch_musl_allocator_sources(toolchain)
         mpdecimal = _mpdecimal_input()
         mirror = dataclasses.replace(

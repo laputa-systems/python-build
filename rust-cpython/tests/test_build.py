@@ -429,6 +429,57 @@ class LinuxLLVMRuntimeTests(unittest.TestCase):
         self.assertEqual(events, ["extract", "icu"])
 
 
+class LinuxDwarfdumpInputTests(unittest.TestCase):
+    def test_fetch_provisions_source_dev_and_attestation_from_locked_urls(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            payloads = {
+                "source": b"llvm source archive",
+                "dev": b"llvm dev archive",
+                "attestation": b"published attestation",
+            }
+
+            def pin(name, cache_path, url):
+                data = payloads[name]
+                return {
+                    "archive_url": url,
+                    "archive_sha256": hashlib.sha256(data).hexdigest(),
+                    "archive_size": len(data),
+                    "cache_path": cache_path,
+                }
+
+            source = pin("source", ".cache/llvm-source", "https://example.invalid/source")
+            source.update({
+                "attestation_url": "https://example.invalid/attestation",
+                "attestation_sha256": hashlib.sha256(payloads["attestation"]).hexdigest(),
+                "attestation_cache_path": ".cache/attestation",
+            })
+            dev = pin("dev", ".cache/llvm-dev", "https://example.invalid/dev")
+            lock = root / "linux-musl-toolchain.lock.json"
+            lock.write_text(json.dumps({
+                "llvm_dwarfdump": {
+                    "version": "23.1.5",
+                    "license": "Apache-2.0 WITH LLVM-exception",
+                    "source": source,
+                    "dev_archive": dev,
+                }
+            }))
+            cache = mock.Mock()
+            cache.fetch.side_effect = lambda input_: payloads[input_.name.removeprefix(
+                "llvm-dwarfdump-")]
+            toolchain = SimpleNamespace(
+                target="x86_64-unknown-linux-musl", llvm_version="23.1.5")
+            with mock.patch.object(perf.lb, "LINUX_TOOLCHAIN_LOCK", lock), \
+                    mock.patch.object(perf.lb, "REPO", root / "repo"), \
+                    mock.patch.object(perf.lb, "CACHE_ROOT", root / "cache"), \
+                    mock.patch.object(perf.lb, "Cache", return_value=cache):
+                paths = perf.lb._musl_llvm_dwarfdump_inputs(toolchain, fetch=True)
+            self.assertEqual(set(paths), {"source", "dev", "attestation"})
+            for name, path in paths.items():
+                self.assertEqual(path.read_bytes(), payloads[name])
+            self.assertEqual(cache.fetch.call_count, 3)
+
+
 class LinuxSetupTests(unittest.TestCase):
     def test_ssl_rs_is_shared_in_the_generated_linux_setup(self):
         contents = (
