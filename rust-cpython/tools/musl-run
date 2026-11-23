@@ -273,7 +273,7 @@ def main(argv: list[str]) -> int:
         and argv[2] == "setup-worktree"
     ):
         try:
-            share_worktree_caches(REPO)
+            share_worktree_caches(REPO, musl=True)
         except RuntimeError as error:
             raise SystemExit(str(error)) from error
     return run_container("command", argv, download_missing=True)

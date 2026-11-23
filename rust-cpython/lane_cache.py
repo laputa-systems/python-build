@@ -2,9 +2,28 @@
 
 from __future__ import annotations
 
+import filecmp
 import os
 import subprocess
 from pathlib import Path
+
+
+def _cache_directory_is_shared_contents(local: Path, shared: Path) -> bool:
+    for item in local.rglob("*"):
+        relative = item.relative_to(local)
+        other = shared / relative
+        if item.is_dir() and not item.is_symlink():
+            if not other.is_dir():
+                return False
+        elif item.is_symlink():
+            if not other.is_symlink() or os.readlink(item) != os.readlink(other):
+                return False
+        elif item.is_file():
+            if not other.is_file() or not filecmp.cmp(item, other, shallow=False):
+                return False
+        else:
+            return False
+    return True
 
 
 def checkout_root(repo: Path) -> Path:
@@ -50,7 +69,7 @@ def primary_checkout(repo: Path) -> Path:
 
 
 def share_worktree_caches(
-    repo: Path, primary: Path | None = None
+    repo: Path, primary: Path | None = None, *, musl: bool
 ) -> tuple[Path, list[tuple[Path, Path]]]:
     checkout = checkout_root(repo)
     owner = checkout_root(primary) if primary is not None else primary_checkout(checkout)
@@ -61,8 +80,20 @@ def share_worktree_caches(
     worktree_cache = cache_root(checkout)
     links = [
         (primary_cache / "objects", worktree_cache / "objects"),
-        (primary_cache / "bootstrap", worktree_cache / "bootstrap"),
     ]
+    if musl:
+        links.extend((
+            (primary_cache / "bootstrap", worktree_cache / "bootstrap"),
+            (
+                owner / "rust-cpython" / ".cache" / "rustup-musl",
+                checkout / "rust-cpython" / ".cache" / "rustup-musl",
+            ),
+        ))
+    else:
+        links.append((
+            primary_cache / "llvm" / "objects",
+            worktree_cache / "llvm" / "objects",
+        ))
     wheelhouse = owner / "benchmarks" / ".cache" / "wheelhouse"
     if wheelhouse.is_dir():
         links.append((wheelhouse, checkout / "benchmarks" / ".cache" / "wheelhouse"))
@@ -76,8 +107,22 @@ def share_worktree_caches(
             if target.resolve() != source:
                 raise RuntimeError(f"worktree cache link points elsewhere: {target}")
         elif target.exists():
-            raise RuntimeError(f"worktree cache path is not shared: {target}")
-        else:
+            if target.is_dir() and (
+                not any(target.iterdir())
+                or _cache_directory_is_shared_contents(target, source)
+            ):
+                if any(target.iterdir()):
+                    backup = target.with_name(target.name + ".local-backup")
+                    suffix = 1
+                    while backup.exists():
+                        backup = target.with_name(f"{target.name}.local-backup-{suffix}")
+                        suffix += 1
+                    os.replace(target, backup)
+                else:
+                    target.rmdir()
+            else:
+                raise RuntimeError(f"worktree cache path is not shared: {target}")
+        if not target.exists():
             target.parent.mkdir(parents=True, exist_ok=True)
             target.symlink_to(source)
         linked.append((target, source))

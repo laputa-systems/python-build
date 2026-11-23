@@ -110,12 +110,48 @@ class WorktreeSetupTests(unittest.TestCase):
                 (worktree / "rust-cpython" / ".cache" / "rustup-musl" / "marker").read_text(),
                 "rustup home\n",
             )
-            self.assertFalse((worktree / "rust-cpython" / ".cache" / "rustup-musl").is_symlink())
+            self.assertTrue(
+                (worktree / "rust-cpython" / ".cache" / "rustup-musl").is_symlink()
+            )
             self.assertEqual(ready.call_args.args[0], toolchain)
             self.assertEqual(
                 (worktree / ".cache" / "llvm" / "prepared" / "prefix" / "marker").read_text(),
                 "prepared locally\n",
             )
+            doctor.assert_called_once_with()
+
+    def test_fresh_macos_worktree_shares_llvm_cache_without_musl_prerequisites(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            primary = root / "primary"
+            worktree = root / "fresh"
+            (primary / ".cache" / "objects").mkdir(parents=True)
+            (primary / ".cache" / "llvm" / "objects").mkdir(parents=True)
+            (primary / "rust-cpython" / ".cargo-home").mkdir(parents=True)
+            doctor = mock.Mock(return_value={"ok": True})
+            toolchain = object()
+            ready = mock.Mock(return_value=worktree / ".cache" / "llvm" / "prepared")
+            with mock.patch.object(perf, "REPO", worktree), \
+                    mock.patch.object(perf, "LANE", worktree / "rust-cpython"), \
+                    mock.patch.object(perf, "_primary_repo", return_value=primary), \
+                    mock.patch.object(perf, "_clone_tree") as clone, \
+                    mock.patch.object(perf.lb, "IS_LINUX", False), \
+                    mock.patch.object(perf.lb, "_toolchain", return_value=(toolchain, "target")), \
+                    mock.patch.object(perf.lb, "_llvm_ready", ready), \
+                    mock.patch.object(perf.lb, "doctor_report", doctor):
+                self.assertEqual(perf.setup_worktree(), 0)
+            self.assertTrue((worktree / ".cache" / "llvm" / "objects").is_symlink())
+            self.assertEqual(
+                (worktree / ".cache" / "llvm" / "objects").resolve(),
+                (primary / ".cache" / "llvm" / "objects").resolve(),
+            )
+            self.assertFalse((worktree / ".cache" / "bootstrap").exists())
+            self.assertFalse((worktree / "rust-cpython" / ".cache" / "rustup-musl").exists())
+            clone.assert_called_once_with(
+                primary / "rust-cpython" / ".cargo-home",
+                worktree / "rust-cpython" / ".cargo-home",
+            )
+            ready.assert_called_once_with(toolchain)
             doctor.assert_called_once_with()
 
 
