@@ -198,6 +198,9 @@ them, profiles, and measures paired comparisons. It is the only entry point whil
 the host lease, and the coverage `build.py build` and `test` commands bypass
 it. On Linux the optimized harness uses the same locked Ubuntu 24.04 userland
 and `inputs.linux-cp316.lock.json`; the macOS harness uses the macOS lock.
+`tools/p0-bench` keeps its pre/post host checks outside the container and runs
+`perf.py bench` inside the pinned Alpine container when invoked from the host.
+When already inside Alpine, it runs `perf.py bench` directly.
 
 | Command | Purpose |
 | --- | --- |

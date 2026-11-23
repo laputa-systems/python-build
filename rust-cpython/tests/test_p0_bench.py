@@ -21,9 +21,11 @@ class P0BenchTests(unittest.TestCase):
             results = root / "results"
             gate = root / "gate-ready"
             perf = root / "perf.py"
+            musl_run = root / "musl-run"
             gate_log = root / "gate-calls.jsonl"
             bench_marker = root / "bench-ran"
             perf_args = root / "perf-args.json"
+            musl_args = root / "musl-args.json"
             gate.write_text(
                 "#!/usr/bin/env python3\n"
                 "import json, os, sys\n"
@@ -52,11 +54,19 @@ class P0BenchTests(unittest.TestCase):
                 "raise SystemExit(int(os.environ.get('PERF_EXIT', '0')))\n",
                 encoding="utf-8",
             )
+            musl_run.write_text(
+                "import json, os, subprocess, sys\n"
+                "from pathlib import Path\n"
+                "Path(os.environ['MUSL_ARGS']).write_text(json.dumps(sys.argv[1:]), encoding='utf-8')\n"
+                "raise SystemExit(subprocess.run(sys.argv[1:], check=False).returncode)\n",
+                encoding="utf-8",
+            )
             env = os.environ.copy()
             env.update(
                 {
                     "P0_BENCH_RESULTS": str(results),
                     "PERF_PY": str(perf),
+                    "MUSL_RUN": str(musl_run),
                     "PERF_GATE_READY": str(gate),
                     "PRE_EXIT": str(pre),
                     "POST_EXIT": str(post),
@@ -64,6 +74,7 @@ class P0BenchTests(unittest.TestCase):
                     "PERF_NESTED_VERDICT": "1" if nested_verdict else "0",
                     "PERF_MARKER": str(bench_marker),
                     "PERF_ARGS": str(perf_args),
+                    "MUSL_ARGS": str(musl_args),
                     "GATE_CALLS": str(gate_log),
                 }
             )
@@ -93,12 +104,19 @@ class P0BenchTests(unittest.TestCase):
                 if perf_args.exists()
                 else None
             )
+            recorded_musl_args = (
+                json.loads(musl_args.read_text(encoding="utf-8"))
+                if musl_args.exists()
+                else None
+            )
             return {
                 "completed": completed,
                 "record": record,
                 "bench_ran": bench_marker.exists(),
                 "gate_calls": gate_calls,
                 "perf_args": recorded_perf_args,
+                "perf_path": str(perf),
+                "musl_args": recorded_musl_args,
             }
 
     def test_failed_default_precheck_defers_without_benchmark_or_postcheck(self):
@@ -141,6 +159,10 @@ class P0BenchTests(unittest.TestCase):
         self.assertFalse(result["record"]["eligible"])
         self.assertFalse(result["record"]["accepted"])
         self.assertEqual(result["record"]["args"], ["--runs", "1"])
+        self.assertEqual(
+            result["musl_args"],
+            ["python3", result["perf_path"], "bench", "--runs", "1"],
+        )
 
     def test_accept_verdict_with_both_checks_passing_is_accepted(self):
         result = self.run_case(pre=0, post=0, verdict="ACCEPT", nested_verdict=True)

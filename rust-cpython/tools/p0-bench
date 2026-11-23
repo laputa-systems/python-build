@@ -7,6 +7,7 @@ REPO_ROOT=$(cd -- "$LANE_DIR/.." && pwd)
 RESULTS=${P0_BENCH_RESULTS:-$LANE_DIR/results/perf-bench}
 PERF_PY=${PERF_PY:-$LANE_DIR/perf.py}
 GATE_READY=${PERF_GATE_READY:-$SCRIPT_DIR/perf-gate-ready}
+MUSL_RUN=${MUSL_RUN:-$SCRIPT_DIR/musl-run}
 
 MODE=default
 DIAGNOSTIC_REASON=
@@ -33,6 +34,9 @@ if [[ "$PERF_PY" != /* ]]; then
 fi
 if [[ "$GATE_READY" != /* ]]; then
     GATE_READY=$PWD/$GATE_READY
+fi
+if [[ "$MUSL_RUN" != /* ]]; then
+    MUSL_RUN=$PWD/$MUSL_RUN
 fi
 
 mkdir -p "$RESULTS"
@@ -79,7 +83,11 @@ fi
 set +e
 (
     cd -- "$REPO_ROOT"
-    python3 "$PERF_PY" bench "${BENCH_ARGS[@]}"
+    if [[ -f /etc/alpine-release ]]; then
+        python3 "$PERF_PY" bench "${BENCH_ARGS[@]}"
+    else
+        python3 "$MUSL_RUN" python3 "$PERF_PY" bench "${BENCH_ARGS[@]}"
+    fi
 ) 2>&1 | tee "$tmpdir/bench.log"
 pipeline_status=("${PIPESTATUS[@]}")
 set -e
