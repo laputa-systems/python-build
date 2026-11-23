@@ -1,0 +1,4 @@
+Failure-ID comparison for test_capi.test_opt:
+- Parent-only failure IDs: none.
+- Candidate-only failure IDs: none.
+- Shared failure IDs: 20; the complete per-stage lists are in capi-opt-failure-ids.txt.

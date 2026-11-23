@@ -1,0 +1,7 @@
+initial cand corpus 0.0018667259500994352 
+initial cand scimark_fft 0.004656330374560153 
+initial cand nbody 0.011367267228410761 
+initial cand scimark_sparse_mat_mult 0.005653102034696488 
+initial cand setup-nbody 0.0018245407361525666 
+initial cand setup-scimark_fft 0.005903066615637045 
+initial cand setup-scimark_sparse_mat_mult 0.017060175495524733 

@@ -1,0 +1,20 @@
+Using random seed: 1704067200
+0:00:00 load avg: 0.48 mem:   31.5 MiB Run 5 tests in parallel using 4 worker processes (timeout: 15 min, worker timeout: 20 min)
+0:00:00 load avg: 0.48 mem:  105.3 MiB [1/5] test_monitoring passed
+0:00:00 load avg: 0.48 mem:  227.7 MiB [2/5] test_array passed
+0:00:01 load avg: 0.48 mem:  227.0 MiB [3/5] test_sys_settrace passed
+0:00:01 load avg: 0.61 mem:   35.8 MiB [4/5] test_frame passed
+0:00:04 load avg: 0.61 mem:   33.1 MiB [5/5/1] test_capi.test_opt failed (20 failures)
+test test_capi.test_opt failed -- multiple errors occurred; run in verbose mode for details
+
+== Tests result: FAILURE ==
+
+1 test failed:
+    test_capi.test_opt
+
+4 tests OK.
+
+Total duration: 4.1 sec
+Total tests: run=1,978 failures=20 skipped=12
+Total test files: run=5/5 failed=1
+Result: FAILURE

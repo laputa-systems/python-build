@@ -1,0 +1,30 @@
+Cachegrind total Ir from cg_annotate PROGRAM TOTALS; stderr I refs were cross-checked.
+Each entry includes the raw workload stdout.
+parent-corpus-1 total_Ir=37,961,326,923 stdout=compile 2104 2093 f237f17c0c92635413ec12ffb01ef70ae5f3d507a4f4bc05d38f84ff5cf294b9
+parent-corpus-2 total_Ir=37,961,525,989 stdout=compile 2104 2093 f237f17c0c92635413ec12ffb01ef70ae5f3d507a4f4bc05d38f84ff5cf294b9
+parent-scimark_fft-1 total_Ir=4,302,328,583 stdout={'operation_count': 50, 'digest': '605e8bed1655ba112f3221d40a5d9431896251b95d8b54ba2cdb933728292f23', 'elapsed_seconds': 18.46713844698388, 'cpu_user_seconds': 18.461280999999996, 'cpu_system_seconds': 0.004821999999999993}
+parent-scimark_fft-2 total_Ir=4,302,329,486 stdout={'operation_count': 50, 'digest': '605e8bed1655ba112f3221d40a5d9431896251b95d8b54ba2cdb933728292f23', 'elapsed_seconds': 19.930959411984077, 'cpu_user_seconds': 19.918236999999998, 'cpu_system_seconds': 0.013027999999999998}
+parent-nbody-1 total_Ir=2,983,772,101 stdout={'operation_count': 20000, 'digest': '3640da69351bfefab701de78301e74a9fd4352c2b115d852e019c715bd23f849', 'elapsed_seconds': 10.168872776004719, 'cpu_user_seconds': 10.169736, 'cpu_system_seconds': 0.0004740000000000022}
+parent-nbody-2 total_Ir=2,983,833,753 stdout={'operation_count': 20000, 'digest': '3640da69351bfefab701de78301e74a9fd4352c2b115d852e019c715bd23f849', 'elapsed_seconds': 10.437628599000163, 'cpu_user_seconds': 10.432858000000001, 'cpu_system_seconds': 0.004841000000000012}
+parent-scimark_sparse_mat_mult-1 total_Ir=6,560,665,768 stdout={'operation_count': 100000, 'digest': '2eebf23cc576a0437d1a3adf926793e018f058f6fe88dca519a9038195fff28f', 'elapsed_seconds': 13.27875964998384, 'cpu_user_seconds': 13.270990000000001, 'cpu_system_seconds': 0.008655999999999997}
+parent-scimark_sparse_mat_mult-2 total_Ir=6,560,674,713 stdout={'operation_count': 100000, 'digest': '2eebf23cc576a0437d1a3adf926793e018f058f6fe88dca519a9038195fff28f', 'elapsed_seconds': 13.19356857301318, 'cpu_user_seconds': 13.181249000000001, 'cpu_system_seconds': 0.013438999999999993}
+parent-setup-nbody-1 total_Ir=1,417,451,080 stdout=setup-only
+parent-setup-nbody-2 total_Ir=1,417,580,804 stdout=setup-only
+parent-setup-scimark_fft-1 total_Ir=1,430,846,583 stdout=setup-only
+parent-setup-scimark_fft-2 total_Ir=1,430,709,577 stdout=setup-only
+parent-setup-scimark_sparse_mat_mult-1 total_Ir=1,430,968,426 stdout=setup-only
+parent-setup-scimark_sparse_mat_mult-2 total_Ir=1,430,782,886 stdout=setup-only
+cand-corpus-1 total_Ir=37,965,434,334 stdout=compile 2104 2093 3201cc9f891b25ee071255e45439e667ce5a38b86df81adcc102bb7a6e2cc767
+cand-corpus-2 total_Ir=37,964,725,630 stdout=compile 2104 2093 3201cc9f891b25ee071255e45439e667ce5a38b86df81adcc102bb7a6e2cc767
+cand-scimark_fft-1 total_Ir=3,162,542,528 stdout={'operation_count': 50, 'digest': '605e8bed1655ba112f3221d40a5d9431896251b95d8b54ba2cdb933728292f23', 'elapsed_seconds': 11.381339839019347, 'cpu_user_seconds': 11.377503, 'cpu_system_seconds': 0.005219000000000001}
+cand-scimark_fft-2 total_Ir=3,162,395,273 stdout={'operation_count': 50, 'digest': '605e8bed1655ba112f3221d40a5d9431896251b95d8b54ba2cdb933728292f23', 'elapsed_seconds': 11.428086286992766, 'cpu_user_seconds': 11.429471, 'cpu_system_seconds': 0.0}
+cand-nbody-1 total_Ir=2,140,850,240 stdout={'operation_count': 20000, 'digest': '3640da69351bfefab701de78301e74a9fd4352c2b115d852e019c715bd23f849', 'elapsed_seconds': 5.7918704109906685, 'cpu_user_seconds': 5.7890640000000015, 'cpu_system_seconds': 0.004043000000000005}
+cand-nbody-2 total_Ir=2,141,093,610 stdout={'operation_count': 20000, 'digest': '3640da69351bfefab701de78301e74a9fd4352c2b115d852e019c715bd23f849', 'elapsed_seconds': 5.91523914100253, 'cpu_user_seconds': 5.912547, 'cpu_system_seconds': 0.004035999999999984}
+cand-scimark_sparse_mat_mult-1 total_Ir=3,885,109,563 stdout={'operation_count': 100000, 'digest': '2eebf23cc576a0437d1a3adf926793e018f058f6fe88dca519a9038195fff28f', 'elapsed_seconds': 6.362892695993651, 'cpu_user_seconds': 6.361048999999998, 'cpu_system_seconds': 0.0031850000000000073}
+cand-scimark_sparse_mat_mult-2 total_Ir=3,884,889,940 stdout={'operation_count': 100000, 'digest': '2eebf23cc576a0437d1a3adf926793e018f058f6fe88dca519a9038195fff28f', 'elapsed_seconds': 7.101306114986073, 'cpu_user_seconds': 7.098687999999999, 'cpu_system_seconds': 0.0037650000000000183}
+cand-setup-nbody-1 total_Ir=1,417,549,279 stdout=setup-only
+cand-setup-nbody-2 total_Ir=1,417,575,143 stdout=setup-only
+cand-setup-scimark_fft-1 total_Ir=1,430,705,397 stdout=setup-only
+cand-setup-scimark_fft-2 total_Ir=1,430,620,944 stdout=setup-only
+cand-setup-scimark_sparse_mat_mult-1 total_Ir=1,430,660,421 stdout=setup-only
+cand-setup-scimark_sparse_mat_mult-2 total_Ir=1,430,904,515 stdout=setup-only

@@ -1,0 +1,17 @@
+Symmetric relative difference = abs(run1-run2) / mean(run1,run2) * 100; limit 0.1%.
+Fresh pairs, if present, replace initial pairs for mean calculations.
+The container-side intermediate repeatability-candidate.txt has blank status labels from its BusyBox awk printer. Numeric deltas below were recomputed from the recorded total Ir; the separate numeric retry comparator scheduled no fresh pair.
+initial parent corpus: 37,961,326,923 / 37,961,525,989 delta=0.000524% within
+initial parent scimark_fft: 4,302,328,583 / 4,302,329,486 delta=0.000021% within
+initial parent nbody: 2,983,772,101 / 2,983,833,753 delta=0.002066% within
+initial parent scimark_sparse_mat_mult: 6,560,665,768 / 6,560,674,713 delta=0.000136% within
+initial parent setup-nbody: 1,417,451,080 / 1,417,580,804 delta=0.009152% within
+initial parent setup-scimark_fft: 1,430,846,583 / 1,430,709,577 delta=0.009576% within
+initial parent setup-scimark_sparse_mat_mult: 1,430,968,426 / 1,430,782,886 delta=0.012967% within
+initial cand corpus: 37,965,434,334 / 37,964,725,630 delta=0.001867% within
+initial cand scimark_fft: 3,162,542,528 / 3,162,395,273 delta=0.004656% within
+initial cand nbody: 2,140,850,240 / 2,141,093,610 delta=0.011367% within
+initial cand scimark_sparse_mat_mult: 3,885,109,563 / 3,884,889,940 delta=0.005653% within
+initial cand setup-nbody: 1,417,549,279 / 1,417,575,143 delta=0.001825% within
+initial cand setup-scimark_fft: 1,430,705,397 / 1,430,620,944 delta=0.005903% within
+initial cand setup-scimark_sparse_mat_mult: 1,430,660,421 / 1,430,904,515 delta=0.017060% within
