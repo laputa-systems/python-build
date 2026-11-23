@@ -71,7 +71,6 @@ class WorktreeSetupTests(unittest.TestCase):
             worktree = root / "fresh"
             (primary / ".cache" / "objects").mkdir(parents=True)
             (primary / ".cache" / "bootstrap" / "lane-musl" / "apk").mkdir(parents=True)
-            (primary / ".cache" / "llvm" / "objects").mkdir(parents=True)
             (primary / "benchmarks" / ".cache" / "wheelhouse").mkdir(parents=True)
             (primary / "rust-cpython" / ".cargo-home").mkdir(parents=True)
             (primary / "rust-cpython" / ".cargo-home" / "marker").write_text("cargo home\n")
@@ -102,7 +101,6 @@ class WorktreeSetupTests(unittest.TestCase):
                 (primary / ".cache" / "bootstrap").resolve(),
             )
             self.assertTrue((worktree / ".cache" / "bootstrap").is_symlink())
-            self.assertTrue((worktree / ".cache" / "llvm" / "objects").is_symlink())
             self.assertFalse((worktree / ".cache" / "llvm").is_symlink())
             self.assertEqual(ready.call_args.args[0], toolchain)
             self.assertEqual(

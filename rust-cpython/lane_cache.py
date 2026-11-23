@@ -66,9 +66,6 @@ def share_worktree_caches(
     wheelhouse = owner / "benchmarks" / ".cache" / "wheelhouse"
     if wheelhouse.is_dir():
         links.append((wheelhouse, checkout / "benchmarks" / ".cache" / "wheelhouse"))
-    llvm_objects = primary_cache / "llvm" / "objects"
-    if llvm_objects.is_dir():
-        links.append((llvm_objects, worktree_cache / "llvm" / "objects"))
 
     linked: list[tuple[Path, Path]] = []
     for source, target in links:
