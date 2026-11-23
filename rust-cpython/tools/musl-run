@@ -140,11 +140,17 @@ def container_fetch() -> int:
         stderr=subprocess.DEVNULL, check=False,
     ).returncode == 0
     if not usable:
-        url = "https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-musl/rustup-init"
+        rustup_pin = lane["rust"]["rustup"]
         installer = rustup_home / "rustup-init"
-        request = urllib.request.Request(url, headers={"User-Agent": "musl-lane-bootstrap/1"})
+        request = urllib.request.Request(
+            rustup_pin["init_url"], headers={"User-Agent": "musl-lane-bootstrap/1"})
         with urllib.request.urlopen(request, timeout=60) as response:
-            installer.write_bytes(response.read())
+            payload = response.read()
+        digest = hashlib.sha256(payload).hexdigest()
+        if digest != rustup_pin["init_sha256"]:
+            raise SystemExit(
+                f"rustup-init digest mismatch: {digest} != {rustup_pin['init_sha256']}")
+        installer.write_bytes(payload)
         installer.chmod(0o755)
         result = subprocess.run(
             [str(installer), "-y", "--no-modify-path", "--default-toolchain", "none"],

@@ -746,5 +746,42 @@ class MacOSDeploymentProbeTests(unittest.TestCase):
                 self.assertNotIn("ac_cv_func_pipe2", flags)
 
 
+class MuslRustupPinTests(unittest.TestCase):
+    def test_container_fetch_rejects_rustup_init_before_execution(self):
+        lane = {
+            "rust": {
+                "cache": ".cache/rustup-musl",
+                "channel": "nightly-2026-09-15",
+                "host": "x86_64-unknown-linux-musl",
+                "rustup": {
+                    "version": "1.29.3",
+                    "init_url": "https://static.rust-lang.org/rustup/archive/1.29.3/"
+                                "x86_64-unknown-linux-musl/rustup-init",
+                    "init_sha256": "0" * 64,
+                    "checksum_url": "https://static.rust-lang.org/rustup/archive/1.29.3/"
+                                    "x86_64-unknown-linux-musl/rustup-init.sha256",
+                },
+            }
+        }
+        payload = b"not the pinned rustup-init"
+        with tempfile.TemporaryDirectory() as temporary:
+            lane_root = Path(temporary) / "rust-cpython"
+            lane_root.mkdir()
+            run = mock.Mock()
+            response = io.BytesIO(payload)
+            with mock.patch.object(musl_run, "LANE", lane_root), \
+                    mock.patch.object(musl_run, "lock_data", return_value=(lane, {})), \
+                    mock.patch.object(musl_run.urllib.request, "urlopen",
+                                      return_value=response) as fetch, \
+                    mock.patch.object(musl_run.subprocess, "run", run):
+                with self.assertRaisesRegex(SystemExit, "rustup-init digest mismatch"):
+                    musl_run.container_fetch()
+            self.assertEqual(
+                fetch.call_args.args[0].full_url,
+                lane["rust"]["rustup"]["init_url"],
+            )
+            run.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
