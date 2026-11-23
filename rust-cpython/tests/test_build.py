@@ -33,14 +33,17 @@ _MUSL_RUN_SPEC.loader.exec_module(musl_run)
 
 
 class MuslRunLLVMPathTests(unittest.TestCase):
-    def test_container_path_uses_the_prepared_prefix_cache_key(self):
+    def test_container_path_omits_missing_dwarfdump(self):
         lane, _production = musl_run.lock_data()
         with tempfile.TemporaryDirectory() as temporary:
-            cache = Path(temporary) / ".cache"
+            repo = Path(temporary) / "repo"
+            cache = repo / ".cache"
+            repo.mkdir()
             prefix, key = perf.musl_llvm_prepared_prefix(
                 cache, lane["target"], lane["llvm"]["sha256"])
             run = mock.Mock(return_value=SimpleNamespace(returncode=0))
             with mock.patch.object(musl_run, "CACHE_ROOT", cache), \
+                    mock.patch.object(musl_run, "REPO", repo), \
                     mock.patch.object(musl_run, "verify_cache"), \
                     mock.patch.object(musl_run, "mount_root", return_value=Path(temporary)), \
                     mock.patch.object(musl_run.subprocess, "run", run):
@@ -49,12 +52,10 @@ class MuslRunLLVMPathTests(unittest.TestCase):
             argv = run.call_args.args[0]
             script = argv[argv.index("-euc") + 1]
             dwarfdump = musl_run.cache_path(
-                musl_run.REPO, lane["llvm_dwarfdump"]["build"]["cache_path"])
-            expected_path = (
-                f"{LANE / '.cargo-home' / 'bin'}:{prefix / 'bin'}:"
-                f"{dwarfdump.parent}:/usr/bin:/bin"
-            )
+                repo, lane["llvm_dwarfdump"]["build"]["cache_path"])
+            expected_path = f"{LANE / '.cargo-home' / 'bin'}:{prefix / 'bin'}:/usr/bin:/bin"
             self.assertIn(f"export PATH={expected_path}", script)
+            self.assertNotIn(str(dwarfdump.parent), script)
             self.assertIn(key, str(prefix))
 
 
@@ -607,6 +608,38 @@ class PreparedLinuxLLVMTests(unittest.TestCase):
 
 
 class LinuxDwarfdumpInputTests(unittest.TestCase):
+    def test_stale_cached_binary_enters_the_rebuild_path(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            expected = b"locked dwarfdump"
+            cached = root / "llvm-dwarfdump"
+            cached.write_bytes(b"stale binary")
+            missing_attestation = root / "missing-attestation"
+            lock = root / "linux-musl-toolchain.lock.json"
+            lock.write_text(json.dumps({
+                "llvm_dwarfdump": {
+                    "version": "23.1.5",
+                    "dev_archive": {},
+                    "build": {
+                        "cache_path": ".cache/llvm-dwarfdump",
+                        "binary_sha256": hashlib.sha256(expected).hexdigest(),
+                        "binary_size": len(expected),
+                    },
+                }
+            }))
+            toolchain = SimpleNamespace(target="x86_64-unknown-linux-musl")
+            inputs = mock.Mock(return_value={
+                "source": root / "source.tar.xz",
+                "dev": root / "dev.tar.xz",
+                "attestation": missing_attestation,
+            })
+            with mock.patch.object(perf.lb, "LINUX_TOOLCHAIN_LOCK", lock), \
+                    mock.patch.object(perf.lb, "cache_path", return_value=cached), \
+                    mock.patch.object(perf.lb, "_musl_llvm_dwarfdump_inputs", inputs):
+                with self.assertRaisesRegex(perf.LaneError, "attestation bundle is missing"):
+                    perf.lb._cached_musl_llvm_dwarfdump(toolchain)
+            inputs.assert_called_once_with(toolchain, fetch=False)
+
     def test_dwarfdump_lock_records_reproducible_build_inputs(self):
         entry = json.loads(perf.lb.LINUX_TOOLCHAIN_LOCK.read_text())["llvm_dwarfdump"]
         recipe = entry["build"]

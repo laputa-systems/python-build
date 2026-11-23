@@ -209,8 +209,17 @@ def run_container(mode: str, command: list[str], *, download_missing: bool = Fal
     llvm_prefix, _llvm_key = musl_llvm_prepared_prefix(
         CACHE_ROOT, lane["target"], lane["llvm"]["sha256"]
     )
-    llvm_dwarfdump = cache_path(
-        REPO, lane["llvm_dwarfdump"]["build"]["cache_path"])
+    dwarfdump_recipe = lane["llvm_dwarfdump"]["build"]
+    llvm_dwarfdump = cache_path(REPO, dwarfdump_recipe["cache_path"])
+    dwarfdump_path = ""
+    if (
+        llvm_dwarfdump.is_file()
+        and not llvm_dwarfdump.is_symlink()
+        and llvm_dwarfdump.stat().st_size == dwarfdump_recipe["binary_size"]
+        and hashlib.sha256(llvm_dwarfdump.read_bytes()).hexdigest()
+        == dwarfdump_recipe["binary_sha256"]
+    ):
+        dwarfdump_path = str(llvm_dwarfdump.parent) + ":"
     script = f'''set -eu
 apk --no-network --repositories-file /dev/null add -- {shlex.join(map(str, base_apks))}
 apk --no-network --repositories-file /dev/null add -- {shlex.join(map(str, lane_apks))}
@@ -220,7 +229,7 @@ export HOME={LANE / ".home"}
 export CARGO_HOME={cargo_home}
 export RUSTUP_HOME={rustup_home}
 export RUSTUP_TOOLCHAIN={lane["rust"]["channel"]}
-export PATH={cargo_home / "bin"}:{llvm_prefix / "bin"}:{llvm_dwarfdump.parent}:/usr/bin:/bin
+export PATH={cargo_home / "bin"}:{llvm_prefix / "bin"}:{dwarfdump_path}/usr/bin:/bin
 export LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC
 export PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1
 export SOURCE_DATE_EPOCH=1704067200
