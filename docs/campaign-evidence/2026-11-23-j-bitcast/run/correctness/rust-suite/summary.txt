@@ -1,0 +1,26 @@
+J-BITCAST Rust JIT suite follow-up
+
+Candidate perf-jbitcast1-cand at 92a1111:
+120 unit tests and 2 integration tests passed (122 total); 0 failed.
+Doc tests: 0 tests. Exit code: 0.
+
+Parent perf-calloc3-parent at a8c5e2a:
+Reused the J-ES-3 H2 baseline receipt after verifying identical
+_jit_opt_rs source, Cargo.lock, CPython source tree, overlay hash, and
+musl/JIT/Serc build configuration. The receipt records 120 unit tests and
+2 integration tests passed (122 total); 0 failed. Doc tests: 0 tests.
+Exit code: 0.
+
+Candidate invocation used the J-ES-3 helper environment and command:
+`cargo test --manifest-path <candidate source>/Cargo.toml -p _jit_opt_rs
+--locked --offline`, with the lane source replacement arguments,
+CARGO_HOME=/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/.cargo-home,
+RUSTUP_HOME=/home/ubuntu/repos/python-build/wt-rebase/rust-cpython/.cache/rustup-musl,
+RUSTUP_TOOLCHAIN=nightly-2026-09-15, CARGO_BUILD_JOBS=4, and
+CARGO_NET_OFFLINE=true. The run used the pinned Alpine lane container with
+Docker networking disabled. The cached bindgen package/index were present;
+no network fetch, lock change, or vendoring was needed.
+
+The earlier status-101 logs under correctness/rust-jit were from the
+stage-local Cargo home and remain preserved. They are superseded for this
+suite check by the offline J-ES-3-environment receipts in this directory.

@@ -25,9 +25,16 @@ JIT fuzz:
   nondeterministic=0.
 
 Lane Rust JIT suite:
-- cargo test -p _jit_opt_rs --locked --offline exited 101 on both stages.
-- Both logs report that the offline registry has no matching package named
-  bindgen, required by cpython-sys. No network retry was made.
+- Initial stage-local Cargo-home attempts exited 101 on both stages because
+  the offline registry lacked bindgen, required by cpython-sys.
+- Follow-up used the J-ES-3 shared Cargo cache and offline recipe. Candidate
+  passed 120 unit tests and 2 integration tests (122 total), 0 failed; doc
+  tests ran 0 tests. Parent reuses the J-ES-3 H2 receipt after verifying
+  identical _jit_opt_rs source, Cargo.lock, CPython source tree, overlay hash,
+  and musl/JIT/Serc configuration; it records the same 122 passed and 0
+  failed. Both exits are 0. Cargo ran offline in the pinned Alpine container
+  with Docker networking disabled; cached bindgen was present, so no network
+  fetch, lock change, or vendoring was needed.
 
 Alpine ctypes.CDLL + Py_GetVersion:
 - Parent C-ALLOC-3 receipt reused; exit 0, Py_GetVersion

@@ -19,6 +19,7 @@ MODES = {
     "callgrind": (RUN / "run-callgrind.sh", []),
     "probes": (RUN / "run-probes.sh", []),
     "correctness": (RUN / "run-correctness.sh", []),
+    "rust-suite": (RUN / "correctness/rust-suite/run-rust-suite.sh", []),
 }
 if mode not in MODES:
     raise SystemExit(f"usage: run-container.py [{ '|'.join(MODES) }]")
