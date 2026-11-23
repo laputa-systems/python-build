@@ -116,11 +116,15 @@ class JitConfigurationTests(unittest.TestCase):
         self.assertNotIn("lib/libunwind.a", perf.lb.MUSL_X86_64_LAYOUT.library_files)
         for name in ("clang_rt.crtbegin.o", "clang_rt.crtend.o"):
             member = f"lib/clang/23/lib/linux/{name}"
-            self.assertIn(member, perf.lb.MUSL_X86_64_LAYOUT.required)
-            self.assertIn(member, perf.lb.MUSL_X86_64_LAYOUT.resource_files)
+            self.assertIn(member, perf.lb.MUSL_X86_64_LAYOUT.links)
         for name in (
             "clang_rt.crtbegin-x86_64.o",
             "clang_rt.crtend-x86_64.o",
+        ):
+            member = f"lib/clang/23/lib/linux/{name}"
+            self.assertIn(member, perf.lb.MUSL_X86_64_LAYOUT.required)
+            self.assertIn(member, perf.lb.MUSL_X86_64_LAYOUT.resource_files)
+        for name in (
             "crtbegin.o",
             "crtbeginS.o",
             "crtbeginT.o",
@@ -128,7 +132,7 @@ class JitConfigurationTests(unittest.TestCase):
             "crtendS.o",
         ):
             member = f"lib/clang/23/lib/linux/{name}"
-            self.assertIn(member, perf.lb.MUSL_X86_64_LAYOUT.required)
+            self.assertIn(member, perf.lb.MUSL_X86_64_LAYOUT.links)
 
     def regen(self, version: str) -> tuple[Path, Path]:
         root = Path(self.enterContext(tempfile.TemporaryDirectory()))

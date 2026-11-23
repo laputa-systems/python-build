@@ -49,6 +49,44 @@ def primary_checkout(repo: Path) -> Path:
     return common.parent
 
 
+def share_worktree_caches(
+    repo: Path, primary: Path | None = None
+) -> tuple[Path, list[tuple[Path, Path]]]:
+    checkout = checkout_root(repo)
+    owner = checkout_root(primary) if primary is not None else primary_checkout(checkout)
+    if owner == checkout:
+        return owner, []
+
+    primary_cache = cache_root(owner)
+    worktree_cache = cache_root(checkout)
+    links = [
+        (primary_cache / "objects", worktree_cache / "objects"),
+        (primary_cache / "bootstrap", worktree_cache / "bootstrap"),
+    ]
+    wheelhouse = owner / "benchmarks" / ".cache" / "wheelhouse"
+    if wheelhouse.is_dir():
+        links.append((wheelhouse, checkout / "benchmarks" / ".cache" / "wheelhouse"))
+    llvm_objects = primary_cache / "llvm" / "objects"
+    if llvm_objects.is_dir():
+        links.append((llvm_objects, worktree_cache / "llvm" / "objects"))
+
+    linked: list[tuple[Path, Path]] = []
+    for source, target in links:
+        if not source.is_dir():
+            raise RuntimeError(f"primary checkout lacks {source}; run fetch there first")
+        source = source.resolve()
+        if target.is_symlink():
+            if target.resolve() != source:
+                raise RuntimeError(f"worktree cache link points elsewhere: {target}")
+        elif target.exists():
+            raise RuntimeError(f"worktree cache path is not shared: {target}")
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.symlink_to(source)
+        linked.append((target, source))
+    return owner, linked
+
+
 def mount_root(repo: Path) -> Path:
     checkout = checkout_root(repo)
     roots = [checkout, primary_checkout(checkout)]

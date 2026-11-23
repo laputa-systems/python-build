@@ -15,7 +15,7 @@ import urllib.request
 LANE = pathlib.Path(__file__).resolve().parents[1]
 REPO = LANE.parent
 sys.path.insert(0, str(LANE))
-from lane_cache import cache_path, cache_root, mount_root
+from lane_cache import cache_path, cache_root, mount_root, share_worktree_caches
 
 CACHE_ROOT = cache_root(REPO)
 LOCK_PATH = LANE / "linux-musl-toolchain.lock.json"
@@ -263,6 +263,19 @@ def main(argv: list[str]) -> int:
             cwd=REPO, check=True,
         )
         return run_container("fetch", [], download_missing=True)
+    script = Path(argv[1]) if len(argv) > 1 else Path()
+    if not script.is_absolute():
+        script = REPO / script
+    if (
+        len(argv) >= 3
+        and argv[0] in {"python", "python3"}
+        and script.resolve() == LANE / "perf.py"
+        and argv[2] == "setup-worktree"
+    ):
+        try:
+            share_worktree_caches(REPO)
+        except RuntimeError as error:
+            raise SystemExit(str(error)) from error
     return run_container("command", argv, download_missing=True)
 
 

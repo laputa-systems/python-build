@@ -47,7 +47,12 @@ REPO = LANE.parent
 SCRATCH = REPO / ".work" / "tmp"
 
 sys.path.insert(0, str(LANE))
-from lane_cache import cache_root, git_common_dir, primary_checkout
+from lane_cache import (
+    cache_root,
+    git_common_dir,
+    primary_checkout,
+    share_worktree_caches,
+)
 
 
 def _lane_build():
@@ -2719,27 +2724,12 @@ def setup_worktree() -> int:
     if primary == REPO:
         print("OK    primary checkout; nothing to share")
         return 0
-    primary_cache = cache_root(primary)
-    worktree_cache = cache_root(REPO)
-    links = (
-        (primary_cache / "objects", worktree_cache / "objects"),
-        (primary_cache / "bootstrap", worktree_cache / "bootstrap"),
-        (primary / "benchmarks" / ".cache" / "wheelhouse", REPO / "benchmarks" / ".cache" / "wheelhouse"),
-    )
-    for source, target in links:
-        if not source.is_dir():
-            raise LaneError(f"primary checkout lacks {source}; run fetch there first")
-        if not target.exists():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.symlink_to(source)
-        print(f"OK    {target} -> {target.resolve()}")
-    llvm_objects = primary_cache / "llvm" / "objects"
-    if llvm_objects.is_dir():
-        target = worktree_cache / "llvm" / "objects"
-        if not target.exists():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.symlink_to(llvm_objects)
-        print(f"OK    {target} -> {target.resolve()}")
+    try:
+        _owner, links = share_worktree_caches(REPO, primary)
+    except RuntimeError as error:
+        raise LaneError(str(error)) from error
+    for target, source in links:
+        print(f"OK    {target} -> {source}")
     toolchain, _target = lb._toolchain()
     llvm_prefix = lb._llvm_ready(toolchain)
     print(f"OK    {llvm_prefix} (prepared locally)")
