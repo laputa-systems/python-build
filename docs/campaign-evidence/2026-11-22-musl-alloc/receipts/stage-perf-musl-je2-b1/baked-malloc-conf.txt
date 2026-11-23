@@ -1,0 +1,1 @@
+dirty_decay_ms:0,muzzy_decay_ms:0,narenas:1

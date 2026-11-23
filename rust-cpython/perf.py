@@ -1029,10 +1029,13 @@ def cargo(*, name: str, arguments: list[str]) -> int:
 def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
           incremental: bool = False, upstream_compression: bool = False,
           jit: bool = False, pystats: bool = False, serc: bool = False,
-          allocator: str = "musl") -> int:
+          allocator: str = "musl", allocator_profile: str = "default") -> int:
     _check_name(name)
     if not isinstance(allocator, str) or allocator not in {"musl", "mimalloc", "jemalloc"}:
         raise LaneError(f"unknown allocator {allocator!r}")
+    allocator_config = lb.allocator_profile_config(allocator, allocator_profile)
+    if empty_overlay and allocator_profile != "default":
+        raise LaneError("--empty-overlay does not support allocator profiles")
     if empty_overlay and allocator != "musl":
         raise LaneError("--empty-overlay requires --allocator musl")
     if jobs is not None and jobs < 1:
@@ -1074,13 +1077,21 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
             if previous.get("allocator") != allocator:
                 raise LaneError("incremental build refused: the allocator changed or is unrecorded; "
                                 "run a clean build")
+            if (previous.get("allocator_profile", "default") != allocator_profile
+                    or previous.get("allocator_config", "") != allocator_config):
+                raise LaneError("incremental build refused: allocator profile/config changed or is "
+                                "unrecorded; run a clean build")
             configured = True
             route = _report_route(previous)
         _write_json(paths["report"], {"status": "building", "name": _tag(name),
                                       "pristine": empty_overlay, "configured": configured,
                                       "jit": jit, "pystats": pystats, "serc": serc,
                                       "allocator": allocator,
-                                      "build_identity": {"allocator": allocator},
+                                      "allocator_profile": allocator_profile,
+                                      "allocator_config": allocator_config,
+                                      "build_identity": {"allocator": allocator,
+                                                         "allocator_profile": allocator_profile,
+                                                         "allocator_config": allocator_config},
                                       "host": doctor.get("host"),
                                       "compression_route": route})
         state = {"configured": configured}
@@ -1090,18 +1101,27 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
             report = _build_locked(name, paths, empty_overlay=empty_overlay, jobs=jobs,
                                    incremental=incremental, state=state, route=route, jit=jit,
                                    pystats=pystats, serc=serc, allocator=allocator,
+                                   allocator_profile=allocator_profile,
                                    host_report=doctor.get("host"))
         except BaseException as error:
             _write_json(paths["report"], {"status": "failed", "name": _tag(name),
                                           "pristine": empty_overlay, "configured": state["configured"],
                                           "jit": jit, "pystats": pystats, "serc": serc,
                                           "allocator": allocator,
-                                          "build_identity": {"allocator": allocator},
+                                          "allocator_profile": allocator_profile,
+                                          "allocator_config": allocator_config,
+                                          "build_identity": {"allocator": allocator,
+                                                             "allocator_profile": allocator_profile,
+                                                             "allocator_config": allocator_config},
                                           "host": doctor.get("host"),
                                           "compression_route": route, "error": str(error)})
             raise
         report.setdefault("allocator", allocator)
-        report.setdefault("build_identity", {"allocator": allocator})
+        report.setdefault("allocator_profile", allocator_profile)
+        report.setdefault("allocator_config", allocator_config)
+        report.setdefault("build_identity", {"allocator": allocator,
+                                             "allocator_profile": allocator_profile,
+                                             "allocator_config": allocator_config})
         report.setdefault("host", doctor.get("host"))
         report["build_seconds"] = round(time.monotonic() - started, 1)
         report["phase_seconds"] = phase_seconds
@@ -1119,13 +1139,21 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
                   route: CompressionRoute = "private", jit: bool = False,
                   pystats: bool = False, serc: bool = False,
                   allocator: str = "musl",
+                  allocator_profile: str = "default",
                   host_report: dict[str, Any] | None = None) -> dict[str, Any]:
+    allocator_config = lb.allocator_profile_config(allocator, allocator_profile)
     if empty_overlay and allocator != "musl":
         raise LaneError("--empty-overlay requires --allocator musl")
+    if empty_overlay and allocator_profile != "default":
+        raise LaneError("--empty-overlay does not support allocator profiles")
     toolchain, target = lb._toolchain()
     lb._llvm_ready(toolchain)
     allocator_build = lb.build_musl_allocator(
-        allocator, paths["build"].parent / "allocator", toolchain)
+        allocator,
+        paths["build"].parent / "allocator" / lb.allocator_cache_key(allocator, allocator_profile),
+        toolchain,
+        profile=allocator_profile,
+    )
     git_state = _git_state()
     changes: dict[str, list[str]] | None = None
     placement: dict[str, tuple[str, ...]] = {}
@@ -1361,7 +1389,11 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
         "pystats": pystats,
         "serc": serc,
         "allocator": allocator,
-        "build_identity": {"allocator": allocator},
+        "allocator_profile": allocator_profile,
+        "allocator_config": allocator_config,
+        "build_identity": {"allocator": allocator,
+                           "allocator_profile": allocator_profile,
+                           "allocator_config": allocator_config},
         "allocator_build": allocator_build,
         "cargo_profile": None if empty_overlay else "release",
         "cargo_profile_selected_by": None if empty_overlay else
@@ -1687,27 +1719,37 @@ def _measure_module(baseline: dict[str, Any], candidate: dict[str, Any], route: 
     return observation
 
 
-def _allocator_identity(side: dict[str, Any]) -> str:
+def _allocator_identity(side: dict[str, Any]) -> tuple[str, str, str]:
     report = side.get("report") or {}
     allocator = report.get("allocator")
     identity = report.get("build_identity")
+    profile = report.get("allocator_profile", "default")
+    config = report.get("allocator_config", "")
     if not isinstance(allocator, str) or allocator not in {"musl", "mimalloc", "jemalloc"} \
             or not isinstance(identity, dict) \
-            or identity.get("allocator") != allocator:
+            or identity.get("allocator") != allocator \
+            or identity.get("allocator_profile", "default") != profile \
+            or identity.get("allocator_config", "") != config \
+            or config != lb.allocator_profile_config(allocator, profile):
         raise LaneError(
             f"comparison refused: {side.get('name', side.get('ref', 'stage'))} "
             "has no complete allocator identity; rebuild the stage"
         )
-    return allocator
+    return allocator, profile, config
 
 
 def _require_allocator_match(baseline: dict[str, Any], candidate: dict[str, Any]) -> None:
     baseline_allocator = _allocator_identity(baseline)
     candidate_allocator = _allocator_identity(candidate)
-    if baseline_allocator != candidate_allocator:
+    if baseline_allocator[0] != candidate_allocator[0]:
         raise LaneError(
             "comparison refused: allocator mismatch "
-            f"(baseline={baseline_allocator}, candidate={candidate_allocator})"
+            f"(baseline={baseline_allocator[0]}, candidate={candidate_allocator[0]})"
+        )
+    if baseline_allocator[1:] != candidate_allocator[1:]:
+        raise LaneError(
+            "comparison refused: allocator_config mismatch "
+            f"(baseline={baseline_allocator[2]!r}, candidate={candidate_allocator[2]!r})"
         )
 
 
@@ -2823,6 +2865,8 @@ def main(argv: list[str] | None = None) -> int:
     build_parser.add_argument("--name", required=True, help="isolated build name, e.g. perf-rust")
     build_parser.add_argument("--allocator", choices=("musl", "mimalloc", "jemalloc"),
                               default="musl", help="allocator linked into libpython")
+    build_parser.add_argument("--allocator-profile", choices=("default", "low-retention"),
+                              default="default", help="allocator settings profile")
     build_parser.add_argument("--empty-overlay", action="store_true",
                               help="build the pristine fork without the Rust overlay")
     build_parser.add_argument("--incremental", action="store_true",
@@ -2950,7 +2994,7 @@ def main(argv: list[str] | None = None) -> int:
             return build(name=args.name, empty_overlay=args.empty_overlay, jobs=args.jobs,
                          incremental=args.incremental, upstream_compression=args.upstream_compression,
                          jit=args.jit, pystats=args.pystats, serc=args.serc,
-                         allocator=args.allocator)
+                         allocator=args.allocator, allocator_profile=args.allocator_profile)
         if args.command == "cargo":
             return cargo(name=args.name, arguments=args.cargo_args)
         if args.command == "test":

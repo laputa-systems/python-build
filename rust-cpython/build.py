@@ -1537,6 +1537,37 @@ def _musl_allocator_metadata(name: str) -> dict[str, Any]:
     return metadata
 
 
+def allocator_profile_config(allocator: str, profile: str) -> str:
+    if allocator not in {"musl", "mimalloc", "jemalloc"}:
+        raise LaneError(f"unknown allocator {allocator!r}")
+    if profile not in {"default", "low-retention"}:
+        raise LaneError(f"unknown allocator profile {profile!r}")
+    if profile == "default":
+        return "--disable-initial-exec-tls" if allocator == "jemalloc" else ""
+    if allocator == "mimalloc":
+        return "-DMI_DEFAULT_ARENA_EAGER_COMMIT=0 -DMI_DEFAULT_PAGE_FULL_RETAIN=0"
+    if allocator == "jemalloc":
+        return (
+            "--disable-initial-exec-tls "
+            "--with-malloc-conf=dirty_decay_ms:0,muzzy_decay_ms:0,narenas:1"
+        )
+    raise LaneError(f"allocator profile {profile!r} requires mimalloc or jemalloc")
+
+
+def allocator_cache_key(allocator: str, profile: str) -> str:
+    allocator_profile_config(allocator, profile)
+    return f"{allocator}-{profile}"
+
+
+def verify_locked_patch(path: Path, expected_sha256: str) -> str:
+    if path.is_symlink() or not path.is_file():
+        raise LaneError(f"locked allocator patch is missing or invalid: {path}")
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    if digest != expected_sha256:
+        raise LaneError(f"allocator patch digest mismatch: {path}")
+    return digest
+
+
 def _musl_allocator_input(name: str, metadata: dict[str, Any], target: str) -> Input:
     return Input(
         name=f"{name}-allocator-source",
@@ -1602,9 +1633,13 @@ def _mimalloc_internal_symbols(nm_output: str, prefixes: tuple[str, ...]) -> lis
     return sorted(symbols)
 
 
-def build_musl_allocator(allocator: str, work: Path, toolchain) -> dict[str, Any]:
+def build_musl_allocator(
+    allocator: str, work: Path, toolchain, *, profile: str = "default"
+) -> dict[str, Any]:
+    config = allocator_profile_config(allocator, profile)
     if allocator == "musl":
-        return {"name": "musl", "link_flags": None, "artifact": None}
+        return {"name": "musl", "profile": profile, "config": config,
+                "link_flags": None, "artifact": None}
     if allocator not in {"mimalloc", "jemalloc"} or not isinstance(
         toolchain, lane_linux.MuslToolchain
     ):
@@ -1623,15 +1658,27 @@ def build_musl_allocator(allocator: str, work: Path, toolchain) -> dict[str, Any
     environment.update({
         "CC": str(toolchain.clang),
         "CFLAGS": "-O2 -fPIC",
+        "LDFLAGS": "-fuse-ld=lld",
+        "PATH": os.pathsep.join((str(tool_bin), environment.get("PATH", ""))),
         "AR": str(tool_bin / "llvm-ar"),
         "RANLIB": str(tool_bin / "llvm-ranlib"),
     })
     if allocator == "mimalloc":
+        patch_sha256 = None
+        if profile == "low-retention":
+            patch = metadata["low_retention_patch"]
+            patch_path = LANE / patch["path"]
+            patch_sha256 = verify_locked_patch(patch_path, patch["sha256"])
+            _require_command(
+                ["patch", "-p1", "-i", str(patch_path)],
+                cwd=source, env=environment, log=work / "mimalloc-patch.log",
+            )
         object_file = work / "mimalloc.o"
         archive = work / "libmimalloc.a"
+        compile_flags = ["-O2", "-fPIC", "-DMI_MALLOC_OVERRIDE", *shlex.split(config)]
         _require_command(
             [
-                str(toolchain.clang), "-O2", "-fPIC", "-DMI_MALLOC_OVERRIDE",
+                str(toolchain.clang), *compile_flags,
                 "-I", str(source / "include"), "-I", str(source / "src"),
                 "-c", str(source / "src/static.c"), "-o", str(object_file),
             ],
@@ -1661,8 +1708,11 @@ def build_musl_allocator(allocator: str, work: Path, toolchain) -> dict[str, Any
             cwd=source, env=environment, log=work / "mimalloc-archive.log",
         )
     else:
+        configure = list(metadata["build"]["configure"])
+        if config:
+            configure.extend(shlex.split(config))
         _require_command(
-            ["./configure", "--with-pic", "--disable-cxx"],
+            configure,
             cwd=source, env=environment, log=work / "jemalloc-configure.log",
         )
         _require_command(
@@ -1681,7 +1731,11 @@ def build_musl_allocator(allocator: str, work: Path, toolchain) -> dict[str, Any
         "input_url": metadata["url"],
         "input_sha256": metadata["sha256"],
         "input_size": metadata["size"],
+        "profile": profile,
+        "config": config,
+        "patch_sha256": patch_sha256 if allocator == "mimalloc" else None,
         "artifact": str(archive),
+        "include_dir": str(source / "include"),
         "artifact_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
         "artifact_size": archive.stat().st_size,
         "link_flags": allocator_link_flags(allocator, archive),
