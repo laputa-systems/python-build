@@ -946,6 +946,42 @@ def _refuse_unsyncable(changes: dict[str, list[str]]) -> None:
                         f"{changes['clean_only'] or 'none'}")
 
 
+def _musl_with_libs_argument() -> str:
+    lock = json.loads(lb.LINUX_TOOLCHAIN_LOCK.read_text())
+    arguments = lock["llvm"]["rust_native_static_libs"]["musl_link_args"]
+    return "--with-libs=" + " ".join(arguments)
+
+
+def _musl_toolchain_identity(toolchain) -> dict[str, str] | None:
+    if not isinstance(toolchain, lb.lane_linux.MuslToolchain):
+        return None
+    prefix, key = musl_llvm_prepared_prefix(
+        cache_root(REPO), toolchain.target, toolchain.llvm_archive_sha256)
+    if prefix != toolchain.llvm_prefix.resolve():
+        raise LaneError("loaded musl LLVM prefix disagrees with its cache identity")
+    dwarfdump = lb._cached_musl_llvm_dwarfdump(toolchain)
+    return {
+        "prepared_llvm_prefix": str(prefix),
+        "prepared_llvm_key": key,
+        "musl_link_arguments": _musl_with_libs_argument(),
+        "llvm_dwarfdump_sha256": _sha256_file(dwarfdump),
+    }
+
+
+def _build_identity(allocator: str, toolchain_identity: dict[str, str] | None) -> dict[str, Any]:
+    identity: dict[str, Any] = {"allocator": allocator}
+    if toolchain_identity is not None:
+        identity["toolchain"] = toolchain_identity
+    return identity
+
+
+def _current_musl_toolchain_identity() -> dict[str, str] | None:
+    toolchain, _target = lb._toolchain()
+    if isinstance(toolchain, lb.lane_linux.MuslToolchain):
+        lb._llvm_ready(toolchain)
+    return _musl_toolchain_identity(toolchain)
+
+
 def _copy_changed_overlay(paths: dict[str, Path], source: Path, changes: dict[str, list[str]]) -> None:
     for item in changes["changed"]:
         _copy_file(paths["overlay_staging"] / item, source / item)
@@ -1074,16 +1110,28 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
             if previous.get("allocator") != allocator:
                 raise LaneError("incremental build refused: the allocator changed or is unrecorded; "
                                 "run a clean build")
+            toolchain_identity = (
+                _current_musl_toolchain_identity() if lb.IS_LINUX else None
+            )
+            if previous.get("toolchain_identity") != toolchain_identity:
+                raise LaneError(
+                    "incremental build refused: the musl toolchain identity changed or is "
+                    "unrecorded; run a clean build"
+                )
             configured = True
             route = _report_route(previous)
+        else:
+            toolchain_identity = None
         _write_json(paths["report"], {"status": "building", "name": _tag(name),
                                       "pristine": empty_overlay, "configured": configured,
                                       "jit": jit, "pystats": pystats, "serc": serc,
                                       "allocator": allocator,
-                                      "build_identity": {"allocator": allocator},
+                                      "toolchain_identity": toolchain_identity,
+                                      "build_identity": _build_identity(
+                                          allocator, toolchain_identity),
                                       "host": doctor.get("host"),
                                       "compression_route": route})
-        state = {"configured": configured}
+        state = {"configured": configured, "toolchain_identity": toolchain_identity}
         if incremental:
             state["previous"] = previous
         try:
@@ -1096,7 +1144,9 @@ def build(*, name: str, empty_overlay: bool, jobs: int | None = None,
                                           "pristine": empty_overlay, "configured": state["configured"],
                                           "jit": jit, "pystats": pystats, "serc": serc,
                                           "allocator": allocator,
-                                          "build_identity": {"allocator": allocator},
+                                          "toolchain_identity": toolchain_identity,
+                                          "build_identity": _build_identity(
+                                              allocator, toolchain_identity),
                                           "host": doctor.get("host"),
                                           "compression_route": route, "error": str(error)})
             raise
@@ -1124,6 +1174,11 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
         raise LaneError("--empty-overlay requires --allocator musl")
     toolchain, target = lb._toolchain()
     lb._llvm_ready(toolchain)
+    toolchain_identity = _musl_toolchain_identity(toolchain)
+    if incremental and state.get("toolchain_identity") != toolchain_identity:
+        raise LaneError(
+            "incremental build refused: the musl toolchain identity changed; run a clean build"
+        )
     allocator_build = lb.build_musl_allocator(
         allocator, paths["build"].parent / "allocator", toolchain)
     git_state = _git_state()
@@ -1222,7 +1277,7 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
                  jit_config.argument, "--with-tail-call-interp=no",
                  "--without-ensurepip"]
     if lb.TARGET.endswith("-musl"):
-        configure.append("--with-libs=-Wl,-l:libgcc_s.so.1 -lc")
+        configure.append(_musl_with_libs_argument())
     if pystats:
         configure.append("--enable-pystats")
     # Only the aggregate workspace requires the pinned source-built runtime.
@@ -1361,7 +1416,8 @@ def _build_locked(name: str, paths: dict[str, Path], *, empty_overlay: bool, job
         "pystats": pystats,
         "serc": serc,
         "allocator": allocator,
-        "build_identity": {"allocator": allocator},
+        "toolchain_identity": toolchain_identity,
+        "build_identity": _build_identity(allocator, toolchain_identity),
         "allocator_build": allocator_build,
         "cargo_profile": None if empty_overlay else "release",
         "cargo_profile_selected_by": None if empty_overlay else

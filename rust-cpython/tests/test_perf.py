@@ -169,6 +169,48 @@ class EmptyOverlayAllocatorTests(unittest.TestCase):
         toolchain.assert_not_called()
 
 
+class IncrementalToolchainIdentityTests(unittest.TestCase):
+    def test_incremental_refuses_any_musl_toolchain_identity_change(self):
+        current = {
+            "prepared_llvm_prefix": "/cache/llvm/prepared/prefix",
+            "prepared_llvm_key": "a" * 128,
+            "musl_link_arguments": "--with-libs=-Wl,-l:libgcc_s.so.1 -lc",
+            "llvm_dwarfdump_sha256": "b" * 64,
+        }
+        for field in current:
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as temporary, \
+                    ExitStack() as patches:
+                previous_identity = dict(current)
+                previous_identity[field] = "changed"
+                previous = {
+                    "configured": True,
+                    "pristine": False,
+                    "jit": False,
+                    "pystats": False,
+                    "serc": False,
+                    "allocator": "musl",
+                    "toolchain_identity": previous_identity,
+                }
+                paths = {"report": Path(temporary) / "report.json"}
+                patches.enter_context(mock.patch.object(
+                    perf.lb, "doctor_report", return_value={"ok": True}))
+                patches.enter_context(mock.patch.object(
+                    perf.lb, "IS_LINUX", True))
+                patches.enter_context(mock.patch.object(
+                    perf, "_paths", return_value=paths))
+                patches.enter_context(mock.patch.object(
+                    perf, "_read_report", return_value=previous))
+                patches.enter_context(mock.patch.object(
+                    perf, "_current_musl_toolchain_identity", return_value=current))
+                patches.enter_context(mock.patch.object(
+                    perf, "host_lease", return_value=nullcontext()))
+                built = patches.enter_context(mock.patch.object(perf, "_build_locked"))
+                with self.assertRaisesRegex(
+                    perf.LaneError, "toolchain identity changed.*clean build"):
+                    perf.build(name="fixture", empty_overlay=False, incremental=True)
+                built.assert_not_called()
+
+
 def summary(wall_ci, *, wall_ratios=(1.0, 1.0, 1.0),
             cpu=((1.0,) * 3, (1.0,) * 3), status="pass", memory=None):
     timing = {"paired_ratio_samples": list(wall_ratios), "median_ratio_ci95": wall_ci,
