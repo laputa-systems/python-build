@@ -1,0 +1,4 @@
+
+-rwxr-xr-x    1 root     root        670312 Oct 21 15:50 /lib/ld-musl-x86_64.so.1
+-rwxr-xr-x    1 root     root       2902480 Oct 21 15:50 /usr/lib/debug/lib/ld-musl-x86_64.so.1.debug
+

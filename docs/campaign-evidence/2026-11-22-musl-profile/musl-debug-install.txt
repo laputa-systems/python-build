@@ -1,0 +1,16 @@
+
+-rwxr-xr-x    1 root     root        670312 Oct 21 15:50 /lib/ld-musl-x86_64.so.1
+-rwxr-xr-x    1 root     root       2902480 Oct 21 15:50 /usr/lib/debug/lib/ld-musl-x86_64.so.1.debug
+
+/lib/ld-musl-x86_64.so.1:                     ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, BuildID[sha1]=d1656128169ecc566bb0afcbbcbda02c5ac8cd74, stripped
+/usr/lib/debug/lib/ld-musl-x86_64.so.1.debug: ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, BuildID[sha1]=d1656128169ecc566bb0afcbbcbda02c5ac8cd74, with debug_info, not stripped
+musl: the musl c library (libc) implementation
+musl: https://musl.libc.org/
+musl: 654 KiB
+musl-dbg: the musl c library (libc) implementation (debug symbols)
+musl-dbg: https://musl.libc.org/
+musl-dbg: 2834 KiB
+/lib/ld-musl-x86_64.so.1 is owned by musl-1.2.6-r3
+/usr/lib/debug/lib/ld-musl-x86_64.so.1.debug is owned by musl-dbg-1.2.6-r3
+/lib/ld-musl-x86_64.so.1:                     ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, BuildID[sha1]=d1656128169ecc566bb0afcbbcbda02c5ac8cd74, stripped
+/usr/lib/debug/lib/ld-musl-x86_64.so.1.debug: ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, BuildID[sha1]=d1656128169ecc566bb0afcbbcbda02c5ac8cd74, with debug_info, not stripped
