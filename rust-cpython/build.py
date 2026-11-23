@@ -1194,7 +1194,8 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
         actual_sha = _file_sha256(binary)
         if expected_binary_sha and actual_sha != expected_binary_sha:
             raise LaneError(
-                f"built llvm-dwarfdump digest {actual_sha} != locked {expected_binary_sha}"
+                f"built llvm-dwarfdump digest {actual_sha} (size {binary.stat().st_size}) "
+                f"!= locked {expected_binary_sha} (size {expected_binary_size})"
             )
         actual_size = binary.stat().st_size
         if expected_binary_size is not None and actual_size != expected_binary_size:
