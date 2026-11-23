@@ -617,6 +617,14 @@ class LinuxDwarfdumpInputTests(unittest.TestCase):
 
 
 class MuslAPKVerificationTests(unittest.TestCase):
+    def test_setup_worktree_shares_inputs_before_container_preflight(self):
+        command = ["python3", "rust-cpython/perf.py", "setup-worktree"]
+        with mock.patch.object(musl_run, "share_worktree_caches") as share, \
+                mock.patch.object(musl_run, "run_container", return_value=0) as run:
+            self.assertEqual(musl_run.main(command), 0)
+        share.assert_called_once_with(musl_run.REPO)
+        run.assert_called_once_with("command", command, download_missing=True)
+
     def test_lane_lock_keeps_runtime_libgcc_but_excludes_gcc_toolchain(self):
         lock = json.loads(build.LINUX_TOOLCHAIN_LOCK.read_text())
         names = {package["name"] for package in lock["lane_packages"]}
