@@ -1,0 +1,7 @@
+==10115== Cachegrind, a high-precision tracing profiler
+==10115== Copyright (C) 2002-2024, and GNU GPL'd, by Nicholas Nethercote et al.
+==10115== Using Valgrind-3.25.1 and LibVEX; rerun with -h for copyright info
+==10115== Command: /home/ubuntu/repos/python-build/wt-allocretry/rust-cpython/stage-perf-musl-base2/bin/python3.16 -S -c import\ sys;\ from\ benchmarks.workloads\ import\ jit_kernels;\ print(jit_kernels.run(sys.argv[1])) nbody
+==10115== 
+==10115== 
+==10115== I refs:        3,010,336,716
