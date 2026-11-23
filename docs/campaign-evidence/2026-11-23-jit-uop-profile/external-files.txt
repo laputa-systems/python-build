@@ -1,0 +1,7 @@
+profiles/cand-nbody-kernel.callgrind.xz	/home/ubuntu/exp-jituop/profiles/cand-nbody-kernel.callgrind.xz
+profiles/cand-scimark_fft-kernel.callgrind.xz	/home/ubuntu/exp-jituop/profiles/cand-scimark_fft-kernel.callgrind.xz
+profiles/cand-scimark_sparse_mat_mult-kernel.callgrind.xz	/home/ubuntu/exp-jituop/profiles/cand-scimark_sparse_mat_mult-kernel.callgrind.xz
+nbody.jitmap	/home/ubuntu/exp-jituop/nbody.jitmap
+scimark_fft.jitmap	/home/ubuntu/exp-jituop/scimark_fft.jitmap
+scimark_sparse_mat_mult.jitmap	/home/ubuntu/exp-jituop/scimark_sparse_mat_mult.jitmap
+uop_attr.py	/home/ubuntu/exp-jituop/uop_attr.py (pre-existing input)

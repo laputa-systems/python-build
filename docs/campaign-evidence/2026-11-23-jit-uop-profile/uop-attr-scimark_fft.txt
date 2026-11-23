@@ -1,0 +1,72 @@
+traces 13 uops 1145 overlapping-ranges 0
+self Ir total 3,165,329,602; mapped to uops 780,891,478; unmapped JIT-page self 126
+-- self Ir by uop name
+   146,802,391  18.80%  call   173,608,135  _STORE_SUBSCR_ARRAY_D_r30
+    68,048,036   8.71%  call    23,179,715  _STORE_FAST_FUSED_FLOAT_OR_NULL_r10
+    65,712,994   8.42%  call   118,707,344  _BINARY_OP_SUBSCR_ARRAY_D_r23
+    34,333,676   4.40%  call    62,608,468  _BOX_FLOAT_r11
+    29,327,112   3.76%  call             0  _LOAD_FAST_BORROW_r12
+    28,646,580   3.67%  call             0  _CHECK_VALIDITY_r00
+    28,242,214   3.62%  call    81,542,711  _BINARY_OP_ADD_INT_r23
+    25,528,978   3.27%  call    29,391,001  _STORE_FAST_FUSED_r10
+    20,966,391   2.68%  call    15,109,148  _ITER_NEXT_RANGE_r23
+    18,454,524   2.36%  call             0  _GUARD_NOS_OBJECT_TYPE_VERSION_r22
+    17,923,610   2.30%  call    26,358,250  _BINARY_OP_SUBSCR_ARRAY_D_UNBOXED_INDEX_r21
+    17,395,240   2.23%  call    41,760,348  _BINARY_OP_MULTIPLY_INT_INPLACE_RIGHT_r13
+    11,597,630   1.49%  call             0  _UNBOX_INT_TOS_r33
+    10,543,300   1.35%  call             0  _UNBOX_INT_NOS_r33
+    10,427,805   1.34%  call    11,972,665  _BINARY_OP_ADD_INT_INPLACE_r23
+     9,903,244   1.27%  call   102,273,741  _BINARY_OP_r23
+     9,193,256   1.18%  call             0  _LOAD_FAST_BORROW_r01
+     9,051,586   1.16%  call             0  _SET_IP_r11
+     8,980,762   1.15%  call             0  _COMPARE_OP_INT_r23
+     8,909,288   1.14%  call             0  _SPILL_OR_RELOAD_r32
+     8,703,846   1.11%  call             0  _BINARY_OP_ADD_FLOAT_INPLACE_r23
+     8,279,873   1.06%  call             0  _GUARD_TOS_INT_r22
+     7,535,862   0.97%  call             0  _UNBOX_FLOAT_TOS_r22
+     6,995,691   0.90%  call             0  _ITER_CHECK_RANGE_r02
+     6,948,996   0.89%  call             0  _UNBOX_FLOAT_NOS_r33
+     6,948,996   0.89%  call             0  _UNBOX_FLOAT_TOS_r33
+     6,348,208   0.81%  call             0  _LOAD_FAST_BORROW_1_r01
+     6,122,186   0.78%  call             0  _CHECK_PERIODIC_r00
+     5,848,548   0.75%  call             0  _POP_TOP_INT_r32
+     5,795,380   0.74%  call             0  _LOAD_FAST_BORROW_r23
+-- call Ir (inclusive callees) by uop name
+   173,608,135  _STORE_SUBSCR_ARRAY_D_r30
+   118,707,344  _BINARY_OP_SUBSCR_ARRAY_D_r23
+   102,273,741  _BINARY_OP_r23
+    81,542,711  _BINARY_OP_ADD_INT_r23
+    62,608,468  _BOX_FLOAT_r11
+    43,202,432  _CALL_BUILTIN_CLASS_r00
+    41,760,348  _BINARY_OP_MULTIPLY_INT_INPLACE_RIGHT_r13
+    29,391,001  _STORE_FAST_FUSED_r10
+    28,062,294  _GET_ITER_TRAD_r12
+    26,358,250  _BINARY_OP_SUBSCR_ARRAY_D_UNBOXED_INDEX_r21
+    23,179,715  _STORE_FAST_FUSED_FLOAT_OR_NULL_r10
+    15,109,148  _ITER_NEXT_RANGE_r23
+-- hottest (trace, index, uop) by self+call
+    47,931,922 self   20,015,559 T7 FFT_transform_internal@5 #173 _STORE_SUBSCR_ARRAY_D_r30
+    47,931,922 self   20,015,559 T7 FFT_transform_internal@5 #130 _STORE_SUBSCR_ARRAY_D_r30
+    47,349,094 self    4,146,662 T5 FFT_transform_internal@3 #70 _CALL_BUILTIN_CLASS_r00
+    38,830,654 self   18,835,765 T7 FFT_transform_internal@5 #107 _STORE_SUBSCR_ARRAY_D_r30
+    38,830,654 self   18,835,765 T7 FFT_transform_internal@5 #149 _STORE_SUBSCR_ARRAY_D_r30
+    30,955,314 self    2,893,020 T5 FFT_transform_internal@3 #79 _GET_ITER_TRAD_r12
+    29,311,512 self    2,553,252 T2 FFT_bitreverse@0 #15 _BINARY_OP_r23
+    29,309,937 self    2,553,252 T2 FFT_bitreverse@0 #25 _BINARY_OP_r23
+    27,496,560 self    2,553,252 T2 FFT_bitreverse@0 #35 _BINARY_OP_r23
+    25,210,947 self    8,983,211 T7 FFT_transform_internal@5 #48 _BINARY_OP_SUBSCR_ARRAY_D_r23
+    25,210,947 self    8,983,211 T7 FFT_transform_internal@5 #139 _BINARY_OP_SUBSCR_ARRAY_D_r23
+    25,210,947 self    8,983,211 T7 FFT_transform_internal@5 #97 _BINARY_OP_SUBSCR_ARRAY_D_r23
+    25,210,947 self    8,983,211 T7 FFT_transform_internal@5 #163 _BINARY_OP_SUBSCR_ARRAY_D_r23
+    20,556,562 self    5,795,620 T7 FFT_transform_internal@5 #39 _BINARY_OP_MULTIPLY_INT_INPLACE_RIGHT_r13
+    20,556,562 self    5,795,620 T7 FFT_transform_internal@5 #21 _BINARY_OP_MULTIPLY_INT_INPLACE_RIGHT_r13
+    19,107,657 self    4,056,934 T7 FFT_transform_internal@5 #125 _BINARY_OP_ADD_INT_r23
+    19,107,657 self    4,056,934 T7 FFT_transform_internal@5 #155 _BINARY_OP_ADD_INT_r23
+    16,807,298 self    7,824,087 T7 FFT_transform_internal@5 #36 _BINARY_OP_ADD_INT_INPLACE_r23
+    15,694,644 self    6,670,378 T4 FFT_transform_internal@2 #133 _STORE_SUBSCR_ARRAY_D_r30
+    15,694,644 self    6,670,378 T4 FFT_transform_internal@2 #90 _STORE_SUBSCR_ARRAY_D_r30
+    15,568,696 self    6,611,280 T5 FFT_transform_internal@3 #203 _STORE_SUBSCR_ARRAY_D_r30
+    14,560,930 self    1,253,590 T3 FFT_bitreverse@1 #22 _BINARY_OP_r23
+    14,199,269 self   10,432,116 T7 FFT_transform_internal@5 #79 _STORE_FAST_FUSED_FLOAT_OR_NULL_r10
+    14,199,269 self   10,432,116 T7 FFT_transform_internal@5 #52 _STORE_FAST_FUSED_FLOAT_OR_NULL_r10
+    14,199,269 self   10,432,116 T7 FFT_transform_internal@5 #63 _STORE_FAST_FUSED_FLOAT_OR_NULL_r10

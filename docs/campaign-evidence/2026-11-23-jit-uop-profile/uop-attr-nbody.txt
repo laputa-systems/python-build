@@ -1,0 +1,71 @@
+traces 7 uops 963 overlapping-ranges 0
+self Ir total 2,142,856,542; mapped to uops 496,510,563; unmapped JIT-page self 126
+-- self Ir by uop name
+    73,959,528  14.90%  call    16,348,488  _STORE_SUBSCR_LIST_INT_FLOAT_r32
+    41,557,752   8.37%  call    15,006,966  _STORE_FAST_FUSED_FLOAT_OR_NULL_r10
+    41,515,704   8.36%  call             0  _BINARY_OP_SUBSCR_LIST_INT_UNBOXED_r21
+    40,396,678   8.14%  call     1,856,205  _STORE_FAST_FUSED_FLOAT_OR_NULL_r00
+    28,631,520   5.77%  call             0  _UNPACK_SEQUENCE_LIST_r10
+    28,154,328   5.67%  call             0  _UNPACK_SEQUENCE_TUPLE_r10
+    27,607,541   5.56%  call    50,343,163  _BOX_FLOAT_r11
+    12,698,202   2.56%  call    17,892,921  _BINARY_OP_SUBTRACT_FLOAT_r23
+    12,222,196   2.46%  call             0  _SPILL_OR_RELOAD_r32
+    12,052,602   2.43%  call             0  _UNBOX_FLOAT_NOS_r33
+    12,052,602   2.43%  call             0  _UNBOX_FLOAT_TOS_r33
+    11,685,414   2.35%  call             0  _CHECK_VALIDITY_r00
+    10,004,644   2.01%  call             0  _LOAD_FAST_BORROW_r12
+     8,804,656   1.77%  call             0  _LOAD_FAST_BORROW_r23
+     8,589,456   1.73%  call             0  _COPY_2_r23
+     8,465,468   1.70%  call    11,928,614  _BINARY_OP_MULTIPLY_FLOAT_r23
+     8,115,058   1.63%  call       703,912  _STORE_FAST_FUSED_r10
+     8,035,068   1.62%  call             0  _BINARY_OP_MULTIPLY_FLOAT_UNBOXED_r32
+     7,265,480   1.46%  call             0  _LOAD_FAST_BORROW_r01
+     6,327,890   1.27%  call             0  _SET_IP_r33
+     5,833,508   1.17%  call             0  _SET_IP_r00
+     5,726,304   1.15%  call             0  _SWAP_3_r13
+     5,387,116   1.08%  call             0  _UNPACK_SEQUENCE_TWO_TUPLE_r12
+     4,956,716   1.00%  call             0  _BINARY_OP_ADD_FLOAT_UNBOXED_r21
+     4,809,925   0.97%  call             0  _GUARD_NOS_FLOAT_r22
+     4,809,925   0.97%  call    51,754,793  _BINARY_OP_POWER_FLOAT_r23
+     4,294,728   0.86%  call             0  _SWAP_2_r33
+     3,847,940   0.77%  call     2,501,161  _POP_TOP_FLOAT_r21
+     3,817,536   0.77%  call             0  _GUARD_TOS_LIST_r01
+     3,702,335   0.75%  call             0  _ITER_NEXT_LIST_TIER_TWO_r23
+-- call Ir (inclusive callees) by uop name
+    51,754,793  _BINARY_OP_POWER_FLOAT_r23
+    50,343,163  _BOX_FLOAT_r11
+    17,892,921  _BINARY_OP_SUBTRACT_FLOAT_r23
+    16,348,488  _STORE_SUBSCR_LIST_INT_FLOAT_r32
+    15,006,966  _STORE_FAST_FUSED_FLOAT_OR_NULL_r10
+    11,928,614  _BINARY_OP_MULTIPLY_FLOAT_r23
+     2,501,161  _POP_TOP_FLOAT_r21
+     1,856,205  _STORE_FAST_FUSED_FLOAT_OR_NULL_r00
+       703,912  _STORE_FAST_FUSED_r10
+       655,918  _ITER_NEXT_RANGE_r23
+           254  _COLD_EXIT_r00
+-- hottest (trace, index, uop) by self+call
+    51,861,306 self    4,409,975 T2 advance@0 #102 _BINARY_OP_POWER_FLOAT_r23
+    11,642,334 self    9,349,147 T2 advance@0 #188 _STORE_SUBSCR_LIST_INT_FLOAT_r32
+    11,642,334 self    9,349,147 T2 advance@0 #167 _STORE_SUBSCR_LIST_INT_FLOAT_r32
+    11,642,334 self    9,349,147 T2 advance@0 #146 _STORE_SUBSCR_LIST_INT_FLOAT_r32
+    11,171,934 self    9,133,547 T2 advance@0 #210 _STORE_SUBSCR_LIST_INT_FLOAT_r32
+    11,171,934 self    9,133,547 T2 advance@0 #252 _STORE_SUBSCR_LIST_INT_FLOAT_r32
+    11,171,934 self    9,133,547 T2 advance@0 #231 _STORE_SUBSCR_LIST_INT_FLOAT_r32
+    10,583,940 self   10,583,940 T2 advance@0 #42 _UNPACK_SEQUENCE_LIST_r10
+    10,583,940 self   10,583,940 T2 advance@0 #22 _UNPACK_SEQUENCE_LIST_r10
+    10,407,541 self   10,407,541 T2 advance@0 #38 _UNPACK_SEQUENCE_TUPLE_r10
+    10,407,541 self   10,407,541 T2 advance@0 #18 _UNPACK_SEQUENCE_TUPLE_r10
+     9,349,147 self    3,880,778 T2 advance@0 #67 _BINARY_OP_SUBTRACT_FLOAT_r23
+     9,349,147 self    3,880,778 T2 advance@0 #114 _BINARY_OP_MULTIPLY_FLOAT_r23
+     9,349,147 self    3,880,778 T2 advance@0 #122 _BINARY_OP_MULTIPLY_FLOAT_r23
+     9,349,147 self    3,880,778 T2 advance@0 #76 _BINARY_OP_SUBTRACT_FLOAT_r23
+     9,349,147 self    3,880,778 T2 advance@0 #58 _BINARY_OP_SUBTRACT_FLOAT_r23
+     8,643,551 self    6,350,364 T2 advance@0 #126 _STORE_FAST_FUSED_FLOAT_OR_NULL_r10
+     8,643,551 self    6,350,364 T2 advance@0 #80 _STORE_FAST_FUSED_FLOAT_OR_NULL_r10
+     8,643,551 self    6,350,364 T2 advance@0 #62 _STORE_FAST_FUSED_FLOAT_OR_NULL_r10
+     8,643,551 self    6,350,364 T2 advance@0 #118 _STORE_FAST_FUSED_FLOAT_OR_NULL_r10
+     8,643,551 self    6,350,364 T2 advance@0 #71 _STORE_FAST_FUSED_FLOAT_OR_NULL_r10
+     8,643,551 self    6,350,364 T2 advance@0 #110 _STORE_FAST_FUSED_FLOAT_OR_NULL_r10
+     8,467,152 self    2,998,783 T2 advance@0 #163 _BOX_FLOAT_r11
+     8,467,152 self    2,998,783 T2 advance@0 #227 _BOX_FLOAT_r11
+     8,467,152 self    2,998,783 T2 advance@0 #142 _BOX_FLOAT_r11

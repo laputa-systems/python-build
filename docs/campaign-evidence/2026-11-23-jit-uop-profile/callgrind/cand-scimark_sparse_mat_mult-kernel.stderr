@@ -1,0 +1,13 @@
++ cd /home/ubuntu/repos/python-build/wt-jbitcast1
++ LD_LIBRARY_PATH=/home/ubuntu/repos/python-build/wt-jbitcast1/rust-cpython/stage-perf-jbitcast1-cand/lib PYTHON_JIT=1 PYTHON_JIT_MAP=/home/ubuntu/exp-jituop/scimark_sparse_mat_mult.jitmap valgrind '--tool=callgrind' '--dump-instr=yes' '--compress-strings=no' '--compress-pos=no' '--callgrind-out-file=/home/ubuntu/exp-jituop/profiles/cand-scimark_sparse_mat_mult-kernel.callgrind' /home/ubuntu/repos/python-build/wt-jbitcast1/rust-cpython/stage-perf-jbitcast1-cand/bin/python3.16 -S -c 'import sys; from benchmarks.workloads import jit_kernels; print(jit_kernels.run(sys.argv[1]))' scimark_sparse_mat_mult
+==37== Callgrind, a call-graph generating cache profiler
+==37== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==37== Using Valgrind-3.25.1 and LibVEX; rerun with -h for copyright info
+==37== Command: /home/ubuntu/repos/python-build/wt-jbitcast1/rust-cpython/stage-perf-jbitcast1-cand/bin/python3.16 -S -c import\ sys;\ from\ benchmarks.workloads\ import\ jit_kernels;\ print(jit_kernels.run(sys.argv[1])) scimark_sparse_mat_mult
+==37== 
+==37== For interactive control, run 'callgrind_control -h'.
+==37== 
+==37== Events    : Ir
+==37== Collected : 3884611699
+==37== 
+==37== I   refs:      3,884,611,699

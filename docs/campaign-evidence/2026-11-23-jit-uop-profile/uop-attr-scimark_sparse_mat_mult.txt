@@ -1,0 +1,72 @@
+traces 7 uops 293 overlapping-ranges 0
+self Ir total 3,884,611,699; mapped to uops 1,386,299,293; unmapped JIT-page self 126
+-- self Ir by uop name
+   159,743,424  11.52%  call   124,799,550  _BINARY_OP_SUBSCR_ARRAY_I_UNBOXED_r21
+   154,751,442  11.16%  call   124,799,550  _BINARY_OP_SUBSCR_ARRAY_D_UNBOXED_r32
+   139,831,974  10.09%  call   206,764,611  _ITER_NEXT_RANGE_r23
+   117,505,896   8.48%  call    63,649,027  _STORE_FAST_FUSED_FLOAT_r10
+   115,714,986   8.35%  call    86,338,512  _STORE_FAST_FUSED_INT_r32
+    84,863,694   6.12%  call   124,799,550  _BINARY_OP_SUBSCR_ARRAY_D_UNBOXED_INDEX_r21
+    84,863,694   6.12%  call   154,751,442  _BOX_FLOAT_r11
+    55,966,735   4.04%  call             0  _GUARD_NOS_OBJECT_TYPE_VERSION_r12
+    46,655,964   3.37%  call             0  _ITER_CHECK_RANGE_r02
+    39,935,920   2.88%  call             0  _LOAD_FAST_BORROW_r23
+    39,935,856   2.88%  call             0  _UNBOX_FLOAT_NOS_r12
+    30,527,310   2.20%  call             0  _GUARD_NOS_OBJECT_TYPE_VERSION_r22
+    29,951,892   2.16%  call             0  _GUARD_NOS_OBJECT_TYPE_VERSION_r33
+    25,459,510   1.84%  call             0  _TIER2_RESUME_CHECK_r00
+    21,119,596   1.52%  call             0  _GUARD_NOT_EXHAUSTED_RANGE_r22
+    20,892,488   1.51%  call             0  _LOAD_FAST_BORROW_r12
+    20,351,540   1.47%  call             0  _GUARD_TOS_OVERFLOWED_r22
+    19,967,928   1.44%  call             0  _BINARY_OP_MULTIPLY_FLOAT_UNBOXED_r21
+    19,967,928   1.44%  call             0  _BINARY_OP_ADD_FLOAT_UNBOXED_r21
+    19,584,316   1.41%  call             0  _SPILL_OR_RELOAD_r30
+    10,943,442   0.79%  call             0  _SET_IP_r00
+    10,259,984   0.74%  call             0  _SET_IP_r33
+     9,983,964   0.72%  call             0  _LOAD_FAST_BORROW_4_r01
+     9,983,964   0.72%  call             0  _LOAD_FAST_BORROW_2_r12
+     9,792,158   0.71%  call             0  _LOAD_FAST_BORROW_5_r01
+     9,792,158   0.71%  call             0  _SPILL_OR_RELOAD_r10
+     8,840,929   0.64%  call     5,955,513  _STORE_SUBSCR_ARRAY_D_r30
+     6,521,404   0.47%  call    12,573,130  _BINARY_OP_SUBSCR_ARRAY_I_r23
+     5,279,915   0.38%  call             0  _MAKE_WARM_r00
+     4,987,156   0.36%  call             0  _JUMP_TO_TOP_r00
+-- call Ir (inclusive callees) by uop name
+   206,764,611  _ITER_NEXT_RANGE_r23
+   154,751,442  _BOX_FLOAT_r11
+   124,799,550  _BINARY_OP_SUBSCR_ARRAY_I_UNBOXED_r21
+   124,799,550  _BINARY_OP_SUBSCR_ARRAY_D_UNBOXED_INDEX_r21
+   124,799,550  _BINARY_OP_SUBSCR_ARRAY_D_UNBOXED_r32
+    86,338,512  _STORE_FAST_FUSED_INT_r32
+    63,649,027  _STORE_FAST_FUSED_FLOAT_r10
+    41,322,967  _CALL_BUILTIN_CLASS_r00
+    37,687,101  _GET_ITER_TRAD_r12
+    21,277,288  _STORE_SUBSCR_r30
+    12,573,130  _BINARY_OP_SUBSCR_ARRAY_I_r23
+    12,386,472  _BINARY_OP_r23
+-- hottest (trace, index, uop) by self+call
+   330,647,264 self  132,194,133 T4 SparseCompRow_matmult@2 #8 _ITER_NEXT_RANGE_r23
+   279,076,503 self  156,674,528 T4 SparseCompRow_matmult@2 #19 _BINARY_OP_SUBSCR_ARRAY_I_UNBOXED_r21
+   274,180,424 self  151,778,449 T4 SparseCompRow_matmult@2 #25 _BINARY_OP_SUBSCR_ARRAY_D_UNBOXED_r32
+   235,011,792 self   83,233,343 T4 SparseCompRow_matmult@2 #29 _BOX_FLOAT_r11
+   205,635,318 self   83,233,343 T4 SparseCompRow_matmult@2 #21 _BINARY_OP_SUBSCR_ARRAY_D_UNBOXED_INDEX_r21
+   202,053,498 self  115,714,986 T4 SparseCompRow_matmult@2 #10 _STORE_FAST_FUSED_INT_r32
+   181,154,923 self  117,505,896 T4 SparseCompRow_matmult@2 #30 _STORE_FAST_FUSED_FLOAT_r10
+    53,856,869 self   53,856,869 T4 SparseCompRow_matmult@2 #20 _GUARD_NOS_OBJECT_TYPE_VERSION_r12
+    45,446,796 self    4,123,829 T5 SparseCompRow_matmult@3 #40 _CALL_BUILTIN_CLASS_r00
+    44,963,991 self   44,963,991 T4 SparseCompRow_matmult@2 #6 _ITER_CHECK_RANGE_r02
+    40,564,191 self    2,877,090 T5 SparseCompRow_matmult@3 #48 _GET_ITER_TRAD_r12
+    39,168,632 self   39,168,632 T4 SparseCompRow_matmult@2 #27 _UNBOX_FLOAT_NOS_r12
+    29,376,474 self   29,376,474 T4 SparseCompRow_matmult@2 #18 _GUARD_NOS_OBJECT_TYPE_VERSION_r22
+    29,376,474 self   29,376,474 T4 SparseCompRow_matmult@2 #24 _GUARD_NOS_OBJECT_TYPE_VERSION_r33
+    24,979,995 self   24,979,995 T4 SparseCompRow_matmult@2 #5 _TIER2_RESUME_CHECK_r00
+    23,396,001 self    2,118,713 T3 _scimark_sparse_mat_mult@1 #35 _STORE_SUBSCR_r30
+    19,983,996 self   19,983,996 T4 SparseCompRow_matmult@2 #7 _GUARD_NOT_EXHAUSTED_RANGE_r22
+    19,584,316 self   19,584,316 T4 SparseCompRow_matmult@2 #17 _GUARD_TOS_OVERFLOWED_r22
+    19,584,316 self   19,584,316 T4 SparseCompRow_matmult@2 #26 _BINARY_OP_MULTIPLY_FLOAT_UNBOXED_r21
+    19,584,316 self   19,584,316 T4 SparseCompRow_matmult@2 #11 _LOAD_FAST_BORROW_r23
+    19,584,316 self   19,584,316 T4 SparseCompRow_matmult@2 #16 _LOAD_FAST_BORROW_r12
+    19,584,316 self   19,584,316 T4 SparseCompRow_matmult@2 #28 _BINARY_OP_ADD_FLOAT_UNBOXED_r21
+    19,584,316 self   19,584,316 T4 SparseCompRow_matmult@2 #12 _SPILL_OR_RELOAD_r30
+    19,584,316 self   19,584,316 T4 SparseCompRow_matmult@2 #23 _LOAD_FAST_BORROW_r23
+     9,991,998 self    9,991,998 T4 SparseCompRow_matmult@2 #4 _SET_IP_r00

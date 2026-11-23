@@ -1,0 +1,105 @@
++ set -eu
++ root=/home/ubuntu/repos/python-build
++ repo=/home/ubuntu/repos/python-build/wt-jbitcast1
++ stage=/home/ubuntu/repos/python-build/wt-jbitcast1/rust-cpython/stage-perf-jbitcast1-cand
++ run=/home/ubuntu/repos/python-build/wt-integ/docs/campaign-evidence/2026-11-23-jit-uop-profile
++ external=/home/ubuntu/exp-jituop
++ out=/home/ubuntu/repos/python-build/wt-integ/docs/campaign-evidence/2026-11-23-jit-uop-profile/callgrind
++ mkdir -p /home/ubuntu/repos/python-build/wt-integ/docs/campaign-evidence/2026-11-23-jit-uop-profile/callgrind /home/ubuntu/exp-jituop/profiles
++ valgrind --version
++ record_debug_ids
++ install_db=/lib/apk/db/installed
++ package_version musl
++ awk -v 'package=musl' '
+            $0 == "P:" package { in_package = 1; next }
+            in_package && /^V:/ { sub(/^V:/, ""); print; exit }
+            in_package && /^P:/ { exit }
+        ' /lib/apk/db/installed
++ musl_version=1.2.6-r3
++ package_version musl-dbg
++ awk -v 'package=musl-dbg' '
+            $0 == "P:" package { in_package = 1; next }
+            in_package && /^V:/ { sub(/^V:/, ""); print; exit }
+            in_package && /^P:/ { exit }
+        ' /lib/apk/db/installed
++ debug_version=1.2.6-r3
++ '[' 1.2.6-r3 '=' 1.2.6-r3 ]
++ '[' 1.2.6-r3 '=' 1.2.6-r3 ]
++ printf 'musl=%s\nmusl-dbg=%s\n' 1.2.6-r3 1.2.6-r3
++ file /lib/ld-musl-x86_64.so.1
++ loader='/lib/ld-musl-x86_64.so.1: ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, BuildID[sha1]=d1656128169ecc566bb0afcbbcbda02c5ac8cd74, stripped'
++ file /usr/lib/debug/lib/ld-musl-x86_64.so.1.debug
++ debug='/usr/lib/debug/lib/ld-musl-x86_64.so.1.debug: ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, BuildID[sha1]=d1656128169ecc566bb0afcbbcbda02c5ac8cd74, with debug_info, not stripped'
++ printf '%s\n' '/lib/ld-musl-x86_64.so.1: ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, BuildID[sha1]=d1656128169ecc566bb0afcbbcbda02c5ac8cd74, stripped'
++ sed -n 's/.*BuildID\[sha1\]=\([0-9a-f]*\).*/\1/p'
++ loader_id=d1656128169ecc566bb0afcbbcbda02c5ac8cd74
++ printf '%s\n' '/usr/lib/debug/lib/ld-musl-x86_64.so.1.debug: ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, BuildID[sha1]=d1656128169ecc566bb0afcbbcbda02c5ac8cd74, with debug_info, not stripped'
++ sed -n 's/.*BuildID\[sha1\]=\([0-9a-f]*\).*/\1/p'
++ debug_id=d1656128169ecc566bb0afcbbcbda02c5ac8cd74
++ printf 'loader: %s\ndebug: %s\n' '/lib/ld-musl-x86_64.so.1: ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, BuildID[sha1]=d1656128169ecc566bb0afcbbcbda02c5ac8cd74, stripped' '/usr/lib/debug/lib/ld-musl-x86_64.so.1.debug: ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, BuildID[sha1]=d1656128169ecc566bb0afcbbcbda02c5ac8cd74, with debug_info, not stripped'
++ printf 'loader_build_id=%s\ndebug_build_id=%s\n' d1656128169ecc566bb0afcbbcbda02c5ac8cd74 d1656128169ecc566bb0afcbbcbda02c5ac8cd74
++ '[' -n d1656128169ecc566bb0afcbbcbda02c5ac8cd74 ]
++ '[' d1656128169ecc566bb0afcbbcbda02c5ac8cd74 '=' d1656128169ecc566bb0afcbbcbda02c5ac8cd74 ]
++ profile nbody
++ workload=nbody
++ name=cand-nbody-kernel
++ cg=/home/ubuntu/exp-jituop/profiles/cand-nbody-kernel.callgrind
++ map=/home/ubuntu/exp-jituop/nbody.jitmap
++ stdout=/home/ubuntu/repos/python-build/wt-integ/docs/campaign-evidence/2026-11-23-jit-uop-profile/callgrind/cand-nbody-kernel.stdout
++ stderr=/home/ubuntu/repos/python-build/wt-integ/docs/campaign-evidence/2026-11-23-jit-uop-profile/callgrind/cand-nbody-kernel.stderr
++ exit_file=/home/ubuntu/repos/python-build/wt-integ/docs/campaign-evidence/2026-11-23-jit-uop-profile/callgrind/cand-nbody-kernel.exit
++ command='import sys; from benchmarks.workloads import jit_kernels; print(jit_kernels.run(sys.argv[1]))'
++ rc=0
++ printf '%s\n' 0
++ '[' 0 -eq 0 ]
++ '[' '!' -s /home/ubuntu/exp-jituop/nbody.jitmap ]
++ awk -F '\t' '$1 == "U" { count++ } END { print count + 0 }' /home/ubuntu/exp-jituop/nbody.jitmap
++ u_count=963
++ printf '%s\n' 963
++ '[' 963 -gt 0 ]
++ map_rc=0
++ printf '%s\n' 0
++ '[' 0 -eq 0 ]
++ xz -T0 -9 /home/ubuntu/exp-jituop/profiles/cand-nbody-kernel.callgrind
++ profile scimark_fft
++ workload=scimark_fft
++ name=cand-scimark_fft-kernel
++ cg=/home/ubuntu/exp-jituop/profiles/cand-scimark_fft-kernel.callgrind
++ map=/home/ubuntu/exp-jituop/scimark_fft.jitmap
++ stdout=/home/ubuntu/repos/python-build/wt-integ/docs/campaign-evidence/2026-11-23-jit-uop-profile/callgrind/cand-scimark_fft-kernel.stdout
++ stderr=/home/ubuntu/repos/python-build/wt-integ/docs/campaign-evidence/2026-11-23-jit-uop-profile/callgrind/cand-scimark_fft-kernel.stderr
++ exit_file=/home/ubuntu/repos/python-build/wt-integ/docs/campaign-evidence/2026-11-23-jit-uop-profile/callgrind/cand-scimark_fft-kernel.exit
++ command='import sys; from benchmarks.workloads import jit_kernels; print(jit_kernels.run(sys.argv[1]))'
++ rc=0
++ printf '%s\n' 0
++ '[' 0 -eq 0 ]
++ '[' '!' -s /home/ubuntu/exp-jituop/scimark_fft.jitmap ]
++ awk -F '\t' '$1 == "U" { count++ } END { print count + 0 }' /home/ubuntu/exp-jituop/scimark_fft.jitmap
++ u_count=1145
++ printf '%s\n' 1145
++ '[' 1145 -gt 0 ]
++ map_rc=0
++ printf '%s\n' 0
++ '[' 0 -eq 0 ]
++ xz -T0 -9 /home/ubuntu/exp-jituop/profiles/cand-scimark_fft-kernel.callgrind
++ profile scimark_sparse_mat_mult
++ workload=scimark_sparse_mat_mult
++ name=cand-scimark_sparse_mat_mult-kernel
++ cg=/home/ubuntu/exp-jituop/profiles/cand-scimark_sparse_mat_mult-kernel.callgrind
++ map=/home/ubuntu/exp-jituop/scimark_sparse_mat_mult.jitmap
++ stdout=/home/ubuntu/repos/python-build/wt-integ/docs/campaign-evidence/2026-11-23-jit-uop-profile/callgrind/cand-scimark_sparse_mat_mult-kernel.stdout
++ stderr=/home/ubuntu/repos/python-build/wt-integ/docs/campaign-evidence/2026-11-23-jit-uop-profile/callgrind/cand-scimark_sparse_mat_mult-kernel.stderr
++ exit_file=/home/ubuntu/repos/python-build/wt-integ/docs/campaign-evidence/2026-11-23-jit-uop-profile/callgrind/cand-scimark_sparse_mat_mult-kernel.exit
++ command='import sys; from benchmarks.workloads import jit_kernels; print(jit_kernels.run(sys.argv[1]))'
++ rc=0
++ printf '%s\n' 0
++ '[' 0 -eq 0 ]
++ '[' '!' -s /home/ubuntu/exp-jituop/scimark_sparse_mat_mult.jitmap ]
++ awk -F '\t' '$1 == "U" { count++ } END { print count + 0 }' /home/ubuntu/exp-jituop/scimark_sparse_mat_mult.jitmap
++ u_count=293
++ printf '%s\n' 293
++ '[' 293 -gt 0 ]
++ map_rc=0
++ printf '%s\n' 0
++ '[' 0 -eq 0 ]
++ xz -T0 -9 /home/ubuntu/exp-jituop/profiles/cand-scimark_sparse_mat_mult-kernel.callgrind

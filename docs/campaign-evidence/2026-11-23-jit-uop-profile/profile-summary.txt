@@ -1,0 +1,39 @@
+J-BITCAST-1 candidate per-instruction Callgrind profiles
+
+Stage:
+/home/ubuntu/repos/python-build/wt-jbitcast1/rust-cpython/stage-perf-jbitcast1-cand
+Both that stage directory and work/perf/perf-jbitcast1-cand existed; the
+installed stage directory above was used.
+
+| Kernel | Exit | Operation count | Digest | Callgrind Ir (summary/totals) | Jitmap U lines |
+| --- | ---: | ---: | --- | ---: | ---: |
+| nbody | 0 | 20000 | 3640da69351bfefab701de78301e74a9fd4352c2b115d852e019c715bd23f849 | 2142856542 | 963 |
+| scimark_fft | 0 | 50 | 605e8bed1655ba112f3221d40a5d9431896251b95d8b54ba2cdb933728292f23 | 3165329602 | 1145 |
+| scimark_sparse_mat_mult | 0 | 100000 | 2eebf23cc576a0437d1a3adf926793e018f058f6fe88dca519a9038195fff28f | 3884611699 | 293 |
+
+Each Callgrind total was read from matching `summary:` and `totals:` lines
+in its xz-compressed profile. The run stdout contains the operation counts,
+digests, and elapsed-time fields; stdout/stderr/exit files are under
+`callgrind/`. Jitmap `U` counts are recorded in the corresponding
+`callgrind/cand-*-kernel.jitmap-u-lines.txt`.
+
+Jitmaps, kept uncompressed:
+- `/home/ubuntu/exp-jituop/nbody.jitmap` (963 U lines)
+- `/home/ubuntu/exp-jituop/scimark_fft.jitmap` (1145 U lines)
+- `/home/ubuntu/exp-jituop/scimark_sparse_mat_mult.jitmap` (293 U lines)
+
+First five lines of `nbody.jitmap`:
+```
+T	29	0x5e3a000	0x5e3a167	105241264	-1	-1	<cold>	<runtime>	1
+U	29	0x5e3a000	0x5e3a14c	0	_COLD_EXIT_r00
+Z	29	105241264
+T	29	0x603a000	0x603a02f	105241408	-1	-1	<cold>	<runtime>	1
+U	29	0x603a000	0x603a014	0	_COLD_DYNAMIC_EXIT_r00
+```
+
+The pinned Alpine image was
+`sha256:d56c381f961d307a21b3ca004cf1e3910f106644aefb1f43e654c8a56c4fd395`;
+`musl` and `musl-dbg` were both `1.2.6-r3`, with matching loader/debug
+BuildID `d1656128169ecc566bb0afcbbcbda02c5ac8cd74`. Docker used
+`--network none`; Callgrind used `--dump-instr=yes --compress-strings=no
+--compress-pos=no`. No callgrind_annotate was run.
