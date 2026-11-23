@@ -1133,8 +1133,8 @@ def _cached_musl_llvm_dwarfdump(toolchain) -> Path:
         prefix_maps = (
             (source_dir, path_maps["source"]),
             (Path(temporary), path_maps["build"]),
-            (dev_prefix, path_maps["llvm_dev_prefix"]),
-            (dev_prefix.resolve(), path_maps["llvm_dev_prefix"]),
+            (dev_prefix, path_maps["llvm_dev"]),
+            (dev_prefix.resolve(), path_maps["llvm_dev"]),
             (toolchain.llvm_prefix, path_maps["llvm_toolchain"]),
             (toolchain.llvm_prefix.resolve(), path_maps["llvm_toolchain"]),
             (REPO, path_maps["checkout"]),
