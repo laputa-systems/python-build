@@ -141,10 +141,10 @@
     },
     {
       "name": "laputa-buildlib",
-      "version": "0.1.0",
-      "url": "https://pypi.17166969.xyz/current/wheels/laputa_buildlib-0.1.0-py3-none-any.whl",
-      "sha256": "edd102a1713c903f93e19b10036983d123dd76fa1b04a0e5f3c5070f00a95383",
-      "size": 23941,
+      "version": "0.2.0",
+      "url": "https://pypi.17166969.xyz/current/wheels/laputa_buildlib-0.2.0-py3-none-any.whl",
+      "sha256": "aaee620f0478544b1d32075b44de48e69bbcbd8b974d5f599d037494d59f4b4a",
+      "size": 25193,
       "role": "build-source",
       "license": "Apache-2.0",
       "purpose": "shared build-contract helpers, imported from the verified wheel by buildsys"

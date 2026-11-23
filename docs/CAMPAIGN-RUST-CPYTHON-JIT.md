@@ -298,7 +298,7 @@ Census receipt SHA-256:
 
 The Serc compiler library also passed all 1,261 native Rust unit tests
 with zero skips in the locked offline Ubuntu runner. The release test
-used `cargo test --release --locked --offline --package serc --lib`.
+used `cargo test` in release, locked, offline mode for the `serc` package library.
 The census checkout verified Serc source pin `bc563167`, the
 Serc Cargo lock digest and all overlay file contents before the run.
 The command and full log are in
@@ -899,7 +899,7 @@ Run from the repository root on the Linux x86-64 campaign host:
 ```sh
 uname -s
 uname -m
-. /etc/os-release && echo "$ID $VERSION_ID"
+cat /etc/os-release
 git status --short
 git rev-parse HEAD
 git worktree list --porcelain

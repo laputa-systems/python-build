@@ -82,6 +82,8 @@ Rust CPython research lane, the Python environment, and shared Cargo targets.
 | Remaining production and lane work | [docs/open-work.md](docs/open-work.md) |
 | rust-cpython JIT campaign: goal, gates, ledger | [docs/CAMPAIGN-RUST-CPYTHON-JIT.md](docs/CAMPAIGN-RUST-CPYTHON-JIT.md) |
 | Continuous campaign: next work, checkpoints, resumption | [docs/CAMPAIGN-RUST-CPYTHON-RUNBOOK.md](docs/CAMPAIGN-RUST-CPYTHON-RUNBOOK.md) |
+| Rust campaign results | [docs/RUST-CAMPAIGN-RESULTS.md](docs/RUST-CAMPAIGN-RESULTS.md) |
+| Campaign evidence | [docs/campaign-evidence/](docs/campaign-evidence/) |
 | RTLS backend | [backend/README.md](backend/README.md) |
 | Rust lane build and harness | [rust-cpython/README.md](rust-cpython/README.md) |
 | Rust lane contract and verdicts | [rust-cpython/ENGINEERING.md](rust-cpython/ENGINEERING.md) |
