@@ -1,0 +1,116 @@
++ set -eu
++ root=/home/ubuntu/repos/python-build
++ repo=/home/ubuntu/repos/python-build/wt-calloc3-parent
++ stage=/home/ubuntu/repos/python-build/wt-calloc3-parent/rust-cpython/stage-perf-calloc3-parent
++ run=/home/ubuntu/repos/python-build/wt-jitnet/docs/campaign-evidence/2026-11-23-jit-net-profile
++ external=/home/ubuntu/exp-jitnet
++ out=/home/ubuntu/repos/python-build/wt-jitnet/docs/campaign-evidence/2026-11-23-jit-net-profile/callgrind
++ mkdir -p /home/ubuntu/repos/python-build/wt-jitnet/docs/campaign-evidence/2026-11-23-jit-net-profile/callgrind /home/ubuntu/exp-jitnet/profiles
++ valgrind --version
++ PATH=/home/ubuntu/repos/python-build/wt-jitnet/docs/campaign-evidence/2026-11-23-jit-net-profile/support:/home/ubuntu/repos/python-build/wt-allocretry/rust-cpython/.cargo-home/bin:/home/ubuntu/repos/python-build/.cache/llvm/prepared/de3f6d0ad089391482147c61648c511c500b25289132fe7f2c446a0905406d2a-8758ff8d058488c943e19d7cce3ae0579a1af3bf01ca836eec9928c8df521f7a/bin:/usr/bin:/bin
++ export PATH
++ callgrind_annotate-3.18.1 --version
++ true
++ record_debug_ids
++ install_db=/lib/apk/db/installed
++ package_version musl
++ awk -v 'package=musl' '
+            $0 == "P:" package { in_package = 1; next }
+            in_package && /^V:/ { sub(/^V:/, ""); print; exit }
+            in_package && /^P:/ { exit }
+        ' /lib/apk/db/installed
++ musl_version=1.2.6-r3
++ package_version musl-dbg
++ awk -v 'package=musl-dbg' '
+            $0 == "P:" package { in_package = 1; next }
+            in_package && /^V:/ { sub(/^V:/, ""); print; exit }
+            in_package && /^P:/ { exit }
+        ' /lib/apk/db/installed
++ debug_version=1.2.6-r3
++ '[' 1.2.6-r3 '=' 1.2.6-r3 ]
++ '[' 1.2.6-r3 '=' 1.2.6-r3 ]
++ printf 'musl=%s\nmusl-dbg=%s\n' 1.2.6-r3 1.2.6-r3
++ file /lib/ld-musl-x86_64.so.1
++ loader='/lib/ld-musl-x86_64.so.1: ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, BuildID[sha1]=d1656128169ecc566bb0afcbbcbda02c5ac8cd74, stripped'
++ file /usr/lib/debug/lib/ld-musl-x86_64.so.1.debug
++ debug='/usr/lib/debug/lib/ld-musl-x86_64.so.1.debug: ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, BuildID[sha1]=d1656128169ecc566bb0afcbbcbda02c5ac8cd74, with debug_info, not stripped'
++ printf '%s\n' '/lib/ld-musl-x86_64.so.1: ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, BuildID[sha1]=d1656128169ecc566bb0afcbbcbda02c5ac8cd74, stripped'
++ sed -n 's/.*BuildID\[sha1\]=\([0-9a-f]*\).*/\1/p'
++ loader_id=d1656128169ecc566bb0afcbbcbda02c5ac8cd74
++ printf '%s\n' '/usr/lib/debug/lib/ld-musl-x86_64.so.1.debug: ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, BuildID[sha1]=d1656128169ecc566bb0afcbbcbda02c5ac8cd74, with debug_info, not stripped'
++ sed -n 's/.*BuildID\[sha1\]=\([0-9a-f]*\).*/\1/p'
++ debug_id=d1656128169ecc566bb0afcbbcbda02c5ac8cd74
++ printf 'loader: %s\ndebug: %s\n' '/lib/ld-musl-x86_64.so.1: ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, BuildID[sha1]=d1656128169ecc566bb0afcbbcbda02c5ac8cd74, stripped' '/usr/lib/debug/lib/ld-musl-x86_64.so.1.debug: ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, BuildID[sha1]=d1656128169ecc566bb0afcbbcbda02c5ac8cd74, with debug_info, not stripped'
++ printf 'loader_build_id=%s\ndebug_build_id=%s\n' d1656128169ecc566bb0afcbbcbda02c5ac8cd74 d1656128169ecc566bb0afcbbcbda02c5ac8cd74
++ '[' -n d1656128169ecc566bb0afcbbcbda02c5ac8cd74 ]
++ '[' d1656128169ecc566bb0afcbbcbda02c5ac8cd74 '=' d1656128169ecc566bb0afcbbcbda02c5ac8cd74 ]
++ profile nbody kernel
++ workload=nbody
++ kind=kernel
++ name=parent-nbody-kernel
++ cg=/home/ubuntu/exp-jitnet/profiles/parent-nbody-kernel.callgrind
++ stdout=/home/ubuntu/repos/python-build/wt-jitnet/docs/campaign-evidence/2026-11-23-jit-net-profile/callgrind/parent-nbody-kernel.stdout
++ stderr=/home/ubuntu/repos/python-build/wt-jitnet/docs/campaign-evidence/2026-11-23-jit-net-profile/callgrind/parent-nbody-kernel.stderr
++ exit_file=/home/ubuntu/repos/python-build/wt-jitnet/docs/campaign-evidence/2026-11-23-jit-net-profile/callgrind/parent-nbody-kernel.exit
++ '[' kernel '=' kernel ]
++ command='import sys; from benchmarks.workloads import jit_kernels; print(jit_kernels.run(sys.argv[1]))'
++ rc=0
++ printf '%s\n' 0
++ '[' 0 -eq 0 ]
++ callgrind_annotate-3.18.1 '--auto=no' '--show=Ir' '--threshold=0' '--inclusive=yes' '--tree=caller' /home/ubuntu/exp-jitnet/profiles/parent-nbody-kernel.callgrind
++ annotate_rc=0
++ printf '%s\n' 0
++ xz -T0 -9 /home/ubuntu/exp-jitnet/profiles/parent-nbody-kernel.callgrind
++ profile nbody setup
++ workload=nbody
++ kind=setup
++ name=parent-nbody-setup
++ cg=/home/ubuntu/exp-jitnet/profiles/parent-nbody-setup.callgrind
++ stdout=/home/ubuntu/repos/python-build/wt-jitnet/docs/campaign-evidence/2026-11-23-jit-net-profile/callgrind/parent-nbody-setup.stdout
++ stderr=/home/ubuntu/repos/python-build/wt-jitnet/docs/campaign-evidence/2026-11-23-jit-net-profile/callgrind/parent-nbody-setup.stderr
++ exit_file=/home/ubuntu/repos/python-build/wt-jitnet/docs/campaign-evidence/2026-11-23-jit-net-profile/callgrind/parent-nbody-setup.exit
++ '[' setup '=' kernel ]
++ module=nbody
++ command='import sys; from benchmarks.workloads import jit_kernels; jit_kernels._load(sys.argv[1]); print("setup-only")'
++ rc=0
++ printf '%s\n' 0
++ '[' 0 -eq 0 ]
++ callgrind_annotate-3.18.1 '--auto=no' '--show=Ir' '--threshold=0' '--inclusive=yes' '--tree=caller' /home/ubuntu/exp-jitnet/profiles/parent-nbody-setup.callgrind
++ annotate_rc=0
++ printf '%s\n' 0
++ xz -T0 -9 /home/ubuntu/exp-jitnet/profiles/parent-nbody-setup.callgrind
++ profile scimark_sparse_mat_mult kernel
++ workload=scimark_sparse_mat_mult
++ kind=kernel
++ name=parent-scimark_sparse_mat_mult-kernel
++ cg=/home/ubuntu/exp-jitnet/profiles/parent-scimark_sparse_mat_mult-kernel.callgrind
++ stdout=/home/ubuntu/repos/python-build/wt-jitnet/docs/campaign-evidence/2026-11-23-jit-net-profile/callgrind/parent-scimark_sparse_mat_mult-kernel.stdout
++ stderr=/home/ubuntu/repos/python-build/wt-jitnet/docs/campaign-evidence/2026-11-23-jit-net-profile/callgrind/parent-scimark_sparse_mat_mult-kernel.stderr
++ exit_file=/home/ubuntu/repos/python-build/wt-jitnet/docs/campaign-evidence/2026-11-23-jit-net-profile/callgrind/parent-scimark_sparse_mat_mult-kernel.exit
++ '[' kernel '=' kernel ]
++ command='import sys; from benchmarks.workloads import jit_kernels; print(jit_kernels.run(sys.argv[1]))'
++ rc=0
++ printf '%s\n' 0
++ '[' 0 -eq 0 ]
++ callgrind_annotate-3.18.1 '--auto=no' '--show=Ir' '--threshold=0' '--inclusive=yes' '--tree=caller' /home/ubuntu/exp-jitnet/profiles/parent-scimark_sparse_mat_mult-kernel.callgrind
++ annotate_rc=0
++ printf '%s\n' 0
++ xz -T0 -9 /home/ubuntu/exp-jitnet/profiles/parent-scimark_sparse_mat_mult-kernel.callgrind
++ profile scimark_sparse_mat_mult setup
++ workload=scimark_sparse_mat_mult
++ kind=setup
++ name=parent-scimark_sparse_mat_mult-setup
++ cg=/home/ubuntu/exp-jitnet/profiles/parent-scimark_sparse_mat_mult-setup.callgrind
++ stdout=/home/ubuntu/repos/python-build/wt-jitnet/docs/campaign-evidence/2026-11-23-jit-net-profile/callgrind/parent-scimark_sparse_mat_mult-setup.stdout
++ stderr=/home/ubuntu/repos/python-build/wt-jitnet/docs/campaign-evidence/2026-11-23-jit-net-profile/callgrind/parent-scimark_sparse_mat_mult-setup.stderr
++ exit_file=/home/ubuntu/repos/python-build/wt-jitnet/docs/campaign-evidence/2026-11-23-jit-net-profile/callgrind/parent-scimark_sparse_mat_mult-setup.exit
++ '[' setup '=' kernel ]
++ module=scimark
++ command='import sys; from benchmarks.workloads import jit_kernels; jit_kernels._load(sys.argv[1]); print("setup-only")'
++ rc=0
++ printf '%s\n' 0
++ '[' 0 -eq 0 ]
++ callgrind_annotate-3.18.1 '--auto=no' '--show=Ir' '--threshold=0' '--inclusive=yes' '--tree=caller' /home/ubuntu/exp-jitnet/profiles/parent-scimark_sparse_mat_mult-setup.callgrind
++ annotate_rc=0
++ printf '%s\n' 0
++ xz -T0 -9 /home/ubuntu/exp-jitnet/profiles/parent-scimark_sparse_mat_mult-setup.callgrind

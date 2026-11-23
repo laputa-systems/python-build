@@ -1,0 +1,8 @@
+callgrind/parent-nbody-kernel.callgrind.xz	/home/ubuntu/exp-jitnet/profiles/parent-nbody-kernel.callgrind.xz
+callgrind/parent-nbody-setup.callgrind.xz	/home/ubuntu/exp-jitnet/profiles/parent-nbody-setup.callgrind.xz
+callgrind/parent-scimark_sparse_mat_mult-kernel.callgrind.xz	/home/ubuntu/exp-jitnet/profiles/parent-scimark_sparse_mat_mult-kernel.callgrind.xz
+callgrind/parent-scimark_sparse_mat_mult-setup.callgrind.xz	/home/ubuntu/exp-jitnet/profiles/parent-scimark_sparse_mat_mult-setup.callgrind.xz
+callgrind/parent-nbody-kernel.caller-tree.txt	/home/ubuntu/exp-jitnet/annotations/parent-nbody-kernel.caller-tree.txt.xz
+callgrind/parent-nbody-setup.caller-tree.txt	/home/ubuntu/exp-jitnet/annotations/parent-nbody-setup.caller-tree.txt.xz
+callgrind/parent-scimark_sparse_mat_mult-kernel.caller-tree.txt	/home/ubuntu/exp-jitnet/annotations/parent-scimark_sparse_mat_mult-kernel.caller-tree.txt.xz
+callgrind/parent-scimark_sparse_mat_mult-setup.caller-tree.txt	/home/ubuntu/exp-jitnet/annotations/parent-scimark_sparse_mat_mult-setup.caller-tree.txt.xz
