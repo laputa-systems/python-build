@@ -80,6 +80,12 @@ unqualified host:
   stencils (`-fno-builtin`); union casts remove all 96. Net kernel `Ir` is −53.8% on nbody,
   −52.2% on sparse and −39.7% on fft; the corpus moves +0.01%
   (`campaign-evidence/2026-11-23-j-bitcast/RESULT-JBITCAST1.md`). It is a prepared Track J candidate.
+- Queue state (2026-11-23): Track J is at its limit (J-ES-2, J-BITCAST-1). The next J
+  hypothesis, J-ARRAY-1 (inline array element helpers; `2026-11-23-jit-uop-profile/`), waits
+  for an owner decision on a third candidate or for a timing slot to clear. Track C has no
+  hypothesis above its 4% bar on musl (`2026-11-22-musl-profile/`, `2026-11-23-c-alloc3/`).
+  The timing path now runs musl stages (PR #31). Infrastructure wait: a qualified quiet
+  x86-64 host for P0 of C-REL-3, J-ES-2 and J-BITCAST-1.
 
 
 Rewrite this section at each checkpoint. Keep it short: scorecard, blockers,
