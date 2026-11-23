@@ -40,3 +40,25 @@ whole `Ir`, and state in the plan which one a prediction is judged on.
 Callgrind confirmed 706 M nbody `Ir` in anonymous executable mappings (JIT code), most of
 nbody's remaining unknown bucket (721 M). The FFT and sparse JIT subtotals were not
 established.
+
+## Serc callers on musl (`callers/attribution.md`)
+
+This is a callgrind run with call graphs. Its total is 37.79 G, which is −0.45% against
+cachegrind; the gap exceeds the 0.1% comparability gate, so this run is used only for attribution.
+
+- **Allocation volume:** 13.97 M `malloc`, 13.97 M `free`, 0.83 M `calloc` and 1.58 M
+  `realloc` over 2,104 files.
+- **Allocation sources:** Vec growth (`RawVecInner::finish_grow`) is the largest immediate
+  source at 1.29 G inclusive. The top functions two levels up are
+  `OptimizationPipeline::optimize` (1.03 G), `Assembler::finish_code_with_constants` (1.02 G)
+  and `LayoutAssembler::finish` (0.49 G). No single function owns more than 2.7% of corpus `Ir`.
+- **`strstr`:** `_Py_CompileString` scans every source for `"\N{"` (`pythonrun.c:1745`),
+  2,104 calls, 249 M (0.66%).
+- **`serc::indentation::cpython_layout_error`:** called once per file (2,063 calls) on the
+  normal path, 250 M inclusive. 205 M of that is allocation.
+
+**Screen:** no single allocation site or scan reaches the 4% Serc bar. The `strstr` and
+layout-error items together are about 1.2%. Reducing allocations across the three
+functions above would mean restructuring the assembler's buffers in several places. The
+one mechanism large enough to matter is routing Serc's allocations away from mallocng
+(C-ALLOC-3), which waits on the owner.

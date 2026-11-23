@@ -13,8 +13,10 @@ profile_repo = root / "wt-musl-profile"
 evidence = root / "wt-integ/docs/campaign-evidence/2026-11-22-musl-profile"
 external = Path("/home/ubuntu/exp-musl-profile")
 profile_name = sys.argv[1] if len(sys.argv) > 1 else "cachegrind"
-if profile_name not in {"cachegrind", "callgrind"}:
-    raise SystemExit("usage: run-measurement-container.py [cachegrind|callgrind]")
+if profile_name not in {"cachegrind", "callgrind", "callgrind-corpus"}:
+    raise SystemExit(
+        "usage: run-measurement-container.py [cachegrind|callgrind|callgrind-corpus]"
+    )
 lane = stage_repo / "rust-cpython"
 lock = json.loads((profile_repo / "rust-cpython/linux-musl-toolchain.lock.json").read_text())
 bootstrap = json.loads((stage_repo / "bootstrap.lock.json").read_text())["linux_toolchain"]
@@ -64,7 +66,11 @@ if not llvm_prefix.is_dir():
 rustup_home = lane / lock["rust"]["cache"]
 cargo_home = lane / ".cargo-home"
 debug_path = str(debug_apk)
-inner = evidence / f"support/run-{profile_name}-base2.sh"
+inner = evidence / (
+    "support/run-callgrind-corpus.sh"
+    if profile_name == "callgrind-corpus"
+    else f"support/run-{profile_name}-base2.sh"
+)
 container_script = f"""set -eu
 apk --no-network --repositories-file /dev/null add -- {shlex.join(map(str, base_apks))}
 apk --no-network --repositories-file /dev/null add -- {shlex.join(map(str, lane_apks))}
