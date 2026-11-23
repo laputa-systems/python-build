@@ -552,7 +552,7 @@ class LinuxDwarfdumpInputTests(unittest.TestCase):
         self.assertEqual(deterministic["environment"]["ZERO_AR_DATE"], "1")
         self.assertEqual(
             set(deterministic["path_maps"]),
-            {"source", "build", "checkout"},
+            {"source", "build", "llvm_dev", "llvm_toolchain", "checkout"},
         )
         self.assertRegex(recipe["binary_sha256"], r"^[0-9a-f]{64}$")
         self.assertGreater(recipe["binary_size"], 0)

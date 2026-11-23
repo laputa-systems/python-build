@@ -179,9 +179,11 @@
           "ZERO_AR_DATE": "1"
         },
         "path_maps": {
-          "source": "llvm-project/llvm/tools/llvm-dwarfdump",
-          "build": "llvm-dwarfdump-build",
-          "checkout": "rust-cpython"
+            "source": "llvm-project/llvm/tools/llvm-dwarfdump",
+            "build": "llvm-dwarfdump-build",
+            "llvm_dev": "llvm-dev-prefix",
+            "llvm_toolchain": "llvm-toolchain-prefix",
+            "checkout": "rust-cpython"
         }
       },
       "llvm_config": "llvm-config --link-static --cxxflags; llvm-config --link-static --ldflags --libs <llvm_config_components> --system-libs",
