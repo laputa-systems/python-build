@@ -8,11 +8,10 @@ artifact.
 
 The 3.15.1 product is stable and is not modified for lane work.
 `rust-cpython/` is a separate CPython 3.16 Rust research lane whose frontier
-is the Rust JIT and a Rust source compiler ported from Serc: one campaign,
-[rust-cpython JIT](docs/CAMPAIGN-RUST-CPYTHON-JIT.md), owns their goal, end
-state, gates, and execution status. For campaign work, first read the short
-[continuous runbook](docs/CAMPAIGN-RUST-CPYTHON-RUNBOOK.md), then the campaign's
-Status and the relevant acceptance section. The owner's 2026-11-19 direction
+is the Rust JIT and a Rust source compiler ported from Serc: one campaign in the
+[roadmap](docs/roadmap.md#campaign-rust-cpython-jit) owns their goal, end
+state, gates, and execution status. Start campaign work from the roadmap's Status
+and the relevant acceptance section. The owner's 2026-11-19 direction
 (OD21) is continuous Linux x86-64 hillclimbing: a checkpoint, exhausted search
 round, or deferred timing gate does not finish the campaign. Continue the next
 unblocked experiment; preserve per-hypothesis limits and every acceptance bar.
@@ -79,9 +78,7 @@ Rust CPython research lane, the Python environment, and shared Cargo targets.
 | Inputs, build records, isolation, recipes | [docs/build-system.md](docs/build-system.md) |
 | Qualification, packaging, reproduction | [docs/qualification-and-packaging.md](docs/qualification-and-packaging.md) |
 | CI and releases | [docs/ci-and-releases.md](docs/ci-and-releases.md) |
-| Remaining production and lane work | [docs/open-work.md](docs/open-work.md) |
-| rust-cpython JIT campaign: goal, gates, ledger | [docs/CAMPAIGN-RUST-CPYTHON-JIT.md](docs/CAMPAIGN-RUST-CPYTHON-JIT.md) |
-| Continuous campaign: next work, checkpoints, resumption | [docs/CAMPAIGN-RUST-CPYTHON-RUNBOOK.md](docs/CAMPAIGN-RUST-CPYTHON-RUNBOOK.md) |
+| Roadmap: all current and future work; Status is the resume point | [docs/roadmap.md](docs/roadmap.md) |
 | Rust campaign results | [docs/RUST-CAMPAIGN-RESULTS.md](docs/RUST-CAMPAIGN-RESULTS.md) |
 | Campaign evidence | [docs/campaign-evidence/](docs/campaign-evidence/) |
 | RTLS backend | [backend/README.md](backend/README.md) |

@@ -57,4 +57,4 @@ The final release additionally requires P1-P5 receipts, the Linux wave, a
 fresh three-platform qualification at the release revision, exact uv-installed
 archive checksums, source and tag identity, and no stale production claims.
 See [ci-and-releases.md](ci-and-releases.md) and
-[open-work.md](open-work.md).
+[roadmap.md](roadmap.md).

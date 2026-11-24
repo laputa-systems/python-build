@@ -2,14 +2,14 @@
 
 The lane is an isolated CPython 3.16 research interpreter with a Rust overlay,
 pinned by [`sources.lock.json`](sources.lock.json). It is not the shipping
-3.15.1 product. The [campaign](../docs/CAMPAIGN-RUST-CPYTHON-JIT.md) owns the
+3.15.1 product. The [campaign](../docs/roadmap.md) owns the
 current epoch, execution status, and Linux x86-64 qualification. The
-[continuous runbook](../docs/CAMPAIGN-RUST-CPYTHON-RUNBOOK.md) implements OD21
+[roadmap](../docs/roadmap.md) implements OD21
 (2026-11-19): the owner-selected bare-metal, cloud VM or pinned Ubuntu
 container worker qualifies only through the unchanged H0/A/A/P0 evidence
 requirements. The current cloud worker remains unqualified. macOS arm64 receipts are historical and do not qualify the
 current epoch; Linux arm64 is not implemented. Build and benchmark commands are in [README.md](README.md); route suites are in [ROUTES.md](ROUTES.md);
-remaining work is in [../docs/open-work.md](../docs/open-work.md).
+remaining work is in [../docs/roadmap.md](../docs/roadmap.md).
 
 ## Rules
 
