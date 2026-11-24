@@ -247,7 +247,7 @@ exec python3 {LANE / "tools/musl-run"} --as-user "$HOST_UID" "$HOST_GID" "{mode}
                 proxy_args.extend(["--env", name])
     mount = mount_root(REPO)
     argv = [
-        "docker", "run", "--rm", "--platform", "linux/amd64",
+        "docker", "run", "--rm", "--init", "--platform", "linux/amd64",
         "--mount", f"type=bind,source={mount},target={mount}",
         "--workdir", str(REPO),
         "--network", "none" if mode == "command" else "bridge",

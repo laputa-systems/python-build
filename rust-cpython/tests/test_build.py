@@ -33,6 +33,22 @@ _MUSL_RUN_SPEC.loader.exec_module(musl_run)
 
 
 class MuslRunLLVMPathTests(unittest.TestCase):
+    def test_container_reaps_orphaned_test_children(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary) / "repo"
+            repo.mkdir()
+            run = mock.Mock(return_value=SimpleNamespace(returncode=0))
+            with mock.patch.object(musl_run, "REPO", repo), \
+                    mock.patch.object(musl_run, "verify_cache"), \
+                    mock.patch.object(musl_run, "mount_root", return_value=Path(temporary)), \
+                    mock.patch.object(musl_run.subprocess, "run", run):
+                self.assertEqual(
+                    musl_run.run_container("command", ["python3", "-c", "pass"]), 0)
+            argv = run.call_args.args[0]
+            image_index = next(i for i, item in enumerate(argv) if item.startswith("alpine@"))
+            self.assertIn("--init", argv)
+            self.assertLess(argv.index("--init"), image_index)
+
     def test_container_path_omits_missing_dwarfdump(self):
         lane, _production = musl_run.lock_data()
         with tempfile.TemporaryDirectory() as temporary:
