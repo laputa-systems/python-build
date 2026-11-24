@@ -43,11 +43,12 @@ them or silently raises a budget.
 and then
 [OD24](CAMPAIGN-RUST-CPYTHON-JIT.md#od24-2026-11-23-owner-qualify-prepared-work-one-c-loc-1-correction).
 OD25 governs where this runbook disagrees, until a worker reconciles it.
-Order of work: finish the musl qualification path (measured-environment
-identity on the container and direct Alpine paths, and the pair comparison
-contract enforced before measurement, with focused tests); qualify J-ES-2,
-J-BITCAST-1 and C-REL-3 on an eligible host; while timing is blocked, run the
-one preregistered C-LOC-1 correction; J-ARRAY-1 when a J slot clears.
+The musl qualification-path repair is complete: measured-environment identity
+is verified before every measurement on the container and direct Alpine paths,
+and the pair comparison contract rejects incomplete or incompatible identities.
+Order of work: while timing is blocked, run the one preregistered C-LOC-1
+correction; qualify J-ES-2, J-BITCAST-1 and C-REL-3 on an eligible host;
+J-ARRAY-1 when a J slot clears.
 
 **Resume checkpoint (2026-11-24, this host).** `main` is ahead of
 `integ/od22-reconcile` and contains OD24; a clean `main` needs no reconciliation.
@@ -57,11 +58,15 @@ host readiness only and records host identity for the receipt; measured-stage
 identity stays with `perf.py`'s build reports and stage digests, and H0/A/A
 statistical qualification stays with the harness verdicts. `p0-bench`'s precheck
 path is portable on Alpine, and `musl-run` uses Docker `--init`. Lane
-`perf.py doctor` is `ok: true` in the pinned Alpine container. The repaired gate
-was exercised three times on this host: it **failed** CPU idle (49–76% against
-95%), iowait (4.6–32.9% against 2%) and 1m load (4.8–7.2 on 8 cores), and a real
-`p0-bench --runs 1` returned `DEFERRED` with no benchmark. No build, calibration,
-A/A or P0 was attempted, and qualified gains remain 0. The exact blocker is host
+`perf.py doctor` is `ok: true` in the pinned Alpine container. `_measure` now
+requires a clean pinned-musl environment and a comparable pair before sampling:
+target, source epoch, toolchain/runtime and allocator must match, and missing
+identities fail closed. Focused tests and 314 other lane tests passed (25
+skipped); the five C-core contract test files need a built stage and were not
+run. Direct `perf.py bench` on this host failed the environment check (exit 1)
+before resolving a stage; in-container doctor passed and `p0-bench --runs 1`
+returned `DEFERRED` (exit 4) with no benchmark. No build, calibration, A/A or P0
+was attempted, and qualified gains remain 0. The exact blocker is host
 contention from unrelated resident services; timing reopens only on a host that
 passes the pre/post gate.
 
@@ -114,8 +119,8 @@ J-LT-2, refusal census) live in Status and the Ledger, not here.
 | J (JIT) | J-BITCAST-1: union casts replace stencil `memcpy` bit casts (96 relocations removed). | Holds on musl (`RESULT-JBITCAST1.md`). Prepared, unqualified. With J-ES-2 the J track is full (2/2). | OD24 item 4: compact disassembly/relocation evidence and a narrow regression check for bit patterns and absent `memcpy` under the stencil flags. | P0 on a qualified host. | Timing needs a qualified host. |
 | J (JIT) glibc-only | J-TLS-1 `4a4bf84`: initial-exec TLS model for libpython's C thread-locals. | Null on musl (OD23); kept for glibc. Occupies no musl slot (OD25). | None. | None on the musl lane. | None. |
 | J (JIT) queued | J-ARRAY-1: inline array element helpers (`2026-11-23-jit-uop-profile/`). | Queued; starts only when a J slot clears. | Inspect emitted code and derive the saving from removable costs before implementing. | None until a slot clears. | J track full. |
-| H (harness) | Done: host-readiness-only gate, Alpine-portable precheck, precheck-before-benchmark DEFERRED, `musl-run --init` reaping, lane `libgcc_s` scope documented. Open (OD25 item 2): verify the pinned musl measurement environment on the container-launch and direct Alpine paths, and enforce the pair comparison contract (target, source epoch, toolchain/runtime, allocator; only declared differences) before measurement. | Partial. | Focused tests rejecting missing/incompatible identities and accepting a matched pair; compact CPU-replay inputs for the diagnostic receipts. | Implement the comparison-contract check on the existing identity records and validation code, then exercise the full command path. | None |
-| Timing / IPC | None | Deferred. Qualified gains: 0; accepted: 0. | Fresh musl H0/A/A/P0 on a quiet host. PMU counters. | `tools/p0-bench` on a quiet host after the comparison-contract repair | This Alpine host fails idle, iowait and load from resident services; do not repeat timing on it unchanged. Reopens on an eligible x86-64 host that passes the pre/post gate. |
+| H (harness) | Done: host-readiness-only gate, Alpine-portable precheck, precheck-before-benchmark DEFERRED, `musl-run --init` reaping, pinned-environment check on both measurement paths, pair comparison contract (target, source epoch, toolchain/runtime, allocator) before sampling, and lane `libgcc_s` scope documented. | None for OD25 item 2. | Compact CPU-replay inputs for the diagnostic receipts. | Write the preregistered C-LOC-1 correction plan; qualify prepared candidates on a quiet host. | None |
+| Timing / IPC | None | Deferred. Qualified gains: 0; accepted: 0. | Fresh musl H0/A/A/P0 on a quiet host. PMU counters. | `tools/p0-bench` on a quiet host with matched stage identities | This Alpine host fails idle, iowait and load from resident services; do not repeat timing on it unchanged. Reopens on an eligible x86-64 host that passes the pre/post gate. |
 
 Every new queue item states its observed mechanism, concrete change,
 falsifier, smallest useful test and later acceptance gate. Rank items by

@@ -54,23 +54,36 @@ in the receipt without reading a toolchain lock; measured-stage identity remains
 in `perf.py` build reports and stage digests, and H0/A/A qualification remains in
 the harness verdicts. `p0-bench` no longer uses GNU `find -printf`, `date %N` or
 `realpath -m`, so its pre/post path runs on Alpine. `musl-run` passes Docker
-`--init` for child reaping. Focused gate, precheck and reaping tests plus the
-full lane suite passed (255 tests). The lane `perf.py doctor` reports
-`ok: true` with the pinned musl toolchain. The musl lane's `libgcc_s.so.1` stays
-a research-lane runtime library pinned in `linux-musl-toolchain.lock.json`; it
-is not called production-equivalent and the GCC-free production invariant is
-unchanged.
+`--init` for child reaping. The measured-environment check now runs before
+every `_measure`: on Linux it requires a clean pinned-musl `doctor` report, so
+the direct Alpine path fails closed on an unpinned host instead of relying on
+`/etc/alpine-release`, and the container-launch path passes it under `musl-run`.
+The pair comparison contract rejects a stage missing the target, source epoch,
+toolchain/runtime or allocator identity, or a pair that disagrees on any of
+them; stage digests alone no longer make a pair comparable. Focused gate,
+precheck, reaping, comparison-contract and environment tests passed, along with
+314 other lane tests (25 skipped); the five C-core contract test files need a
+built stage and were not run. The lane `perf.py doctor` reports `ok: true` with
+the pinned musl toolchain. The musl lane's `libgcc_s.so.1` stays a research-lane
+runtime library pinned in `linux-musl-toolchain.lock.json`; it is not called
+production-equivalent and the GCC-free production invariant is unchanged.
 
-Blocker: this host is not quiet. Three gate samples failed CPU idle (49–76%
-against 95%), iowait (4.6–32.9% against 2%) and 1m load (4.8–7.2 on 8 cores),
-with zero steal and no swap; resident services drive the contention. A real
-`p0-bench --runs 1` returned `DEFERRED` without running the benchmark. No build,
-H0, A/A or P0 was attempted, so J-ES-2, J-BITCAST-1 and C-REL-3 remain prepared
-and unqualified.
+Exercise of the whole command path: direct
+`perf.py bench --baseline @control --candidate @incumbent --runs 1 --timing-only`
+on this host failed with `measurement environment is not the pinned musl lane`
+(exit 1) before resolving or sampling; in-container `perf.py doctor` returned
+`ok: true`; `p0-bench --runs 1` returned `DEFERRED` (exit 4) without running
+the benchmark after the readiness gate failed.
 
-Next executable action: superseded by [OD25](#od25-2026-11-24-owner-execute-od24-comparison-contract-before-measurement).
-The readiness-only gate above is half of OD25 item 2; the comparison-contract
-check is still open. Timing stays off this host.
+Blocker: this host is not quiet. Gate samples failed CPU idle (49–76% against
+95%), iowait (3.8–32.9% against 2%) and 1m load, with zero steal and no swap;
+resident services drive the contention. No build, H0, A/A or P0 was attempted,
+so J-ES-2, J-BITCAST-1 and C-REL-3 remain prepared and unqualified.
+
+Next executable action: write the one preregistered C-LOC-1 correction plan
+(OD25 item 4) on the current musl epoch before any build; timing stays off this
+host. Qualification of J-ES-2, J-BITCAST-1 and C-REL-3 needs an eligible quiet
+x86-64 host that passes both pre/post readiness checks.
 
 ### OD25 (2026-11-24, owner): execute OD24, comparison contract before measurement
 
