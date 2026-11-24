@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
-"""Fail-closed quiet-host check for native Ubuntu 24.04 campaign measurements.
+"""Fail-closed quiet-host check for native Linux x86_64 campaign measurements.
 
 Usage: perf-gate-ready [-s PATH] [-1] [--json]. -1 is the post-run check.
-The benchmark's internal quiet-host and paired-sampling gates remain mandatory.
+
+This checks host readiness only: architecture, contention, steal time,
+swapping, memory, disk and AC power. It does not identify the measured stage:
+the pinned image, target, allocator, toolchain, source and binary identities
+are verified by perf.py's build reports and stage digests. H0/A/A statistical
+qualification is decided by the harness verdicts, not by this gate. The
+benchmark's internal quiet-host and paired-sampling gates remain mandatory.
 """
 from __future__ import annotations
 
@@ -51,7 +57,7 @@ def available_memory_gib() -> float:
 def ac_online() -> bool | None:
     paths = list(Path("/sys/class/power_supply").glob("*/online"))
     if not paths:
-        return None  # Desktop boards often have no power-supply telemetry.
+        return None  # Boards without power telemetry are not failed on it.
     readings = [path.read_text().strip() for path in paths]
     if any(value not in {"0", "1"} for value in readings):
         raise ValueError("unknown AC power-supply state")
@@ -74,6 +80,20 @@ def sample_cpu(seconds: int = 3) -> dict[str, float | int]:
         start = end
     return {"min_idle_pct": idle_min, "max_iowait_pct": iowait_max,
             "max_steal_pct": steal_max, "swap_pages": swapped_pages() - swap_before}
+
+
+def host_identity() -> dict[str, str]:
+    """Record host identity for the receipt; none of it decides quietness."""
+    if platform.system() != "Linux" or platform.machine() != "x86_64":
+        raise ValueError("requires native Linux x86_64; emulation is out of scope")
+    release = {}
+    for line in Path("/etc/os-release").read_text().splitlines():
+        key, sep, value = line.partition("=")
+        if sep:
+            release[key] = value.strip().strip('"')
+    return {"architecture": platform.machine(), "kernel": platform.release(),
+            "os_id": release.get("ID", ""), "os_version_id": release.get("VERSION_ID", ""),
+            "os_pretty_name": release.get("PRETTY_NAME", "")}
 
 
 def classify(metrics: dict[str, object]) -> list[str]:
@@ -100,51 +120,25 @@ def classify(metrics: dict[str, object]) -> list[str]:
     return failures
 
 
-def collect(path: Path) -> dict[str, object]:
-    if platform.system() != "Linux" or platform.machine() != "x86_64":
-        raise ValueError("requires native Linux x86_64")
-    release = {}
-    for line in Path("/etc/os-release").read_text().splitlines():
-        key, sep, value = line.partition("=")
-        if sep:
-            release[key] = value.strip().strip('"')
-    allowed_versions = {"24.04"}
-    # Provisional interim hosts authorized in the lane lock (OD21).
-    for base in (Path.cwd(), *Path.cwd().parents):
-        lock = base / "rust-cpython" / "linux-toolchain.lock.json"
-        if lock.is_file():
-            try:
-                doc = json.loads(lock.read_text())
-                allowed_versions.update(
-                    entry["os_version_id"]
-                    for entry in doc.get("provisional_hosts", ())
-                )
-            except (OSError, json.JSONDecodeError, KeyError):
-                pass
-            break
-    if release.get("ID") != "ubuntu" or release.get("VERSION_ID") not in allowed_versions:
-        raise ValueError(
-            f"requires Ubuntu 24.04 (or a provisional_hosts entry); "
-            f"{release.get('ID')} {release.get('VERSION_ID')} is not a comparable host"
-        )
-    provisional = release.get("VERSION_ID") != "24.04"
+def collect(path: Path) -> tuple[dict[str, object], dict[str, str]]:
+    identity = host_identity()
     counters = sample_cpu()
     usage = shutil.disk_usage(path)
-    return {**counters, "cores": len(os.sched_getaffinity(0)),
-            "load1": os.getloadavg()[0],
-            "available_gib": round(available_memory_gib(), 2),
-            "provisional": provisional,
-            "disk_free_gib": round(usage.free / GIB, 2),
-            "ac_online": ac_online(), "path": str(path.resolve())}
+    metrics = {**counters, "cores": len(os.sched_getaffinity(0)),
+               "load1": os.getloadavg()[0],
+               "available_gib": round(available_memory_gib(), 2),
+               "disk_free_gib": round(usage.free / GIB, 2),
+               "ac_online": ac_online(), "path": str(path.resolve())}
+    return metrics, identity
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("-s", "--space", default=".", help="filesystem to check for free space")
     parser.add_argument("-1", action="store_true", dest="post", help="post-measurement check")
     parser.add_argument("--json", action="store_true", help="print machine-readable evidence")
     parser.add_argument("--self-test", action="store_true", help="test the decision rules offline")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.self_test:
         healthy = {"min_idle_pct": 99, "available_gib": 10, "disk_free_gib": 70,
                    "max_iowait_pct": 0, "max_steal_pct": 0, "load1": 0,
@@ -156,13 +150,14 @@ def main() -> int:
             assert classify({**healthy, **changed})
         print("PASS gate decision controls")
         return 0
+    metrics, identity = {}, {}
     try:
-        metrics = collect(Path(args.space))
+        metrics, identity = collect(Path(args.space))
         failures = classify(metrics)
     except (OSError, ValueError, ZeroDivisionError) as error:
-        metrics = {}
         failures = [str(error)]
     result = {"phase": "post" if args.post else "pre", "ok": not failures,
+              "scope": "host-readiness", "host": identity,
               "metrics": metrics, "failures": failures}
     if args.json:
         print(json.dumps(result, sort_keys=True))
