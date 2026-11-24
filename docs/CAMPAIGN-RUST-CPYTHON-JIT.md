@@ -68,9 +68,73 @@ with zero steal and no swap; resident services drive the contention. A real
 H0, A/A or P0 was attempted, so J-ES-2, J-BITCAST-1 and C-REL-3 remain prepared
 and unqualified.
 
-Next executable action: re-run the pre gate on a quiet x86-64 host, then build
-clean matched musl stages and run H0 → A/A → P0; if it still fails, continue the
-bounded C-LOC-1 correction plan rather than repeating timing on this host.
+Next executable action: superseded by [OD25](#od25-2026-11-24-owner-execute-od24-comparison-contract-before-measurement).
+The readiness-only gate above is half of OD25 item 2; the comparison-contract
+check is still open. Timing stays off this host.
+
+### OD25 (2026-11-24, owner): execute OD24, comparison contract before measurement
+
+Owner steering reviewed against `main` at `b31b14ba` with `integ/od22-reconcile` at
+`44de748a`; `main` has since advanced to `edf40dec` (the resume checkpoint above), and
+`integ/od22-reconcile` is unchanged. Recorded on a non-quiet host that is not resuming
+the campaign; no worker executed it here. OD25 executes OD24 and preserves its research
+direction, acceptance thresholds, hypothesis budgets, production boundary and the OD21
+continuous mandate. Where the runbook queue disagrees, OD25 governs until item 3 is done.
+
+1. **Consume steering in the executing checkout.** Inspect local changes, active
+   commands and leases. Fetch origin and read the steering from `origin/main`.
+   Reconcile it into the authorized execution branch without reset or force-push,
+   preserving concurrent work and candidate artifacts. Verify that the checkout contains
+   the steering commit, or record exactly how its instructions were incorporated. Record
+   the actual worker/session, checkout SHA, steering SHA consumed, last completed action
+   and next executable command, then continue into implementation in the same session.
+   Repair the runbook resumption commands, which followed `origin/integ/od22-reconcile`
+   while steering arrives on `main`: resumption must discover and consume the
+   authoritative steering without overwriting local work.
+2. **Finish one complete musl qualification-path repair.** Separate host readiness from
+   the identity of the measured environment, keeping every readiness threshold, the
+   H0/A/A requirements, statistical rules and diagnostic restrictions. Allowing Alpine
+   in the Ubuntu check is not a repair. Both the container-launch path and the direct
+   Alpine path must verify the intended pinned musl measurement environment;
+   `/etc/alpine-release` is insufficient. Enforce the comparison contract **before**
+   measurement: shared target, upstream source epoch, toolchain/runtime identity and
+   allocator configuration must match, with only the declared experimental differences
+   permitted. Each stage matching its own digest does not make the pair comparable. Use
+   the existing identity records and validation code, and add focused tests that reject
+   missing or incompatible required identities and accept a valid matched pair. Keep
+   the failed-precheck → DEFERRED-without-benchmark behavior, keep diagnostics
+   ineligible, carry the `--init` reaping protection, and resolve or accurately document
+   the lane runtime's relation to the production GCC-free contract. Exercise the whole
+   command path before expensive qualification.
+3. **Reconcile active instructions once** with that implementation: runbook, Status and
+   entry-point guidance. The active queue shows J-ES-2 and J-BITCAST-1 as the two
+   prepared J candidates. Glibc-only TLS changes (J-TLS-1, C-TLS-2) do not occupy musl
+   slots. The precheck-before-benchmark repair is complete. The C-LOC-1 correction is
+   already authorized by OD24; do not ask again. Preserve historical results and failed
+   attempts; musl malloc stays the baseline allocator and the allocator budgets stay
+   closed.
+4. **Measure without letting host access block other work.** Use an authorized eligible
+   x86-64 host for H0, A/A and qualification of the prepared improvements, with clean
+   matched musl builds and the existing training, guard, correctness, memory and
+   milestone rules. If none is accessible, record the exact missing capability or access
+   and the reopening condition; do not repeat identical timing on an unchanged
+   disqualified host. While timing is blocked, complete the one C-LOC-1 correction:
+   preregister the matched musl experiment, use the corrected pyc/source/repeated-source
+   probe, keep the original retirement, and report memory, correctness and
+   instruction-count results. It remains one attempt. J-ARRAY-1 stays queued until a J
+   slot clears; the frame-representation project stays paused.
+5. **Demonstrate continuation.** At a safe checkpoint, run one supported
+   checkpoint-and-resume cycle with the actual worker arrangement, keeping one writer,
+   active leases, explicit pauses, authentication and resource limits. A pushed
+   instruction or acknowledgement does not show that execution resumed: record the
+   resumed action and its result. Checkpoint meaningful code or evidence and continue;
+   if every defensible action is blocked, preserve the exact resume state and blocker
+   without busy polling.
+
+**Next checkpoint must contain:** the implemented qualification-path repair and its
+focused test results; an accurate active queue; and either qualified measurement
+evidence or a precise infrastructure blocker, with the C-LOC-1 correction completed or
+concretely underway. Report completed work separately from queued instructions.
 
 ### OD24 (2026-11-23, owner): qualify prepared work, one C-LOC-1 correction
 
@@ -4490,6 +4554,13 @@ remain unchanged.
   steering confirms `main@294b19a` is a diagnostic checkpoint that
   establishes no qualified Linux win, does not meet M4/C3 and does not close
   the campaign; OD21's continuous mandate governs.
+- **OD25 (2026-11-24):** execute OD24. Resumption consumes steering from
+  `main`, not `integ/od22-reconcile`. The musl qualification path must verify
+  the pinned measurement environment on both the container and direct Alpine
+  paths and enforce the pair comparison contract (target, source epoch,
+  toolchain/runtime, allocator) before measurement. Glibc-only TLS candidates
+  leave the musl slots; the C-LOC-1 correction proceeds while timing is
+  blocked. See [OD25](#od25-2026-11-24-owner-execute-od24-comparison-contract-before-measurement).
 - **Parked:** a method-based frontend (withdrawn PEP 836 prototype, observed
   head `04a79098`) opens only by owner decision.
 

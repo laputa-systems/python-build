@@ -38,12 +38,16 @@ them or silently raises a budget.
 
 ## Current position and immediate queue
 
-**Steering (OD24, 2026-11-23).** Read
-[OD24](CAMPAIGN-RUST-CPYTHON-JIT.md#od24-2026-11-23-owner-qualify-prepared-work-one-c-loc-1-correction)
-first. It takes priority over the queue table below until that table is
-reconciled. Order of work: the musl H0 → A/A → P0 path, qualification of J-ES-2,
-J-BITCAST-1 and C-REL-3, one C-LOC-1 correction, then J-ARRAY-1 when a J slot
-clears.
+**Steering (OD25, 2026-11-24, executing OD24).** Read
+[OD25](CAMPAIGN-RUST-CPYTHON-JIT.md#od25-2026-11-24-owner-execute-od24-comparison-contract-before-measurement)
+and then
+[OD24](CAMPAIGN-RUST-CPYTHON-JIT.md#od24-2026-11-23-owner-qualify-prepared-work-one-c-loc-1-correction).
+OD25 governs where this runbook disagrees, until a worker reconciles it.
+Order of work: finish the musl qualification path (measured-environment
+identity on the container and direct Alpine paths, and the pair comparison
+contract enforced before measurement, with focused tests); qualify J-ES-2,
+J-BITCAST-1 and C-REL-3 on an eligible host; while timing is blocked, run the
+one preregistered C-LOC-1 correction; J-ARRAY-1 when a J slot clears.
 
 **Resume checkpoint (2026-11-24, this host).** `main` is ahead of
 `integ/od22-reconcile` and contains OD24; a clean `main` needs no reconciliation.
@@ -61,19 +65,28 @@ A/A or P0 was attempted, and qualified gains remain 0. The exact blocker is host
 contention from unrelated resident services; timing reopens only on a host that
 passes the pre/post gate.
 
-On resume, inspect local state and fetch the steering before selecting work:
+Owner steering arrives on `origin/main`. On resume, inspect local state and
+active leases, then discover and consume the latest steering before selecting
+work:
 
 ```sh
 git status --short --branch
+git stash list
 git fetch origin
-git log --oneline --left-right HEAD...origin/integ/od22-reconcile
+git log --oneline --left-right HEAD...origin/main
+git log --oneline origin/main -- docs/CAMPAIGN-RUST-CPYTHON-JIT.md docs/CAMPAIGN-RUST-CPYTHON-RUNBOOK.md
+git merge --ff-only origin/main || git merge --no-ff origin/main
 ```
 
-`integ/od22-reconcile` reconciled `main` with
-`campaign/cloud-ubuntu-baseline` and carried every OD22 checkpoint. It is now an
-ancestor of `main`, which additionally carries OD24; on a clean `main` there is
-nothing to fast-forward. Continue from the latest `main` steering, not from the
-older integration tip.
+The first log shows what the checkout lacks (`>`) and what it holds
+unpublished (`<`). The second lists the steering commits; read the newest OD
+section in Status from `origin/main` before acting. Merge only with a clean or
+committed working tree; never reset, stash-drop or force-push to make it
+apply. If the merge conflicts with candidate work, stop, keep both sides and
+record how the steering was incorporated. Record the worker/session, checkout
+SHA, steering SHA consumed, last completed action and next command at the
+checkpoint. `integ/od22-reconcile` (`44de748a`) is an ancestor of `main` and is
+historical; do not resume from it.
 
 If the local branch has work, or a command still owns a lease, preserve and
 reconcile that state first. Never reset, force-push or overwrite an active
@@ -94,13 +107,15 @@ J-LT-2, refusal census) live in Status and the Ledger, not here.
 | Track | Current candidate | Disposition | Evidence debt | Next command | Blocker |
 | --- | --- | --- | --- | --- | --- |
 | C (Serc) | C-REL-3 merged into `main` via PR #20 (`98ede3a`), under the owner's instruction to merge outstanding work. Structural only; not timed. C-REL-2 is archived, not landing: the owner keeps panic file:line. | No prepared candidate. | None. | Open the next Serc hypothesis with predictions written before any build. | Timing of the landed C-REL-3 needs a qualified host. |
-| C (Serc) | C-TLS-2 `04124a0`: staticlib Rust initial-exec TLS. | Predictions held (`RESULT-CTLS2.md`); corpus `Ir` −3.55%. Prepared, unqualified (C slot 1/2). | None. | P0 on a qualified host. | No qualified Ubuntu 24.04 host. |
+| C (Serc) glibc-only | C-TLS-2 `04124a0`: staticlib Rust initial-exec TLS. | Null on musl (OD23); its code applies only to glibc and is kept there. Occupies no musl slot (OD25). | None. | None on the musl lane. | None. |
 | C (Serc) archive | C-ALLOC-1 `c411d42`: retired at attempt 1/1 on memory (`RESULT-CALLOC1.md`). | Corpus `Ir` −8.54%, but source-mode private memory +762 KiB and peak RSS +11.9%. | None. | A bounded-retention allocator needs its own plan. | None. |
-| C (Serc) observation | C-LOC-1 `6e5568c`: retired at attempt 1/1. | The corrected probe shows the original control failure was a probe artifact (`2026-11-22-probe2/`). | None for the record. | None until the owner rules on re-admission. | Owner decision. |
+| C (Serc) correction | C-LOC-1 `6e5568c`: retired at attempt 1/1; that retirement and its evidence stay. | The corrected probe shows the original control failure was a probe artifact (`2026-11-22-probe2/`). OD24 authorizes one measurement-defect correction; do not ask again. | Preregistered plan, then memory, correctness and instruction-count results. | Write the preregistered matched musl correction plan (corrected pyc/source/repeated-source probe) before any build. | None; native acceptance still needs a qualified host. |
 | J (JIT) | J-ES-2 `0c3b192` (J-ES-1 + J-LT-2 combined). This was the single authorized attempt; the frame representation stays paused. | Predictions P1–P4 held (`RESULT-JES2.md`). Prepared, unqualified. Instruction-count screen (`RESULT-JES2-IR.md`): sparse executed instructions −3.58%, FFT and nbody within ±0.01%. These are instruction counts, not timing. | None on this host. | The next JIT hypothesis needs a fresh refusal census of the candidate (`ltcensus/`) before any prediction. | Timing needs a qualified host. |
-| J (JIT) | J-TLS-1 `4a4bf84`: initial-exec TLS model for libpython's C thread-locals. | Predictions T1–T5 held (`RESULT-JTLS1.md`). Prepared, unqualified. The J track is full (2/2). | None. | P0 on a qualified host. | No qualified Ubuntu 24.04 host. |
-| H (harness) | Host-readiness gate and Alpine/musl precheck path repaired; `p0-bench` defers before the bench on a failed precheck and `musl-run` reaps children. | Repaired and exercised on this host (255 lane tests OK); no measured-stage or statistical gate was changed. | Compact CPU-replay inputs for the diagnostic receipts. | Run H0/A/A/P0 on a host that passes the pre/post gate | None |
-| Timing / IPC | None | Deferred. Qualified gains: 0; accepted: 0. | Fresh musl H0/A/A/P0 on a quiet host. PMU counters. | `tools/p0-bench` on a quiet host | This Alpine host fails idle, iowait and load; host contention from resident services. |
+| J (JIT) | J-BITCAST-1: union casts replace stencil `memcpy` bit casts (96 relocations removed). | Holds on musl (`RESULT-JBITCAST1.md`). Prepared, unqualified. With J-ES-2 the J track is full (2/2). | OD24 item 4: compact disassembly/relocation evidence and a narrow regression check for bit patterns and absent `memcpy` under the stencil flags. | P0 on a qualified host. | Timing needs a qualified host. |
+| J (JIT) glibc-only | J-TLS-1 `4a4bf84`: initial-exec TLS model for libpython's C thread-locals. | Null on musl (OD23); kept for glibc. Occupies no musl slot (OD25). | None. | None on the musl lane. | None. |
+| J (JIT) queued | J-ARRAY-1: inline array element helpers (`2026-11-23-jit-uop-profile/`). | Queued; starts only when a J slot clears. | Inspect emitted code and derive the saving from removable costs before implementing. | None until a slot clears. | J track full. |
+| H (harness) | Done: host-readiness-only gate, Alpine-portable precheck, precheck-before-benchmark DEFERRED, `musl-run --init` reaping, lane `libgcc_s` scope documented. Open (OD25 item 2): verify the pinned musl measurement environment on the container-launch and direct Alpine paths, and enforce the pair comparison contract (target, source epoch, toolchain/runtime, allocator; only declared differences) before measurement. | Partial. | Focused tests rejecting missing/incompatible identities and accepting a matched pair; compact CPU-replay inputs for the diagnostic receipts. | Implement the comparison-contract check on the existing identity records and validation code, then exercise the full command path. | None |
+| Timing / IPC | None | Deferred. Qualified gains: 0; accepted: 0. | Fresh musl H0/A/A/P0 on a quiet host. PMU counters. | `tools/p0-bench` on a quiet host after the comparison-contract repair | This Alpine host fails idle, iowait and load from resident services; do not repeat timing on it unchanged. Reopens on an eligible x86-64 host that passes the pre/post gate. |
 
 Every new queue item states its observed mechanism, concrete change,
 falsifier, smallest useful test and later acceptance gate. Rank items by
@@ -208,9 +223,9 @@ and next action without saying that worker was restarted.
 Use this as the persistent task instruction, or as the body of `/goal` on a
 surface that supports it:
 
-> Continue the Linux Rust CPython campaign on integ/od22-reconcile
-> after fetching origin and safely reconciling the latest steering with local
-> work. Follow AGENTS.md, docs/CAMPAIGN-RUST-CPYTHON-RUNBOOK.md and OD21. Keep working
+> Continue the Linux Rust CPython campaign on the authorized execution
+> branch after fetching origin and safely reconciling the latest owner
+> steering from origin/main with local work. Follow AGENTS.md, docs/CAMPAIGN-RUST-CPYTHON-RUNBOOK.md and OD21. Keep working
 > across checkpoints and bounded experiment rounds toward qualified M4/C3,
 > then continue measured improvements within the same boundary until I pause
 > the campaign. Start from the latest Status and exact verified artifacts;
