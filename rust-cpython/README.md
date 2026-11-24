@@ -1,8 +1,7 @@
 # Rust-for-CPython research lane
 
 JIT work in this lane follows one campaign,
-[rust-cpython JIT](../docs/CAMPAIGN-RUST-CPYTHON-JIT.md). Start with the
-[continuous runbook](../docs/CAMPAIGN-RUST-CPYTHON-RUNBOOK.md), then its
+[rust-cpython JIT](../docs/roadmap.md). Start with the roadmap's
 Status and current source epoch; R0 has already opened epoch e891. OD21
 (2026-11-19) keeps the Linux x86-64 campaign active across checkpoints and
 search rounds. The authorized Ubuntu 24.04 cloud runner supports builds,
@@ -23,7 +22,7 @@ attribution are recorded in the campaign. Linux arm64 is not implemented here
 and is never described as qualified. The engineering contract, verdict policy, and
 closed mechanisms are in [ENGINEERING.md](ENGINEERING.md); each route's suite
 contract is in [ROUTES.md](ROUTES.md); open work is in
-[../docs/open-work.md](../docs/open-work.md).
+[../docs/roadmap.md](../docs/roadmap.md).
 
 The current source is upstream `python/cpython` `main`, commit
 `e891a9117985888df3e5d48145cf07ddda098335`, pinned with its archive digest in
@@ -194,7 +193,7 @@ The **Linux host itself still needs to run** the build and verification
 steps above; CI on a different runner or a syntax/self-test check is not
 a native-host qualification. Baseline reconstruction and the full
 predetermined P0 protocol are in the campaign's
-[Fresh Linux host bring-up](../docs/CAMPAIGN-RUST-CPYTHON-JIT.md#fresh-linux-host-bring-up-2026-11-18-od20).
+[Fresh Linux host bring-up](../docs/roadmap.md#fresh-linux-host-bring-up-2026-11-18-od20).
 
 ## Performance harness
 

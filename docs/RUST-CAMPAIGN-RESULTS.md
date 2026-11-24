@@ -1,13 +1,6 @@
-# rust-cpython JIT campaign — results
+# Rust CPython research results
 
-**Current state (2026-11-19): ACTIVE — continuous Linux research (OD21).**
-The owner authorized ongoing Ubuntu 24.04 cloud/container development and
-indefinite hillclimbing. The last operational checkpoint reviewed is
-`af2371d` on `campaign/cloud-ubuntu-baseline`. It records substantial baseline
-and correctness preparation, **zero qualified Linux optimization gains**, and
-an unqualified timing host. See the
-[continuous runbook](CAMPAIGN-RUST-CPYTHON-RUNBOOK.md) and the campaign's
-[Status](CAMPAIGN-RUST-CPYTHON-JIT.md#status) for the next experiments.
+See [Status](roadmap.md#status) for current work.
 
 The observations below are recorded by the original cloud worker. Its cited
 raw archives and recipe bundle are not in the published Git tree; `results/`
@@ -53,11 +46,10 @@ The Serc numbers are same-configuration (`perf-rust` and `perf-rust-serc`
 are both fat LTO at `5e09c5f`) as measured on macOS; C3 REJECTED at
 attempt 3 there. Linux re-verifies.
 
-## Historical closeout (2026-11-18 03:00, superseded)
+## Historical macOS results (2026-11-18)
 
-The text below is the INCOMPLETE_PLATEAU closeout as written. It
-superseded an earlier BLOCKED closeout (2026-11-17). Its "bounded space
-exhausted" conclusions predate the Serc IPC finding and the eval-9 audit.
+These historical measurements predate the Serc IPC finding and the eval-9
+audit. Their bounded-search conclusions do not describe the current campaign.
 
 **Outcome then: INCOMPLETE_PLATEAU.** The resumed campaign (owner decisions of
 2026-11-17: macOS arm64 only, J measurement-gate repair authorized, Serc
@@ -178,18 +170,7 @@ the lane root.
 - Serc cold compilation is 6–16% slower wall / up to +37% peak RSS than
   the C compiler path on the locked workloads.
 
-### Owner queue / smallest unblock actions
-
-1. **JIT unboxed locals / frame representation** — the only identified
-   mechanism with material headroom; multi-session research project
-   with deopt/observability/refcounting obligations.
-2. **Serc pipeline fusion** — research-grade; the Py316 linear-path
-   port has since landed (see post-closeout note below).
-3. **django_wsgi_request wall signature** — ~1.6% wall regression with
-   improved cpu; needs attribution before it can be waived or fixed.
-4. **Linux** — deferred until a native Linux host is supplied.
-
-### Post-closeout note (2026-11-18, `5c64210`)
+### Py316 linear-assembler result (2026-11-18, `5c64210`)
 
 After the plateau closeout, the Py316 linear-assembler port was completed
 and landed as an incremental Serc compiler improvement. The two required
@@ -212,6 +193,5 @@ Raw receipts live under `rust-cpython/results/perf-bench/<UTC>-<a>-vs-<b>/`
 Key receipts: `20261118T013628Z` (S = 0.7258), `20261118T021917Z`
 (held-out), `20261118T023948Z` (guard), `20261118T035428Z` (combined
 digests), suite logs `logs/perf-*-all*.log`, fuzz receipts in session
-records. The campaign ledger `docs/CAMPAIGN-RUST-CPYTHON-JIT.md` carries
-the full row-level history, per-candidate correctness/review evidence,
-rejected probes, and measured ceilings.
+records. Earlier row-level history is retained in Git; current work is in
+[the roadmap](roadmap.md).

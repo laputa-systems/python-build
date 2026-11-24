@@ -48,7 +48,7 @@ A final release requires P1-P5 receipts, the Linux wave, a fresh
 three-platform qualification at the release revision, exact uv-installed
 archive checksums, source and tag identity, and full failure accounting with
 no stale production claims. An earlier CI success cannot substitute for that
-run. The open items are tracked in [open-work.md](open-work.md).
+run. The open items are tracked in [roadmap.md](roadmap.md).
 
 `build/uvmirror.py` validates the three target artifacts and their manifests,
 then creates the release assets and uv metadata in a new output directory.
