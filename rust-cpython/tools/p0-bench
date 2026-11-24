@@ -40,17 +40,27 @@ if [[ "$MUSL_RUN" != /* ]]; then
 fi
 
 mkdir -p "$RESULTS"
-start_stamp=$(date -u +%Y%m%dT%H%M%S%NZ)
+start_stamp=$(python3 -c 'import time
+from datetime import datetime, timezone
+n = time.time_ns()
+print(datetime.fromtimestamp(n // 10**9, timezone.utc).strftime("%Y%m%dT%H%M%S") + f"{n % 10**9:09d}Z")')
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
-find "$RESULTS" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort > "$tmpdir/before-dirs"
+list_result_dirs() {
+    for path in "$1"/*; do
+        [ -d "$path" ] || continue
+        printf '%s\n' "${path##*/}"
+    done | sort
+}
+list_result_dirs "$RESULTS" > "$tmpdir/before-dirs"
 
 if "$GATE_READY" > "$tmpdir/pre.out" 2>&1; then
     pre_exit=0
 else
     pre_exit=$?
 fi
-pre_utc=$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)
+pre_utc=$(python3 -c 'from datetime import datetime, timezone
+print(datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z"))')
 
 if ((pre_exit != 0)) && [[ "$MODE" == default ]]; then
     record_path=$RESULTS/external-host-checks-$start_stamp.json
@@ -98,7 +108,8 @@ if "$GATE_READY" -1 > "$tmpdir/post.out" 2>&1; then
 else
     post_exit=$?
 fi
-post_utc=$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)
+post_utc=$(python3 -c 'from datetime import datetime, timezone
+print(datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z"))')
 
 result_dir=
 reported_dir=$(sed -nE 's/^LOG[[:space:]]+(.+)\/verdict\.json$/\1/p' "$tmpdir/bench.log" | tail -n 1)
@@ -106,7 +117,9 @@ if [[ -n "$reported_dir" ]]; then
     if [[ "$reported_dir" != /* ]]; then
         reported_dir=$REPO_ROOT/$reported_dir
     fi
-    reported_dir=$(realpath -m -- "$reported_dir")
+    reported_dir=$(python3 -c 'import sys
+from pathlib import Path
+print(Path(sys.argv[1]).resolve())' "$reported_dir")
     if [[ "$reported_dir" == "$RESULTS/"* && -d "$reported_dir" ]] \
             && ! grep -Fqx -- "${reported_dir##*/}" "$tmpdir/before-dirs"; then
         result_dir=$reported_dir
@@ -114,7 +127,7 @@ if [[ -n "$reported_dir" ]]; then
 fi
 
 if [[ -z "$result_dir" ]]; then
-    mapfile -t after_dirs < <(find "$RESULTS" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+    mapfile -t after_dirs < <(list_result_dirs "$RESULTS")
     new_dirs=()
     for dir in "${after_dirs[@]}"; do
         if ! grep -Fqx -- "$dir" "$tmpdir/before-dirs"; then

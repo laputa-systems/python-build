@@ -159,10 +159,12 @@ class P0BenchTests(unittest.TestCase):
         self.assertFalse(result["record"]["eligible"])
         self.assertFalse(result["record"]["accepted"])
         self.assertEqual(result["record"]["args"], ["--runs", "1"])
-        self.assertEqual(
-            result["musl_args"],
-            ["python3", result["perf_path"], "bench", "--runs", "1"],
-        )
+        expected = ["python3", result["perf_path"], "bench", "--runs", "1"]
+        if Path("/etc/alpine-release").is_file():
+            self.assertIsNone(result["musl_args"])
+            self.assertEqual(result["perf_args"], ["bench", "--runs", "1"])
+        else:
+            self.assertEqual(result["musl_args"], expected)
 
     def test_accept_verdict_with_both_checks_passing_is_accepted(self):
         result = self.run_case(pre=0, post=0, verdict="ACCEPT", nested_verdict=True)
