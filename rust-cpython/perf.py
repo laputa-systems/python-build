@@ -1817,6 +1817,63 @@ def _require_allocator_match(baseline: dict[str, Any], candidate: dict[str, Any]
         )
 
 
+SHARED_IDENTITY_KEYS = (
+    "target", "source_commit", "source_archive_sha256", "cargo_lock_sha256",
+    "toolchain_identity", "c_toolchain", "host",
+)
+RUNTIME_IDENTITY_KEYS = (
+    "implementation", "version", "gil_disabled", "gil_enabled", "extension_suffix",
+)
+
+
+def _shared_identity(side: dict[str, Any]) -> dict[str, Any]:
+    report = side.get("report") or {}
+    label = side.get("name") or side.get("ref") or "stage"
+    missing = [
+        key for key in SHARED_IDENTITY_KEYS
+        if key not in report or (key != "cargo_lock_sha256" and report[key] in (None, "", {}))
+    ]
+    interpreter = report.get("interpreter")
+    if not isinstance(interpreter, dict):
+        missing.append("interpreter")
+    else:
+        missing.extend(f"interpreter.{key}" for key in RUNTIME_IDENTITY_KEYS
+                       if key not in interpreter)
+    if missing:
+        raise LaneError(
+            f"comparison refused: {label} has no complete shared measurement identity "
+            f"({', '.join(missing)}); rebuild the stage"
+        )
+    identity = {key: report[key] for key in SHARED_IDENTITY_KEYS}
+    identity["runtime"] = {key: interpreter[key] for key in RUNTIME_IDENTITY_KEYS}
+    return identity
+
+
+def _require_comparable_pair(baseline: dict[str, Any], candidate: dict[str, Any]) -> None:
+    _require_allocator_match(baseline, candidate)
+    baseline_identity = _shared_identity(baseline)
+    candidate_identity = _shared_identity(candidate)
+    for key, value in baseline_identity.items():
+        if value != candidate_identity[key]:
+            raise LaneError(
+                f"comparison refused: {key} differs between "
+                f"{baseline.get('name', 'baseline')} and {candidate.get('name', 'candidate')}"
+            )
+
+
+def _require_measurement_environment() -> dict[str, Any] | None:
+    if not lb.IS_LINUX:
+        return None
+    report = lb.doctor_report()
+    if not report.get("ok"):
+        raise LaneError(
+            "measurement environment is not the pinned musl lane: "
+            + "; ".join(report.get("problems", []))
+        )
+    return {"target": report.get("target"), "host": report.get("host", {}),
+            "source": report.get("source", {})}
+
+
 def _measure(*, baseline_ref: str, candidate_ref: str, workloads: list[str], modules: list[str],
              gate: bool, runs: int, profile: str, timing_only: bool, min_idle: float,
              self_compare: bool, record_baselines: bool, slug_prefix: str = "",
@@ -1827,6 +1884,7 @@ def _measure(*, baseline_ref: str, candidate_ref: str, workloads: list[str], mod
         raise LaneError("--matched-prefix requires --memory-only")
     if matched_executable and not matched_prefix:
         raise LaneError("--matched-executable requires --matched-prefix")
+    _require_measurement_environment()
     targets, evaluated_workloads, evaluated_modules = selection(
         workloads=workloads, modules=modules, gate=gate, jit_set=jit_set, jit_heldout=jit_heldout)
     samples: list[dict[str, Any]] = []
@@ -1864,7 +1922,7 @@ def _measure(*, baseline_ref: str, candidate_ref: str, workloads: list[str], mod
         # replace a stage between this check and the last measurement.
         baseline = resolve(baseline_ref)
         candidate = baseline if self_compare else resolve(candidate_ref)
-        _require_allocator_match(baseline, candidate)
+        _require_comparable_pair(baseline, candidate)
         serc_pair = _serc_candidate_pair(baseline, candidate, memory_only=memory_only,
                                          self_compare=self_compare)
         if not self_compare and baseline["stage"] == candidate["stage"]:

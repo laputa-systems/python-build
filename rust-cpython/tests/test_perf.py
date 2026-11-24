@@ -420,6 +420,7 @@ class AllocatorIdentityTests(unittest.TestCase):
                 mock.patch.object(perf, "_harness_identity",
                                   return_value={"source_sha256": "fixture"}), \
                 mock.patch.object(perf, "resolve", side_effect=sides.__getitem__), \
+                mock.patch.object(perf, "_require_measurement_environment", return_value=None), \
                 mock.patch.object(perf, "_run_bench") as run:
             with self.assertRaisesRegex(perf.LaneError, "allocator mismatch"):
                 perf._measure(
@@ -435,6 +436,92 @@ class AllocatorIdentityTests(unittest.TestCase):
                 {"name": "new", "report": {
                     "allocator": "musl", "build_identity": {"allocator": "musl"}}},
             )
+
+
+class ComparisonContractTests(unittest.TestCase):
+    def side(self, name, **changes):
+        report = {
+            "target": "x86_64-unknown-linux-musl",
+            "source_commit": "e891a9117985888df3e5d48145cf07ddda098335",
+            "source_archive_sha256": "source-sha",
+            "cargo_lock_sha256": None,
+            "toolchain_identity": {"llvm": "23.1.5", "rust": "nightly-2026-09-15"},
+            "c_toolchain": {"clang": "23.1.5"},
+            "host": {"os": "Linux", "architecture": "x86_64"},
+            "interpreter": {
+                "implementation": "cpython", "version": "3.16", "gil_disabled": None,
+                "gil_enabled": True, "extension_suffix": ".cpython-316-x86_64-linux-musl.so",
+            },
+            "allocator": "musl", "allocator_profile": "default", "allocator_config": "",
+            "build_identity": {"allocator": "musl", "allocator_profile": "default",
+                               "allocator_config": ""},
+        }
+        report.update(changes)
+        return {"ref": name, "name": name, "report": report}
+
+    def test_matched_pair_is_accepted(self):
+        self.assertIsNone(perf._require_comparable_pair(
+            self.side("base"), self.side("candidate")))
+
+    def test_missing_required_identity_is_rejected(self):
+        candidate = self.side("candidate")
+        del candidate["report"]["toolchain_identity"]
+        with self.assertRaisesRegex(
+                perf.LaneError, "no complete shared measurement identity.*toolchain_identity"):
+            perf._require_comparable_pair(self.side("base"), candidate)
+        candidate = self.side("candidate")
+        del candidate["report"]["interpreter"]["version"]
+        with self.assertRaisesRegex(perf.LaneError, "interpreter.version"):
+            perf._require_comparable_pair(self.side("base"), candidate)
+
+    def test_incompatible_required_identities_are_rejected(self):
+        changes = (
+            ("target", "aarch64-apple-darwin"),
+            ("source_commit", "other-epoch"),
+            ("source_archive_sha256", "other-sha"),
+            ("cargo_lock_sha256", "other-lock"),
+            ("toolchain_identity", {"llvm": "other"}),
+            ("c_toolchain", {"clang": "other"}),
+            ("host", {"os": "Linux", "architecture": "aarch64"}),
+        )
+        for key, value in changes:
+            with self.subTest(key=key), self.assertRaisesRegex(perf.LaneError, f"{key} differs"):
+                perf._require_comparable_pair(
+                    self.side("base"), self.side("candidate", **{key: value}))
+        candidate = self.side("candidate")
+        candidate["report"]["interpreter"]["version"] = "other"
+        with self.assertRaisesRegex(perf.LaneError, "runtime differs"):
+            perf._require_comparable_pair(self.side("base"), candidate)
+
+    def test_unpinned_environment_is_rejected(self):
+        with mock.patch.object(perf.lb, "IS_LINUX", True), \
+                mock.patch.object(perf.lb, "doctor_report",
+                                  return_value={"ok": False, "problems": ["not pinned"]}):
+            with self.assertRaisesRegex(perf.LaneError, "not the pinned musl lane"):
+                perf._require_measurement_environment()
+
+    def test_measure_refuses_unpinned_environment_before_sampling(self):
+        with mock.patch.object(perf, "selection", return_value=([], [], [])), \
+                mock.patch.object(perf, "_require_measurement_environment",
+                                  side_effect=perf.LaneError("not the pinned musl lane")), \
+                mock.patch.object(perf, "_run_bench") as run, \
+                mock.patch.object(perf, "_measure_module") as module:
+            with self.assertRaisesRegex(perf.LaneError, "not the pinned musl lane"):
+                perf._measure(baseline_ref="@control", candidate_ref="@candidate", workloads=[],
+                              modules=[], gate=False, runs=1, profile="quick", timing_only=False,
+                              min_idle=0, self_compare=False, record_baselines=False, memory_only=True)
+        run.assert_not_called()
+        module.assert_not_called()
+
+    def test_pinned_environment_is_accepted(self):
+        report = {"ok": True, "target": "x86_64-unknown-linux-musl",
+                  "host": {"os": "Linux"}, "source": {"commit": "e891"}}
+        with mock.patch.object(perf.lb, "IS_LINUX", True), \
+                mock.patch.object(perf.lb, "doctor_report", return_value=report):
+            self.assertEqual(perf._require_measurement_environment(), {
+                "target": report["target"], "host": report["host"], "source": report["source"]})
+        with mock.patch.object(perf.lb, "IS_LINUX", False):
+            self.assertIsNone(perf._require_measurement_environment())
 
 
 class ExploratoryEarlyRejectionTests(unittest.TestCase):
@@ -486,6 +573,8 @@ class ExploratoryEarlyRejectionTests(unittest.TestCase):
                                               ["first", "tail"], ["json", "csv"]))
             patch("host_lease", return_value=nullcontext())
             patch("resolve", side_effect=sides.__getitem__)
+            patch("_require_measurement_environment", return_value=None)
+            patch("_require_comparable_pair")
             checks = patch("_verify_stage", side_effect=guard_error)
             gates = patch("_gate_checks")
             patch("_host_sample", return_value={"quiet": True})
@@ -696,6 +785,8 @@ class ReceiptTimingTests(unittest.TestCase):
                 return advance(13, {"kind": "module", "metrics": {}, "mismatch": False})
             fixtures = {
                 "LANE": root, "host_lease": lease,
+                "_require_measurement_environment": lambda: None,
+                "_require_comparable_pair": lambda baseline, candidate: None,
                 "_harness_identity": lambda: {"source_sha256": "fixture"},
                 "selection": lambda **kw: (["workload", "json"], ["workload"], ["json"]),
                 "resolve": sides.__getitem__,
@@ -792,6 +883,7 @@ class WorkloadProfileTests(unittest.TestCase):
 
     def test_harness_change_while_waiting_aborts_before_stage_resolution(self):
         with mock.patch.object(perf, "selection", return_value=([], [], [])), \
+                mock.patch.object(perf, "_require_measurement_environment", return_value=None), \
                 mock.patch.object(perf, "host_lease", return_value=nullcontext()), \
                 mock.patch.object(perf, "_harness_identity", side_effect=[{"source_sha256": "first"}, {"source_sha256": "changed"}]), \
                 mock.patch.object(perf, "resolve") as resolve, \
@@ -811,6 +903,8 @@ class WorkloadProfileTests(unittest.TestCase):
                                "build_identity": {"allocator": "musl"}}}
             with mock.patch.object(perf, "LANE", Path(temp)), \
                     mock.patch.object(perf, "_harness_identity", return_value={"source_sha256": "fixture"}), \
+                    mock.patch.object(perf, "_require_measurement_environment", return_value=None), \
+                    mock.patch.object(perf, "_require_comparable_pair"), \
                     mock.patch.object(perf, "selection", return_value=(["json"], [], ["json"])), \
                     mock.patch.object(perf, "host_lease", return_value=nullcontext()), \
                     mock.patch.object(perf, "resolve", return_value=side), \
@@ -842,6 +936,8 @@ class WorkloadProfileTests(unittest.TestCase):
                                "build_identity": {"allocator": "musl"}}}
             with mock.patch.object(perf, "LANE", Path(temp)), \
                     mock.patch.object(perf, "_harness_identity", return_value={"source_sha256": "fixture"}), \
+                    mock.patch.object(perf, "_require_measurement_environment", return_value=None), \
+                    mock.patch.object(perf, "_require_comparable_pair"), \
                     mock.patch.object(perf, "selection", return_value=(["json"], [], ["json"])), \
                     mock.patch.object(perf, "host_lease", return_value=nullcontext()), \
                     mock.patch.object(perf, "resolve", return_value=side), \
@@ -1365,6 +1461,8 @@ class MemoryOnlyTests(unittest.TestCase):
                      for ref in ("@control", "@incumbent")}
             with mock.patch.object(perf, "LANE", Path(temp)), \
                     mock.patch.object(perf, "_harness_identity", return_value={"source_sha256": "fixture"}), \
+                    mock.patch.object(perf, "_require_measurement_environment", return_value=None), \
+                    mock.patch.object(perf, "_require_comparable_pair"), \
                     mock.patch.object(perf, "selection", return_value=(["json"], [], ["json"])), \
                     mock.patch.object(perf, "host_lease", return_value=nullcontext()), \
                     mock.patch.object(perf, "resolve", side_effect=sides.__getitem__), \
