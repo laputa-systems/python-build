@@ -143,9 +143,12 @@ namespaces; macOS uses `sandbox-exec`.
 
 ## Fresh Linux host setup
 
-Native x86-64 Ubuntu 24.04 (glibc 2.39), not a container, VM or emulated
-host. Start in a fresh clone at the intended campaign revision. Use the
-checked-in phased bootstrap (which reads pinned package versions from
+The measurement host must be native x86-64 Linux, not an emulated host. The
+lane builds and measures inside the pinned Alpine/musl container via
+`tools/musl-run`; the glibc production toolchain installed by the phased
+bootstrap below still requires native Ubuntu 24.04 (glibc 2.39). Start in a
+fresh clone at the intended campaign revision. Use the checked-in phased
+bootstrap (which reads pinned package versions from
 `linux-toolchain.lock.json`, without requiring `jaq` or `jq`):
 
 ```sh
@@ -177,11 +180,15 @@ of a performance candidate.
 
 The supplied quiet-host checker is intentionally conservative (3 one-second
 CPU samples, ≥95% idle, ≤2% iowait, ≤0.2% steal, no observed swap,
-≥4 GiB available memory, ≥20 GiB free disk, load ≤0.7/core).
-`perf-gate-ready -s .` is the pre-gate check and `perf-gate-ready -1`
-the post-gate check; the benchmark's internal quietness and output parity
-checks are still mandatory. A busy host can complete bootstrap but cannot
-produce accepted timing evidence.
+≥4 GiB available memory, ≥20 GiB free disk, load ≤0.7/core). It checks host
+readiness only: the host's OS is recorded on the receipt but does not decide
+quietness, and no toolchain lock is read. Measured-stage identity (pinned image,
+target, allocator, toolchain, source and binary) is verified by `perf.py`'s
+build reports and stage digests; H0/A/A statistical qualification is decided by
+the harness verdicts. `perf-gate-ready -s .` is the pre-gate check and
+`perf-gate-ready -1` the post-gate check; the benchmark's internal quietness
+and output parity checks are still mandatory. A busy host can complete
+bootstrap but cannot produce accepted timing evidence.
 
 The **Linux host itself still needs to run** the build and verification
 steps above; CI on a different runner or a syntax/self-test check is not

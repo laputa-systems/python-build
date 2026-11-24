@@ -45,6 +45,22 @@ reconciled. Order of work: the musl H0 → A/A → P0 path, qualification of J-E
 J-BITCAST-1 and C-REL-3, one C-LOC-1 correction, then J-ARRAY-1 when a J slot
 clears.
 
+**Resume checkpoint (2026-11-24, this host).** `main` is ahead of
+`integ/od22-reconcile` and contains OD24; a clean `main` needs no reconciliation.
+Work resumed on `campaign/musl-qualification-path` off `main`; no prior campaign
+worker, worktree or automation was observed. `tools/perf-gate-ready` now checks
+host readiness only and records host identity for the receipt; measured-stage
+identity stays with `perf.py`'s build reports and stage digests, and H0/A/A
+statistical qualification stays with the harness verdicts. `p0-bench`'s precheck
+path is portable on Alpine, and `musl-run` uses Docker `--init`. Lane
+`perf.py doctor` is `ok: true` in the pinned Alpine container. The repaired gate
+was exercised three times on this host: it **failed** CPU idle (49–76% against
+95%), iowait (4.6–32.9% against 2%) and 1m load (4.8–7.2 on 8 cores), and a real
+`p0-bench --runs 1` returned `DEFERRED` with no benchmark. No build, calibration,
+A/A or P0 was attempted, and qualified gains remain 0. The exact blocker is host
+contention from unrelated resident services; timing reopens only on a host that
+passes the pre/post gate.
+
 On resume, inspect local state and fetch the steering before selecting work:
 
 ```sh
@@ -53,10 +69,11 @@ git fetch origin
 git log --oneline --left-right HEAD...origin/integ/od22-reconcile
 ```
 
-The current integration branch is `integ/od22-reconcile`. It reconciles
-`main` with `campaign/cloud-ubuntu-baseline` and carries every OD22
-checkpoint. If you are on it with a clean tree, fast-forward with
-`git merge --ff-only origin/integ/od22-reconcile`.
+`integ/od22-reconcile` reconciled `main` with
+`campaign/cloud-ubuntu-baseline` and carried every OD22 checkpoint. It is now an
+ancestor of `main`, which additionally carries OD24; on a clean `main` there is
+nothing to fast-forward. Continue from the latest `main` steering, not from the
+older integration tip.
 
 If the local branch has work, or a command still owns a lease, preserve and
 reconcile that state first. Never reset, force-push or overwrite an active
@@ -82,8 +99,8 @@ J-LT-2, refusal census) live in Status and the Ledger, not here.
 | C (Serc) observation | C-LOC-1 `6e5568c`: retired at attempt 1/1. | The corrected probe shows the original control failure was a probe artifact (`2026-11-22-probe2/`). | None for the record. | None until the owner rules on re-admission. | Owner decision. |
 | J (JIT) | J-ES-2 `0c3b192` (J-ES-1 + J-LT-2 combined). This was the single authorized attempt; the frame representation stays paused. | Predictions P1–P4 held (`RESULT-JES2.md`). Prepared, unqualified. Instruction-count screen (`RESULT-JES2-IR.md`): sparse executed instructions −3.58%, FFT and nbody within ±0.01%. These are instruction counts, not timing. | None on this host. | The next JIT hypothesis needs a fresh refusal census of the candidate (`ltcensus/`) before any prediction. | Timing needs a qualified host. |
 | J (JIT) | J-TLS-1 `4a4bf84`: initial-exec TLS model for libpython's C thread-locals. | Predictions T1–T5 held (`RESULT-JTLS1.md`). Prepared, unqualified. The J track is full (2/2). | None. | P0 on a qualified host. | No qualified Ubuntu 24.04 host. |
-| H (harness) | `tools/p0-bench` must defer before the bench when the precheck fails. | Open. | Compact CPU-replay inputs for the diagnostic receipts. | Patch `p0-bench` plus a controller test | None |
-| Timing / IPC | None | Deferred | Fresh H0/A/A/P0 on a qualified host. PMU counters. | `tools/p0-bench` on a qualified host | No qualified Ubuntu 24.04 host. `perf_event_paranoid=4` on this VM. |
+| H (harness) | Host-readiness gate and Alpine/musl precheck path repaired; `p0-bench` defers before the bench on a failed precheck and `musl-run` reaps children. | Repaired and exercised on this host (255 lane tests OK); no measured-stage or statistical gate was changed. | Compact CPU-replay inputs for the diagnostic receipts. | Run H0/A/A/P0 on a host that passes the pre/post gate | None |
+| Timing / IPC | None | Deferred. Qualified gains: 0; accepted: 0. | Fresh musl H0/A/A/P0 on a quiet host. PMU counters. | `tools/p0-bench` on a quiet host | This Alpine host fails idle, iowait and load; host contention from resident services. |
 
 Every new queue item states its observed mechanism, concrete change,
 falsifier, smallest useful test and later acceptance gate. Rank items by

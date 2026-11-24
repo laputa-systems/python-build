@@ -41,6 +41,37 @@ ledger are evidence to consult by item, not a queue of work to repeat.
 
 ## Status
 
+### Resume checkpoint (2026-11-24, Alpine host)
+
+Scorecard: qualified Linux gains **0**, accepted **0**; no candidate changed.
+`main` contains OD24 and the older `integ/od22-reconcile` tip. Work resumed on
+`campaign/musl-qualification-path` from `main`; no active worker, worktree or
+automation was found on this host.
+
+Completed this checkpoint: `perf-gate-ready` is host-readiness-only (x86_64
+architecture, idle/iowait/steal/load/swap/memory/disk/AC) and records OS identity
+in the receipt without reading a toolchain lock; measured-stage identity remains
+in `perf.py` build reports and stage digests, and H0/A/A qualification remains in
+the harness verdicts. `p0-bench` no longer uses GNU `find -printf`, `date %N` or
+`realpath -m`, so its pre/post path runs on Alpine. `musl-run` passes Docker
+`--init` for child reaping. Focused gate, precheck and reaping tests plus the
+full lane suite passed (255 tests). The lane `perf.py doctor` reports
+`ok: true` with the pinned musl toolchain. The musl lane's `libgcc_s.so.1` stays
+a research-lane runtime library pinned in `linux-musl-toolchain.lock.json`; it
+is not called production-equivalent and the GCC-free production invariant is
+unchanged.
+
+Blocker: this host is not quiet. Three gate samples failed CPU idle (49–76%
+against 95%), iowait (4.6–32.9% against 2%) and 1m load (4.8–7.2 on 8 cores),
+with zero steal and no swap; resident services drive the contention. A real
+`p0-bench --runs 1` returned `DEFERRED` without running the benchmark. No build,
+H0, A/A or P0 was attempted, so J-ES-2, J-BITCAST-1 and C-REL-3 remain prepared
+and unqualified.
+
+Next executable action: re-run the pre gate on a quiet x86-64 host, then build
+clean matched musl stages and run H0 → A/A → P0; if it still fails, continue the
+bounded C-LOC-1 correction plan rather than repeating timing on this host.
+
 ### OD24 (2026-11-23, owner): qualify prepared work, one C-LOC-1 correction
 
 Owner review of `44de748a` (and `385314d0`, which changes no result). Credited:
