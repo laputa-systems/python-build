@@ -11,7 +11,7 @@
     "bootstrap_lock": "bootstrap.lock.json",
     "image_digest": "sha256:d56c381f961d307a21b3ca004cf1e3910f106644aefb1f43e654c8a56c4fd395",
     "image_revision": "1c744e2d49059e51b063a11a6e3e18c9ccf04ab8",
-    "apk_closure_sha256": "02c25096229b7a595707a6797b48dad2887a61ecbb2f6691da09efa6389375cc",
+    "apk_closure_sha256": "f356337f270659a2be19a69f3e113ec1fa124832011d9d63f92f8ca9e49fd422",
     "llvm_sha256": "de3f6d0ad089391482147c61648c511c500b25289132fe7f2c446a0905406d2a"
   },
   "measurement": {
@@ -71,7 +71,7 @@
     {"name":"libcurl","version":"8.23.0-r0","arch":"x86_64","sha256":"1f70ca404818805a6465b615bbfe84ef861488a963d7e630108ebd7fbaa51665","size":364567,"license":"curl","repository":"main"},
     {"name":"libeconf","version":"0.8.3-r0","arch":"x86_64","sha256":"2a791c7957961f830cf31b04f35f814a63afcf633badc9052425ff1cf2f64380","size":26054,"license":"MIT","repository":"main"},
     {"name":"libfdisk","version":"2.42.3-r1","arch":"x86_64","sha256":"9775aae10e103c128e6b8424585f5d2dac6d8e8e386cc8365a46358ccd6aa7d0","size":125583,"license":"LGPL-2.1-or-later","repository":"main"},
-    {"name":"libffi-dev","version":"3.5.2-r1","arch":"x86_64","sha256":"2d70bc8758f9cac44c3456510b68b0ef03b2f762ead698af64e314a898846d17","size":92286,"license":"MIT","repository":"main"},
+    {"name":"libffi-dev","version":"3.8.1-r0","arch":"x86_64","sha256":"199168b70c04f258e3612522e8e0fad3034146fac21c2a0cfb92837345ebe8ec","size":104206,"license":"MIT","repository":"main"},
     {"name":"libformw","version":"6.6_p20260516-r0","arch":"x86_64","sha256":"3a1d3bf08911655e3c7674931887a78867d57065e8156c95d21f6fdf8ee37d1d","size":27416,"license":"X11","repository":"main"},
     {"name":"libhistory","version":"8.3.3-r1","arch":"x86_64","sha256":"a56e28a1b015fb9527996df8ad0411aebb20b33a990215a7922e34900ea1ef8c","size":20152,"license":"GPL-3.0-or-later","repository":"main"},
     {"name":"libidn2","version":"2.3.8-r0","arch":"x86_64","sha256":"7d038ac558dde464964b033ce5126dd2eaf84cc414dc15e77c5424a321d0ebee","size":104623,"license":"GPL-2.0-or-later OR LGPL-3.0-or-later","repository":"main"},
