@@ -517,7 +517,7 @@ as_cr_alnum=$as_cr_Letters$as_cr_digits
 # These variables are no longer used directly by Autoconf, but are AC_SUBSTed
 # for compatibility with existing Makefiles.
 ECHO_C= ECHO_N= ECHO_T=
-case `echo -n x` in #(((((
+case `printf %s x` in #(((((
 -n*)
   case `echo 'xy\c'` in
   *c*) ECHO_T='	';;	# ECHO_T is single tab character.
@@ -2413,7 +2413,7 @@ if eval test \${$3+y}
 then :
   printf %s "(cached) " >&6
 else case e in #(
-  e) as_decl_use=`echo $2|sed -e 's/(/((/' -e 's/)/) 0&/' -e 's/,/) 0& (/g'`
+  e) as_decl_use=`printf '%s\n' "$2" | sed -e 's/(/((/' -e 's/)/) 0&/' -e 's/,/) 0& (/g'`
   eval ac_save_FLAGS=\$$6
   as_fn_append $6 " $5"
   cat confdefs.h - <<_ACEOF >conftest.$ac_ext
@@ -8987,7 +8987,7 @@ llvm_bin_dir=''
 llvm_path="${PATH}"
 if test "${ac_cv_cc_name}" = "clang"
 then
-  clang_bin=`which clang`
+  clang_bin=`command -v clang`
   # Some systems install clang elsewhere as a symlink to the real path
   # which is where the related llvm tools are located.
   if test -L "${clang_bin}"
@@ -16253,7 +16253,7 @@ validate_tzpath() {
     fi
 
     # Bad paths are those that don't start with /
-        if ( echo $1 | grep '\(^\|:\)\([^/]\|$\)' > /dev/null); then
+        if ( echo $1 | grep -E '(^|:)([^/]|$)' > /dev/null); then
         as_fn_error $? "--with-tzpath must contain only absolute paths, not $1" "$LINENO" 5
         return 1;
     fi
@@ -39866,7 +39866,7 @@ as_cr_alnum=$as_cr_Letters$as_cr_digits
 # These variables are no longer used directly by Autoconf, but are AC_SUBSTed
 # for compatibility with existing Makefiles.
 ECHO_C= ECHO_N= ECHO_T=
-case `echo -n x` in #(((((
+case `printf %s x` in #(((((
 -n*)
   case `echo 'xy\c'` in
   *c*) ECHO_T='	';;	# ECHO_T is single tab character.
